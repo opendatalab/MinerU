@@ -248,6 +248,36 @@ class ResourceRegistry:
         }
         self._by_upstream: dict[tuple[ResourceKind, str, str, str], ResourceRoute] = {}
         self._retired_usage: dict[str, dict[str, int]] = {}
+        self._allocated_file_ids: set[str] = set()
+        self._reserved_file_ids: set[str] = set()
+        self._task_file_ids: set[str] = set()
+
+    def reserve_file_id(self, *, task_owned: bool = True) -> str:
+        """在本层预留公共文件 ID，完成前不登记可访问的 Files 路由。"""
+        while True:
+            file_id = self._new_public_id("file")
+            if file_id not in self._allocated_file_ids and file_id not in self._by_public["file"]:
+                self._allocated_file_ids.add(file_id)
+                self._reserved_file_ids.add(file_id)
+                if task_owned:
+                    self._task_file_ids.add(file_id)
+                return file_id
+
+    def forget_file_id(self, file_id: str) -> None:
+        """任务记录过期后回收占用索引，仍存在的公开资源保持唯一性。"""
+        self._task_file_ids.discard(file_id)
+        self._reserved_file_ids.discard(file_id)
+        if file_id not in self._by_public["file"]:
+            self._allocated_file_ids.discard(file_id)
+
+    def is_file_reserved(self, file_id: str) -> bool:
+        """区分仍可发布的产物预留与已经取消、删除或过期的资源。"""
+        return file_id in self._reserved_file_ids
+
+    def discard_file_id(self, file_id: str) -> None:
+        """撤销失败或取消文件的预留与结果映射，保留已用 ID 防止迟到结果复活。"""
+        self._reserved_file_ids.discard(file_id)
+        self.remove("file", file_id)
 
     def register(
         self,
@@ -263,11 +293,22 @@ class ResourceRegistry:
         upstream_key = (kind, owner_scope, worker_id, upstream_id)
         existing = self._by_upstream.get(upstream_key)
         if existing is not None:
+            if public_id is not None and public_id != existing.public_id:
+                raise ValueError("Upstream resource is already bound to another public ID")
             if metadata is not None:
                 existing.metadata = dict(metadata)
             return existing
 
-        resolved_public_id = public_id or self._new_public_id(kind)
+        resolved_public_id = public_id or (
+            self.reserve_file_id(task_owned=False) if kind == "file" else self._new_public_id(kind)
+        )
+        if resolved_public_id in self._by_public[kind]:
+            raise ValueError("Public resource ID is already occupied")
+        if kind == "file":
+            if resolved_public_id in self._allocated_file_ids and resolved_public_id not in self._reserved_file_ids:
+                raise ValueError("File reservation has already been consumed or discarded")
+            self._allocated_file_ids.add(resolved_public_id)
+            self._reserved_file_ids.discard(resolved_public_id)
         route = ResourceRoute(
             kind=kind,
             public_id=resolved_public_id,
@@ -380,6 +421,8 @@ class ResourceRegistry:
     def remove(self, kind: ResourceKind, public_id: str) -> ResourceRoute | None:
         """删除公共资源及其反向索引，并返回被删除的记录。"""
         route = self._by_public[kind].pop(public_id, None)
+        if kind == "file" and public_id not in self._task_file_ids and public_id not in self._reserved_file_ids:
+            self._allocated_file_ids.discard(public_id)
         if route is not None:
             if kind == "job":
                 totals = self._retired_usage.setdefault(route.owner_scope, {"jobs_created": 0, "files_processed": 0})

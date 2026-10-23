@@ -377,21 +377,6 @@ def create_app(
             request=request,
         )
 
-    @application.delete("/v1/files/{file_id}")
-    async def delete_file(file_id: str, request: Request) -> Response:
-        """删除所属 worker 的 file，并在成功后清除 Router 映射。"""
-        owner_scope = _caller_scope(request)
-        route = _route_or_404(registry, "file", file_id, owner_scope)
-        worker = pool.get(route.worker_id)
-        upstream = await request_upstream(pool, worker, "DELETE", f"/v1/files/{route.upstream_id}", request=request)
-        result = _successful_json(upstream)
-        if isinstance(result, Response):
-            return result
-        registry.remove("file", file_id)
-        source_store.delete_file(file_id)
-        result["id"] = file_id
-        return JSONResponse(result, status_code=upstream.status_code)
-
     @application.get("/v1/usage")
     async def usage(request: Request) -> dict[str, Any]:
         """返回当前 Router 进程聚合的 V1 usage。"""

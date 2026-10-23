@@ -7,33 +7,24 @@
 
 ## 成功响应
 
-成功响应直接返回接口定义的对象，不增加统一外层 envelope。资源对象、分页列表、文件删除确认及二进制附件是不同的返回类型，不能统一按 Task 对象解析。
+成功响应直接返回接口定义的对象，不增加统一外层 envelope。资源对象、分页列表及二进制附件是不同的返回类型，不能统一按 Task 对象解析。
 
 | 接口 | 成功 HTTP | Content-Type | 正文 |
 |---|---|---|---|
-| `POST /v1/tasks` | 202 | `application/json` | 完整 `TaskStatusResponse`。 |
-| `GET /v1/tasks/{task_id}` | 200 | `application/json` | 完整 `TaskStatusResponse`，包括失败或取消后的状态。 |
-| `DELETE /v1/tasks/{task_id}` | 200 | `application/json` | 取消后的完整 `TaskStatusResponse`，不是删除确认。 |
-| 本地 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}` | 200 | `application/json` | 当前完整 `TaskStatusResponse`。对象存储上传由存储服务定义响应。 |
+| `POST /v1/tasks` | 202 | `application/json` | `CreateTaskResponse`：task_id、status、files 创建回执。 |
+| `GET /v1/tasks/{task_id}` | 200 | `application/json` | `TaskDetailResponse`，包括失败或取消后的完整详情。 |
+| `POST /v1/tasks/{task_id}/cancel` | 200 | `application/json` | `CancelTaskResponse`：task_id、status、finished_at 和全部文件终态，保留成功产物链接。 |
+| 本地 `PUT /v1/tasks/{task_id}/uploads/{file_id}` | 200 | `application/json` | `UploadFileResponse`：task_id、file_id 和该文件 status。对象存储上传接受其成功 2xx 响应。 |
 | `GET /v1/files/{file_id}` | 200 | `application/json` | 完整 `FileObject`。 |
-| `DELETE /v1/files/{file_id}` | 200 | `application/json` | `id/object/deleted` 删除确认。 |
 | `GET /v1/files/{file_id}/content` | 200（完整下载） | 随产物格式 | ZIP、DOCX 或 HTML 文件字节。 |
 | 独立 `POST /v1/file_parse` | 200 / 202 | 附件 MIME / `application/json` | 等待成功返回附件；等待到期或零等待返回包装层 `StatusResponse`。 |
-| 独立 `GET /v1/file_parse/{request_id}` | 200 | `application/json` | 包装层 `StatusResponse`，不是 `TaskStatusResponse`。 |
+| 独立 `GET /v1/file_parse/{request_id}` | 200 | `application/json` | 包装层 `StatusResponse`，独立于 Tasks 的响应模型。 |
 | 独立 `GET /v1/file_parse/{request_id}/result` | 200 | 随产物格式 | ZIP、DOCX 或 HTML 文件字节。 |
 
-Tasks 全部响应字段、类型、可空值及各接口完整 JSON 见 [Tasks](tasks.md#taskstatusresponse)；Files 和下载响应见 [Files](files.md)。
+Tasks 各响应模型、字段省略规则及完整 JSON 见 [Tasks](tasks.md#响应模型)；Files 和下载响应见 [Files](files.md)。
 Health、Models、Tiers 见 [能力发现接口](health-models.md)，用量见 [Usage](usage-limits.md)，独立 Chat/Responses 协议见 [文档对话](chat.md)。
 独立包装服务的附件、202、状态查询和错误结构见 [file_parse 响应说明](file-parse.md#响应结构与格式)。
-JSON 正文使用 UTF-8；可空字段使用 JSON `null`，空列表使用 `[]`。例如删除一个 File 的成功响应为：
-
-```json
-{
-  "id": "file-result0123456789abcdef",
-  "object": "file",
-  "deleted": true
-}
-```
+JSON 正文使用 UTF-8。Tasks 成功响应省略无值可选字段，保留 0、false、[] 和 {}；其他接口及非成功错误 envelope 沿用各自的 null 规则。任务取消使用 `POST /v1/tasks/{task_id}/cancel`；目前不提供任务记录或产物的公开删除接口。
 
 当前 Python API Server 和 Router 不统一生成或返回 `X-Request-Id`；网关或公网部署提供请求追踪时，客户端可记录该响应头，不能把它作为上述共同响应的必带头。
 独立 file_parse 的成功附件和 202 响应明确携带 `X-Request-ID`；其状态查询和错误响应不统一附加该头，以专页列出的条件为准。

@@ -88,7 +88,6 @@ async def _submit(client: httpx.AsyncClient, *, filename: str = "input.html", ur
             "tier": "flash",
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": filename,
                     "bytes": len(HTML),
                     "sha256sum": hashlib.sha256(HTML).hexdigest(),
@@ -115,7 +114,7 @@ async def _terminal(client: httpx.AsyncClient, task: dict[str, Any]) -> dict[str
 
 async def _check_download(client: httpx.AsyncClient, result: dict[str, Any]) -> None:
     """验证逐跳 Files 代理返回真实且内容完整的解析 ZIP。"""
-    response = await client.get(result["files"][0]["result_url"])
+    response = await client.get(result["files"][0].get("result_url"))
     assert response.status_code == 200, response.text
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert b"Cascade document" in archive.read("markdown.md")
@@ -129,15 +128,16 @@ def test_cascade_accepts_ready_upload_without_source_file_and_reuses_cache(tmp_p
         """通过提交等待固定竞争窗口，验证内外层均不提前判错。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(pending_files(task)[0]["upload"]["url"], content=HTML)
+            response = await client.put(pending_files(task)[0].get("upload").get("url"), content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
             inner_record = next(iter(inner.state.task_store._records.values()))
             inner_route = outer.state.registry.list("job")[0]
             ready = await outer.state.worker_pool.client.get(f"http://inner/v1/tasks/{inner_route.upstream_id}")
             assert ready.json()["files"][0]["status"] == "pending"
-            assert ready.json()["files"][0]["upload"] is None
-            assert "file_id" not in ready.json()["files"][0]
+            assert ready.json()["files"][0].get("upload") is None
+            assert ready.json()["files"][0]["file_id"] == inner_record.inputs[0].file_id
+            assert ready.json()["files"][0]["file_id"] != task["files"][0]["file_id"]
             async with asyncio.timeout(5):
                 while not outer.state.task_store._records[task["task_id"]].file_states[0].submitted:
                     await asyncio.sleep(0.01)
@@ -149,7 +149,8 @@ def test_cascade_accepts_ready_upload_without_source_file_and_reuses_cache(tmp_p
             transport.allow_submission.set()
             result = await _terminal(client, task)
             assert result["status"] == "completed", result
-            assert "file_id" not in result["files"][0]
+            assert result["files"][0]["file_id"] == task["files"][0]["file_id"]
+            assert result["files"][0]["result_url"].endswith(f"/{task['files'][0]['file_id']}/content")
             await _check_download(client, result)
             cached = await _submit(client, filename="renamed.html")
             assert pending_files(cached) == []
@@ -169,10 +170,10 @@ def test_cascade_can_cancel_while_downstream_submission_is_blocked(tmp_path: Pat
         """阻塞实际任务提交后取消外层父任务，确认没有遗留解析或缓存租约。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(pending_files(task)[0]["upload"]["url"], content=HTML)
+            response = await client.put(pending_files(task)[0].get("upload").get("url"), content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
-            response = await client.delete(task_url(client, task))
+            response = await client.post(task_url(client, task) + "/cancel")
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "canceled"
             async with asyncio.timeout(5):

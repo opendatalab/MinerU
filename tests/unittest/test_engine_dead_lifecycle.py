@@ -66,7 +66,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
             source = tmp_path / f"{name}.pdf"
             source.write_bytes(name.encode())
             jobs.append(submit_task(client, source, tier="flash"))
-        assert client.delete(task_url(client, jobs[-1])).status_code == 200
+        assert client.post(task_url(client, jobs[-1]) + "/cancel").status_code == 200
         client.portal.call(gate.set)
         for job in jobs:
             wait_task(client, job)
@@ -94,15 +94,15 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
         for path, method in (("/v1/health", "get"), ("/v1/tasks", "post")):
             response = getattr(client, method)(
                 path,
-                **(
-                    {"json": {"tier": "flash", "files": [{"client_file_id": "file", "file_name": "new.pdf", "bytes": 3}]}}
-                    if method == "post"
-                    else {}
-                ),
+                **({"json": {"tier": "flash", "files": [{"file_name": "new.pdf", "bytes": 3}]}} if method == "post" else {}),
             )
-            assert response.status_code == 503 and response.json()["error"]["code"] == "engine_dead"
+            assert response.status_code == 503 and response.json().get("error")["code"] == "engine_dead"
         assert app.state.job_store._semaphore._value == 2
         assert not app.state.job_store._tasks
+        assert not app.state.file_store._reserved_output_ids
+        for job in jobs:
+            file_id = job["files"][0]["file_id"]
+            assert client.get(f"/v1/files/{file_id}").status_code == 404
 
 
 def test_router_single_generation_replacement_and_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,7 +200,7 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
 
         execution = client.portal.call(snapshot)
         assert execution.job["status"] == "failed"
-        assert execution.job["files"][0]["error"]["code"] == "upstream_task_lost"
+        assert execution.job["files"][0].get("error")["code"] == "upstream_task_lost"
         pool._workers = {state.worker_id: state}
         reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
         assert reservation is not None and reservation.worker is state

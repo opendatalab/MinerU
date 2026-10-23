@@ -20,7 +20,7 @@ from mineru.parser import api_server
 from mineru.kit.router import RouterSettings, create_app
 from mineru.kit.router.workers import JobReservation
 
-BODY = {"tier": "standard", "files": [{"client_file_id": "file", "file_name": "source.pdf", "bytes": 5}]}
+BODY = {"tier": "standard", "files": [{"file_name": "source.pdf", "bytes": 5}]}
 
 
 @pytest.mark.parametrize("formats", [["unknown"], "markdown", None, 1, {}, [{}], [1]])
@@ -36,7 +36,7 @@ def test_output_format_validation_precedes_worker_selection(formats: Any, tmp_pa
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post("/v1/tasks", json=body)
         assert response.status_code == expected.status_code == 400, response.text
-        assert response.json()["error"]["code"] == expected.json()["error"]["code"]
+        assert response.json().get("error")["code"] == expected.json().get("error")["code"]
         assert not app.state.registry.list("job")
         assert app.state.worker_pool.workers[0].active_jobs == 0
 
@@ -81,7 +81,6 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
         "tier": "standard",
         "files": [
             {
-                "client_file_id": "f1",
                 "file_name": "source.pdf",
                 "bytes": 3,
             }
@@ -199,7 +198,7 @@ def test_task_submission_failure_and_replacement_release_only_owned_load(
             task = _submit(client, [("source.html", HTML)])
             _upload(client, task, [("source.html", HTML)])
             failed = _terminal(client, task)
-            assert failed["status"] == "failed" and failed["files"][0]["result_url"] is None
+            assert failed["status"] == "failed" and failed["files"][0].get("result_url") is None
             assert not app.state.registry.list("job")
             assert not app.state.source_store._files and not app.state.source_store._uploads
             assert app.state.worker_pool.workers[0].active_jobs == (1 if replacement else 0)

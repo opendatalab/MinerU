@@ -172,7 +172,6 @@ class MinerUApiParser(DocumentParser):
         payload: dict[str, Any] = {
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": path.name,
                     "bytes": path.stat().st_size,
                     "sha256sum": _sha256_file(path),
@@ -187,8 +186,8 @@ class MinerUApiParser(DocumentParser):
             payload["ocr_mode"] = self.ocr_mode
         return payload
 
-    def _snapshot(self, response: httpx.Response, expected: dict[str, Any] | None = None) -> dict[str, Any]:
-        """校验稳定任务身份、唯一文件映射和产物选项，不依赖文件名或数组位置。"""
+    def _task_identity(self, response: httpx.Response, expected: dict[str, Any] | None = None) -> dict[str, Any]:
+        """校验创建和查询共有的身份字段，只把服务端确认的文件 ID 用于后续请求。"""
         task = self._check(response)
         files = task.get("files")
         if (
@@ -196,35 +195,44 @@ class MinerUApiParser(DocumentParser):
             or not task["task_id"]
             or not isinstance(task.get("status"), str)
             or task.get("status") not in _JOB_STATUSES
-            or task.get("output_formats") != ["default"]
             or not isinstance(files, list)
             or len(files) != 1
             or not isinstance(files[0], dict)
-            or files[0].get("client_file_id") != "file"
+            or not isinstance(files[0].get("file_id"), str)
+            or not files[0]["file_id"]
+            or not isinstance(files[0].get("file_name"), str)
             or (expected is not None and task["task_id"] != expected["task_id"])
         ):
             raise _V1APIError("invalid_response", "Inconsistent Tasks response")
         item = files[0]
-        if item.get("status") not in (
-            "waiting-file",
-            "pending",
-            "running",
-            "completed",
-            "failed",
-            "canceled",
-        ):
+        if item.get("status") not in ("waiting-file", "pending", "running", "completed", "failed", "canceled"):
             raise _V1APIError("invalid_response", "Invalid task file state")
-        if "upload" not in item or (item["upload"] is not None and not isinstance(item["upload"], dict)):
+        link = item.get("upload")
+        if link is not None and (not isinstance(link, dict) or item["status"] != "waiting-file"):
             raise _V1APIError("invalid_response", "Invalid task upload descriptor")
-        if item["upload"] is not None and item["status"] != "waiting-file":
-            raise _V1APIError("invalid_response", "Only waiting-file accepts uploads")
-        if expected is not None and any(item.get(key) != expected["files"][0].get(key) for key in ("file_name", "bytes")):
+        if expected is not None and any(item.get(key) != expected["files"][0].get(key) for key in ("file_id", "file_name")):
             raise _V1APIError("invalid_response", "Task input identity changed")
         try:
             task_status_url(self._base_url, task["task_id"])
         except ValueError as exc:
             raise _V1APIError("invalid_response", str(exc)) from exc
-        if files[0].get("status") == "completed" and not isinstance(files[0].get("result_url"), str):
+        return task
+
+    def _created_task(self, response: httpx.Response, request: dict[str, Any]) -> dict[str, Any]:
+        """创建回执无需携带详情；本地请求大小保留为首次 GET 的身份校验依据。"""
+        task = self._task_identity(response)
+        item = task["files"][0]
+        if item["file_name"] != request["files"][0]["file_name"]:
+            raise _V1APIError("invalid_response", "Created task input identity changed")
+        return {**task, "files": [{**item, "bytes": request["files"][0]["bytes"]}]}
+
+    def _snapshot(self, response: httpx.Response, expected: dict[str, Any]) -> dict[str, Any]:
+        """GET 独立校验完整详情，缺失可选字段不沿用上一快照的旧值。"""
+        task = self._task_identity(response, expected)
+        item = task["files"][0]
+        if task.get("output_formats") != ["default"] or item.get("bytes") != expected["files"][0]["bytes"]:
+            raise _V1APIError("invalid_response", "Task input size or output formats changed")
+        if item["status"] == "completed" and not isinstance(item.get("result_url"), str):
             raise _V1APIError("invalid_response", "Completed file is missing result_url")
         return task
 
@@ -248,8 +256,12 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
                 json_body=payload,
             )
-            task = self._snapshot(response)
+            task = self._created_task(response, payload)
             _notify_job_status(task, status_callback)
+            created_status = task["status"]
+            task = self._query(cli, task)
+            if task["status"] != created_status:
+                _notify_job_status(task, status_callback)
             upload_state = _UploadState()
             task = self._upload_input(
                 cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
@@ -298,10 +310,10 @@ class MinerUApiParser(DocumentParser):
         """只有明确待上传时才发 PUT，上传成功及等待确认均不消耗重复传输。"""
         if task["files"][0]["status"] != "waiting-file":
             upload_state.accepted = True
-        if upload_state.accepted or task["files"][0]["upload"] is None:
+        if upload_state.accepted or task["files"][0].get("upload") is None:
             return task
         while upload_state.attempts < _TRANSPORT_MAX_ATTEMPTS:
-            link = task["files"][0]["upload"]
+            link = task["files"][0].get("upload")
             if link is None:
                 return task
             url = self._resolve(link["url"])
@@ -320,7 +332,7 @@ class MinerUApiParser(DocumentParser):
                 if task["files"][0]["status"] != "waiting-file":
                     upload_state.accepted = True
                     return task
-                if task["files"][0]["upload"] is None:
+                if task["files"][0].get("upload") is None:
                     return task
                 if isinstance(exc, _V1APIError) and response.status_code not in {408, 429, 500, 502, 503, 504}:
                     raise
@@ -408,8 +420,12 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
                 json_body=payload,
             )
-            task = self._snapshot(response)
+            task = self._created_task(response, payload)
             _notify_job_status(task, status_callback)
+            created_status = task["status"]
+            task = await self._async_query(cli, task)
+            if task["status"] != created_status:
+                _notify_job_status(task, status_callback)
             upload_state = _UploadState()
             task = await self._async_upload_input(
                 cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
@@ -458,10 +474,10 @@ class MinerUApiParser(DocumentParser):
         """只有明确待上传时才发 PUT，上传成功及等待确认均不消耗重复传输。"""
         if task["files"][0]["status"] != "waiting-file":
             upload_state.accepted = True
-        if upload_state.accepted or task["files"][0]["upload"] is None:
+        if upload_state.accepted or task["files"][0].get("upload") is None:
             return task
         while upload_state.attempts < _TRANSPORT_MAX_ATTEMPTS:
-            link = task["files"][0]["upload"]
+            link = task["files"][0].get("upload")
             if link is None:
                 return task
             url = self._resolve(link["url"])
@@ -482,7 +498,7 @@ class MinerUApiParser(DocumentParser):
                 if task["files"][0]["status"] != "waiting-file":
                     upload_state.accepted = True
                     return task
-                if task["files"][0]["upload"] is None:
+                if task["files"][0].get("upload") is None:
                     return task
                 if isinstance(exc, _V1APIError) and response.status_code not in {408, 429, 500, 502, 503, 504}:
                     raise

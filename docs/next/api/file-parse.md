@@ -54,7 +54,7 @@ curl --max-time 7200 -D response.headers -o response.body \
 
 ## 响应结构与格式
 
-以下三个接口均属于独立 file_parse 包装服务。它们的 JSON 状态对象是下文的 `StatusResponse`，不是 Tasks 的 `TaskStatusResponse`。
+以下三个接口均属于独立 file_parse 包装服务。它们的 JSON 状态对象是下文的 `StatusResponse`，独立于 Tasks 的创建、详情和取消响应模型。
 
 | 接口 | HTTP | Content-Type | 正文格式 |
 |---|---|---|---|
@@ -116,7 +116,7 @@ X-Task-ID: job_0123456789abcdef01234567
 |---|---|
 | `prepared` | 本地源文件和恢复记录已持久化，尚未开始提交。 |
 | `submitting` | 正在向上游创建任务，尚无确认后的 `task_id`。 |
-| `waiting-file` | 上游仍在接收、下载、校验或确认输入；upload=null 不表示已经就绪。 |
+| `waiting-file` | 上游仍在接收、下载、校验或确认输入；上游省略 upload 不表示已经就绪。 |
 | `pending` | 已进入上游执行队列。 |
 | `running` | 上游正在解析或导出。 |
 | `completed` | 上游完整产物已生成，可通过包装服务下载。 |
@@ -328,4 +328,6 @@ python scripts/http_file_parse_example.py report.pdf --wait-timeout 0 \
 ## 升级与恢复记录
 
 本次协议升级要求 API Server、Router、SDK、Gradio 与包装服务同步更新，先停收请求并排空旧任务。
-恢复记录目录使用 `tasks-v4-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧 `tasks-v3-`、`tasks-v2-` 或无前缀目录。包装服务自身的 `status_url` 与 Location 头保持不变，上游 Tasks 查询改用固定路径。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。
+恢复记录目录使用 `tasks-v5-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧 `tasks-v4-`、`tasks-v3-`、`tasks-v2-` 或无前缀目录。包装服务自身的 `status_url` 与 Location 头保持不变，上游 Tasks 查询改用固定路径。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。
+
+上游 POST 只返回创建回执。包装服务先持久化服务端生成的 task_id/file_id 和原始请求上下文，再 GET 查询详情；查询失败或重启仍恢复同一任务，不重放创建。只有 Tasks 成功响应省略 null，本文的 StatusResponse、status_url 和错误响应保持原规则。

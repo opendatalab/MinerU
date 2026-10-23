@@ -313,13 +313,6 @@ class FileObjectModel(BaseModel):
     sha256sum: str | None = None
 
 
-class FileDeletionResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    id: str
-    object: Literal["file"] = "file"
-    deleted: bool = True
-
-
 # ── Job sources ──────────────────────────────────────────────────────
 
 
@@ -450,6 +443,9 @@ class FileStore:
         self._blobs = root / "blobs"
         self._blobs.mkdir(parents=True, exist_ok=True)
         self._files: dict[str, _FileRecord] = {}
+        self._allocated_file_ids: set[str] = set()
+        self._reserved_output_ids: set[str] = set()
+        self._task_file_ids: set[str] = set()
 
     def claim_directory(self) -> None:
         """服务启动时独占上传目录，避免多个进程的内存元数据互相误删。"""
@@ -521,6 +517,8 @@ class FileStore:
             for file_id, rec in tuple(self._files.items()):
                 if rec.expires_at is not None and rec.expires_at <= now:
                     self._files.pop(file_id)
+                    if file_id not in self._task_file_ids:
+                        self._allocated_file_ids.discard(file_id)
             referenced = {rec.sha256sum for rec in self._files.values()} | set(self._pins)
             for prefix in self._blobs.iterdir():
                 if prefix.is_symlink() or not prefix.is_dir() or not re.fullmatch(r"[0-9a-f]{2}", prefix.name):
@@ -543,7 +541,55 @@ class FileStore:
 
     @staticmethod
     def _new_file_id() -> str:
+        """生成不携带存储位置或内容信息的随机文件标识。"""
         return "file-" + secrets.token_hex(12)
+
+    def _allocate_file_id(self) -> str:
+        """检查源文件、产物和仍被任务持有的 ID，避免覆盖活跃资源。"""
+        with self._lock:
+            while True:
+                file_id = self._new_file_id()
+                if file_id not in self._allocated_file_ids and file_id not in self._files:
+                    self._allocated_file_ids.add(file_id)
+                    return file_id
+
+    def reserve_file_id(self, *, task_owned: bool = True) -> str:
+        """只预留公共产物 ID，完成前不建立可查询的 Files 对象。"""
+        with self._lock:
+            file_id = self._allocate_file_id()
+            self._reserved_output_ids.add(file_id)
+            if task_owned:
+                self._task_file_ids.add(file_id)
+            return file_id
+
+    def forget_file_id(self, file_id: str) -> None:
+        """任务记录过期后回收 ID 索引，仍存在的 Files 资源继续阻止占用。"""
+        with self._lock:
+            self._task_file_ids.discard(file_id)
+            self._reserved_output_ids.discard(file_id)
+            if file_id not in self._files:
+                self._allocated_file_ids.discard(file_id)
+
+    def discard_file_id(self, file_id: str) -> None:
+        """取消未发布的产物及其预留，迟到写出不得重新注册该 ID。"""
+        with self._lock:
+            self._reserved_output_ids.discard(file_id)
+            record = self._files.get(file_id)
+            if record is not None and record.purpose == "parse_output":
+                self._files.pop(file_id)
+
+    def _store_path(self, path: pathlib.Path, sha256sum: str) -> pathlib.Path:
+        """在持有存储锁时物化共享字节，源文件和产物复用相同的原子写入。"""
+        target = self._blob_abs(sha256sum)
+        if not target.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(target.name + "." + secrets.token_hex(8))
+            try:
+                shutil.copyfile(path, temporary)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return target
 
     # ── blob helpers ─────────────────────────────────────────────────
 
@@ -576,17 +622,20 @@ class FileStore:
     ) -> str:
         """从已校验的暂存文件原子注册源字节及独立的文件名视图。"""
         with self._lock:
-            target = self._blob_abs(sha256sum)
-            if not target.is_file():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                temporary = target.with_name(target.name + "." + secrets.token_hex(8))
-                try:
-                    shutil.copyfile(path, temporary)
-                    os.replace(temporary, target)
-                finally:
-                    temporary.unlink(missing_ok=True)
+            file_id = file_id or self._allocate_file_id()
+            existing = self._files.get(file_id)
+            if (
+                file_id in self._task_file_ids
+                or file_id in self._reserved_output_ids
+                or (
+                    existing is not None
+                    and (existing.purpose != "parse" or existing.filename != filename or existing.sha256sum != sha256sum)
+                )
+            ):
+                raise ValueError("File ID already belongs to another resource")
+            self._allocated_file_ids.add(file_id)
+            target = self._store_path(path, sha256sum)
             now = int(time.time())
-            file_id = file_id or self._new_file_id()
             self._files[file_id] = _FileRecord(
                 id=file_id,
                 filename=filename,
@@ -607,19 +656,28 @@ class FileStore:
                 if record is not None:
                     record.expires_at = expires_at
 
-    def create_file_for_output_path(self, filename: str, path: pathlib.Path, *, job_id: str) -> str:
-        """从已完成的文件流式登记产物，避免批量 ZIP 再次整体载入内存。"""
+    def create_file_for_output_path(self, filename: str, path: pathlib.Path, *, job_id: str, file_id: str | None = None) -> str:
+        """把完整产物原子登记到预分配 ID，已取消或已消费的预留不能再次写入。"""
         hasher = hashlib.sha256()
         with path.open("rb") as source:
             while chunk := source.read(1024 * 1024):
                 hasher.update(chunk)
         sha = hasher.hexdigest()
         with self._lock:
-            file_id = self.register_source_file(filename, path, sha)
-            record = self._files[file_id]
-            record.purpose = "parse_output"
-            record.job_id = job_id
-            record.expires_at = None
+            file_id = file_id or self.reserve_file_id(task_owned=False)
+            if file_id not in self._reserved_output_ids or file_id in self._files:
+                raise ValueError("Output file ID is not reserved or has already been published")
+            target = self._store_path(path, sha)
+            self._files[file_id] = _FileRecord(
+                id=file_id,
+                filename=filename,
+                bytes=target.stat().st_size,
+                created_at=int(time.time()),
+                purpose="parse_output",
+                sha256sum=sha,
+                job_id=job_id,
+            )
+            self._reserved_output_ids.remove(file_id)
             pins = self._job_output_pins.setdefault(job_id, set())
             if sha not in pins:
                 pins.add(sha)
@@ -657,7 +715,7 @@ class FileStore:
             sha = sha256hex or hashlib.sha256(data).hexdigest()
             self.store_blob(data, sha256hex=sha)
             now = int(time.time())
-            file_id = self._new_file_id()
+            file_id = self._allocate_file_id()
             self._files[file_id] = _FileRecord(
                 id=file_id,
                 filename=filename,
@@ -728,6 +786,8 @@ class FileStore:
                     message=f"File {file_id} not found",
                 )
             del self._files[file_id]
+            if file_id not in self._task_file_ids:
+                self._allocated_file_ids.discard(file_id)
 
     # ── defaults → app state ─────────────────────────────────────────
 
@@ -799,6 +859,7 @@ class _JobInputSpec:
     filename: str
     bytes: int | None = None
     sha256sum: str | None = None
+    result_file_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -836,6 +897,15 @@ class _JobRecord:
             self.progress = TaskProgress()
 
 
+def _discard_unfinished_outputs(rec: _JobRecord) -> None:
+    """执行取消或失败时立即撤销未完成产物，防止后台线程晚于终态发布文件。"""
+    if rec.file_store is None:
+        return
+    for index, spec in rec.input_specs.items():
+        if spec.result_file_id is not None and rec.files[index].status != "completed":
+            rec.file_store.discard_file_id(spec.result_file_id)
+
+
 class JobStore:
     def __init__(self, concurrency: int = 1, retention_seconds: int = 86400) -> None:
         self.retention_seconds = retention_seconds
@@ -867,6 +937,7 @@ class JobStore:
                     file.status = "failed"
                     file.error = ErrorDetail(type="engine_error", code="engine_dead", message=message)
             rec.progress.failed = rec.progress.total - rec.progress.completed
+            _discard_unfinished_outputs(rec)
             if task is not current and not task.cancelling():
                 task.cancel()
 
@@ -933,6 +1004,7 @@ class JobStore:
                     logger.error("Parse job task failed: %s", rec.id, exc_info=(type(error), error, error.__traceback__))
                     if rec.status != "canceled":
                         rec.status = "failed"
+            _discard_unfinished_outputs(rec)
             self._record_usage(rec)
             self._completion_events[rec.id].set()
 
@@ -1065,6 +1137,7 @@ class JobStore:
                 message=f"Job is {rec.status}",
             )
         rec.status = "canceled"
+        _discard_unfinished_outputs(rec)
         task = self._tasks.get(job_id)
         if task is not None and not task.done():
             task.cancel()
@@ -1396,7 +1469,11 @@ async def _run_job(
                         pathlib.Path(fr.name).stem + artifact.suffix,
                         artifact,
                         job_id=rec.id,
+                        file_id=rec.input_specs[i].result_file_id if i in rec.input_specs else None,
                     )
+                    if rec.status in {"canceled", "failed"}:
+                        file_store.discard_file_id(rec.task_result_file_id)
+                        break
                 except Exception as exc:
                     raise MineruError("result_packaging_failed", str(exc)) from exc
 
@@ -1448,11 +1525,11 @@ _router = APIRouter(prefix="/v1")
 
 # OpenAPI tag metadata: drives the group order and descriptions on /docs.
 _OPENAPI_TAGS: list[dict[str, str]] = [
-    {"name": "Tasks", "description": "Form submissions, per-file uploads and asynchronous ZIP download links."},
+    {"name": "Tasks", "description": "JSON task creation, per-file uploads, details and cancellation receipts."},
     {"name": "Health", "description": "Liveness and server readiness."},
     {"name": "Tiers", "description": "Parsing tiers and runtime capability advertised by this server."},
     {"name": "Models", "description": "VLM models available for parsing."},
-    {"name": "Files", "description": "Inspect uploaded files and fetch parsed content."},
+    {"name": "Files", "description": "Inspect saved files and download completed parsing artifacts."},
     {"name": "Usage", "description": "Remote service quota and usage reporting."},
 ]
 
@@ -1644,22 +1721,6 @@ async def get_file_content(
 ) -> Response:
     """直接流式发送已保存的产物，下载期间持有文件租约。"""
     return _OutputFileResponse(store, file_id)
-
-
-@_router.delete(
-    "/files/{file_id}",
-    response_model=FileDeletionResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404},
-    tags=["Files"],
-)
-async def delete_file(
-    file_id: str = Path(description="File ID"),
-    store: FileStore = Depends(_get_store),
-) -> FileDeletionResponse:
-    """Delete a file from the current tenant view."""
-    store.delete_file(file_id)
-    return FileDeletionResponse(id=file_id, deleted=True)
 
 
 # ── 私有解析执行 ─────────────────────────────────────────────────────

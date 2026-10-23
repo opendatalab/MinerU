@@ -5,21 +5,22 @@
 每个文件就绪后立即执行，完成后在 `files[].result_url` 返回独立下载链接。
 客户端不拼接存储路径，也不要求 SaaS 实现本地 Files API。
 
-快速定位：[响应字段](#taskstatusresponse) · [各接口成功响应](#各接口成功响应) · [错误响应](#各接口错误响应) · [输出格式与下载](#输出格式与下载)。
+快速定位：[响应字段](#响应模型) · [各接口成功响应](#各接口成功响应) · [错误响应](#各接口错误响应) · [输出格式与下载](#输出格式与下载)。
 
 ## 路由与请求
 
 | 方法与路径 | 行为 |
 |---|---|
 | `POST /v1/tasks` | 仅接受 `application/json`，返回 `202` 和稳定 `task_id`。 |
-| `PUT` 返回的 `files[].upload.url` | 每个链接上传一个文件；本地使用 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}`。 |
+| `PUT` 返回的 `files[].upload.url` | 每个链接上传一个文件；本地使用 `PUT /v1/tasks/{task_id}/uploads/{file_id}`。 |
 | `GET /v1/tasks/{task_id}` | 返回 `200`，包含总状态、逐文件状态、尚有效的上传链接和已完成文件的下载链接。 |
-| `DELETE /v1/tasks/{task_id}` | 返回 `200` 和取消后的完整任务对象，保留已经完成文件的下载链接。 |
+| `POST /v1/tasks/{task_id}/cancel` | 返回 `200 CancelTaskResponse`，包含所有文件的终态及已经完成文件的下载链接。 |
 
 创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
 业务参数必须放在 JSON 主体中，POST 查询参数、未知字段、非法值返回 `400 invalid_request`。
 上传文件的 PUT 仍发送原始字节，使用返回的 `files[].upload.headers`；签名 URL 必须原样使用。
 Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
+不提供任务记录或产物的公开 DELETE 接口；旧 DELETE 取消入口不保留别名，认证通过后返回 405。
 
 | JSON 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -35,17 +36,18 @@ ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。�
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `client_file_id` | 否 | 任务内唯一，1–64 个字母、数字、下划线或短横线；省略或 `null` 时由服务端补全。 |
 | `file_name` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
 | `url` | 否 | HTTP(S) 文件下载地址，受部署来源策略约束；省略或 `null` 表示客户端上传。 |
 | `bytes` | 条件 | 上传项必填；URL 项可省略或为 `null`。提供时必须是严格正整数。 |
 | `sha256sum` | 否 | 64 位小写十六进制 SHA-256；用于完整性校验，上传项还用于源文件缓存预检。 |
 | `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
 
-服务端先预留全部显式 `client_file_id`，再按缺省项的输入顺序，从 `f1` 开始分配最小未占用的 `fN`。例如显式占用了 `f2`，两项缺省 ID 分别生成 `f1`、`f3`。空字符串、非法 ID 和重复显式 ID 返回 400。
-创建响应的 `files` 顺序与输入一致，`files[]` 始终返回非空 ID；上传描述直接位于对应文件的 `upload`，不重复携带 ID。生成后的文件标识在上传、查询及 Router 转发中保持不变。
+服务端为每个输入分配唯一的 `file_id`，请求不得包含 `client_file_id` 或 `file_id`，即使值为 `null` 也返回 `400 invalid_request`。
+创建响应的 `files` 顺序与输入一致，客户端先按原始顺序绑定 ID，随后使用 ID 关联上传、查询、取消和结果。同名输入或相同内容仍获得不同 ID。
+该 ID 从创建到结果下载保持不变；在本地和 Router 中，产物注册后的 Files ID 与它一致。产物生成前只预留 ID，对 Files 元数据和内容接口的访问返回 `404 file_not_found`。
+源缓存引用不属于公共 ID；跨任务可共享源字节，但每次任务独立生成产物。Router 内部映射各层生成的 ID，对客户端始终保留本层 ID。
 
-先从真实文件生成 JSON 请求（本例省略 ID，由服务端补全）：
+先从真实文件生成 JSON 请求（文件 ID 统一由服务端生成）：
 
 ```bash
 python3 - a.pdf b.pdf > task.json <<'PY'
@@ -78,185 +80,158 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 
 未配置 API Key 的本地服务可省略 Authorization，四种输出格式均可用；启用服务认证后四种格式均需认证，没有额外的格式权限限制。
 
-## TaskStatusResponse
+## 响应模型
 
-`POST /v1/tasks`、`GET /v1/tasks/{task_id}`、`DELETE /v1/tasks/{task_id}` 的成功响应均为完整的 `TaskStatusResponse`。
-本地逐文件上传 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}` 也返回同一结构。成功时直接返回对象，没有 `data` 或 `task` 外层包装。
+创建、详情、取消和上传确认使用独立模型。成功响应直接返回对象，没有 `data` 或 `task` 包装。GET 新增详情字段不会自动进入其他响应。
 
-JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列出的字段在当前本地 API Server 和 Router 响应中均会出现；可空字段输出 `null`，空集合输出 `[]` 或 `{}`，不以省略字段代替。客户端应忽略未来新增的响应字段。
-时间字符串使用 ISO-8601 UTC 格式，例如 `2026-10-23T04:00:00Z`；上传链接的 `expires_at` 单独使用 Unix 秒级整数。
-请求中的 `tier/ocr_mode/page_range` 与逐文件 `sha256sum/page_range` 不作响应回显；实际执行档位在成功文件的 `parse.tier` 中提供。
-客户端使用配置的 API 基址（包含代理前缀）追加 `/v1/tasks/{URL 编码后的 task_id}` 查询；响应不包含 `status_url`。
-
-### 顶层字段
-
-| 字段 | JSON 类型 | 可为 null | 含义 |
-|---|---|---|---|
-| `task_id` | string | 否 | 稳定的父任务 ID；是不透明标识，不代表内部逐文件执行 ID。 |
-| `status` | string | 否 | 父任务状态：`waiting-file/pending/running/completed/partial/failed/canceled`。 |
-| `created_at` | string | 否 | 父任务创建时间。 |
-| `started_at` | string | 是 | 已知的最早逐文件执行开始时间；尚无执行开始记录时为 `null`。 |
-| `finished_at` | string | 是 | 父任务进入终态的时间；非终态时为 `null`，取消成功时也会填写。 |
-| `output_formats` | array of string | 否 | 本次任务采用的输出格式，按首次出现去重。 |
-| `progress` | object | 否 | 文件计数，结构见下表。 |
-| `files` | array of object | 否 | 完整逐文件快照，顺序始终与创建请求一致，结构见下表。 |
-| `error` | object | 是 | 父任务级错误，结构为 `ErrorDetail`；逐文件失败应检查 `files[].error`。 |
-
-### progress：文件计数
-
-| 字段 | JSON 类型 | 含义 |
+| 接口 | 模型 | 顶层字段 |
 |---|---|---|
-| `completed` | integer | 已成功完成解析和全部所选格式导出的文件数。 |
-| `failed` | integer | 已失败文件数，包含上传过期、下载、解析或导出失败。 |
-| `total` | integer | 输入文件总数，固定为创建请求的 `files` 长度。 |
+| POST 创建 | `CreateTaskResponse` | `task_id/status/files`。 |
+| GET | `TaskDetailResponse` | `task_id/status/created_at/output_formats/progress/files`，以及有值的 `started_at/finished_at/error`。 |
+| POST cancel | `CancelTaskResponse` | `task_id/status/finished_at/files`。 |
+| 本地 PUT | `UploadFileResponse` | `task_id/file_id/status`，其中 status 是本次上传文件的状态。 |
 
-取消的文件不计入 `completed` 或 `failed`。存在排队、运行、等待上传或已取消文件时，`completed + failed` 可以小于 `total`，包括父任务已经为 `canceled` 的情况。
+这些成功响应递归省略值为 `null` 的可选字段，保留 `0/false/[]/{}`，例如 `progress.failed=0` 和 `upload.headers={}`。OpenAPI 将可省略字段标为非必填。
+每次响应是该接口当前的完整快照；缺少可选字段表示当前没有该值，不能沿用上一次响应的上传地址或结果信息。客户端应忽略未来新增的字段。
+共享的非成功错误响应，以及 Files、file_parse 自身的响应，保持各自现有空值规则。
 
-### files[]：逐文件对象
+JSON 正文使用 UTF-8。时间字符串使用 ISO-8601 UTC；上传链接 `expires_at` 使用 Unix 秒级整数。
+请求中的 `tier/ocr_mode/page_range` 和逐文件 `sha256sum/page_range` 不作响应回显；实际档位位于成功文件的 `parse.tier`。
+客户端保留配置 API 基址的代理前缀，并追加 `/v1/tasks/{URL 编码后的 task_id}` 查询；Tasks 不返回 `status_url`。
 
-| 字段 | JSON 类型 | 可为 null | 含义 |
+### 创建回执的 files[]
+
+每项必带 `file_id/file_name/status`；只有当前需要客户端上传时才带 `upload`。POST 不返回文件大小、解析统计或结果链接，即使文件已经完成也通过 GET 获取详情。
+
+### 查询详情的顶层字段
+
+| 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
-| `client_file_id` | string | 否 | 客户端显式提供或服务端补全的任务内唯一标识，创建后不变。 |
-| `file_name` | string | 否 | 创建时提交的逻辑文件名，保留扩展名；同名文件通过 ID 区分。 |
-| `bytes` | integer | 是 | 上传项的声明大小；URL 项可暂为 `null`，完整下载并校验后补齐实际字节数。 |
-| `url` | string | 是 | URL 输入保留原始下载地址；客户端上传项为 `null`。 |
-| `upload` | object | 是 | 当前可执行的客户端上传动作；服务端接收、下载、校验、输入已就绪或文件终结时为 `null`，结构见下表。 |
-| `status` | string | 否 | 单文件状态：`waiting-file/pending/running/completed/failed/canceled`；没有 `partial`。 |
-| `parse` | object | 是 | 解析成功完成后返回实际档位和统计；完成前、失败或取消的文件为 `null`。 |
-| `result_url` | string | 是 | 结果完整保存后发布的唯一下载 URL；非 `completed` 文件为 `null`。 |
-| `error` | object | 是 | 该文件的错误详情；无错误时为 `null`。 |
+| `task_id` | string | 是 | 稳定的父任务 ID，不代表内部逐文件执行 ID。 |
+| `status` | string | 是 | `waiting-file/pending/running/completed/partial/failed/canceled`。 |
+| `created_at` | string | 是 | 父任务创建时间。 |
+| `started_at` | string | 否 | 已知最早的逐文件执行开始时间，无记录时省略。 |
+| `finished_at` | string | 否 | 父任务进入终态的时间，非终态时省略。 |
+| `output_formats` | array of string | 是 | 本次输出格式，按首次出现去重。 |
+| `progress` | object | 是 | 必带整数 `completed/failed/total`，零值保留。 |
+| `files` | array of object | 是 | 全部文件的当前详情，始终保持创建请求顺序。 |
+| `error` | object | 否 | 父任务级错误，逐文件失败见 files[].error。 |
 
-逐文件仅使用一套 `status`：
+`completed` 计数表示解析及全部所选格式均成功的文件数；`failed` 包含上传过期、下载、解析和导出失败；`total` 固定为输入文件数。取消文件不计入 completed 或 failed。
 
-| 状态 | 含义 |
-|---|---|
-| `waiting-file` | 文件准备中，包含等待客户端上传、接收文件、对象存储确认、URL 下载及完整性校验。 |
-| `pending` | 输入已就绪，等待解析资源。 |
-| `running` | 解析、导出及保存结果中。 |
-| `completed` | 结果已保存，可通过 result_url 下载。 |
-| `failed` | 本次处理失败，原因见 error。 |
-| `canceled` | 已取消。 |
+### 查询详情的 files[]
 
-仅在 `waiting-file` 且 `upload` 非空时执行上传；`waiting-file` 且 `upload=null` 表示当前由服务端准备文件，客户端只轮询。
-成功 PUT 后即使仍为 `waiting-file` 也不重复传输。只有上传失败、查询确认仍需上传且链接有效时，才进行有界重试。
-缓存命中可以直接进入 `pending`。上传过期使用 `failed` 和 `error.code=upload_expired`，不另设过期状态；取消时 upload 为 null。
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `file_id` | string | 是 | 服务端分配的公共文件 ID，创建后不变。 |
+| `file_name` | string | 是 | 输入逻辑文件名，同名文件通过 ID 区分。 |
+| `status` | string | 是 | `waiting-file/pending/running/completed/failed/canceled`，没有 partial。 |
+| `bytes` | integer | 否 | 输入大小，URL 下载前未知时省略，校验后补齐实际字节数。 |
+| `url` | string | 否 | URL 输入的原始下载地址，上传输入省略。 |
+| `upload` | object | 否 | 当前可执行的上传动作，服务端准备、输入就绪或终结时省略。 |
+| `parse` | object | 否 | 成功完成后的实际档位和解析统计。 |
+| `result_url` | string | 否 | completed 文件完整产物的下载地址。 |
+| `error` | object | 否 | 文件错误详情，无错误时省略。 |
+
+`waiting-file` 包括等待上传、接收、对象存储确认、URL 下载及完整性校验；`pending` 表示输入已就绪并等待解析资源；`running` 包含解析、导出和结果保存。
+只在 `waiting-file` 且存在 `upload` 时上传；没有 upload 时只轮询，不能据此认为输入已经就绪。成功 PUT 后即使仍为 waiting-file 也不重复传输。
+只有上传失败、查询确认仍需上传且链接有效时才有界重试。上传过期使用 `failed` 和 `error.code=upload_expired`。
+
+### 取消回执的 files[]
+
+每项必带 `file_id/file_name/status`，status 只会是 `completed/failed/canceled`。成功文件附带 `parse/result_url`，失败文件附带 `error`；不包含 upload、输入大小或来源 URL。
+取消操作保留任务和已完成产物，返回后可直接使用成功文件的下载链接。底层不可中断计算和资源清理可能仍在收尾，迟到结果不会覆盖已公布的取消终态。
 
 ### files[].parse：解析统计
 
-成功完成后包含实际执行档位、耗时和解析器版本。档位来自结果中的 MinerU 元数据，不以创建请求的 tier 代替；响应顶层不再有 tier。
-PDF 与图片沿用多档位规则，HTML、Office 等原生文档使用 flash。同一批次可出现不同的逐文件档位。
+成功后的实际 tier 来自结果元数据，不以请求 tier 代替。PDF 和图片沿用多档位规则，HTML、Office 等原生文档使用 flash，同一批次可出现不同档位。
 
-| 字段 | JSON 类型 | 可为 null | 含义 |
+| 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
-| `tier` | string | 否 | 实际执行档位：`flash/basic/standard/advanced`。 |
-| `duration_ms` | integer | 是 | 毫秒级文件执行耗时；当前实现包含源读取/下载、校验、解析和导出，不含等待客户端上传、准备名额及解析队列的时间。 |
-| `parser_version` | string | 是 | 执行 worker 的 MinerU 版本，不保证与 Router 的版本一致。 |
+| `tier` | string | 是 | 实际执行档位：flash/basic/standard/advanced。 |
+| `duration_ms` | integer | 否 | 已知的毫秒级耗时，包含源读取/下载、校验、解析和导出，不含等待上传、准备名额及解析队列时间。 |
+| `parser_version` | string | 否 | 已知的执行 worker 版本，不保证与 Router 版本一致。 |
 
 ### files[].upload：待上传描述
 
-该对象固定使用 **PUT** 上传原始文件字节；不包含 `client_file_id` 或 `upload_method`。客户端原样使用 `url` 和 `headers`，按外层文件标识关联输入。查询时仍返回当前有效的上传描述，便于断线恢复。
+固定使用 PUT 上传原始字节；对象不重复携带 file_id，也不返回 upload_method。查询仍提供当前有效的上传入口。
 
 | 字段 | JSON 类型 | 含义 |
 |---|---|---|
-| `url` | string | 上传一个文件的完整 URL；签名地址必须原样使用。 |
-| `headers` | object | 字符串到字符串的映射；上传时发送这些请求头，不假定总是固定头集合。 |
-| `expires_at` | integer | Unix 秒级截止时间，创建任务后固定，查询不续期。 |
+| `url` | string | 完整上传地址，签名 URL 原样使用。 |
+| `headers` | object | 必带的字符串请求头映射，允许为空对象。 |
+| `expires_at` | integer | 固定的 Unix 秒级截止时间，查询不续期。 |
 
 ### ErrorDetail：父任务或逐文件错误
 
-| 字段 | JSON 类型 | 可为 null | 含义 |
-|---|---|---|---|
-| `type` | string | 否 | 错误大类，例如 `invalid_request_error/engine_error/api_error`。 |
-| `code` | string | 是 | 机器可读错误码。 |
-| `message` | string | 否 | 人类可读错误说明，不作为客户端分支判断依据。 |
-| `param` | string | 是 | 关联参数，例如 `files.1.page_range`；无具体参数时为 `null`。 |
-
-`error=null` 不表示整个批次全部成功：父任务即使是 `partial/failed`，顶层 `error` 仍可为 `null`，错误位于具体文件的 `error` 中。
+成功快照中的 error 必带 `type/message`，有值时附带 `code/param`；空值仍省略。缺少顶层 error 不代表所有文件成功，partial/failed 的原因可能只在逐文件 error 中。
+HTTP 非成功错误 envelope 保持现有契约，见下文。
 
 ## 各接口成功响应
 
-以下三个示例沿用同一批两个 HTML 输入：先创建任务，再上传并完成第一个文件，最后取消仍待上传的第二个文件。
-示例来自当前响应结构，ID、地址、时间和耗时为示意值；JSON 展示全部字段，不使用省略号。
+以下完整示例使用同一批两个 HTML 输入，ID、地址、时间和耗时均为示意值。
 
 ### POST /v1/tasks：创建任务
 
-成功返回 **`202 Accepted` + `application/json`**，正文为 `TaskStatusResponse`。`202` 只表示任务已接单，不表示文件已经解析成功。
-初始状态通常为 `waiting-file`；URL 项在下载和校验后进入 `pending`，缓存命中项可直接进入 `pending`。需要客户端上传的文件具有非空 `upload`，其他文件的 `upload` 为 `null`。
-
-请求示例：
+返回 **202 Accepted** 和 `CreateTaskResponse`。202 表示接单，具体状态以响应为准。请求：
 
 ```json
 {
   "files": [
-    {"file_name": "report.html", "bytes": 64},
-    {"file_name": "notes.html", "bytes": 64}
+    {
+      "file_name": "report.html",
+      "bytes": 64
+    },
+    {
+      "file_name": "notes.html",
+      "bytes": 64
+    }
   ],
   "tier": "flash",
-  "output_formats": ["default"]
+  "output_formats": [
+    "default"
+  ]
 }
 ```
 
-完整响应：
+创建回执：
 
 ```json
 {
   "task_id": "job_0123456789abcdef01234567",
   "status": "waiting-file",
-  "created_at": "2026-10-23T04:00:00Z",
-  "started_at": null,
-  "finished_at": null,
-  "output_formats": [
-    "default"
-  ],
-  "progress": {
-    "completed": 0,
-    "failed": 0,
-    "total": 2
-  },
   "files": [
     {
-      "client_file_id": "f1",
+      "file_id": "file-111111111111111111111111",
       "file_name": "report.html",
-      "bytes": 64,
-      "url": null,
+      "status": "waiting-file",
       "upload": {
-        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f1",
+        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/file-111111111111111111111111",
         "headers": {
           "Content-Type": "application/octet-stream"
         },
         "expires_at": 1792731600
-      },
-      "status": "waiting-file",
-      "parse": null,
-      "result_url": null,
-      "error": null
+      }
     },
     {
-      "client_file_id": "f2",
+      "file_id": "file-222222222222222222222222",
       "file_name": "notes.html",
-      "bytes": 64,
-      "url": null,
+      "status": "waiting-file",
       "upload": {
-        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f2",
+        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/file-222222222222222222222222",
         "headers": {
           "Content-Type": "application/octet-stream"
         },
         "expires_at": 1792731600
-      },
-      "status": "waiting-file",
-      "parse": null,
-      "result_url": null,
-      "error": null
+      }
     }
-  ],
-  "error": null
+  ]
 }
 ```
 
 ### GET /v1/tasks/{task_id}：查询任务
 
-成功返回 **`200 OK` + `application/json`**，正文始终为 `TaskStatusResponse`，包括任务仍在运行、等待上传、部分失败、全部失败或已取消时。
-以下快照中，第一个文件已完成，可立即下载；第二个文件仍等待上传，所以父任务为 `waiting-file`，`finished_at` 仍为 `null`。
+返回 **200 OK** 和 `TaskDetailResponse`，包括任务失败、取消等终态。以下第一个文件完成、第二个仍待上传，父任务仍为 waiting-file，finished_at 省略：
 
 ```json
 {
@@ -264,7 +239,6 @@ PDF 与图片沿用多档位规则，HTML、Office 等原生文档使用 flash�
   "status": "waiting-file",
   "created_at": "2026-10-23T04:00:00Z",
   "started_at": "2026-10-23T04:00:01Z",
-  "finished_at": null,
   "output_formats": [
     "default"
   ],
@@ -275,103 +249,85 @@ PDF 与图片沿用多档位规则，HTML、Office 等原生文档使用 flash�
   },
   "files": [
     {
-      "client_file_id": "f1",
+      "file_id": "file-111111111111111111111111",
       "file_name": "report.html",
       "bytes": 64,
-      "url": null,
-      "upload": null,
       "status": "completed",
       "parse": {
         "tier": "flash",
         "duration_ms": 125,
         "parser_version": "4.0.12"
       },
-      "result_url": "http://127.0.0.1:8000/v1/files/file-result0123456789abcdef/content",
-      "error": null
+      "result_url": "http://127.0.0.1:8000/v1/files/file-111111111111111111111111/content"
     },
     {
-      "client_file_id": "f2",
+      "file_id": "file-222222222222222222222222",
       "file_name": "notes.html",
-      "bytes": 64,
-      "url": null,
+      "status": "waiting-file",
       "upload": {
-        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f2",
+        "url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/file-222222222222222222222222",
         "headers": {
           "Content-Type": "application/octet-stream"
         },
         "expires_at": 1792731600
       },
-      "status": "waiting-file",
-      "parse": null,
-      "result_url": null,
-      "error": null
+      "bytes": 64
     }
-  ],
-  "error": null
+  ]
 }
 ```
 
-### DELETE /v1/tasks/{task_id}：取消任务
+### POST /v1/tasks/{task_id}/cancel：取消任务
 
-成功返回 **`200 OK` + `application/json`**，正文为取消后的完整 `TaskStatusResponse`，`status` 为 `canceled`，所有文件的 `upload` 均为 `null`。
-这个接口取消未完成文件，不删除 Task 或已完成的结果；返回时后台不可中断计算或资源清理可能仍在收尾。
-已经成功或失败的文件保持原状态，成功文件继续提供 `result_url`。对任意已终结的父任务再次取消，返回 `409 task_already_terminal`。
+无需请求体。例如：
+
+```bash
+curl --fail-with-body -X POST "$MINERU_API_URL/v1/tasks/$TASK_ID/cancel" \
+  -H "Authorization: Bearer $MINERU_API_KEY"
+```
+
+返回 **200 OK** 和 `CancelTaskResponse`。已成功或失败的文件保留终态，其余文件转为 canceled；已终结的父任务再次取消返回 `409 task_already_terminal`。
 
 ```json
 {
   "task_id": "job_0123456789abcdef01234567",
   "status": "canceled",
-  "created_at": "2026-10-23T04:00:00Z",
-  "started_at": "2026-10-23T04:00:01Z",
   "finished_at": "2026-10-23T04:00:03Z",
-  "output_formats": [
-    "default"
-  ],
-  "progress": {
-    "completed": 1,
-    "failed": 0,
-    "total": 2
-  },
   "files": [
     {
-      "client_file_id": "f1",
+      "file_id": "file-111111111111111111111111",
       "file_name": "report.html",
-      "bytes": 64,
-      "url": null,
-      "upload": null,
       "status": "completed",
       "parse": {
         "tier": "flash",
         "duration_ms": 125,
         "parser_version": "4.0.12"
       },
-      "result_url": "http://127.0.0.1:8000/v1/files/file-result0123456789abcdef/content",
-      "error": null
+      "result_url": "http://127.0.0.1:8000/v1/files/file-111111111111111111111111/content"
     },
     {
-      "client_file_id": "f2",
+      "file_id": "file-222222222222222222222222",
       "file_name": "notes.html",
-      "bytes": 64,
-      "url": null,
-      "upload": null,
-      "status": "canceled",
-      "parse": null,
-      "result_url": null,
-      "error": null
+      "status": "canceled"
     }
-  ],
-  "error": null
+  ]
 }
 ```
 
-### PUT /v1/tasks/{task_id}/uploads/{client_file_id}：本地上传响应
+### PUT /v1/tasks/{task_id}/uploads/{file_id}：本地上传确认
 
-本地 API Server 和 Router 的上传成功返回 **`200 OK` + `application/json`**，正文仍为上面定义的完整 `TaskStatusResponse`。
-本次文件完成保存及校验后，`upload` 变为 `null` 并进入 `pending/running`；其他文件和已完成结果也包含在响应中。
-有效期内重复 PUT 已确认文件同样返回 `200` 和当前快照；上传链接到期后返回 `410`，不会重新读取或覆盖源字节。
+本地 API Server 和 Router 返回 **200 OK** 和 `UploadFileResponse`，不返回整份任务详情。本次文件完成保存及校验后进入 pending/running，最新详情通过 GET 获取。
 
-SaaS 返回的上传目标可能是独立对象存储：其成功状态码和响应体由该存储服务决定，不要求返回 Tasks JSON。
-通用客户端应接受目标服务的成功响应，随后通过 `GET /v1/tasks/{task_id}` 确认就绪情况，不把对象存储上传响应直接作为任务状态解析。
+```json
+{
+  "task_id": "job_0123456789abcdef01234567",
+  "file_id": "file-111111111111111111111111",
+  "status": "pending"
+}
+```
+
+有效期内重复 PUT 已确认文件仍返回当前文件回执，且不读取或覆盖源字节；上传窗口到期后返回 410。
+SaaS 的上传目标可能是独立对象存储：通用客户端接受成功的 2xx 响应，不要求其返回本地 PUT 回执，随后查询 Tasks 确认就绪。
 
 ## 各接口错误响应
 
@@ -391,13 +347,13 @@ SaaS 返回的上传目标可能是独立对象存储：其成功状态码和响
 
 | 接口 | HTTP | 常见 code | 场景 |
 |---|---|---|---|
-| POST | 400 | `invalid_request`、`page_range_invalid` | 字段、ID、页范围等非法，包括旧字段和新旧混传。 |
-| POST | 415 | `invalid_request` | 请求不是 `application/json`。 |
-| POST | 503 | `quality_tier_unavailable`、`server_shutting_down` 或模型预加载错误码 | 当前部署无法接单。 |
-| GET 详情 / DELETE / 本地 PUT | 404 | `task_not_found` | task 不存在、记录已清理或不属于当前调用方。 |
-| DELETE | 409 | `task_already_terminal` | 父任务已经成功、部分成功、失败或被取消；包括取消前刷新时刚进入终态。 |
+| POST 创建 | 400 | `invalid_request`、`page_range_invalid` | 字段、ID、页范围等非法，包括旧字段和新旧混传。 |
+| POST 创建 | 415 | `invalid_request` | 请求不是 `application/json`。 |
+| POST 创建 | 503 | `quality_tier_unavailable`、`server_shutting_down` 或模型预加载错误码 | 当前部署无法接单。 |
+| GET 详情 / POST cancel / 本地 PUT | 404 | `task_not_found` | task 不存在、记录已清理或不属于当前调用方。 |
+| POST cancel | 409 | `task_already_terminal` | 父任务已经成功、部分成功、失败或被取消；包括取消前刷新时刚进入终态。 |
 | 本地 PUT | 400 | `upload_size_mismatch`、`file_hash_mismatch`、`upload_interrupted` | 上传校验失败或传输中断；未过期时可查询后重传。 |
-| 本地 PUT | 404 | `upload_not_found` | task 中不存在该 `client_file_id`。 |
+| 本地 PUT | 404 | `upload_not_found` | task 中不存在该 `file_id`。 |
 | 本地 PUT | 409 | `task_already_terminal`、`file_already_terminal` | 任务已取消或文件已不接受上传。 |
 | 本地 PUT | 410 | `upload_expired` | 固定上传窗口已过期。 |
 | 所有受保护接口 | 401 | `invalid_api_key` | 服务启用认证，但调用方未提供有效凭据。 |
@@ -413,14 +369,14 @@ URL 输入同样先创建 JSON 任务：
 ```json
 {
   "files": [
-    {"client_file_id": "remote", "file_name": "document.pdf", "url": "https://example.com/download?signature=example"},
-    {"client_file_id": "local", "file_name": "other.pdf", "bytes": 12345}
+    {"file_name": "document.pdf", "url": "https://example.com/download?signature=example"},
+    {"file_name": "other.pdf", "bytes": 12345}
   ],
   "output_formats": ["html"]
 }
 ```
 
-- URL 项保持 `waiting-file` 和 `upload=null`，由服务端下载和校验；确认有效后进入 `pending`。不生成客户端上传链接，不接受 PUT，不等待其他文件上传。
+- URL 项保持 `waiting-file` 和 `upload 省略`，由服务端下载和校验；确认有效后进入 `pending`。不生成客户端上传链接，不接受 PUT，不等待其他文件上传。
 - URL 保留原始签名地址，使用逻辑 `file_name` 识别类型；不要求 HEAD 或 `Content-Length`。下载后回填实际 `bytes`；请求提供的大小/hash 必须匹配，但响应不回显 hash。URL 每次下载，不用 hash 缓存跳过下载。
 - 上传项 hash 命中时直接进入 `pending`，不返回上传链接；未命中或无 hash 时返回该文件的链接。上传后仍计算 hash、校验大小并对源字节去重。
 - 缓存只复用源文件，不复用不匹配的解析结果；每个文件使用本次解析参数独立执行。
@@ -438,15 +394,15 @@ URL 输入同样先创建 JSON 任务：
 
 有效期内，一个文件中断或校验失败可以从头重传，其他文件的状态不受影响。
 重复 PUT 已确认文件不读取或覆盖源字节，并发请求也只提交一次解析。
-上传响应丢失时先查询：进入 `pending/running/completed` 后跳过上传；仍为 `waiting-file` 且 upload 为 null 时只轮询；有有效上传目标时才有限重试。
+上传响应丢失时先查询：进入 `pending/running/completed` 后跳过上传；仍为 `waiting-file` 且 upload 省略 时只轮询；有有效上传目标时才有限重试。
 不支持单文件分块断点续传。
 
 ## 总状态与逐文件状态
 
 状态响应只有元数据，不内联 Markdown、JSON 或结果文件字节。
-`files` 按原清单顺序返回，使用 `client_file_id` 对应输入，不依赖文件名唯一性。
+`files` 按原清单顺序返回，使用 `file_id` 对应输入，不依赖文件名唯一性。
 
-完整字段、类型和可空约束见 [TaskStatusResponse](#taskstatusresponse)，下面说明状态聚合规则。
+各响应字段、类型及省略规则见 [响应模型](#响应模型)，下面说明状态聚合规则。
 
 Task 顶层没有 `result_url`；`files[]` 不暴露底层 `output_files`。
 已完成文件可以在父任务仍为 `running/pending/waiting-file` 时下载。
@@ -484,7 +440,7 @@ DOCX 和 HTML 即使放入多格式 ZIP，也保持图片内嵌。
 `default` 不包含 `model_output.json`；不生成跨输入文件的总 ZIP 或批次 `manifest.json`。
 
 每个输入只解析一次，基于同一结果生成所选格式。全部所选格式完成并保存后才发布该文件的 `completed` 和链接。
-任一格式失败，该文件为 `failed/result_packaging_failed` 且链接为空，不提供不完整产物；其他文件继续执行。
+任一格式失败，该文件为 `failed/result_packaging_failed` 且不返回结果链接，不提供不完整产物；其他文件继续执行。
 导出复用已物化素材，不重新打开源文件或修改原语义树。图片缺失时报错，不交付引用失效的 HTML 单文件。
 HTML 的“单文件”保证图片内嵌，公式脚本仍沿用现有 renderer 的行为。
 
@@ -500,7 +456,7 @@ HTML 的“单文件”保证图片内嵌，公式脚本仍沿用现有 renderer
 
 `scripts/http_task_example.sh` 调用同目录 Python 脚本，仅需要 Python 3.10+ 标准库。
 创建请求不会自动重试；文件传输有界重试，先查询状态再处理响应丢失。
-下载使用临时文件、验证对应格式后原子保存，成功文件保存在 `RESULT_DIR/<client_file_id>/<输入文件主名>.<扩展名>`。
+下载使用临时文件、验证对应格式后原子保存，成功文件保存在 `RESULT_DIR/<file_id>/<输入文件主名>.<扩展名>`。
 
 ```bash
 MINERU_API_URL=http://127.0.0.1:8000 \

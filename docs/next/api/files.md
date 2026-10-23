@@ -6,7 +6,6 @@ Files 保存源文件视图与已生成的结果，不提供文件列表。异�
 |---|---|---|
 | GET | `/v1/files/{file_id}` | 返回文件元数据。 |
 | GET | `/v1/files/{file_id}/content` | 流式下载已保存的解析产物；源文件不提供公共下载。 |
-| DELETE | `/v1/files/{file_id}` | 删除文件视图；正在执行和下载的引用继续受保护。 |
 
 ## FileObject：文件元数据
 
@@ -43,22 +42,15 @@ Files 的时间字段为 Unix 秒级整数，与 Tasks 的 ISO-8601 时间字符
 }
 ```
 
-示例中的 ID、大小、时间和 hash 为示意值。本地源文件元数据使用相同结构，`purpose` 为 `parse`，`file_name` 为输入文件名。Tasks 不公开源 Files ID；Router 仅登记结果的公共 Files 映射。
+示例中的 ID、大小、时间和 hash 为示意值。本地源文件元数据使用相同结构，`purpose` 为 `parse`，`file_name` 为输入文件名。Tasks 不公开源缓存 ID；创建响应中的 files[].file_id 即本次解析结果的公共 Files ID，Router 将它映射到 worker 的结果 ID。Tasks 的 file_name/bytes 描述输入，Files 的 file_name/bytes 描述实际产物。
 
-## DELETE /v1/files/{file_id}：删除文件视图
+产物生成前只预留 ID，不注册 Files 对象：GET 元数据和 GET content 均返回 404 file_not_found。创建任务的 ID 预留不代表产物已经存在，准备与执行状态通过 GET Tasks 查询。
 
-成功返回 **`200 OK` + `application/json`**，正文不是 `FileObject`，而是以下删除确认：
+## 产物保留与清理
 
-```json
-{
-  "id": "file-result0123456789abcdef",
-  "object": "file",
-  "deleted": true
-}
-```
-
-三个字段均必带且不可为 `null`：`id` 为请求的文件 ID，`object` 固定为 `file`，`deleted` 为布尔值。
-这与取消 Task 不同：`DELETE /v1/tasks/{task_id}` 返回完整任务快照，不返回 `deleted`。
+当前不提供产物删除接口，`DELETE /v1/files/{file_id}` 在认证通过后返回 `405 Method Not Allowed`。
+任务取消使用 `POST /v1/tasks/{task_id}/cancel`，保留已完成的产物和下载链接；取消任务不会删除这些资源。
+产物按既有保留期由内部机制自动回收，活动执行、下载引用和 Router 租约继续受保护。
 
 ## GET /v1/files/{file_id}/content：下载结果
 

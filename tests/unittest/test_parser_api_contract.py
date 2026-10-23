@@ -575,9 +575,9 @@ def test_api_server_validation_errors_use_error_envelope(tmp_path: Path, monkeyp
     assert response.status_code == 400
     body = response.json()
     assert "detail" not in body
-    assert body["error"]["type"] == "invalid_request_error"
-    assert body["error"]["code"] == "invalid_request"
-    assert "Invalid request" in body["error"]["message"]
+    assert body.get("error")["type"] == "invalid_request_error"
+    assert body.get("error")["code"] == "invalid_request"
+    assert "Invalid request" in body.get("error")["message"]
 
 
 def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -595,7 +595,7 @@ def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monk
     assert response.status_code == 500
     body = response.json()
     assert "detail" not in body
-    assert body["error"] == {
+    assert body.get("error") == {
         "type": "api_error",
         "code": "internal_error",
         "message": "Internal server error",
@@ -868,7 +868,7 @@ def test_api_server_model_detail_rejects_unknown_id(tmp_path: Path, monkeypatch:
         response = client.get("/v1/models/MinerU2.5-Pro-2605-1.2B")
 
     assert response.status_code == 404
-    assert response.json()["error"]["code"] == "model_not_found"
+    assert response.json().get("error")["code"] == "model_not_found"
 
 
 def test_api_server_no_advanced_http_metadata_keeps_shared_models(
@@ -907,12 +907,12 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
         models_response = client.get("/v1/models")
 
     assert health_response.status_code == 503
-    assert health_response.json()["error"]["code"] == "model_preload_device_unavailable"
-    assert health_response.json()["error"]["message"] == "CUDA is not available."
+    assert health_response.json().get("error")["code"] == "model_preload_device_unavailable"
+    assert health_response.json().get("error")["message"] == "CUDA is not available."
     assert tiers_response.status_code == 503
-    assert tiers_response.json()["error"]["code"] == "model_preload_device_unavailable"
+    assert tiers_response.json().get("error")["code"] == "model_preload_device_unavailable"
     assert models_response.status_code == 503
-    assert models_response.json()["error"]["code"] == "model_preload_device_unavailable"
+    assert models_response.json().get("error")["code"] == "model_preload_device_unavailable"
 
 
 def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1010,7 +1010,7 @@ def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: 
         response = client.post(
             "/v1/tasks",
             json={
-                "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
+                "files": [{"file_name": source.name, "bytes": source.stat().st_size}],
                 "tier": "advanced",
             },
         )
@@ -1034,7 +1034,7 @@ def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeyp
         response = client.post(
             "/v1/tasks",
             json={
-                "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
+                "files": [{"file_name": source.name, "bytes": source.stat().st_size}],
                 "tier": "advanced",
             },
         )
@@ -1056,7 +1056,7 @@ def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: 
     response = TestClient(app).post(
         "/v1/tasks",
         json={
-            "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
+            "files": [{"file_name": source.name, "bytes": source.stat().st_size}],
             "tier": "flash",
         },
     )

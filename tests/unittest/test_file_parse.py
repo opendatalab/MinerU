@@ -82,7 +82,7 @@ class Upstream:
             "output_formats": task["options"]["output_formats"],
             "files": [
                 {
-                    "client_file_id": "file",
+                    "file_id": f"file-{task_id}",
                     "file_name": task["options"]["files"][0]["file_name"],
                     "bytes": task["options"]["files"][0]["bytes"],
                     "status": status,
@@ -113,6 +113,7 @@ class Upstream:
                 return httpx.Response(401, json={"error": {"code": "invalid_api_key", "message": "Bad upstream key"}})
             body = json.loads(await request.aread())
             assert len(body["files"]) == 1
+            assert {"client_file_id", "file_id"}.isdisjoint(body["files"][0])
             task_id = f"task_{len(self.tasks) + 1}"
             self.tasks[task_id] = {
                 "options": body,
@@ -126,7 +127,20 @@ class Upstream:
             payload = self.payload(task_id)
             if self.create_failure == "malformed":
                 payload["task_id"] = None
-            return httpx.Response(202, json=payload)
+            return httpx.Response(
+                202,
+                json={
+                    "task_id": payload["task_id"],
+                    "status": payload["status"],
+                    "files": [
+                        {
+                            key: value
+                            for key, value in payload["files"][0].items()
+                            if key in {"file_id", "file_name", "status", "upload"} and value is not None
+                        }
+                    ],
+                },
+            )
         task_id = request.url.path.rsplit("/", 1)[-1]
         task = self.tasks[task_id]
         if request.method == "PUT":
@@ -383,8 +397,8 @@ def test_new_protocol_preserves_but_does_not_restore_legacy_records(tmp_path: Pa
     upstream = Upstream()
     settings = FileParseSettings(upstream.api_url, "secret", tmp_path)
     legacy_namespace = hashlib.sha256(f"{settings.api_url}\0secret".encode()).hexdigest()
-    assert settings.namespace == "tasks-v4-" + legacy_namespace
-    legacy = tmp_path / ("tasks-v3-" + legacy_namespace)
+    assert settings.namespace == "tasks-v5-" + legacy_namespace
+    legacy = tmp_path / ("tasks-v4-" + legacy_namespace)
     source = legacy / "sources" / "old-input"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"old source")
@@ -699,3 +713,42 @@ def test_cli_configuration_and_environment(tmp_path: Path, monkeypatch: pytest.M
     )
     assert result.exit_code == 0, result.output
     assert captured[0][1] == {"host": "127.0.0.1", "port": 8003}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_restart_after_creation_receipt_and_failed_first_query(tmp_path: Path, cached: bool) -> None:
+    """创建成功后查询失败仍先持久化 ID，重启仅恢复原任务，包括已完成的缓存回执。"""
+
+    class FailingQueries(Upstream):
+        """把首次进程的详情查询固定为临时失败，保留创建和对象存储行为。"""
+
+        fail_queries = True
+
+        async def handle(self, request: httpx.Request) -> httpx.Response:
+            """让失败发生在已确认创建之后，避免测试误走创建结果未知分支。"""
+            if self.fail_queries and request.method == "GET" and "/v1/tasks/" in request.url.path:
+                return httpx.Response(503, json={"error": {"code": "temporary", "message": "retry query"}})
+            return await super().handle(request)
+
+    upstream = FailingQueries()
+    upstream.cache_hit = cached
+    app = application(tmp_path, upstream)
+    with TestClient(app) as client:
+        app.state.service.client.retry_delay = 0
+        response = submit(client)
+        assert response.status_code == 502, response.text
+        record = app.state.service.records["request_1"]
+        assert record.task.task_id == "task_1"
+        assert record.task.files[0].file_id == "file-task_1"
+        assert not record.task.details_loaded
+        assert record.status != "submission_unknown"
+        if not cached:
+            assert Path(record.source_path).is_file()
+    upstream.fail_queries = False
+    with TestClient(application(tmp_path, upstream)) as client:
+        response = submit(client)
+        assert response.status_code == 200, response.text
+        assert response.content == artifact_bytes(["default"])
+        state = client.get("/v1/file_parse/request_1").json()
+        assert state["task_id"] == "task_1" and state["status"] == "completed"
+    assert len(upstream.tasks) == 1 and upstream.uploads == (0 if cached else 1)

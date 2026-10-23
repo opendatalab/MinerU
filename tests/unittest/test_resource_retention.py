@@ -242,11 +242,11 @@ def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeyp
             "/v1/tasks",
             json={
                 "tier": "flash",
-                "files": [{"client_file_id": "f1", "file_name": "input.pdf", "bytes": 3, "sha256sum": sha}],
+                "files": [{"file_name": "input.pdf", "bytes": 3, "sha256sum": sha}],
             },
         )
         assert response.status_code == 400
-        assert response.json()["error"]["code"] == "upload_size_mismatch"
+        assert response.json().get("error")["code"] == "upload_size_mismatch"
         assert not app.state.file_store._pins and not app.state.job_store._jobs
 
 
@@ -360,4 +360,4 @@ def test_external_worker_lost_task_releases_load_and_keeps_snapshot() -> None:
         client.portal.call(_reconcile_jobs_once, app.state.registry, pool)
         assert reservation.worker.active_jobs == 0
         assert route.metadata["payload"]["status"] == "failed"
-        assert route.metadata["payload"]["files"][0]["error"]["code"] == "upstream_task_lost"
+        assert route.metadata["payload"]["files"][0].get("error")["code"] == "upstream_task_lost"

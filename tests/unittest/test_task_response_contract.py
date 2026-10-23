@@ -93,29 +93,25 @@ def test_mixed_file_tiers_come_from_completed_results(
         assert {"status_url", "tier", "pending_uploads"}.isdisjoint(task)
         for item in task["files"]:
             assert set(item) == {
-                "client_file_id",
+                "file_id",
                 "file_name",
                 "bytes",
-                "url",
                 "upload",
                 "status",
-                "parse",
-                "result_url",
-                "error",
             }
-            assert item["parse"] is None
-            assert set(item["upload"]) == {"url", "headers", "expires_at"}
+            assert item.get("parse") is None
+            assert set(item.get("upload")) == {"url", "headers", "expires_at"}
         _upload(client, task, inputs)
         completed = _terminal(client, task)
         assert completed["status"] == "completed", completed
-        assert [item["parse"]["tier"] for item in completed["files"]] == [actual, "flash", "flash", actual]
+        assert [item.get("parse")["tier"] for item in completed["files"]] == [actual, "flash", "flash", actual]
         assert dict(calls) == {".pdf": requested, ".html": "flash", ".docx": "flash", ".png": requested}
         for index, item in enumerate(completed["files"]):
-            assert item["upload"] is None
-            assert set(item["parse"]) == {"tier", "duration_ms", "parser_version"}
-            assert item["parse"]["duration_ms"] >= 0
+            assert item.get("upload") is None
+            assert set(item.get("parse")) == {"tier", "duration_ms", "parser_version"}
+            assert item.get("parse")["duration_ms"] >= 0
             middle = json.loads(_archive(client, completed, index)["middle_json.json"])
-            assert middle["extensions"]["mineru"]["tier"] == item["parse"]["tier"]
+            assert middle["extensions"]["mineru"]["tier"] == item.get("parse")["tier"]
         assert b"Mixed task HTML" in _archive(client, completed, 1)["markdown.md"]
         assert b"Mixed task DOCX" in _archive(client, completed, 2)["markdown.md"]
 
@@ -136,4 +132,4 @@ def test_missing_actual_metadata_does_not_fabricate_requested_tier(tmp_path: Pat
         _upload(client, task, inputs)
         result = _terminal(client, task)
         assert result["status"] == "failed"
-        assert result["files"][0]["parse"] is None and result["files"][0]["result_url"] is None
+        assert result["files"][0].get("parse") is None and result["files"][0].get("result_url") is None

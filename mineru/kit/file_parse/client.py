@@ -15,7 +15,7 @@ import httpx
 from pydantic import ValidationError
 
 from ...task_types import task_status_url
-from .models import GatewayError, Record, RemoteTask
+from .models import GatewayError, Record, RemoteCreatedTask, RemoteFile, RemoteTask
 from .settings import FileParseSettings, origin
 
 CHUNK_BYTES = 1024 * 1024
@@ -122,13 +122,15 @@ class TaskClient:
     def _snapshot(self, body: bytes, expected: RemoteTask | None, formats: list[str]) -> RemoteTask:
         """校验任务 ID、单文件映射和输出格式，拒绝不匹配的任务响应。"""
         try:
-            task = RemoteTask.model_validate_json(body)
+            task = RemoteTask.model_validate({**json.loads(body), "details_loaded": True})
             if expected is not None and task.task_id != expected.task_id:
                 raise ValueError("Task identity changed")
             if list(dict.fromkeys(task.output_formats)) != formats:
                 raise ValueError("Task output formats changed")
             if expected is not None and (
-                task.files[0].file_name != expected.files[0].file_name or task.files[0].bytes != expected.files[0].bytes
+                task.files[0].file_id != expected.files[0].file_id
+                or task.files[0].file_name != expected.files[0].file_name
+                or task.files[0].bytes != expected.files[0].bytes
             ):
                 raise ValueError("Task input identity changed")
             for item in task.files:
@@ -137,8 +139,28 @@ class TaskClient:
             if task.files[0].result_url:
                 task.files[0].result_url = self.resolve(task.files[0].result_url)
             return task
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError) as exc:
             raise GatewayError("upstream_protocol_error", "Upstream returned inconsistent task metadata") from exc
+
+    def _created_snapshot(self, body: bytes, request: dict[str, Any]) -> RemoteTask:
+        """用创建回执和本地请求构造恢复上下文，查询详情之前即可安全持久化 ID。"""
+        try:
+            created = RemoteCreatedTask.model_validate_json(body)
+            item = created.files[0]
+            source = request["files"][0]
+            if item.file_name != source["file_name"]:
+                raise ValueError("Created task input identity changed")
+            if item.upload is not None:
+                item.upload.url = self.resolve(item.upload.url)
+            return RemoteTask(
+                task_id=created.task_id,
+                status=created.status,
+                files=[RemoteFile(**item.model_dump(), bytes=source["bytes"])],
+                output_formats=request["output_formats"],
+                details_loaded=False,
+            )
+        except (ValidationError, ValueError) as exc:
+            raise GatewayError("upstream_protocol_error", "Upstream returned inconsistent creation metadata") from exc
 
     async def _json_request(
         self,
@@ -159,6 +181,9 @@ class TaskClient:
                         if method == "POST" and (response.status_code >= 500 or response.status_code == 408):
                             raise GatewayError("submission_unknown", "Task creation outcome is unknown; not resubmitting")
                         raise error
+                if method == "POST":
+                    assert payload is not None
+                    return self._created_snapshot(body, payload)
                 return self._snapshot(body, expected, formats)
             except (httpx.HTTPError, GatewayError) as exc:
                 error = (
@@ -182,7 +207,6 @@ class TaskClient:
             **options,
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": record.filename,
                     "bytes": record.size,
                     "sha256sum": record.sha256sum,

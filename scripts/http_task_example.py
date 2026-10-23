@@ -7,6 +7,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -40,16 +41,15 @@ class ClientError(RuntimeError):
 
 @dataclass(frozen=True)
 class InputFile:
-    """固定文件顺序和客户端标识，恢复任务时仍按同一份清单对应文件。"""
+    """固定原始文件顺序，创建或恢复时绑定服务端返回的文件标识。"""
 
     path: Path
-    client_file_id: str
     size: int
     sha256sum: str | None
 
     def task_file(self) -> dict[str, Any]:
         """生成 JSON 清单条目；关闭 hash 时完全省略该可选字段。"""
-        item: dict[str, Any] = {"client_file_id": self.client_file_id, "file_name": self.path.name, "bytes": self.size}
+        item: dict[str, Any] = {"file_name": self.path.name, "bytes": self.size}
         if self.sha256sum is not None:
             item["sha256sum"] = self.sha256sum
         return item
@@ -102,7 +102,7 @@ class TaskClient:
             raise ClientError("MINERU_API_URL must not contain a query or fragment")
         self.key = os.environ.get("MINERU_API_KEY", "")
         self.files = files
-        self.by_id = {item.client_file_id: item for item in files}
+        self.by_id: dict[str, InputFile] = {}
         self.connect_timeout = _integer("CONNECT_TIMEOUT", 10)
         self.timeout = _integer("REQUEST_TIMEOUT", 600)
         self.max_polls = _integer("MAX_POLLS", 300, minimum=0)
@@ -232,10 +232,10 @@ class TaskClient:
             raise ClientError("Task response is not valid JSON") from exc
         if not isinstance(payload, dict):
             raise ClientError("Task response must be a JSON object")
-        return self.validate_task(payload)
+        return self.validate_creation(payload) if method == "POST" else self.validate_task(payload)
 
-    def validate_task(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """校验任务身份和文件映射，恢复请求不能误把文件上传给另一项。"""
+    def _validate_file_map(self, payload: dict[str, Any], *, details: bool) -> dict[str, Any]:
+        """按原始顺序绑定服务端 ID，此后校验同一映射，避免同名输入被错误关联。"""
         task_id = payload.get("task_id")
         if (
             not isinstance(task_id, str)
@@ -249,20 +249,21 @@ class TaskClient:
         files = payload.get("files")
         if not isinstance(files, list) or len(files) != len(self.files):
             raise ClientError("Task file count does not match local inputs")
-        seen: set[str] = set()
-        for item in files:
+        bindings: dict[str, InputFile] = {}
+        for item, local in zip(files, self.files):
             if not isinstance(item, dict):
                 raise ClientError("Invalid task file entry")
-            client_id = item.get("client_file_id")
-            if not isinstance(client_id, str) or client_id not in self.by_id or client_id in seen:
-                raise ClientError("Invalid or duplicate client_file_id")
-            seen.add(client_id)
-            local = self.by_id[client_id]
-            if item.get("file_name") != local.path.name or item.get("bytes") != local.size:
+            file_id = item.get("file_id")
+            if not isinstance(file_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", file_id) or file_id in bindings:
+                raise ClientError("Invalid or duplicate file_id")
+            if self.by_id and self.by_id.get(file_id) is not local:
+                raise ClientError("Task file identity or order changed")
+            if item.get("file_name") != local.path.name or (details and item.get("bytes") != local.size):
                 raise ClientError("Task files differ from local inputs; use the original file list and order")
-            if "upload" not in item:
-                raise ClientError("Missing file upload descriptor")
-            link = item["upload"]
+            bindings[file_id] = local
+            if item.get("status") not in {"waiting-file", "pending", "running", "completed", "failed", "canceled"}:
+                raise ClientError("Unknown file status")
+            link = item.get("upload")
             if link is None:
                 continue
             if not isinstance(link, dict):
@@ -273,22 +274,27 @@ class TaskClient:
                 raise ClientError("Invalid upload headers or expiry")
             if item["status"] != "waiting-file" or payload["status"] in TERMINAL:
                 raise ClientError("Upload descriptor does not match file state")
+        self.task_id = task_id
+        self.by_id = bindings
+        return payload
+
+    def validate_creation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """创建回执仅确认身份和上传动作，不要求详情中的大小、格式或结果字段。"""
+        return self._validate_file_map(payload, details=False)
+
+    def validate_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """独立校验 GET 详情和产物契约，省略字段表示当前没有该值。"""
+        payload = self._validate_file_map(payload, details=True)
         formats = payload.get("output_formats")
-        if (
-            not isinstance(formats, list)
-            or not formats
-            or any(value not in {"default", "docx", "html", "latex"} for value in formats)
-        ):
-            raise ClientError("Invalid task output_formats")
-        for item in files:
-            if item.get("status") not in {"waiting-file", "pending", "running", "completed", "failed", "canceled"}:
-                raise ClientError("Unknown file status")
+        expected = list(dict.fromkeys(value.strip() for value in os.environ.get("OUTPUT_FORMATS", "default").split(",")))
+        if not isinstance(formats, list) or not formats or formats != expected:
+            raise ClientError("Task output_formats differ from the original request")
+        for item in payload["files"]:
             if item["status"] == "completed":
                 if not isinstance(item.get("result_url"), str) or not item["result_url"]:
                     raise ClientError("Completed file has no download URL")
             elif item.get("result_url") is not None:
                 raise ClientError("Unfinished file has a download URL")
-        self.task_id = task_id
         return payload
 
     def create(self) -> dict[str, Any]:
@@ -331,17 +337,17 @@ class TaskClient:
     def upload_missing(self, task: dict[str, Any]) -> dict[str, Any]:
         """逐文件上传与恢复，成功 PUT 或已进入后续阶段的文件不重复发送。"""
         for original in task["files"]:
-            client_id = original["client_file_id"]
-            local = self.by_id[client_id]
-            link = original["upload"]
+            file_id = original["file_id"]
+            local = self.by_id[file_id]
+            link = original.get("upload")
             if original["status"] != "waiting-file":
-                self.uploaded_ids.add(client_id)
-            if link is None or client_id in self.uploaded_ids:
+                self.uploaded_ids.add(file_id)
+            if link is None or file_id in self.uploaded_ids:
                 continue
-            if self.upload_attempts.get(client_id, 0) >= 3:
+            if self.upload_attempts.get(file_id, 0) >= 3:
                 raise ClientError(f"Upload failed after three attempts: {local.path.name}")
-            for attempt in range(self.upload_attempts.get(client_id, 0), 3):
-                self.upload_attempts[client_id] = attempt + 1
+            for attempt in range(self.upload_attempts.get(file_id, 0), 3):
+                self.upload_attempts[file_id] = attempt + 1
 
                 def upload_body() -> Generator[bytes, None, None]:
                     """每次重试重新打开同一个文件，单文件从头重传。"""
@@ -357,18 +363,18 @@ class TaskClient:
                     ) as response:
                         if not 200 <= response.status < 300:
                             raise self._http_error(response)
-                    self.uploaded_ids.add(client_id)
+                    self.uploaded_ids.add(file_id)
                     break
                 except ClientError as exc:
                     if not exc.retryable and exc.status not in {403, 410}:
                         raise
                     # 请求可能已经落盘但响应丢失；先看状态，再决定是否重传。
                     current = self.refresh_after_transfer_error()
-                    remote = next(item for item in current["files"] if item["client_file_id"] == client_id)
+                    remote = next(item for item in current["files"] if item["file_id"] == file_id)
                     if remote["status"] != "waiting-file":
-                        self.uploaded_ids.add(client_id)
+                        self.uploaded_ids.add(file_id)
                         break
-                    replacement = remote["upload"]
+                    replacement = remote.get("upload")
                     if replacement is None:
                         break
                     if exc.status == 403 and replacement["url"] == link["url"]:
@@ -429,7 +435,7 @@ class TaskClient:
                     if attempt == 2 or (not exc.retryable and exc.status not in {401, 403, 404}):
                         raise
                     current = self.refresh_after_transfer_error()
-                    remote = next(item for item in current["files"] if item["client_file_id"] == file["client_file_id"])
+                    remote = next(item for item in current["files"] if item["file_id"] == file["file_id"])
                     if remote["status"] != "completed":
                         raise ClientError("File no longer has a downloadable result") from exc
                     replacement = self.resolve(remote["result_url"])
@@ -441,16 +447,16 @@ class TaskClient:
             temporary.unlink(missing_ok=True)
 
     def download_completed(self, task: dict[str, Any], output: Path) -> None:
-        """按 client_file_id 保存独立结果，同名输入和多次轮询不会相互覆盖。"""
+        """按 file_id 保存独立结果，同名输入和多次轮询不会相互覆盖。"""
         formats = list(dict.fromkeys(task["output_formats"]))
         extension = formats[0] if len(formats) == 1 and formats[0] in {"html", "docx"} else "zip"
         for file in task["files"]:
-            client_id = file["client_file_id"]
-            if file["status"] != "completed" or client_id in self.saved_ids:
+            file_id = file["file_id"]
+            if file["status"] != "completed" or file_id in self.saved_ids:
                 continue
-            destination = output / client_id / (self.by_id[client_id].path.stem + "." + extension)
+            destination = output / file_id / (self.by_id[file_id].path.stem + "." + extension)
             self.download(task, file, destination)
-            self.saved_ids.add(client_id)
+            self.saved_ids.add(file_id)
             print(f"Saved {destination}")
 
     def run(self, output: Path) -> int:
@@ -462,10 +468,12 @@ class TaskClient:
         else:
             task = self.create()
         print(f"task_id={self.task_id}", file=sys.stderr)
+        if not resume:
+            task = self.refresh()
         self.download_completed(task, output)
         for original in list(task["files"]):
-            current = next(item for item in task["files"] if item["client_file_id"] == original["client_file_id"])
-            if current["upload"] is None:
+            current = next(item for item in task["files"] if item["file_id"] == original["file_id"])
+            if current.get("upload") is None:
                 continue
             task = self.upload_missing({**task, "files": [current]})
             self.download_completed(task, output)
@@ -483,9 +491,7 @@ class TaskClient:
                     raise
                 continue
             if any(
-                item["status"] == "waiting-file"
-                and item["upload"] is not None
-                and item["client_file_id"] not in self.uploaded_ids
+                item["status"] == "waiting-file" and item.get("upload") is not None and item["file_id"] not in self.uploaded_ids
                 for item in task["files"]
             ):
                 task = self.upload_missing(task)
@@ -511,7 +517,7 @@ def main(arguments: list[str]) -> int:
         if send_hash not in {"0", "1"}:
             raise ClientError("SEND_HASH must be 0 or 1")
         inputs: list[InputFile] = []
-        for index, value in enumerate(arguments):
+        for value in arguments:
             path = Path(value).resolve()
             if not path.is_file() or path.stat().st_size == 0:
                 raise ClientError(f"Input must be a non-empty file: {value}")
@@ -519,7 +525,7 @@ def main(arguments: list[str]) -> int:
             if hasher is not None:
                 for chunk in _file_body(path):
                     hasher.update(chunk)
-            inputs.append(InputFile(path, f"f{index + 1}", path.stat().st_size, hasher.hexdigest() if hasher else None))
+            inputs.append(InputFile(path, path.stat().st_size, hasher.hexdigest() if hasher else None))
         client = TaskClient(inputs)
         return client.run(Path(os.environ.get("RESULT_DIR", "results")))
     except (ClientError, OSError, ValueError) as exc:

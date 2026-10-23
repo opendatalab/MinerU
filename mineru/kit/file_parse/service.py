@@ -46,7 +46,7 @@ class FileParseService:
                 await self._remember_error(
                     record, GatewayError("submission_unknown", "Task creation outcome is unknown; not resubmitting")
                 )
-            elif record.status not in TERMINAL:
+            elif record.status not in TERMINAL or record.needs_details:
                 self._prepare_in_background(record)
         await self.collect()
         self._monitor = asyncio.create_task(self._monitor_records(), name="file-parse-monitor")
@@ -94,7 +94,7 @@ class FileParseService:
                 source.unlink(missing_ok=True)
                 if existing.fingerprint != identity:
                     raise GatewayError("request_id_conflict", "request_id already identifies a different request", 409)
-                if existing.status not in TERMINAL:
+                if existing.status not in TERMINAL or existing.needs_details:
                     self._prepare_in_background(existing)
                 return existing
             record = Record(request_id, filename, size, sha256sum, options.model_dump(), str(source), identity)
@@ -179,6 +179,8 @@ class FileParseService:
                 await self.store.save(record)
                 task = await self.client.create(record)
                 await self._apply(record, task)
+                # 创建身份已持久化；首次查询失败也只能恢复此任务，不能重新提交。
+                task = await self.refresh(record)
             else:
                 task = await self.refresh(record)
             if task.files[0].status == "waiting-file":
@@ -219,7 +221,7 @@ class FileParseService:
                 record
                 for record in self.records.values()
                 if record.remote is not None
-                and record.status not in TERMINAL
+                and (record.status not in TERMINAL or record.needs_details)
                 and (record.request_id not in self.preparations or self.preparations[record.request_id].done())
             ]
             try:

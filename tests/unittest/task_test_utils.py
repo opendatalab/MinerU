@@ -22,8 +22,8 @@ def task_url(client: TestClient | httpx.Client | httpx.AsyncClient, task: dict[s
 
 
 def pending_files(task: dict[str, Any]) -> list[dict[str, Any]]:
-    """从真实逐文件快照选取待上传项，缺少新 upload 字段时直接失败。"""
-    return [item for item in task["files"] if item["upload"] is not None]
+    """从真实逐文件快照选取带上传动作的条目，省略字段时只轮询。"""
+    return [item for item in task["files"] if item.get("upload") is not None]
 
 
 def stored_source(store: FileStore, path: Path) -> dict[str, str]:
@@ -53,7 +53,6 @@ def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any
         json={
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": path.name,
                     "bytes": len(data),
                     "sha256sum": hashlib.sha256(data).hexdigest(),
@@ -65,7 +64,7 @@ def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any
     assert response.status_code == 202, response.text
     task = response.json()
     for link in pending_files(task):
-        response = client.put(link["upload"]["url"], content=data, headers=link["upload"]["headers"])
+        response = client.put(link.get("upload").get("url"), content=data, headers=link.get("upload")["headers"])
         assert response.status_code < 400, response.text
     return task
 

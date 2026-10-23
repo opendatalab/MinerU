@@ -227,11 +227,11 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
     with TestClient(app) as client:
         response = client.post(
             "/v1/tasks",
-            json={"files": [{"client_file_id": "file", "file_name": "article.html", "url": "https://example.com/article"}]},
+            json={"files": [{"file_name": "article.html", "url": "https://example.com/article"}]},
         )
 
     assert response.status_code == 202
-    assert response.json()["tier"] == "flash"
+    assert app.state.task_store._records[response.json()["task_id"]].options.tier == "flash"
 
 
 def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(

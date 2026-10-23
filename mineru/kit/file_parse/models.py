@@ -71,37 +71,53 @@ class UploadLink(BaseModel):
 class RemoteFile(BaseModel):
     """仅消费共同 Tasks 契约，不依赖本地 Files 或 Job 实现。"""
 
-    client_file_id: str
+    file_id: str = Field(min_length=1)
     file_name: str
     bytes: int
     status: FileStatus
-    upload: UploadLink | None
+    upload: UploadLink | None = None
     result_url: str | None = None
     error: dict[str, Any] | None = None
 
 
 class RemoteTask(BaseModel):
-    """校验单文件任务的身份和产物契约，允许上游添加其他元数据。"""
+    """保存客户端私有上下文，标记是否已经取得查询详情以支持创建后立即恢复。"""
 
     task_id: str = Field(min_length=1)
     status: TaskStatus
     files: list[RemoteFile] = Field(min_length=1, max_length=1)
     output_formats: list[TaskOutputFormat] = Field(min_length=1)
+    details_loaded: bool = True
 
     @model_validator(mode="after")
     def validate_file(self) -> RemoteTask:
         """确保返回的文件和链接仍对应本次唯一清单项。"""
         item = self.files[0]
         task_status_url("", self.task_id)
-        if item.client_file_id != "file":
-            raise ValueError("Unexpected client_file_id")
         if item.upload is not None and item.status != "waiting-file":
             raise ValueError("Only waiting-file accepts uploads")
-        if item.status == "completed" and not item.result_url:
+        if self.details_loaded and item.status == "completed" and not item.result_url:
             raise ValueError("Completed file has no result_url")
         if item.status != "completed" and item.result_url is not None:
             raise ValueError("Unfinished file has a result_url")
         return self
+
+
+class RemoteCreatedFile(BaseModel):
+    """只消费创建回执中的文件身份、状态与上传描述。"""
+
+    file_id: str = Field(min_length=1)
+    file_name: str
+    status: FileStatus
+    upload: UploadLink | None = None
+
+
+class RemoteCreatedTask(BaseModel):
+    """单独校验创建回执，不要求它包含大小、输出格式或结果链接。"""
+
+    task_id: str = Field(min_length=1)
+    status: TaskStatus
+    files: list[RemoteCreatedFile] = Field(min_length=1, max_length=1)
 
 
 @dataclass
@@ -125,6 +141,11 @@ class Record:
         """读取已校验远端快照，空值表示尚未确认创建结果。"""
         return RemoteTask.model_validate(self.remote) if self.remote is not None else None
 
+    @property
+    def needs_details(self) -> bool:
+        """创建已报告完成但首次查询失败时，重启或重复请求仍需补取结果详情。"""
+        return self.status == "completed" and self.remote is not None and self.remote.get("details_loaded") is False
+
     def to_json(self) -> str:
         """把完整记录序列化为 SQLite 单行快照。"""
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -137,4 +158,4 @@ def fingerprint(filename: str, size: int, sha256sum: str, options: ParseOptions)
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteTask", "TERMINAL", "UploadLink", "fingerprint"]
+__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteCreatedTask", "RemoteTask", "TERMINAL", "UploadLink", "fingerprint"]

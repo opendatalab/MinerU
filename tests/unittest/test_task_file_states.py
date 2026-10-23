@@ -39,7 +39,7 @@ def _url_task(client: TestClient, name: str = "remote") -> dict[str, Any]:
     assert response.status_code == 202, response.text
     task = response.json()
     assert task["status"] == "waiting-file"
-    assert task["files"][0]["upload"] is None and "upload_status" not in task["files"][0]
+    assert task["files"][0].get("upload") is None and "upload_status" not in task["files"][0]
     return task
 
 
@@ -72,20 +72,20 @@ def test_url_preparation_does_not_block_ready_files_or_use_upload_expiry(
             assert started.wait(3)
             app.state.task_store._records[remote["task_id"]].expires_at = 0
             snapshot = client.get(task_url(client, remote)).json()
-            assert snapshot["status"] == "waiting-file" and snapshot["files"][0]["error"] is None
-            assert snapshot["files"][0]["parse"] is None
+            assert snapshot["status"] == "waiting-file" and snapshot["files"][0].get("error") is None
+            assert snapshot["files"][0].get("parse") is None
             local = _submit(client, [("local.html", HTML)])
             _upload(client, local, [("local.html", HTML)])
             assert _terminal(client, local)["status"] == "completed"
             assert not release.is_set()
             if cancel:
-                assert client.delete(task_url(client, remote)).json()["status"] == "canceled"
+                assert client.post(task_url(client, remote) + "/cancel").json()["status"] == "canceled"
                 assert closed.wait(3)
             else:
                 release.set()
                 completed = _terminal(client, remote)
                 assert completed["status"] == "completed"
-                assert completed["files"][0]["bytes"] == len(HTML)
+                assert completed["files"][0].get("bytes") == len(HTML)
                 assert b"Preserved content" in _archive(client, completed)["markdown.md"]
             assert all(not job.prepared_sources for job in app.state.job_store._jobs.values())
     finally:
@@ -135,7 +135,7 @@ def test_ready_url_inputs_wait_in_pending_with_bounded_preparation(
             assert client.get(task_url(client, third)).json()["status"] == "waiting-file"
             assert downloads == ["/second"]
             if cancel_ready:
-                assert client.delete(task_url(client, second)).json()["status"] == "canceled"
+                assert client.post(task_url(client, second) + "/cancel").json()["status"] == "canceled"
                 deadline = time.monotonic() + 3
                 while "/third" not in downloads:
                     assert time.monotonic() < deadline
@@ -178,4 +178,4 @@ def test_file_duration_includes_preparation_but_excludes_queue_wait(tmp_path: Pa
         clock[0] += 1000
         client.portal.call(app.state.job_store._semaphore.release)
         result = _terminal(client, task)
-        assert result["files"][0]["parse"]["duration_ms"] == 5000
+        assert result["files"][0].get("parse")["duration_ms"] == 5000
