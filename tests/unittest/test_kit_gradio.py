@@ -127,49 +127,19 @@ def _httpx_proxy_for_test_client(
 ) -> SimpleNamespace:
     """把异步 httpx 调用桥接到已启动 lifespan 的 FastAPI TestClient。"""
 
-    class AsyncClientAdapter:
-        """为 V1 async client 提供最小的 TestClient 异步适配层。"""
+    def handle(request: httpx.Request) -> httpx.Response:
+        """使用真实 HTTPX 流协议桥接 ASGI，并记录鉴权和任务路径。"""
+        request_log.append((request.method, request.url.path, request.headers.get("authorization")))
+        response = test_client.request(request.method, str(request.url), headers=dict(request.headers), content=request.content)
+        headers = {key: value for key, value in response.headers.items() if key not in {"content-encoding", "content-length"}}
+        return httpx.Response(response.status_code, headers=headers, content=response.content)
 
-        def __init__(self, *_args: object, **_kwargs: object) -> None:
-            """忽略真实网络参数并复用当前 TestClient。"""
+    def async_client(**kwargs: Any) -> httpx.AsyncClient:
+        """保留真正的异步上传与下载方法，只替换传输层。"""
+        kwargs["transport"] = httpx.MockTransport(handle)
+        return httpx.AsyncClient(**kwargs)
 
-        async def __aenter__(self) -> "AsyncClientAdapter":
-            """进入异步上下文。"""
-            return self
-
-        async def __aexit__(self, *_args: object) -> None:
-            """退出异步上下文，不关闭外层 TestClient。"""
-
-        async def get(self, url: str, **kwargs: Any) -> httpx.Response:
-            """通过 TestClient 执行 GET。"""
-            return self._request("GET", url, **kwargs)
-
-        async def post(self, url: str, **kwargs: Any) -> httpx.Response:
-            """通过 TestClient 执行 POST。"""
-            return self._request("POST", url, **kwargs)
-
-        async def put(self, url: str, **kwargs: Any) -> httpx.Response:
-            """通过 TestClient 执行 PUT。"""
-            return self._request("PUT", url, **kwargs)
-
-        def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-            """记录鉴权信息并把绝对 URL 转换为 ASGI 路径。"""
-            headers = kwargs.get("headers") or {}
-            parsed = httpx.URL(url)
-            request_log.append((method, parsed.path, headers.get("Authorization")))
-            return test_client.request(method, parsed.raw_path.decode("ascii"), **kwargs)
-
-    return SimpleNamespace(
-        AsyncClient=AsyncClientAdapter,
-        Client=httpx.Client,
-        HTTPError=httpx.HTTPError,
-        InvalidURL=httpx.InvalidURL,
-        Response=httpx.Response,
-        Timeout=httpx.Timeout,
-        TimeoutException=httpx.TimeoutException,
-        TransportError=httpx.TransportError,
-        URL=httpx.URL,
-    )
+    return SimpleNamespace(**{**vars(httpx), "AsyncClient": async_client})
 
 
 def test_webui_command_is_registered_and_help_is_available() -> None:
@@ -299,9 +269,9 @@ def test_gradio_url_normalization_and_capability_dataclass() -> None:
         normalize_v1_base_url("https://user:secret@example.test/api")
     with pytest.raises(V1ArtifactError, match="Invalid V1 API URL"):
         normalize_v1_base_url("http://example.test:not-a-port")
-    capabilities = V1ServerCapabilities("http://example.test", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://example.test", ("flash",), ("default",), ("upload",))
     assert capabilities.tiers == ("flash",)
-    assert capabilities.output_formats == ("zip",)
+    assert capabilities.output_formats == ("default",)
 
 
 def test_v1_client_uses_environment_api_key_when_cli_value_is_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -325,8 +295,8 @@ def test_v1_client_discovers_health_and_tiers_and_sends_api_key() -> None:
                 json={
                     "status": "ok",
                     "features": {
-                        "output_formats": ["markdown", "zip"],
-                        "sources": ["file_id", "inline"],
+                        "task_output_formats": ["default", "html"],
+                        "sources": ["upload", "url"],
                     },
                 },
                 request=request,
@@ -376,13 +346,13 @@ def test_v1_client_rejects_server_without_zip() -> None:
         if request.url.path.endswith("/health"):
             return httpx.Response(
                 200,
-                json={"status": "ok", "features": {"output_formats": ["middle_json"], "sources": ["file_id"]}},
+                json={"status": "ok", "features": {"task_output_formats": ["html"], "sources": ["upload"]}},
                 request=request,
             )
         return httpx.Response(200, json={"data": [{"id": "flash"}]}, request=request)
 
     client = V1ArtifactClient(api_url="http://example.test", transport=httpx.MockTransport(handler))
-    with pytest.raises(V1ArtifactError, match="does not advertise zip"):
+    with pytest.raises(V1ArtifactError, match="does not advertise default"):
         asyncio.run(client.discover())
 
 
@@ -390,7 +360,7 @@ def test_v1_client_rejects_server_without_zip() -> None:
     ("sources", "tiers", "error_code"),
     [
         (("inline", "url"), ("flash",), "unsupported_source"),
-        (("file_id",), ("experimental",), "tier_unavailable"),
+        (("upload",), ("experimental",), "tier_unavailable"),
     ],
 )
 def test_v1_client_rejects_missing_upload_or_tier_capability(
@@ -405,7 +375,7 @@ def test_v1_client_rejects_missing_upload_or_tier_capability(
         if request.url.path.endswith("/health"):
             return httpx.Response(
                 200,
-                json={"status": "ok", "features": {"output_formats": ["zip"], "sources": list(sources)}},
+                json={"status": "ok", "features": {"task_output_formats": ["default"], "sources": list(sources)}},
                 request=request,
             )
         return httpx.Response(200, json={"data": [{"id": tier} for tier in tiers]}, request=request)
@@ -426,7 +396,7 @@ def test_v1_client_checks_requested_tier_after_first_discovery(tmp_path: Path) -
         if request.url.path.endswith("/health"):
             return httpx.Response(
                 200,
-                json={"status": "ok", "features": {"output_formats": ["zip"], "sources": ["file_id"]}},
+                json={"status": "ok", "features": {"task_output_formats": ["default"], "sources": ["upload"]}},
                 request=request,
             )
         return httpx.Response(200, json={"data": [{"id": "flash"}]}, request=request)
@@ -458,16 +428,18 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
         clock[0] += 0.25
         return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
 
-    original_zip = parser_api_server._build_self_contained_zip_output
+    from mineru.parser import task_outputs
 
-    def export(result: ParseResult) -> bytes:
+    original_zip = task_outputs.build_task_output
+
+    def export(result: ParseResult, formats: Any, directory: Path, **kwargs: Any) -> Path:
         """真实生成 ZIP，仅用确定性时钟模拟结果打包耗时。"""
-        payload = original_zip(result)
+        payload = original_zip(result, formats, directory, **kwargs)
         clock[0] += export_seconds
         return payload
 
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
-    monkeypatch.setattr(parser_api_server, "_build_self_contained_zip_output", export)
+    monkeypatch.setattr(task_outputs, "build_task_output", export)
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
         tier="flash",
@@ -488,9 +460,8 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     paths = [path for _method, path, _authorization in request_log]
     assert "/v1/health" in paths
     assert "/v1/tiers" in paths
-    assert "/v1/uploads" in paths
-    assert any(path.startswith("/v1/uploads/upload_") and path.endswith("/content") for path in paths)
-    assert "/v1/parse/jobs" in paths
+    assert any(path.startswith("/v1/tasks/") and "/uploads/" in path for path in paths)
+    assert "/v1/tasks" in paths
     assert any(path.startswith("/v1/files/file-") and path.endswith("/content") for path in paths)
     protected_requests = [item for item in request_log if item[1] not in {"/v1/health", "/v1/tiers"}]
     assert protected_requests and all(authorization == "Bearer secret" for _method, _path, authorization in protected_requests)
@@ -557,7 +528,7 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
             flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
             assert flash_result._model_output.pages == [[{"raw": "model"}]]
             assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
-            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+            assert any(method == "POST" and path == "/v1/tasks" for _host, method, path, _auth in requests)
             requests.clear()
 
             remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
@@ -565,7 +536,7 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
             assert requests and all(
                 host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
             )
-            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+            assert any(method == "POST" and path == "/v1/tasks" for _host, method, path, _auth in requests)
 
 
 @pytest.mark.parametrize("failure", [None, V1ArtifactError("remote failed", code="parse_failed"), asyncio.CancelledError()])
@@ -573,7 +544,7 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
     """验证远程已有 Flash 时优先远程，并原样传递结果、失败和取消而不重试本地。"""
     result = ParseResult(middle_json=_middle_json(with_image=False))
     primary = Mock(spec=V1ArtifactClient)
-    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard", "flash"), ("zip",), ("file_id",))
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard", "flash"), ("default",), ("upload",))
     primary.parse_file = AsyncMock(return_value=result, side_effect=failure)
     local = Mock(spec=V1ArtifactClient)
     routed = GradioArtifactClient(primary, local_flash=local)
@@ -600,9 +571,9 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
 def test_gradio_router_rejects_unavailable_tiers(tier: str, code: str) -> None:
     """验证路由层只补充 Flash，拒绝未声明的 Advanced 及未知档位。"""
     primary = Mock(spec=V1ArtifactClient)
-    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("zip",), ("file_id",))
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("default",), ("upload",))
     local = Mock(spec=V1ArtifactClient)
-    local.capabilities = V1ServerCapabilities("http://local.test", ("flash", "advanced"), ("zip",), ("file_id",))
+    local.capabilities = V1ServerCapabilities("http://local.test", ("flash", "advanced"), ("default",), ("upload",))
     routed = GradioArtifactClient(primary, local_flash=local)
     assert routed.capabilities.tiers == ("flash", "standard")
     with pytest.raises(V1ArtifactError) as error:
@@ -682,7 +653,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
         asyncio.run(convert_requests())
         assert not hasattr(api.state, "ocr_mode")
     assert received_modes == ["ocr", "auto", "ocr", "auto"]
-    assert sum(method == "POST" and path == "/v1/parse/jobs" for method, path, _ in request_log) == 4
+    assert sum(method == "POST" and path == "/v1/tasks" for method, path, _ in request_log) == 4
 
 
 def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -706,7 +677,7 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
 
     monkeypatch.setattr(gradio_client, "MinerUApiParser", FailingParser)
     client = V1ArtifactClient(api_url="http://example.test")
-    client._capabilities = V1ServerCapabilities("http://example.test", ("flash",), ("zip",), ("file_id",))
+    client._capabilities = V1ServerCapabilities("http://example.test", ("flash",), ("default",), ("upload",))
     with pytest.raises(V1ArtifactError) as error:
         asyncio.run(client.parse_file(source, tier="flash", page_range="999"))
     assert error.value.code == "page_range_invalid"
@@ -751,8 +722,9 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
     client._capabilities = V1ServerCapabilities(
         "http://example.test",
         ("standard",),
-        ("zip",),
-        ("file_id",),
+        ("default",),
+        ("upload",),
+        model_output=True,
     )
     statuses: list[str | ParseStatusUpdate] = []
     result = asyncio.run(
@@ -1074,7 +1046,7 @@ def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: P
 
 def test_gradio_ocr_control_visibility_reset_and_event_binding(tmp_path: Path) -> None:
     """验证 PDF 专属开关的缺省值、文件重置、清除绑定和独立于 tier 的可见性。"""
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("default",), ("upload",))
     demo = build_gradio_app(Mock(), capabilities, output_root=tmp_path, enable_example=False)
     checkbox = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Checkbox")
     assert checkbox.label.key == "mineru.force_ocr" and checkbox.value is False and checkbox.visible is False
@@ -1095,7 +1067,7 @@ def test_gradio_ocr_control_visibility_reset_and_event_binding(tmp_path: Path) -
 
 def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证示例块仅在启动目录存在受支持文件时渲染，并把点击绑定到上传组件。"""
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("default",), ("upload",))
 
     def find_examples(demo: Any) -> list[Any]:
         return [block for block in demo.blocks.values() if getattr(block, "elem_id", None) == "mineru-kit-examples"]
@@ -1132,7 +1104,7 @@ def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) ->
     source = tmp_path / f"source{suffix}"
     source.write_bytes(b"placeholder")
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1219,7 +1191,7 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     tmp_path: Path, tiers: tuple[str, ...], default_position: int, default_tier: str, maximum: int
 ) -> None:
     """验证乱序、缺档及单档位下的原生滑块默认值与文件切换、清除行为。"""
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(
         V1ArtifactClient(api_url=capabilities.base_url), capabilities, output_root=tmp_path, enable_example=False
     )
@@ -1263,7 +1235,7 @@ def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: st
     source = tmp_path / f"source.{extension.upper() if uppercase else extension}"
     source.write_bytes(b"placeholder")
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("standard", "flash"), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("standard", "flash"), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1285,7 +1257,7 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
     source = tmp_path / "source.csv"
     source.write_text("name,value\na,1\n", encoding="utf-8")
     client = SimpleNamespace(parse_file=AsyncMock())
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1348,7 +1320,7 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
         """收集 Gradio 普通转换请求的完整输出。"""
         return [await handler(str(source), position, " 1 ", force_ocr)]
 
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     client = FakeClient()
     demo = build_gradio_app(
         client,  # type: ignore[arg-type]
@@ -1381,7 +1353,7 @@ def test_gradio_epub_conversion_preserves_source_preview(tmp_path: Path) -> None
                 status_callback("Processing on server...")
             return ParseResult(middle_json=_middle_json(with_image=False, file_suffix="epub"))
 
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(EpubClient(), capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1410,7 +1382,7 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
     source = tmp_path / "demo.csv"
     source.write_text("name,value\na,1\n", encoding="utf-8")
     client = SimpleNamespace(parse_file=AsyncMock())
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path, enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1442,7 +1414,7 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
         updates = [await handler(str(source), 0, "")]
         return updates[-1]
 
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(
         FailingClient(),  # type: ignore[arg-type]
         capabilities,
@@ -1487,7 +1459,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
                 status_callback(STATUS_DOWNLOADING_RESULT)
                 return ParseResult(middle_json=_middle_json(with_image=False))
 
-        capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+        capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
         demo = build_gradio_app(WaitingClient(), capabilities, output_root=tmp_path / "output", enable_example=False)
         handler_fn = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
         assert handler_fn.concurrency_limit is None
@@ -1565,7 +1537,7 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
         raise OSError("output disk unavailable")
 
     monkeypatch.setattr(gradio_app, "persist_parse_result", fail_persistence)
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(CompletedClient(), capabilities, output_root=tmp_path, enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
 
@@ -1680,7 +1652,7 @@ def test_gradio_slow_precheck_keeps_polling_available_and_queues_other_sessions(
 
     monkeypatch.setattr(gradio_app, "_effective_page_range", precheck)
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_ui")
     poll = next(fn.fn for fn in demo.fns.values() if fn.name == "read_conversion_status")

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from task_test_utils import stored_source, execution_output, build_default_zip
+
+import base64
 import asyncio
 import json
 from io import BytesIO
@@ -22,7 +25,7 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import ParseResult, api_server, parse, parse_async
-from mineru.parser.api_server import CreateJobRequest, FileStore
+from mineru.parser.api_server import _ParseRequest, FileStore
 from mineru.render.docx import render_docx
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
@@ -138,11 +141,11 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
             "files": [{"source": {"type": "url", "url": url}}],
             "tier": "standard",
-            "output_formats": ["middle_json"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -158,10 +161,8 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
 
     parsed_file = record.files[0]
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None and parsed_file.output_files.middle_json is not None
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
-    assert middle_record.sha256sum is not None
-    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    middle_payload = json.loads(middle_data)
     assert inline_text(middle_payload["pages"][0]["blocks"][0]["content"]) == expected
 
 
@@ -186,11 +187,11 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
             "files": [{"source": {"type": "url", "url": url}}],
             "tier": "standard",
-            "output_formats": ["middle_json"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -206,10 +207,8 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
 
     parsed_file = record.files[0]
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None and parsed_file.output_files.middle_json is not None
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
-    assert middle_record.sha256sum is not None
-    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    middle_payload = json.loads(middle_data)
     assert inline_text(middle_payload["pages"][0]["blocks"][0]["content"]) == expected
 
 
@@ -227,8 +226,8 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
 
     with TestClient(app) as client:
         response = client.post(
-            "/v1/parse/jobs",
-            json={"files": [{"source": {"type": "url", "url": "https://example.com/article"}}]},
+            "/v1/tasks",
+            json={"files": [{"client_file_id": "file", "file_name": "article.html", "url": "https://example.com/article"}]},
         )
 
     assert response.status_code == 202
@@ -252,7 +251,7 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     monkeypatch.setattr(api_server, "parse_async", parse_async_mock)
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
             "files": [{"source": {"type": "url", "url": url}}],
             "tier": "standard",
@@ -290,11 +289,11 @@ def test_url_source_aborts_when_exceeding_max_url_bytes(tmp_path: Path, monkeypa
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
             "files": [{"source": {"type": "url", "url": url}}],
             "tier": "standard",
-            "output_formats": ["middle_json"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -348,18 +347,23 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     assert _image_body(exported.middle_json).image_path is not None
 
 
-def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) -> None:
-    """验证 parse-server 本地来源把原目录上下文传入 HTML 模型并输出严格结果。"""
+def test_html_parse_server_upload_keeps_embedded_assets(tmp_path: Path) -> None:
+    """验证上传 HTML 的内嵌图片进入 Tasks 自包含包，不依赖客户端目录。"""
     image_path = tmp_path / "pixel.png"
     Image.new("RGB", (2, 2), "green").save(image_path)
     source = tmp_path / "sample.html"
-    source.write_text('<html><body><h1>API HTML</h1><img src="pixel.png" alt="Pixel"></body></html>', encoding="utf-8")
+    source.write_text(
+        '<html><body><h1>API HTML</h1><img src="data:image/png;base64,'
+        + base64.b64encode(image_path.read_bytes()).decode()
+        + '" alt="Pixel"></body></html>',
+        encoding="utf-8",
+    )
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "files": [{"source": stored_source(file_store, source)}],
             "tier": "standard",
-            "output_formats": ["markdown", "middle_json", "structured_content"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -370,20 +374,17 @@ def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) ->
             request,
             file_store,
             image_analysis=True,
-            allow_local_source=True,
         )
     )
 
     parsed_file = record.files[0]
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None and parsed_file.output_files.middle_json is not None
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
-    assert middle_record.sha256sum is not None
-    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    middle_payload = json.loads(middle_data)
     assert middle_payload["metadata"]["file_suffix"] == "html"
     assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
     image_body = middle_payload["pages"][0]["blocks"][1]["content"][0]
-    assert image_body["image_base64"].startswith("data:image/png;base64,")
+    assert image_body["image_path"].startswith("images/")
 
 
 def test_html_remote_image_never_downloaded_and_zip_keeps_external_link(tmp_path: Path) -> None:
@@ -397,28 +398,27 @@ def test_html_remote_image_never_downloaded_and_zip_keeps_external_link(tmp_path
     body = _image_body(result.middle_json)
     assert body.image_url == url and not body.image_path and not body.image_base64
 
-    archive_bytes = api_server._build_self_contained_zip_output(result)
+    archive_bytes = build_default_zip(result)
     with ZipFile(BytesIO(archive_bytes)) as archive:
         names = archive.namelist()
         assert "markdown.md" in names and url in archive.read("markdown.md").decode()
-        assert not [name for name in names if name.startswith("images/")]
+        assert not [name for name in names if name.startswith("images/") and not name.endswith("/")]
 
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "files": [{"source": stored_source(file_store, source)}],
             "tier": "standard",
-            "output_formats": ["markdown", "zip"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
 
-    asyncio.run(api_server._run_job(record, request, file_store, image_analysis=True, allow_local_source=True))
+    asyncio.run(api_server._run_job(record, request, file_store, image_analysis=True))
 
     parsed_file = record.files[0]
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None and parsed_file.output_files.zip is not None
-    zip_record = file_store.get_file(parsed_file.output_files.zip.file_id)
+    zip_record = file_store.get_file(record.task_result_file_id)
     assert zip_record.sha256sum is not None
     with ZipFile(BytesIO(file_store.read_blob(zip_record.sha256sum))) as archive:
         assert url in archive.read("markdown.md").decode()

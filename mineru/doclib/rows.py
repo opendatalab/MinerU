@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# Python 3.10 的 typing 尚未提供 NotRequired，统一使用兼容实现。
+# 保留 typing_extensions 的 TypedDict，兼容 Python 3.11 下的运行时类型校验。
 from typing_extensions import NotRequired, TypedDict
 
 from ..types import Tier

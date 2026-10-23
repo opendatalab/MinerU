@@ -1,0 +1,1166 @@
+{
+  "source_sha256": {
+    "mineru/model/runtime/onnx_rec.py": "f5a39fe197259db8155a5593e657f6b6f528c24a62a4c99cd1a431e0cfb9ee05",
+    "mineru/model/runtime/onnx_calibration.py": "43619463ab179d70ccaf21fa3bf31e689b6c1eef7e423af70f403669b1656ad9",
+    "mineru/model/ocr/pp_ocr_v6_onnx.py": "5c3914cfeb81dd80bb598480308f95aa7136f1d20e9ab32d22430b0727805de1",
+    "scripts/benchmark_onnx_selection.py": "d5e4799a14c3cafd99ad479705cc0afb22c363520d8137669c835552d8b829fd",
+    "pyproject.toml": "5516ee13419dd6858186642cfa615dead866ccd7d6ad57b45a6fd592578ea8dd"
+  },
+  "packages": {
+    "mineru": "4.0.12",
+    "docvortex": "0.5.16",
+    "onnxruntime": "1.31.0",
+    "onnxruntime-ep-webgpu": "0.4.0",
+    "onnx": "1.23.2"
+  },
+  "input_sha256": "06d0e74125b5d2e1fc04e658bbe4af39422d70abfaa453a87353df4d3dad3432",
+  "pages": 19,
+  "tier": "basic",
+  "parse_mode": "ocr",
+  "cpu_threads": [
+    4,
+    1
+  ],
+  "parse_runs_s": {
+    "cpu": [
+      58.01219562500046,
+      58.36799849199815
+    ],
+    "webgpu": [
+      34.72620028100209,
+      35.07572708299995
+    ]
+  },
+  "parse_mean_s": {
+    "cpu": 58.190097058499305,
+    "webgpu": 34.90096368200102
+  },
+  "speedup": 1.6672919862241184,
+  "latency_reduction_percent": 40.02250306110574,
+  "output_equality": {
+    "cpu-1": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    },
+    "webgpu-1": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    },
+    "webgpu-2": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    },
+    "cpu-2": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    },
+    "cpu-observed": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    },
+    "webgpu-observed": {
+      "files": 50,
+      "identical_to_pre_optimization": true,
+      "different": []
+    }
+  },
+  "output_sha256": {
+    "markdown.md": "9142d0839d53eaa7c4729ac98a527f5964d285c62c88d28ca27777ea037a4967",
+    "model_output.json": "fa9931a3e5ded5c8a34be2f1aaf41b663a64cbb1bbc27bdd8004adb1af66a4d4",
+    "structured_content.json": "eb79172580f792a4221559b1404da57b94bf22683f6b7bef71104659b47b89a5",
+    "middle_json.json": "c1fa7b7db802f712fe0a5e610a4e48a0b9f28c00a5b8029e8eaa511fb1cb14ff",
+    "images/page_13_image_11.jpg": "be117bf500682716150d9dd1f1b3b922200130b39c7cbe5ca620f63ee04632dc",
+    "images/page_15_equation_16.jpg": "868742debacf51f77328b76b3c5f8d5fa73a26bef9bad2fe12b14d65611cdcb2",
+    "images/page_16_chart_18.jpg": "d01c202706b4d448134e1e253fd7f6dd4c14daf76b709cdf8da0d5f46507fe9e",
+    "images/page_17_table_8.jpg": "394019c1ef702472f2f238e10a1737a6da7c39d6ffdf496c1020327b4c28b1fd",
+    "images/page_16_image_3.jpg": "cbecc1f8730c93d067205797ee1dbe88260feace7d7ecad485d34ecefe857bbc",
+    "images/page_15_equation_9.jpg": "08d67ef1776675e989f9573029e19d0c19348868eeb1b3786da3a89da4744fc4",
+    "images/page_9_chart_2.jpg": "3c46e7e9e5465ea1cbbf6afaf385320797be53e25b5ba4d15e5c989002539a9c",
+    "images/page_9_chart_4.jpg": "6d805da34431e18db08f93bec3080d7c9ead385e899f68e38f53c2fa6cdb2839",
+    "images/page_16_chart_14.jpg": "d979e20eaf23109d7e54fba34603d4d1caeabb70b6333850e9b43aadeedcfd2e",
+    "images/page_16_table_21.jpg": "51f55e1584a0c7fa6e9f879a3b9f93e961c9443a6d74e8affc47bda38a3b8319",
+    "images/page_15_equation_14.jpg": "2270e1dfc84b58916076cf78cb8f2bc23779cebd03af9a173b2b155b036548a4",
+    "images/page_7_table_8.jpg": "9ed42df9904ddcd5d5af2f667b9e5446056925668dbb6d862102f967da29b3d8",
+    "images/page_15_equation_3.jpg": "11564c2a567e6da0589509a7ef6e585c35492e85c4a9b9fa8fd513b47a9c75d0",
+    "images/page_8_table_3.jpg": "60fe378920ea852fad86de41886800728c5d036efdaade99e1a7289ef2a995d1",
+    "images/page_15_equation_11.jpg": "0a075b375893a207aeb1c7b240ffc9c07acb1afda15c71b477c859235ddcf464",
+    "images/page_3_equation_7.jpg": "9ccb3c83e55162e7c1280e4a3f54c45aa9001ce9a6bc74adb3f6353d1102d573",
+    "images/page_5_table_3.jpg": "3111348c57b8e83bc643895dd73402ce69c89fc96aa1198064b3ca56894479e9",
+    "images/page_3_equation_12.jpg": "d88b0bc8ba9a653c449065c04fe87fd57c5bb2e6234d1b75bc3a4d16ccc820f5",
+    "images/page_16_image_1.jpg": "647acd6d3af08d5940c8ef1bfb39bfd9c4c56cf747fdd539c2ba0d9c4e9e9a62",
+    "images/page_14_equation_14.jpg": "57ef7d35dd9649a0fa5deac616e2ff91ea4587aeaffb1a3e95fca60d1f867054",
+    "images/page_9_chart_3.jpg": "75d98040f6e379bf9a2696c03138a407a49825f68d00e96de3826f661e9c1b90",
+    "images/page_16_chart_23.jpg": "6ac062212e9a6fa347a4b28024b23d93099e5fa5408912186b976ddc7a13ff23",
+    "images/page_4_table_2.jpg": "0dc7186c401c1d905c6d81d46b0ae6445a75268c1d403371ddd31be1f3997203",
+    "images/page_16_image_9.jpg": "182194635b484c5fd1b4c456a9d65d32e23a21f7be03253c2ea349ee9a6c88db",
+    "images/page_6_chart_6.jpg": "feb686096d47cc37495d5b21e1cc51f0f3ca3a64c78ea6ae749e436c555e5779",
+    "images/page_14_equation_9.jpg": "b0c12293bb6d0058b57e2f2c54b1d33b6d3179a1494ed5febbf977ef423a5b9f",
+    "images/page_3_equation_15.jpg": "18a2e8bd83607954b3e1eb8a5dd721b90e541c7b9c198b9ad422798aba275883",
+    "images/page_3_chart_3.jpg": "c4c90e869a40933316ae48c298101209c14cc5c5ac1a9e0eeb9170f24b34db8b",
+    "images/page_16_image_6.jpg": "95d410c578f368239664e599221d283d18ca0e19eb19833d64690cfb43cfb46d",
+    "images/page_3_chart_2.jpg": "8a8b16ea4b86652bb02c00ff10cdace6129adb4dc19d3a36bbbf5750ce061d12",
+    "images/page_4_equation_6.jpg": "88f7be69d49ca8ccf85cfd0f8657297eede1a854f5c09460f5d3cfc4d06d7f89",
+    "images/page_7_chart_2.jpg": "c5c21a815198e7506e84d623df06d7f7e3ae20b211f408d50d975e33b27561d1",
+    "images/page_15_equation_5.jpg": "9daebf881158c3f664f87d7e0496a16fabcd009836b3c9ef51b319e8d8ceeffb",
+    "images/page_16_image_7.jpg": "a8e871bc97ab38db8f5931eec24bb906378e49a554d36e040027029d85b0c3ab",
+    "images/page_16_image_5.jpg": "3c5903ab9284b355a119ec17588de9754bb6202f42f14bee35060c53443f3ed1",
+    "images/page_16_image_2.jpg": "ab6238c6e9844c4ecfde441abb3963f16f5e7a27257b893a441dd179ecc51513",
+    "images/page_1_chart_5.jpg": "d1ee19731defdb300d9580d6d329d958fad630030990f7415c34a3830e54b841",
+    "images/page_17_image_1.jpg": "e4ea650de3b18db3a173d5ff5d740253fbf1db8f96e6cd17dbff22bb18056251",
+    "images/page_16_image_4.jpg": "8a4510bc7d8d1f7442f73604c17cb6ed2615c968d2fa61842041c4f283d15287",
+    "images/page_3_equation_17.jpg": "1baa062a34c09942467bcc14c10674293395a7704858749bf453dd77a9a637c0",
+    "images/page_14_equation_12.jpg": "657d2d96ba69612291f00774b7a0d5eaa279961441ff29472fd83168909ee925",
+    "images/page_5_table_11.jpg": "cc2b17956f522cd92ca1783f04f09cac27e8ba9967be5e303d99d9d2025f172f",
+    "images/page_16_chart_16.jpg": "2279720fe903a7f4361f3526202a9704d6990f2f0fd43b9e4e6689191df9a8f8",
+    "images/page_2_equation_8.jpg": "c972cd1cb152da6e2a640710f3d4d2749e652969523ebdf4fe2df71892909328",
+    "images/page_17_image_2.jpg": "6b032342d4b1984e3d5d51ecc5833a529d2d4061c3deb10af9d17a1ffa7c55e4",
+    "images/page_2_equation_10.jpg": "c4e81fd6d6915ede281f8690f6c4a41a67f34c06254edd0e9599b358ecd50400"
+  },
+  "stages": [
+    {
+      "kind": "layout",
+      "cpu": {
+        "run_s": 4.870401120999304,
+        "calls": 10,
+        "init_s": 0.43910526699983166,
+        "first_call_s": 0.517011445001117,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 2.007709272002103,
+        "calls": 10,
+        "init_s": 0.4077780369989341,
+        "first_call_s": 0.2706489000011061,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "mfr",
+      "cpu": {
+        "run_s": 22.89177096300409,
+        "calls": 19,
+        "init_s": 0.4750565270005609,
+        "first_call_s": 1.0405509030024405,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 12.725902801008488,
+        "calls": 19,
+        "init_s": 0.9487311100019724,
+        "first_call_s": 3.35410297099952,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "ocr_det",
+      "cpu": {
+        "run_s": 1.1751816109826905,
+        "calls": 84,
+        "init_s": 0.027225731002545217,
+        "first_call_s": 0.08009637899886002,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.7148913109886053,
+        "calls": 84,
+        "init_s": 0.06776729800185421,
+        "first_call_s": 0.04853435699624242,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "ocr_rec",
+      "cpu": {
+        "run_s": 18.462896179997188,
+        "calls": 336,
+        "init_s": 0.060626273003435927,
+        "first_call_s": 0.046313678998558316,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 7.276892408011918,
+        "calls": 336,
+        "init_s": 0.060488333998364396,
+        "first_call_s": 0.026489790001505753,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "unet",
+      "cpu": {
+        "run_s": 0.2372134430006554,
+        "calls": 5,
+        "init_s": 0.019886376001522876,
+        "first_call_s": 0.061711741000181064,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.10968197900001542,
+        "calls": 5,
+        "init_s": 0.026280217000021366,
+        "first_call_s": 0.03117835000011837,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "table_cls",
+      "cpu": {
+        "run_s": 0.006203835000633262,
+        "calls": 1,
+        "init_s": null,
+        "first_call_s": 0.006203835000633262,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.006124595001892885,
+        "calls": 1,
+        "init_s": null,
+        "first_call_s": 0.006124595001892885,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "slanet_plus",
+      "cpu": {
+        "run_s": 0.13035511299676728,
+        "calls": 2,
+        "init_s": null,
+        "first_call_s": 0.08862819299974944,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.11231618400051957,
+        "calls": 2,
+        "init_s": null,
+        "first_call_s": 0.07153398700029356,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      }
+    }
+  ],
+  "mfr_batches": [
+    {
+      "route": "cpu",
+      "batch": 8,
+      "calls": 18,
+      "provider": "CPUExecutionProvider",
+      "run_s": 19.992539091002982
+    },
+    {
+      "route": "cpu",
+      "batch": 7,
+      "calls": 1,
+      "provider": "CPUExecutionProvider",
+      "run_s": 2.89923187200111
+    },
+    {
+      "route": "webgpu",
+      "batch": 8,
+      "calls": 18,
+      "provider": "WebGpuExecutionProvider",
+      "run_s": 9.773598293009854
+    },
+    {
+      "route": "webgpu",
+      "batch": 7,
+      "calls": 1,
+      "provider": "CPUExecutionProvider",
+      "run_s": 2.952304507998633
+    }
+  ],
+  "rec_validation": {
+    "source": "/home/myhloli/.mineru/models/MinerU-4_models_onnx/OCR/paddleocr/ch_PP-OCRv6_small_rec_infer.onnx",
+    "compact": "/home/myhloli/.mineru/models/.derived/ocr-rec/ctc-ids-scores-v1-5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634.onnx",
+    "comparisons": [
+      {
+        "device": "cpu",
+        "shape": [
+          1,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 2993600,
+        "compact_bytes": 480
+      },
+      {
+        "device": "cpu",
+        "shape": [
+          6,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 17961600,
+        "compact_bytes": 2880
+      },
+      {
+        "device": "cpu",
+        "shape": [
+          7,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 20955200,
+        "compact_bytes": 3360
+      },
+      {
+        "device": "cpu",
+        "shape": [
+          6,
+          3,
+          48,
+          1012
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 56579040,
+        "compact_bytes": 9072
+      },
+      {
+        "device": "cpu",
+        "shape": [
+          1,
+          3,
+          48,
+          1012
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 9429840,
+        "compact_bytes": 1512
+      },
+      {
+        "device": "webgpu",
+        "shape": [
+          1,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "WebGpuExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 2993600,
+        "compact_bytes": 480
+      },
+      {
+        "device": "webgpu",
+        "shape": [
+          6,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "WebGpuExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 17961600,
+        "compact_bytes": 2880
+      },
+      {
+        "device": "webgpu",
+        "shape": [
+          7,
+          3,
+          48,
+          320
+        ],
+        "providers": [
+          "WebGpuExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 20955200,
+        "compact_bytes": 3360
+      },
+      {
+        "device": "webgpu",
+        "shape": [
+          6,
+          3,
+          48,
+          1012
+        ],
+        "providers": [
+          "WebGpuExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 56579040,
+        "compact_bytes": 9072
+      },
+      {
+        "device": "webgpu",
+        "shape": [
+          1,
+          3,
+          48,
+          1012
+        ],
+        "providers": [
+          "WebGpuExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "ids_equal": true,
+        "scores_equal": true,
+        "scores_max_abs": 0.0,
+        "dense_bytes": 9429840,
+        "compact_bytes": 1512
+      }
+    ],
+    "profile": {
+      "path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/compact-rec-production-20261021/compact-rec-profile_2026-10-21_18-49-38_826.json",
+      "reductions": [
+        {
+          "node": "mineru_rec_scores_kernel_time",
+          "op": "ReduceMax",
+          "provider": "WebGpuExecutionProvider"
+        },
+        {
+          "node": "mineru_rec_ids_kernel_time",
+          "op": "ArgMax",
+          "provider": "WebGpuExecutionProvider"
+        }
+      ],
+      "providers": {
+        "WebGpuExecutionProvider": 206,
+        "CPUExecutionProvider": 3
+      },
+      "cpu_nodes": [
+        "Gather_kernel_time",
+        "Slice.2_kernel_time",
+        "Concat.2_kernel_time"
+      ]
+    }
+  },
+  "preparation": {
+    "cold_s": 0.29513571099960245,
+    "warm_s": 0.03516311000203132,
+    "model": {
+      "path": "/home/myhloli/.mineru/models/.derived/ocr-rec/ctc-ids-scores-v1-5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634.onnx",
+      "num_classes": 18710,
+      "source_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+      "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4"
+    }
+  },
+  "calibration": {
+    "label": "8060s-compact-rec",
+    "backend": "webgpu",
+    "expected": "gpu",
+    "environment": {
+      "host": "myhloli-ubuntu-ssd",
+      "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+      "cpu": ""
+    },
+    "adapter": {
+      "vendor_id": 4098,
+      "device_id": 5510,
+      "metadata": [
+        [
+          "card_idx",
+          "1"
+        ],
+        [
+          "pci_bus_id",
+          "0000:c3:00.0"
+        ]
+      ]
+    },
+    "threshold": null,
+    "runs": [
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 4098,
+          "device_id": 5510,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:c3:00.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.031883453997579636,
+          "first_s": 0.0750287369992293,
+          "timed_s": [
+            0.06333165099931648,
+            0.06591120399752981
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.1292428549968463,
+        "gpu": {
+          "init_s": 0.06016382600137149,
+          "first_s": 0.055584640002052765,
+          "timed_s": [
+            0.02562274299998535,
+            0.02406474899908062
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.04968749199906597,
+        "ratio": 0.38445059110059443,
+        "outputs_match": true,
+        "worker_wall_s": 0.7388802360001137
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 4098,
+          "device_id": 5510,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:c3:00.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": true,
+        "gpu": {
+          "init_s": 0.06043093699918245,
+          "first_s": 0.044275343003391754,
+          "timed_s": [
+            0.02494789699994726,
+            0.024185956997825997
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.04913385399777326,
+        "cpu": {
+          "init_s": 0.027198871997825336,
+          "first_s": 0.08122084899878246,
+          "timed_s": [
+            0.06365568000182975,
+            0.06321708600080456
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.1268727660026343,
+        "ratio": 0.38726872240456295,
+        "outputs_match": true,
+        "worker_wall_s": 0.7655493839993142
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 4098,
+          "device_id": 5510,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:c3:00.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.03344544599895016,
+          "first_s": 0.08504245199947036,
+          "timed_s": [
+            0.06492397100009839,
+            0.06502255500163301
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.1299465260017314,
+        "gpu": {
+          "init_s": 0.06098806299996795,
+          "first_s": 0.056735982001555385,
+          "timed_s": [
+            0.028000246002193308,
+            0.024180025000532623
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.05218027100272593,
+        "ratio": 0.40155187374559503,
+        "outputs_match": true,
+        "worker_wall_s": 0.7758937399994466
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 4098,
+          "device_id": 5510,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:c3:00.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": true,
+        "gpu": {
+          "init_s": 0.06369562499821768,
+          "first_s": 0.04779300600057468,
+          "timed_s": [
+            0.043066253998404136,
+            0.03259326700208476
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.0756595210004889,
+        "cpu": {
+          "init_s": 0.030113531996903475,
+          "first_s": 0.07573088400022243,
+          "timed_s": [
+            0.06892265499845962,
+            0.06573464199755108
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.1346572969960107,
+        "ratio": 0.5618672191432028,
+        "outputs_match": true,
+        "worker_wall_s": 0.7759551549970638
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 4098,
+          "device_id": 5510,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:c3:00.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.031958233998011565,
+          "first_s": 0.07483805900119478,
+          "timed_s": [
+            0.06482541600053082,
+            0.06541317799928947
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.1302385939998203,
+        "gpu": {
+          "init_s": 0.05753888899926096,
+          "first_s": 0.06137950799893588,
+          "timed_s": [
+            0.02701583800080698,
+            0.025222251999366563
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.05223809000017354,
+        "ratio": 0.4010953158803728,
+        "outputs_match": true,
+        "worker_wall_s": 0.7534385609978926
+      }
+    ],
+    "errors": []
+  },
+  "previous_parse_mean_s": {
+    "cpu": 56.730917255999884,
+    "webgpu": 36.16387028100144
+  },
+  "previous_stages": [
+    {
+      "kind": "layout",
+      "cpu": {
+        "run_s": 4.70213598799819,
+        "init_s": 0.42865849000008893,
+        "first_call_s_per_session_sum": 0.49580722500104457,
+        "run_count": 10,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 1.9731370310000784,
+        "init_s": 0.4100277699981234,
+        "first_call_s_per_session_sum": 0.2580047369992826,
+        "run_count": 10,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 2.383076245654833
+    },
+    {
+      "kind": "mfr",
+      "cpu": {
+        "run_s": 21.53509693700107,
+        "init_s": 0.469981201000337,
+        "first_call_s_per_session_sum": 0.967377127999498,
+        "run_count": 19,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 12.283002249994752,
+        "init_s": 0.9152905230002943,
+        "first_call_s_per_session_sum": 3.2817498360018362,
+        "run_count": 19,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.7532437508924394
+    },
+    {
+      "kind": "ocr_det",
+      "cpu": {
+        "run_s": 1.1539976229687454,
+        "init_s": 0.027887805001228116,
+        "first_call_s_per_session_sum": 0.0785359299989068,
+        "run_count": 84,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.70471396299763,
+        "init_s": 0.0710007849993417,
+        "first_call_s_per_session_sum": 0.04831984499833197,
+        "run_count": 84,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.637540454087223
+    },
+    {
+      "kind": "ocr_rec",
+      "cpu": {
+        "run_s": 17.393700485023146,
+        "init_s": 0.061026143997878535,
+        "first_call_s_per_session_sum": 0.039372651001031045,
+        "run_count": 336,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 8.936705280044407,
+        "init_s": 0.06538126900341013,
+        "first_call_s_per_session_sum": 0.0348890860004758,
+        "run_count": 336,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.94632137235891
+    },
+    {
+      "kind": "unet",
+      "cpu": {
+        "run_s": 0.22482453900011024,
+        "init_s": 0.01874217799922917,
+        "first_call_s_per_session_sum": 0.0455595639978128,
+        "run_count": 5,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.11035850899497746,
+        "init_s": 0.025348870000016177,
+        "first_call_s_per_session_sum": 0.03055164399847854,
+        "run_count": 5,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 2.0372197943553427
+    }
+  ],
+  "timing_notes": "Parse: two fresh processes/device, profiler off, includes init/first inference, excludes imports/save. Stages: separate sys.setprofile observations of ORT run; include first runs, exclude pre/postprocess. No extra parse warmup. Derived cache prepared before timing.",
+  "raw_directory": "demo/output/compact-rec-production-20261021",
+  "checks": {
+    "tests_passed": 401,
+    "ruff": "passed",
+    "uv_pip_check": "passed"
+  }
+}

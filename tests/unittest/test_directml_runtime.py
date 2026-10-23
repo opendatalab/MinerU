@@ -18,7 +18,12 @@ from mineru.model.runtime.windows_gpu import GpuAdapter
 
 @pytest.mark.parametrize(
     ("vendor", "enabled"),
-    [(0x8086, [False, True, False]), (0x1002, [True, True, True]), (0x10DE, [True, True, False]), (0xFFFF, [None, None, None])],
+    [
+        (0x8086, [False, True, False, False]),
+        (0x1002, [True, True, True, True]),
+        (0x10DE, [True, True, False, False]),
+        (0xFFFF, [None, None, None, None]),
+    ],
 )
 def test_vendor_presets_and_actual_index(monkeypatch: pytest.MonkeyPatch, vendor: int, enabled: list[bool | None]) -> None:
     adapter = GpuAdapter(7, "luid", "gpu", vendor, 1, True, 0)
@@ -26,7 +31,7 @@ def test_vendor_presets_and_actual_index(monkeypatch: pytest.MonkeyPatch, vendor
     native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())
     factory = Mock(return_value=native)
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
-    for kind, preset in zip(("layout", "mfr", "ocr_rec"), enabled):
+    for kind, preset in zip(("layout", "mfr", "ocr_rec", "unet"), enabled):
         session = onnx.create_ort_session("test.onnx", adapter=adapter, model_kind=kind)
         assert isinstance(session, onnx.DirectMLSession)
         kwargs = factory.call_args.kwargs
@@ -35,10 +40,11 @@ def test_vendor_presets_and_actual_index(monkeypatch: pytest.MonkeyPatch, vendor
         assert options.get("disable_metacommands") == (None if preset is None else "false" if preset else "true")
         assert not kwargs["sess_options"].enable_mem_pattern
         assert kwargs["sess_options"].execution_mode == onnx.ort.ExecutionMode.ORT_SEQUENTIAL
-    assert native.disable_fallback.call_count == 3
+    assert native.disable_fallback.call_count == 4
 
 
 def test_cpu_models_do_not_select_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(onnx, "sys", SimpleNamespace(platform="win32"))
     select = Mock(side_effect=AssertionError("selection"))
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
     monkeypatch.setattr(onnx, "resolve_onnx_device", select)
@@ -50,7 +56,8 @@ def test_cpu_models_do_not_select_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize("failure", ["unavailable", "exception", "silent"])
-def test_production_fallback_does_not_save_gpu(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+@pytest.mark.parametrize("kind", ["layout", "unet"])
+def test_production_fallback_does_not_save_gpu(monkeypatch: pytest.MonkeyPatch, failure: str, kind: str) -> None:
     adapter = GpuAdapter(1, "id", "gpu", 0x8086, 1, False, 0)
     cpu = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
     monkeypatch.setattr(
@@ -60,9 +67,25 @@ def test_production_fallback_does_not_save_gpu(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     save = Mock()
     monkeypatch.setattr(onnx, "confirm_gpu_session", save)
-    assert onnx.ort_session("test.onnx", model_kind="layout", selection=OnnxSelection("gpu", adapter, "discrete_gpu")) is cpu
+    opts = onnx.ort.SessionOptions()
+    opts.intra_op_num_threads = 2
+    opts.inter_op_num_threads = 1
+    opts.enable_cpu_mem_arena = False
+    opts.enable_profiling = True
+    opts.profile_file_prefix = "unet-profile"
+    assert (
+        onnx.ort_session(
+            "test.onnx", model_kind=kind, selection=OnnxSelection("gpu", adapter, "discrete_gpu", "dml"), sess_options=opts
+        )
+        is cpu
+    )
     save.assert_not_called()
     assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
+    for call in factory.call_args_list:
+        assert call.kwargs["sess_options"] is opts
+        assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == (2, 1)
+        assert not opts.enable_cpu_mem_arena
+        assert opts.enable_profiling and opts.profile_file_prefix == "unet-profile"
 
 
 def test_calibration_factory_fails_instead_of_falling_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,12 +138,15 @@ def test_mfr_only_actual_batch_eight_uses_gpu(monkeypatch: pytest.MonkeyPatch, c
 
     model.session = SimpleNamespace(run=lambda names, feeds: run(gpu_calls, feeds))
     factory = Mock(return_value=SimpleNamespace(run=lambda names, feeds: run(cpu_calls, feeds)))
-    monkeypatch.setattr(mfr, "ort_session", factory)
+    monkeypatch.setattr(mfr, "create_ort_session", factory)
     monkeypatch.setattr(model, "_preprocess", lambda crop: np.full((1, 1, 2, 2), crop[0, 0, 0]) if crop.size else None)
     monkeypatch.setattr(model, "_decode_tokens", lambda tokens: str(tokens[0]))
     crops = [np.full((value, value, 3), value, dtype=np.uint8) for value in range(count, 0, -1)]
+    crops.insert(1, np.empty((0, 0, 3), dtype=np.uint8))
+    expected = [str(value) for value in range(count, 0, -1)]
+    expected.insert(1, "")
     for _ in range(2):
-        assert model._infer_batch(crops, batch_size=batch) == [str(value) for value in range(count, 0, -1)]
+        assert model._infer_batch(crops, batch_size=batch) == expected
     assert all(size == 8 for size in gpu_calls)
     assert all(0 < size < 8 for size in cpu_calls)
     assert sum(gpu_calls + cpu_calls) == count * 2

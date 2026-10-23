@@ -21,7 +21,8 @@ from ...doclib.types import (
     TelemetryObservationsRequest,
 )
 from ...errors import MineruError, error_response
-from ...parser.page_range import normalize_page_range_input
+from ...filetypes import is_page_range_parse_extension
+from ...parser.page_range import format_page_range, normalize_page_range_input, parse_page_range_set
 from ...types import Tier
 from ...utils.i18n import t
 from ..contracts import CliContext, CliResult
@@ -236,6 +237,11 @@ def _parse(
         if st == "done":
             _record_parse_wait(client, wait_parse_ids, "succeeded", wait_started_at)
             done_result = result.model_copy(update={"status": "done"})
+            if not is_page_range_parse_extension(file_path):
+                # 非 PDF 的初始页数只是估计，完成后以整本任务的实际逻辑页范围为准。
+                done_result.page_range = format_page_range(
+                    page_no for row in parse_rows for page_no in parse_page_range_set(row.page_range)
+                )
             return _prepare_parse_result(
                 client,
                 done_result,
@@ -313,7 +319,8 @@ def _prepare_parse_result(
     """Fetch and prepare parsed content for CLI output."""
     sha256 = parse_result.sha256
     tier = parse_result.tier
-    page_range = parse_result.page_range
+    # 非 PDF 始终读取整本，避免把调度时的预估页数当成输出过滤条件。
+    page_range = parse_result.page_range if source_path is None or is_page_range_parse_extension(source_path) else None
     output_path = _ensure_output_parent(output)
     if output_path and output_path != "-":
         exported = client.export_doc_content(

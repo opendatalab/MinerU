@@ -1,111 +1,241 @@
-# V1 便捷解析接口
+# V1 Tasks：JSON 清单、逐文件上传与下载
 
-状态: Implemented
-读者: 自部署 API 与 Router 使用者、服务端开发者
-范围: 一次提交、异步结果、同步包装和源文件复用
+`/v1/tasks` 是本地 API Server、Router 和 SaaS 的共同异步客户端契约。
+客户端用 JSON 创建任务，按返回链接上传缺失文件，再轮询 `status_url`。
+每个文件就绪后立即执行，完成后在 `files[].result_url` 返回独立下载链接。
+客户端不拼接存储路径，也不要求 SaaS 实现本地 Files API。
 
-`mineru-kit api-server` 和 `mineru-kit router` 提供相同的 `/v1/tasks`、`/v1/file_parse` 接口。
-它们与 `/v1/parse/jobs` 共用任务：`task_id` 就是当前部署的 `job_id`，可以在两套查询接口之间交叉使用。
-官方云服务是否支持这些便捷路由，应以该部署的接口文档为准。
-
-## 路由
+## 路由与请求
 
 | 方法与路径 | 行为 |
 |---|---|
-| `POST /v1/tasks` | 提交后返回 `202`、任务状态及查询地址。 |
-| `GET /v1/tasks/{task_id}` | 查询状态、进度和逐文件结果引用。 |
-| `GET /v1/tasks/{task_id}/result` | 直接返回 JSON 结果，或通过 `response_format=zip` 获取 ZIP。 |
-| `DELETE /v1/tasks/{task_id}` | 取消原有后台任务。 |
-| `POST /v1/file_parse` | 提交相同的异步任务，等待并直接返回结果。 |
+| `POST /v1/tasks` | 仅接受 `application/json`，返回 `202` 和稳定 `task_id`。 |
+| 返回的 `upload_method` 与 `upload_url` | 每个链接上传一个文件；本地使用 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}`。 |
+| `GET /v1/tasks/{task_id}` | 返回 `200`，包含总状态、逐文件状态、尚有效的上传链接和已完成文件的下载链接。 |
+| `DELETE /v1/tasks/{task_id}` | 取消未完成文件，保留已经完成文件的下载链接。 |
 
-服务需要鉴权时，所有请求都携带 `Authorization: Bearer <key>`。上传解析参数只来自查询串；JSON 请求则通过主体传递解析参数。
-不提供根路径 `/tasks`、`/file_parse`，也不接受旧 `backend`、`parse_method` 或旧输出协议。
+创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
+业务参数必须放在 JSON 主体中，POST 查询参数、未知字段、非法值返回 `400 invalid_request`。
+上传文件的 PUT 仍发送原始字节，使用返回的 `upload_headers`；签名 URL 必须原样使用。
+Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 
-## 一次请求获取结果
+| JSON 字段 | 默认值 | 说明 |
+|---|---|---|
+| `files` | 必填 | 1–100 个文件组成的 JSON 数组，不接受 JSON 字符串。 |
+| `tier` | 服务默认值 | `flash/basic/standard/advanced`，受部署能力约束。 |
+| `ocr_mode` | `auto` | `auto/txt/ocr`。 |
+| `page_range` | 整本 | 全局 PDF 页范围，支持 `1-5`、`r1`、`all` 等现有语法。 |
+| `output_formats` | `["default"]` | 非空列表，值为 `default/docx/html/latex` 中一个或多个；重复值按首次出现去重。 |
+
+`include_model_output` 默认为 `false`。为 `true` 时必须包含 `default` 输出格式，存在原始模型输出时在结果 ZIP 中增加 `model_output.json`；其他格式组合不满足条件时返回 400。创建和查询响应都携带该选项。
+
+每个清单条目包含：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `client_file_id` | 否 | 任务内唯一，1–64 个字母、数字、下划线或短横线；省略或 `null` 时由服务端补全。 |
+| `file_name` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
+| `url` | 否 | HTTP(S) 文件下载地址，受部署来源策略约束；省略或 `null` 表示客户端上传。 |
+| `bytes` | 条件 | 上传项必填；URL 项可省略或为 `null`。提供时必须是严格正整数。 |
+| `sha256sum` | 否 | 64 位小写十六进制 SHA-256；用于完整性校验，上传项还用于源文件缓存预检。 |
+| `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
+
+服务端先预留全部显式 `client_file_id`，再按缺省项的输入顺序，从 `f1` 开始分配最小未占用的 `fN`。例如显式占用了 `f2`，两项缺省 ID 分别生成 `f1`、`f3`。空字符串、非法 ID 和重复显式 ID 返回 400。
+创建响应的 `files` 顺序与输入一致，`files[]` 和 `uploads[]` 始终返回非空 ID；生成后上传、查询及 Router 转发均保持不变。
+
+先从真实文件生成 JSON 请求（本例省略 ID，由服务端补全）：
 
 ```bash
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&ocr_mode=txt' \
-  -F 'files=@document.pdf' -o result.json
+python3 - a.pdf b.pdf > task.json <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
 
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&response_format=zip' \
-  -F 'files=@document.pdf' -o result.zip
+files = []
+for value in sys.argv[1:]:
+    path = Path(value)
+    hasher = hashlib.sha256()
+    with path.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            hasher.update(chunk)
+    files.append({
+        'file_name': path.name,
+        'bytes': path.stat().st_size,
+        'sha256sum': hasher.hexdigest(),
+    })
+print(json.dumps({'files': files, 'tier': 'flash', 'ocr_mode': 'txt',
+                  'output_formats': ['default', 'latex']}, ensure_ascii=False))
+PY
+
+curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
+  -H "Authorization: Bearer $MINERU_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @task.json
 ```
 
-多个重复的 `files` 字段表示一个批量任务，整批交给一个 worker。上传方式的查询参数如下：
+未配置 API Key 的本地服务可省略 Authorization，四种输出格式均可用；启用服务认证后四种格式均需认证，没有额外的格式权限限制。
 
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `tier` | 服务默认值 | `flash/basic/standard/advanced`，仍受服务能力约束。 |
-| `ocr_mode` | `auto` | `auto/txt/ocr`。 |
-| `page_range` | 整本 | PDF 页范围，批量文件共用；非 PDF 保持整本解析约束。 |
-| `output_formats` | `markdown` | 重复参数选择 `markdown/middle_json/structured_content/zip`。 |
-| `response_format` | `json` | 同步及结果接口支持 `json/zip`。 |
-| `wait_timeout` | `300` | 同步等待秒数，范围 `1–3600`，包含排队及解析。 |
+## URL、缓存与独立上传
 
-每文件最多 200 MiB，每任务最多 100 文件。需要逐文件页范围或不同来源时，使用与 [Parse Jobs](parse-jobs.md) 相同的 JSON：
+URL 输入同样先创建 JSON 任务：
 
 ```json
 {
-  "files": [{"source": {"type": "file_id", "file_id": "file-..."}, "page_range": "1-2"}],
-  "tier": "flash",
-  "ocr_mode": "txt",
-  "output_formats": ["markdown", "middle_json", "zip"]
+  "files": [
+    {"client_file_id": "remote", "file_name": "document.pdf", "url": "https://example.com/download?signature=example"},
+    {"client_file_id": "local", "file_name": "other.pdf", "bytes": 12345}
+  ],
+  "output_formats": ["html"]
 }
 ```
 
-JSON 结果保留 `files[].status/error/output_files`，并在 `files[].content` 内联请求的文本和 JSON 产物。
-Middle JSON 保留 `schema: "docvortex.middle"` 和版本身份；Structured Content 保留当前消费结构，不转换成旧 Content List。
+- URL 项的 `upload_status` 为 `not_required`，不生成上传链接、不接受 PUT；源 `file_id` 为 `null`。创建后即进入执行队列，不等待其他上传。
+- URL 保留原始签名地址，使用逻辑 `file_name` 识别类型；不要求 HEAD 或 `Content-Length`。下载后返回实际 `bytes` 和 `sha256sum`，提供的大小/hash 必须匹配。URL 每次下载，不用 hash 缓存跳过下载。
+- 上传项 hash 命中时为 `ready`，不返回上传链接，立即排队；未命中或无 hash 时返回该文件的链接。上传后仍计算 hash、校验大小并对源字节去重。
+- 缓存只复用源文件，不复用不匹配的解析结果；每个文件使用本次解析参数独立执行。
+- 每个上传项校验完成即排队，不需要客户端发送完成确认。等待上传不占解析并发，也不预占 worker。
 
-`completed/partial` 返回 `200`；`failed/canceled` 返回 `409`。部分成功保留成功文件和失败项，不把整个任务误报为成功。
-批量 ZIP 使用 `0001/`、`0002/` 等目录，并附带逐文件状态的 `manifest.json`。
+### 一小时上传窗口
 
-## 异步任务与同步超时
+所有上传链接的 `expires_at` 固定为创建时起 3600 秒，采用 Unix 秒。查询不会延长或换发链接。
+到期后新 PUT 返回 `410 upload_expired`，包括对已经确认文件的重复 PUT。
 
-```bash
-curl -sS 'http://127.0.0.1:8000/v1/tasks?tier=flash&output_formats=markdown&output_formats=zip' \
-  -F 'files=@document.pdf'
+截止前已受理的上传可以继续传完并校验，该文件仍处于 `waiting_upload`，不会被过期扫描中止。
+尚未受理上传的文件到期后变为 `status=failed`、`upload_status=expired`，逐文件错误码为 `upload_expired`。
+在途上传中断且已经过期时，同样进入失败终态；补交须创建新任务。
+上传截止时间不限制已上传文件的排队、解析或导出时间。
 
-# 使用响应中提供的实际 task_id / result_url。
-curl -sS 'http://127.0.0.1:8000/v1/tasks/job_.../result'
-curl -sS 'http://127.0.0.1:8000/v1/tasks/job_.../result?response_format=zip' -o result.zip
-```
+有效期内，一个文件中断或校验失败可以从头重传，其他文件的状态不受影响。
+重复 PUT 已确认文件不读取或覆盖源字节，并发请求也只提交一次解析。
+上传响应丢失时先查询：已经 `ready` 则跳过；仍待上传且链接有效时再重试。
+不支持单文件分块断点续传。
 
-未到终态的结果查询返回 `202`。异步 ZIP 下载要求提交时请求 `zip`，否则返回 `400 unsupported_output_format`；同步 ZIP 会自动请求该产物。
+## 总状态与逐文件状态
 
-同步等待预算耗尽时返回 `202`，包含 `task_id/status_url/result_url`。任务继续运行；HTTP 断连也不取消已经提交的任务。
-客户端应使用有界查询继续获取结果，不要重新提交同一请求，否则会创建另一份任务。
+状态响应只有元数据，不内联 Markdown、JSON 或结果文件字节。
+`files` 按原清单顺序返回，使用 `client_file_id` 对应输入，不依赖文件名唯一性。
 
-## 哈希与上传复用
+| 字段 | 说明 |
+|---|---|
+| `task_id`、`status`、`status_url` | 稳定父任务标识、聚合状态、查询地址。 |
+| `files[].upload_status` | `pending/ready/not_required/expired`。 |
+| `files[].status` | `waiting_upload/queued/running/completed/failed/canceled`，包含导出过程。 |
+| `files[].result_url` | 该文件产物完整保存前为 `null`；`completed` 时为唯一下载链接。 |
+| `files[].error` | 该文件的上传过期、下载、解析或导出错误。 |
+| `uploads` | 仍有效的待上传项：`client_file_id/upload_url/upload_method/upload_headers/expires_at`。 |
+| `progress` | 文件计数：`completed/failed/total`，`total` 固定为清单长度；取消不计为解析失败。 |
+| `error` | 父任务级错误；逐文件错误应读取 `files[].error`。 |
 
-新文件可直接 multipart 上传。该方式能复用存储，但文件字节仍经过网络。
-重复解析可以直接提交已有 `file_id`，或使用 [Uploads](uploads-files.md) 的 SHA-256 预检。
+Task 顶层没有 `result_url`；`files[]` 不暴露底层 `output_files`。
+已完成文件可以在父任务仍为 `running/queued/waiting_upload` 时下载。
 
-原始字节入口允许在主体之前提交哈希；下面的客户端示例自动计算 SHA-256、编码文件名并支持同步/异步调用：
+总状态优先级如下：
+
+| 条件 | `status` |
+|---|---|
+| 存在运行中的文件，包括导出阶段 | `running` |
+| 没有运行文件，存在排队文件 | `queued` |
+| 剩余未完成文件全部等待上传 | `waiting_upload` |
+| 所有文件成功 | `completed` |
+| 所有文件终结，成功与失败并存 | `partial` |
+| 所有文件终结，无成功文件 | `failed` |
+| 用户取消任务 | `canceled` |
+
+因此，第一个文件解析完成而第二个文件尚未上传时，总状态可以由 `running` 回到 `waiting_upload`，第一个文件的下载链接仍然有效。
+取消只停止未完成的文件，已经成功或失败的文件保持原状态；重复取消终态任务返回 `409`。
+
+## 输出格式与下载
+
+一个输入文件对应一个下载链接，与该 Task 有多少输入文件无关。
+
+| `output_formats` | 下载内容 |
+|---|---|
+| `["default"]` | ZIP：`markdown.md`、`middle_json.json`、`structured_content.json`、`images/`。 |
+| `["docx"]` | 图片内嵌的单个 `.docx`。 |
+| `["html"]` | 图片内嵌的单个 `.html`。 |
+| `["latex"]` | ZIP：`document.tex`、`images/`。 |
+| 多个不同值 | 一个 ZIP，平铺对应文件，不嵌套 ZIP。 |
+
+多格式 ZIP 内 DOCX 和 HTML 分别为 `document.docx`、`document.html`。
+`default` 和 LaTeX 共用同一套物化图片及 `images/` 引用；无图片时目录可为空。
+DOCX 和 HTML 即使放入多格式 ZIP，也保持图片内嵌。
+`default` 不自动包含 `model_output.json`；不生成跨输入文件的总 ZIP 或批次 `manifest.json`。
+
+每个输入只解析一次，基于同一结果生成所选格式。全部所选格式完成并保存后才发布该文件的 `completed` 和链接。
+任一格式失败，该文件为 `failed/result_packaging_failed` 且链接为空，不提供不完整产物；其他文件继续执行。
+导出复用已物化素材，不重新打开源文件或修改原语义树。图片缺失时报错，不交付引用失效的 HTML 单文件。
+HTML 的“单文件”保证图片内嵌，公式脚本仍沿用现有 renderer 的行为。
+
+- SaaS 返回对象存储签名地址，结果字节不经过网关。
+- 本地返回 `/v1/files/{file_id}/content` 的完整地址，流式输出已保存产物。
+- Router 映射自身 Files 地址并流式代理 worker，不暴露内部 worker 地址。
+
+轮询及重复下载不重新渲染或打包。下载签名过期时，可在结果保留期内再次查询任务取得有效地址；这与不可续期的上传链接不同。
+已经完成的结果不会因为其他文件仍在等待而提前回收，保留期从父 Task 清理完成后开始。
+认证只附加到 API 同源请求；对象存储及跨源重定向不得携带 MinerU API Key。
+
+## 客户端示例
+
+`scripts/http_task_example.sh` 调用同目录 Python 脚本，仅需要 Python 3.10+ 标准库。
+创建请求不会自动重试；文件传输有界重试，先查询状态再处理响应丢失。
+下载使用临时文件、验证对应格式后原子保存，成功文件保存在 `RESULT_DIR/<client_file_id>/<输入文件主名>.<扩展名>`。
 
 ```bash
 MINERU_API_URL=http://127.0.0.1:8000 \
-  bash scripts/http_task_example.sh document.pdf
+  bash scripts/http_task_example.sh a.pdf b.pdf
 
-MINERU_API_URL=http://127.0.0.1:8002 MODE=async RESPONSE_FORMAT=zip \
-  bash scripts/http_task_example.sh document.pdf
+OUTPUT_FORMATS=default,latex,docx RESULT_DIR=results \
+MINERU_API_URL=http://127.0.0.1:8000 \
+  bash scripts/http_task_example.sh a.pdf b.pdf
+
+# 使用首次提交的文件列表和顺序恢复，不重新创建任务。
+TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
+  bash scripts/http_task_example.sh a.pdf b.pdf
 ```
 
-该方式使用 `Content-Type: application/octet-stream`、查询参数 `filename/sha256sum` 和必须的 `Content-Length`。
-服务命中真实缓存字节时不读取主体；未命中时接收字节并核对实际大小和哈希。
-客户端配合 `Expect: 100-continue`，且服务响应在客户端等待预算内到达时，可以完全跳过文件传输。
-同步解析可能超过客户端的 Expect 等待预算；反向代理也可能自行确认并缓存上传，因此不能对所有部署保证零传输。
+| 配置 | 默认值 | 说明 |
+|---|---|---|
+| `MINERU_API_URL` | 必填 | API 或 Router 基地址。 |
+| `MINERU_API_KEY` | 空 | 服务认证。 |
+| `SEND_HASH` | `1` | `0` 时不计算或提交 hash。 |
+| `TASK_ID` | 空 | 恢复已有任务，跳过 ready 文件。 |
+| `MINERU_TIER`、`OCR_MODE`、`PAGE_RANGE` | 服务默认 / `auto` / 整本 | 解析参数。 |
+| `INCLUDE_MODEL_OUTPUT` | `0` | `1` 时附加可用模型输出，必须包含 default 格式。 |
+| `OUTPUT_FORMATS` | `default` | 逗号分隔，转为 JSON 数组。 |
+| `RESULT_DIR` | `results` | 逐文件结果目录。 |
+| `MAX_POLLS`、`POLL_INTERVAL` | `300`、`1` | 查询预算和间隔秒数。 |
+| `CONNECT_TIMEOUT`、`REQUEST_TIMEOUT` | `10`、`600` | 连接与单次传输超时秒数。 |
+| `MINERU_PYTHON` | `python3` | Python 可执行文件。 |
 
-Router 仅复用当前调用方仍持有的私有源字节；仅 worker 已知该哈希不构成 Router 命中。
-Router 的 V1 上传与便捷上传共享缓存；哈希命中后仍按任务负载选择 worker，必要时在 worker 间传输缓存字节。
-源文件保持禁止公开下载，`file_id`、任务和上传索引仍是进程内状态，服务重启不提供恢复承诺。
+退出码为 `0`（全部成功）、`2`（部分成功）、`1`（失败或取消）、`124`（轮询预算耗尽）。已下载的成功结果保留。
+轮询超时不取消服务端任务。`UPLOAD_MODE` 与 `RESULT_FILE` 已删除。
 
-## Router 调度
+## 部署、Router 与迁移
 
-上传不再按凭证和 IP 固定分配。Router 先过滤健康和能力，再比较未完成任务及提交预占的负载；同负载轮询。
-任务按 `(active_jobs / max_concurrent_jobs, active_jobs)` 比较，源文件归属仅在最低负载候选中享有优先权。
-上传与任务的轮询游标独立，能力和状态查询不推进游标。
+本地不设固定客户端上传大小或 PDF 页数上限；`usage.limits.max_file_size_bytes/max_pages_per_file` 为 `null`。
+URL 下载沿用服务的来源策略：默认 HTTPS；HTTP 需启用 `--allow-http-source`，下载超时默认 60 秒、大小默认 200 MiB。
+任务记录和上传索引仍为进程内状态，重启不保证恢复。
 
-计数在复制或创建上游任务之前预占；失败、取消、终态和后台回收通过同一机制释放一次。
-一个批量任务仍交给一个 worker。需要多个 worker 同时处理时，提交多个独立任务。
-托管 worker 的容量来自 `--worker-concurrency`；外置 worker 当前按容量 1 计权，只统计通过本 Router 提交的任务。
-现有命令默认获得新策略，不增加调度开关、动态服务发现或多副本共享资源索引。
+Router 按就绪文件独立选择 worker 并预占负载，同一父 Task 可使用多个 worker。
+URL 交给 worker 下载，客户端上传字节按 worker 的缓存预检结果传输。
+健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`，`task_model_output` 声明模型输出能力。
+不声明新 Tasks 能力的旧 worker 不参与 Tasks 调度，更新时应先更新 worker，再更新 Router 和客户端。
+Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。已完成任务按 worker 并行续租，每轮网络等待最多 10 秒，避免失联 worker 阻塞其他 worker 的结果保留。
+
+创建请求仅接受 `files` 和 `file_name`，不兼容 `manifest`、`filename`；新旧字段混传同样返回 400。Tasks 响应及 Files 列表、详情统一使用 `file_name`。
+这是同一 `/v1` 下的破坏性变更：先停收请求并排空在途任务，再协调更新 worker、Router、SDK、file_parse 包装服务及其他客户端；SaaS 由部署方同步对齐。
+
+本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
+客户端应改用 JSON、`files[].result_url` 及逐文件保存方式。
+API Server 和 Router 不提供 `/v1/file_parse`、`/v1/tasks/{task_id}/result`。
+需要同步单文件调用时，独立启动 [file_parse 包装服务](file-parse.md)，由它调用本页的共同 Tasks 契约。
+SaaS Go 服务和对象存储配置由部署方按此共同契约实现，不属于本地 Python 服务代码。
+
+## 父任务列表与缓存
+
+`GET /v1/tasks` 返回当前调用方的父任务摘要。支持 `status`（逗号分隔）、`limit`（默认 20，上限 100）、`after`（上一页 last_id）、`order`（默认 desc）、`created_after`。`created_after` 必须是带时区的 ISO-8601 时间，按实际时间过滤（包含边界），支持 UTC、时区偏移和小数秒；非法值返回 400。按 created_at 和 task_id 稳定排序；游标不存在、过期或属于其他调用方时返回 404。
+
+响应为 `object=list/data/first_id/last_id/has_more`；每项包含 `task_id/status/created_at/file_count`，不展示内部子执行。
+
+SDK 即使连接同机也计算 hash 并提交清单。缓存有效且已完成上传的同 hash 后续免传；并发首次上传允许重复传输但源字节去重。默认缓存保留 24 小时、每 5 分钟扫描，沿用 retention 配置；活动任务与传输引用保护字节。缓存过期或服务重启后允许重新上传。

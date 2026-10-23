@@ -1,123 +1,238 @@
-"""两类 V1 服务共用的便捷任务输入、结果和同步等待接口。"""
+"""本地服务与 Router 共用的 JSON 任务、逐文件上传、执行和结果链接协议。"""
 
 from __future__ import annotations
 
-import copy
+import asyncio
 import hashlib
-import io
-import json
+import logging
+import secrets
+import shutil
 import tempfile
-import zipfile
+import time
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NoReturn, Protocol
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from starlette.datastructures import UploadFile
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from starlette.requests import ClientDisconnect
 
 from ..errors import MineruError
-from ..utils.async_utils import run_sync
+from ..filetypes import is_flash_only_parse_extension
+from ..task_types import TaskOutputFormat
+from ..types import Tier
+from ..utils.async_utils import drain_future, run_sync
 from .api_server import (
-    AccessLevel,
-    CreateJobRequest,
-    FileIdSource,
+    ApiServerError,
+    _ParseRequest,
+    ErrorDetail,
+    _StoredSource,
+    FileParseInfo,
     FileStore,
-    JobAsyncResponse,
-    JobFileEntry,
-    JobFileResult,
+    _ParseInput,
+    TaskProgress,
     JobStore,
+    _UrlSource,
+    _JobInputMetadata,
+    _JobInputSpec,
     _raise_api_error,
-    submit_parse_job,
+    _require_model_preload_ready,
+    _validate_source_policy,
+    submit_execution,
 )
-from .page_range import normalize_page_range_input
+from .page_range import PAGE_RANGE_DESCRIPTION, normalize_page_range_input
 
-MAX_TASK_FILE_BYTES = 200 * 1024 * 1024
 MAX_TASK_FILES = 100
+TASK_UPLOAD_TTL = 3600
 TERMINAL_TASK_STATUSES = frozenset({"completed", "partial", "failed", "canceled"})
-ResponseFormat = Literal["json", "zip"]
+TaskStatus = Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
+TaskFileState = Literal["waiting_upload", "queued", "running", "completed", "failed", "canceled"]
+logger = logging.getLogger(__name__)
+
+
+class TaskFileInput(BaseModel):
+    """声明上传或 URL 输入，客户端可以省略任务内文件标识。"""
+
+    model_config = ConfigDict(extra="forbid")
+    client_file_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    file_name: str = Field(min_length=1, max_length=1024)
+    bytes: int | None = Field(default=None, gt=0, strict=True)
+    url: str | None = None
+    sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> TaskFileInput:
+        """上传项必须声明大小；URL 只校验合法性，保留签名地址的原始字符串。"""
+        if self.url is None:
+            if self.bytes is None:
+                raise ValueError("bytes is required when url is not supplied")
+        else:
+            AnyHttpUrl(self.url)
+        return self
+
+
+class TaskFileItem(TaskFileInput):
+    """接单前补全文件标识，内部执行和状态响应只消费完整文件条目。"""
+
+    client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class UploadTaskOptions(BaseModel):
+    """解析选项仅来自 JSON 主体，文件元数据独立保存在 files 中。"""
+
+    model_config = ConfigDict(extra="forbid")
+    tier: Tier | None = None
+    ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
+    page_range: str = ""
+    output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
+    include_model_output: bool = False
+
+    @model_validator(mode="after")
+    def validate_model_output(self) -> UploadTaskOptions:
+        """模型输出只能附加到 default 结果包，不改变单文件 HTML/DOCX 的交付类型。"""
+        if self.include_model_output and "default" not in self.output_formats:
+            raise ValueError("include_model_output requires default output format")
+        return self
+
+
+class CreateTaskRequest(UploadTaskOptions):
+    """严格 JSON 创建请求，清单是数组而不是编码后的字符串。"""
+
+    files: list[TaskFileInput] = Field(min_length=1, max_length=MAX_TASK_FILES)
+
+
+class TaskUploadLink(BaseModel):
+    """描述一个文件的上传目标，客户端原样使用服务端给出的地址和请求头。"""
+
+    client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    upload_url: str
+    upload_method: Literal["PUT"] = "PUT"
+    upload_headers: dict[str, str]
+    expires_at: int
+
+
+class TaskFileStatus(TaskFileItem):
+    """同时提供上传准备情况与逐文件解析状态，禁止内联解析正文。"""
+
+    upload_status: Literal["pending", "ready", "not_required", "expired"]
+    file_id: str | None = None
+    name: str
+    status: TaskFileState
+    parse: FileParseInfo | None = None
+    result_url: str | None = None
+    error: ErrorDetail | None = None
+
+
+class TaskStatusResponse(BaseModel):
+    """任务状态只携带元数据；每个成功文件提供自己的下载链接。"""
+
+    task_id: str
+    status: TaskStatus
+    status_url: str
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    tier: Tier | None = None
+    output_formats: list[TaskOutputFormat]
+    include_model_output: bool = False
+    progress: TaskProgress
+    files: list[TaskFileStatus]
+    uploads: list[TaskUploadLink] = Field(default_factory=list)
+    error: ErrorDetail | None = None
+
+
+class TaskListItem(BaseModel):
+    """任务列表只公开父任务摘要，不暴露内部逐文件执行。"""
+
+    task_id: str
+    status: TaskStatus
+    created_at: str
+    file_count: int
+
+
+class TaskListResponse(BaseModel):
+    """保持统一的游标分页结构，列表数据按调用方隔离。"""
+
+    object: Literal["list"] = "list"
+    data: list[TaskListItem]
+    first_id: str | None = None
+    last_id: str | None = None
+    has_more: bool = False
 
 
 @dataclass(frozen=True)
 class TaskUpload:
-    """表示已校验的输入字节，文件名视图独立于共享缓存路径。"""
+    """保存已校验的源字节位置，文件名视图独立于内容去重路径。"""
 
     path: Path
     filename: str
     bytes: int
     sha256sum: str
     mime_type: str = "application/octet-stream"
+    file_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TaskExecution:
+    """在适配器之间传递单文件执行快照、实际输入元数据及本部署的产物标识。"""
+
+    job: dict[str, Any]
+    result_file_id: str | None = None
+    error: ErrorDetail | None = None
+    input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
 
 
 class TaskBackend(Protocol):
-    """便捷接口只依赖显式任务和文件操作，不维护独立队列。"""
+    """上传准备复用各部署的存储，执行仍交给已有 Job 服务。"""
 
-    def release_uploads(self) -> None:
-        """释放请求预检取得的输入租约，包括校验失败和取消路径。"""
+    owner_scope: str
+
+    def fork(self) -> TaskBackend:
+        """为每个文件创建独立的引用和执行上下文。"""
+        ...
+
+    async def release_result(self, task_id: str, finished: float) -> None:
+        """父任务收尾后解除子结果租约，并开始正常保留期。"""
+        ...
+
+    async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileItem]) -> None:
+        """在接单之前校验部署能力，不能预占解析名额。"""
         ...
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
-        """查找当前调用方可复用的源字节。"""
+        """原子查找并固定当前调用方可以复用的源文件。"""
         ...
 
-    async def submit(self, body: CreateJobRequest, uploads: dict[int, TaskUpload]) -> dict[str, Any]:
-        """接收源字节并通过既有任务服务提交。"""
+    async def retain_upload(self, upload: TaskUpload) -> TaskUpload:
+        """持久保存已校验的单个输入，并持有跨请求准备阶段的引用。"""
         ...
 
-    async def get(self, task_id: str) -> dict[str, Any]:
-        """查询既有任务，返回标准 Job 数据。"""
+    def release_uploads(self, *, rollback: bool) -> None:
+        """提交后交接输入引用；未提交的取消或失败同时清理文件视图。"""
         ...
 
-    async def cancel(self, task_id: str) -> dict[str, Any]:
-        """取消既有任务而不影响其他任务。"""
+    async def submit(
+        self, task_id: str, options: UploadTaskOptions, inputs: list[TaskFileItem], uploads: dict[int, TaskUpload]
+    ) -> TaskExecution:
+        """使用预先分配的公开 ID 提交一次后台解析。"""
         ...
 
-    async def wait(self, task_id: str, timeout: float) -> dict[str, Any]:
-        """有界等待，等待方超时不能取消后台任务。"""
+    async def get(self, task_id: str) -> TaskExecution:
+        """只查询执行和产物元数据，不读取结果文件内容。"""
         ...
 
-    async def read_output(self, file_id: str) -> bytes:
-        """通过当前服务的授权边界读取产物。"""
+    async def cancel(self, task_id: str) -> None:
+        """取消对应后台工作，并收敛已有资源和预占。"""
         ...
-
-
-class TaskStatusResponse(JobAsyncResponse):
-    """沿用 Job 字段，序列化为 task_id 并增加 V1 查询地址。"""
-
-    job_id: str = Field(alias="task_id")
-    status_url: str
-    result_url: str
-
-
-class TaskFileContent(JobFileResult):
-    """内联文本产物，同时保留既有文件状态、错误和资源引用。"""
-
-    content: dict[str, Any] = Field(default_factory=dict)
-
-
-class TaskResultResponse(TaskStatusResponse):
-    """描述可直接消费的 JSON 解析结果。"""
-
-    files: list[TaskFileContent]
-
-
-class UploadTaskOptions(BaseModel):
-    """上传解析参数仅来自查询串，保证哈希命中时无需读取表单。"""
-
-    model_config = ConfigDict(extra="forbid")
-    tier: Literal["flash", "basic", "standard", "advanced"] | None = None
-    ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
-    page_range: str = ""
-    output_formats: list[str] = Field(default_factory=lambda: ["markdown"])
-    filename: str | None = Field(default=None, min_length=1)
-    sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 def _invalid(message: str, *, code: str = "invalid_request", status_code: int = 400, param: str | None = None) -> NoReturn:
-    """将输入和产物错误转换为两端一致的 V1 错误结构。"""
+    """把协议校验错误转换成两类服务共用的 V1 error envelope。"""
     _raise_api_error(
         status_code,
         error_type="api_error" if status_code >= 500 else "invalid_request_error",
@@ -127,402 +242,907 @@ def _invalid(message: str, *, code: str = "invalid_request", status_code: int = 
     )
 
 
-def task_payload(job: dict[str, Any]) -> dict[str, Any]:
-    """重写任务名称与链接，保留上游语义树和公共资源标识。"""
-    payload = copy.deepcopy(job)
-    task_id = str(payload.pop("job_id"))
-    base = f"/v1/tasks/{task_id}"
-    payload.update(task_id=task_id, status_url=base, result_url=f"{base}/result", links={"self": base, "cancel": base})
-    return payload
+def resolve_task_tier(options: UploadTaskOptions, inputs: list[TaskFileItem], tiers: set[Tier], default: Tier | None) -> Tier:
+    """按现有轻量格式回退规则解析 tier，不触发 worker 选择或模型执行。"""
+    lightweight = [is_flash_only_parse_extension(item.file_name) for item in inputs]
+    if any(lightweight) and "flash" not in tiers:
+        _invalid("Flash parsing is disabled, but an input requires it", param="files")
+    tier = options.tier or default
+    if tier is None and all(lightweight) and "flash" in tiers:
+        tier = "flash"
+    if tier is None:
+        _invalid("No default quality tier is available; pass tier explicitly", code="quality_tier_unavailable", status_code=503)
+    if tier not in tiers and not (all(lightweight) and "flash" in tiers):
+        _invalid(f"Tier '{tier}' is not available", param="tier")
+    return tier
 
 
-async def _save_upload(chunks: AsyncIterator[bytes], path: Path, filename: str, mime_type: str) -> TaskUpload:
-    """逐块写入并计算实际哈希，超过大小限制立即终止。"""
+async def file_chunks(path: Path) -> AsyncIterator[bytes]:
+    """以固定大小从磁盘读取，避免阻塞事件循环和完整文件缓冲。"""
+    with path.open("rb") as source:
+        while chunk := await run_sync(source.read, 1024 * 1024):
+            yield chunk
+
+
+async def _save_upload(
+    chunks: AsyncIterator[bytes],
+    path: Path,
+    filename: str,
+    mime_type: str,
+    *,
+    expected: TaskFileItem | None = None,
+    canceled: Callable[[], bool] | None = None,
+) -> TaskUpload:
+    """流式落盘并校验完整性；声明大小用于一致性检查，不是上传大小上限。"""
     hasher = hashlib.sha256()
     size = 0
-    with path.open("wb") as target:
-        async for chunk in chunks:
-            size += len(chunk)
-            if size > MAX_TASK_FILE_BYTES:
-                _invalid("File exceeds 200 MiB", code="file_too_large", status_code=413)
-            target.write(chunk)
-            hasher.update(chunk)
-    if not size:
-        _invalid("Empty files are not supported", param="files")
-    return TaskUpload(path, filename, size, hasher.hexdigest(), mime_type)
-
-
-async def _file_chunks(file: UploadFile) -> AsyncIterator[bytes]:
-    """限制单次读取大小，不把 multipart 文件整体放入内存。"""
-    while chunk := await file.read(1024 * 1024):
-        yield chunk
-
-
-async def _prepare_submission(
-    request: Request,
-    backend: TaskBackend,
-    directory: Path,
-    *,
-    sync: bool,
-    force_zip: bool,
-) -> tuple[CreateJobRequest, dict[int, TaskUpload], bool]:
-    """统一处理 JSON、表单和原始字节，命中时完全不读取请求主体。"""
-    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    params = dict(request.query_params)
-    if sync:
-        params.pop("response_format", None)
-        params.pop("wait_timeout", None)
-    uploads: dict[int, TaskUpload] = {}
-    skipped = False
     try:
-        if media_type == "application/json":
-            if params:
-                _invalid("JSON parse options must be supplied in the request body")
-            body = CreateJobRequest.model_validate(await request.json())
-        else:
-            if "output_formats" in params:
-                params["output_formats"] = request.query_params.getlist("output_formats")
-            options = UploadTaskOptions.model_validate(params)
-            options.page_range = normalize_page_range_input(options.page_range)
-            if not options.output_formats or any(
-                fmt not in {"markdown", "middle_json", "structured_content", "zip"} for fmt in options.output_formats
-            ):
-                _invalid("Unsupported output format", code="unsupported_output_format", param="output_formats")
-            if media_type == "application/octet-stream":
-                if options.filename is None:
-                    _invalid("filename is required for raw uploads", param="filename")
-                size_header = request.headers.get("content-length")
-                if size_header is None:
-                    _invalid("Content-Length is required for raw uploads", status_code=411)
-                declared_size = int(size_header)
-                if declared_size <= 0 or declared_size > MAX_TASK_FILE_BYTES:
-                    _invalid("Invalid raw file size", code="file_too_large", status_code=413)
-                cached = await backend.find_upload(options.sha256sum, options.filename) if options.sha256sum else None
-                if cached is not None:
-                    if cached.bytes != declared_size:
-                        _invalid("Declared size does not match cached bytes", code="upload_size_mismatch")
-                    uploads[0] = cached
-                    skipped = True
-                else:
-                    upload = await _save_upload(request.stream(), directory / "0", options.filename, media_type)
-                    if upload.bytes != declared_size:
-                        _invalid("Declared size does not match uploaded bytes", code="upload_size_mismatch")
-                    if options.sha256sum and upload.sha256sum != options.sha256sum:
-                        _invalid("SHA-256 mismatch", code="file_hash_mismatch")
-                    uploads[0] = upload
-            elif media_type == "multipart/form-data":
-                if options.filename is not None or options.sha256sum is not None:
-                    _invalid("filename and sha256sum are only supported for raw uploads")
-                async with request.form(max_files=MAX_TASK_FILES, max_fields=0) as form:
-                    files = form.getlist("files")
-                    if not files or any(key != "files" for key in form):
-                        _invalid("Supply one or more files fields", param="files")
-                    for index, file in enumerate(files):
-                        if not isinstance(file, UploadFile) or not file.filename:
-                            _invalid("Every files field must contain a named file", param="files")
-                        if file.size is not None and file.size > MAX_TASK_FILE_BYTES:
-                            _invalid("File exceeds 200 MiB", code="file_too_large", status_code=413)
-                        uploads[index] = await _save_upload(
-                            _file_chunks(file),
-                            directory / str(index),
-                            file.filename,
-                            file.content_type or "application/octet-stream",
-                        )
-            else:
-                _invalid("Use application/json, multipart/form-data or application/octet-stream", status_code=415)
-            body = CreateJobRequest(
-                files=[
-                    JobFileEntry(source=FileIdSource(file_id=f"upload-{index}"), page_range=options.page_range or None)
-                    for index in uploads
-                ],
-                tier=options.tier,
-                ocr_mode=options.ocr_mode,
-                output_formats=options.output_formats,
-            )
-        for entry in body.files:
-            entry.page_range = normalize_page_range_input(entry.page_range) or None
-        if body.callback is not None:
-            _invalid("Webhook callbacks are not supported by this service", param="callback")
-        if any(fmt not in {"markdown", "middle_json", "structured_content", "zip"} for fmt in body.output_formats):
-            _invalid("Unsupported output format", code="unsupported_output_format", param="output_formats")
-        if force_zip and "zip" not in body.output_formats:
-            body.output_formats.append("zip")
-        return body, uploads, skipped
-    except StarletteHTTPException as exc:
-        _invalid(str(exc.detail), status_code=exc.status_code)
-        raise AssertionError("unreachable") from exc
+        with path.open("wb") as target:
+            async for chunk in chunks:
+                if canceled is not None and canceled():
+                    _invalid("Task was canceled during upload", status_code=409, code="task_already_terminal")
+                size += len(chunk)
+                if expected is not None and expected.bytes is not None and size > expected.bytes:
+                    _invalid("Declared size does not match uploaded bytes", code="upload_size_mismatch")
+                await run_sync(target.write, chunk)
+                hasher.update(chunk)
+        if size == 0:
+            _invalid("Empty files are not supported", param="files")
+        if expected is not None and expected.bytes is not None and size != expected.bytes:
+            _invalid("Declared size does not match uploaded bytes", code="upload_size_mismatch")
+        sha = hasher.hexdigest()
+        if expected is not None and expected.sha256sum is not None and sha != expected.sha256sum:
+            _invalid("SHA-256 mismatch", code="file_hash_mismatch")
+        return TaskUpload(path, filename, size, sha, mime_type)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def _normalize_task_files(inputs: list[TaskFileInput]) -> list[TaskFileItem]:
+    """先预留全部显式标识，再按输入顺序给缺省项分配最小可用的 fN。"""
+    used_ids: set[str] = set()
+    for index, item in enumerate(inputs):
+        if item.client_file_id is None:
+            continue
+        if item.client_file_id in used_ids:
+            _invalid("client_file_id must be unique within a task", param=f"files.{index}.client_file_id")
+        used_ids.add(item.client_file_id)
+
+    normalized: list[TaskFileItem] = []
+    next_id = 1
+    for item in inputs:
+        client_file_id = item.client_file_id
+        if client_file_id is None:
+            while f"f{next_id}" in used_ids:
+                next_id += 1
+            client_file_id = f"f{next_id}"
+            used_ids.add(client_file_id)
+            next_id += 1
+        normalized.append(TaskFileItem.model_validate({**item.model_dump(), "client_file_id": client_file_id}))
+    return normalized
+
+
+async def _read_submission(request: Request) -> tuple[UploadTaskOptions, list[TaskFileItem]]:
+    """只读取 JSON 清单，严格拒绝表单、直传字节和 URL 查询参数。"""
+    if request.query_params:
+        _invalid("POST parameters must be supplied in the JSON body, not the URL")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        _invalid("Use application/json", status_code=415)
+    try:
+        body = CreateTaskRequest.model_validate(await request.json())
+        inputs = _normalize_task_files(body.files)
+        options = UploadTaskOptions.model_validate(body.model_dump(exclude={"files"}))
+        options.page_range = normalize_page_range_input(options.page_range)
+        options.output_formats = list(dict.fromkeys(options.output_formats))
+        for index, item in enumerate(inputs):
+            try:
+                item.page_range = normalize_page_range_input(
+                    item.page_range if item.page_range is not None else options.page_range
+                )
+            except MineruError as exc:
+                _invalid(str(exc), code=exc.code, param=f"files.{index}.page_range")
+        return options, inputs
+    except ClientDisconnect:
+        _invalid("Request interrupted", code="request_interrupted")
     except MineruError as exc:
         _invalid(str(exc), code=exc.code, param=exc.param)
-        raise AssertionError("unreachable") from exc
-    except (ValidationError, ValueError) as exc:
+    except ValidationError as exc:
+        location = exc.errors()[0]["loc"]
+        _invalid("Invalid request: " + str(exc), param=".".join(map(str, location)) or None)
+    except ValueError as exc:
         _invalid(str(exc))
-        raise AssertionError("unreachable") from exc
 
 
-async def build_task_result(job: dict[str, Any], backend: TaskBackend, response_format: ResponseFormat) -> Response:
-    """只读取既有产物并共享结果封装，禁止为了下载而重新解析。"""
-    payload = task_payload(job)
-    status = str(job["status"])
-    if status not in TERMINAL_TASK_STATUSES:
-        return JSONResponse(payload, status_code=202)
-    if status in {"failed", "canceled"}:
-        return JSONResponse(payload, status_code=409)
-    if response_format == "zip":
-        if "zip" not in job.get("output_formats", []):
-            _invalid("Request zip in output_formats when submitting the task", code="unsupported_output_format")
-        archives: list[tuple[int, bytes]] = []
-        for index, file in enumerate(job.get("files", [])):
-            if file.get("status") == "completed":
-                ref = (file.get("output_files") or {}).get("zip")
-                if not ref:
-                    _invalid("ZIP output is missing", status_code=502, code="invalid_response")
-                archives.append((index, await backend.read_output(ref["file_id"])))
-        if len(job["files"]) == 1:
-            data = archives[0][1]
+def _retention_lease(request: Request) -> int | None:
+    """读取 Router 的有界结果租约，避免父任务结束前 worker 提前清理子文件。"""
+    value = request.headers.get("x-mineru-task-lease-seconds")
+    if value is None:
+        return None
+    try:
+        seconds = int(value)
+        if not 0 <= seconds <= TASK_UPLOAD_TTL:
+            raise ValueError
+    except ValueError:
+        _invalid("Task result lease must be between 0 and 3600 seconds")
+    return seconds
+
+
+@dataclass
+class _TaskFileRecord:
+    """每个文件独立拥有准备引用、执行 ID 和一次性提交句柄。"""
+
+    backend: TaskBackend
+    execution_id: str = field(default_factory=JobStore._new_job_id)
+    status: TaskFileState = "waiting_upload"
+    upload: TaskUpload | None = None
+    upload_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    upload_active: bool = False
+    expired: bool = False
+    execution: TaskExecution | None = None
+    operation: asyncio.Task[None] | None = None
+    submitted: bool = False
+    finished: asyncio.Event = field(default_factory=asyncio.Event)
+    lease_refresh_at: float = 0
+    error: ErrorDetail | None = None
+
+
+@dataclass
+class _TaskRecord:
+    """父 Task 只聚合文件状态，独立子 Job 继续使用现有解析并发。"""
+
+    id: str
+    backend: TaskBackend
+    options: UploadTaskOptions
+    inputs: list[TaskFileItem]
+    directory: Path
+    expires_at: int
+    file_states: list[_TaskFileRecord]
+    created_at: str = field(default_factory=JobStore._now)
+    status: TaskStatus = "waiting_upload"
+    refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    changed: asyncio.Event = field(default_factory=asyncio.Event)
+    operation: asyncio.Task[None] | None = None
+    finished_at: str | None = None
+    finished_epoch: float | None = None
+    retention_epoch: float | None = None
+    lease_expires_at: float = 0
+    error: ErrorDetail | None = None
+
+
+class TaskStore:
+    """管理固定上传窗口和逐文件执行，不建立第二个解析队列。"""
+
+    def __init__(self, retention_seconds: int) -> None:
+        """只在创建应用时分配暂存目录，模块导入不产生副作用。"""
+        self.retention_seconds = retention_seconds
+        self._temporary = tempfile.TemporaryDirectory(prefix="mineru-tasks-")
+        self._root = Path(self._temporary.name)
+        self._records: dict[str, _TaskRecord] = {}
+        self.storage_lock = asyncio.Lock()
+        self._collector: asyncio.Task[None] | None = None
+        self._closing = False
+
+    def start(self) -> None:
+        """启动过期扫描，关闭正常保留期也仍然执行上传截止时间。"""
+        if self._collector is None and not self._closing:
+            self._collector = asyncio.create_task(self._collect_loop(), name="mineru-task-retention")
+
+    async def _collect_loop(self) -> None:
+        """定期清理过期元数据；上传与状态请求也执行同一截止检查。"""
+        while True:
+            await asyncio.sleep(60)
+            self.collect_expired()
+
+    def _aggregate(self, record: _TaskRecord) -> None:
+        """按运行、排队、等待的优先级聚合，所有文件终结后再发布成功或部分成功。"""
+        if record.status == "canceled":
+            return
+        previous = record.status
+        states = [file.status for file in record.file_states]
+        if "running" in states:
+            record.status = "running"
+        elif "queued" in states:
+            record.status = "queued"
+        elif "waiting_upload" in states:
+            record.status = "waiting_upload"
         else:
-            data = await run_sync(_combine_archives, archives, payload)
-        return Response(
-            data,
-            media_type="application/zip",
-            headers={
-                "Content-Disposition": f'attachment; filename="{payload["task_id"]}.zip"',
-                "X-MinerU-Task-Id": payload["task_id"],
-                "X-MinerU-Task-Status": status,
-            },
+            completed = states.count("completed")
+            record.status = "completed" if completed == len(states) else ("partial" if completed else "failed")
+        if record.status in TERMINAL_TASK_STATUSES and record.finished_epoch is None:
+            record.finished_at = JobStore._now()
+            record.finished_epoch = time.time()
+        if record.status != previous:
+            record.changed.set()
+
+    def _expire_uploads(self, record: _TaskRecord) -> None:
+        """只终结尚未受理上传的文件；截止前已经受理的流允许继续完成。"""
+        if record.expires_at > time.time() or record.status == "canceled":
+            return
+        for file in record.file_states:
+            if file.status == "waiting_upload" and not file.upload_active:
+                file.expired = True
+                file.status = "failed"
+                file.error = ErrorDetail(type="invalid_request_error", code="upload_expired", message="Upload expired")
+        self._aggregate(record)
+
+    def collect_expired(self) -> None:
+        """上传到期按文件处理，记录仅在清理结束并超过父任务保留期后移除。"""
+        now = time.time()
+        for task_id, record in tuple(self._records.items()):
+            self._expire_uploads(record)
+            if (
+                self.retention_seconds
+                and record.retention_epoch is not None
+                and record.retention_epoch + self.retention_seconds <= now
+                and record.operation is not None
+                and record.operation.done()
+            ):
+                self._records.pop(task_id, None)
+                shutil.rmtree(record.directory, ignore_errors=True)
+
+    def lookup(self, task_id: str, owner_scope: str) -> _TaskRecord:
+        """未知与越权任务使用相同错误，避免跨调用方探测。"""
+        self.collect_expired()
+        record = self._records.get(task_id)
+        if record is None or record.backend.owner_scope != owner_scope:
+            _invalid(f"Task {task_id} not found", status_code=404, code="task_not_found")
+        return record
+
+    def list_tasks(
+        self,
+        owner_scope: str,
+        *,
+        status_filter: str | None,
+        limit: int,
+        after: str | None,
+        order: Literal["asc", "desc"],
+        created_after: str | None,
+    ) -> TaskListResponse:
+        """对父任务应用稳定排序和游标；同秒创建的任务以 ID 明确排序。"""
+        self.collect_expired()
+        cutoff: datetime | None = None
+        if created_after is not None:
+            try:
+                cutoff = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
+                if cutoff.tzinfo is None:
+                    raise ValueError("Timezone is required")
+                cutoff = cutoff.astimezone(timezone.utc)
+            except (ValueError, OverflowError):
+                _invalid("created_after must be an ISO-8601 timestamp with a timezone", param="created_after")
+        allowed = set(status_filter.split(",")) if status_filter else None
+        if allowed is not None and not allowed.issubset({"waiting_upload", "queued", "running", *TERMINAL_TASK_STATUSES}):
+            _invalid("Unknown task status", param="status")
+        records = sorted(
+            (record for record in self._records.values() if record.backend.owner_scope == owner_scope),
+            key=lambda record: (record.created_at, record.id),
+            reverse=order == "desc",
         )
-    for file in payload["files"]:
-        file["content"] = {}
-        if file.get("status") != "completed":
-            continue
-        for fmt in job.get("output_formats", []):
-            if fmt in {"markdown", "middle_json", "structured_content"} and not (file.get("output_files") or {}).get(fmt):
-                _invalid(f"{fmt} output is missing", status_code=502, code="invalid_response")
-        for fmt, ref in (file.get("output_files") or {}).items():
-            if ref and fmt in {"markdown", "middle_json", "structured_content"}:
-                data = await backend.read_output(ref["file_id"])
-                file["content"][fmt] = data.decode("utf-8") if fmt == "markdown" else json.loads(data)
-    return JSONResponse(payload)
+        if after:
+            cursor = self.lookup(after, owner_scope)
+            key = (cursor.created_at, cursor.id)
+            records = [
+                record
+                for record in records
+                if ((record.created_at, record.id) > key if order == "asc" else (record.created_at, record.id) < key)
+            ]
+        records = [
+            record
+            for record in records
+            if (allowed is None or record.status in allowed)
+            and (cutoff is None or datetime.fromisoformat(record.created_at.replace("Z", "+00:00")) >= cutoff)
+        ]
+        page = records[:limit]
+        return TaskListResponse(
+            data=[
+                TaskListItem(task_id=r.id, status=r.status, created_at=r.created_at, file_count=len(r.file_states))
+                for r in page
+            ],
+            first_id=page[0].id if page else None,
+            last_id=page[-1].id if page else None,
+            has_more=len(records) > limit,
+        )
+
+    def update_lease(self, record: _TaskRecord, seconds: int | None) -> None:
+        """续租只保护结果保留期，从不延长上传窗口，也不复活已释放的结果。"""
+        if seconds is None:
+            return
+        if seconds and record.retention_epoch is not None:
+            _invalid("Task result lease has already ended", status_code=409, code="task_lease_ended")
+        record.lease_expires_at = time.time() + seconds if seconds else 0
+        record.changed.set()
+
+    async def create(
+        self, backend: TaskBackend, options: UploadTaskOptions, inputs: list[TaskFileItem], *, lease_seconds: int = 0
+    ) -> _TaskRecord:
+        """先完整校验清单并固定缓存，再为各个就绪文件独立提交执行。"""
+        if self._closing:
+            _invalid("Server is shutting down", status_code=503, code="server_shutting_down")
+        await backend.validate(options, inputs)
+        task_id = JobStore._new_job_id()
+        record = _TaskRecord(
+            task_id,
+            backend,
+            options,
+            inputs,
+            self._root / task_id,
+            int(time.time()) + TASK_UPLOAD_TTL,
+            [_TaskFileRecord(backend.fork()) for _ in inputs],
+        )
+        self.update_lease(record, lease_seconds)
+        try:
+            for index, item in enumerate(inputs):
+                file = record.file_states[index]
+                if item.url is None and item.sha256sum:
+                    upload = await file.backend.find_upload(item.sha256sum, item.file_name)
+                    if upload is not None:
+                        if upload.bytes != item.bytes:
+                            _invalid("Declared size does not match cached bytes", code="upload_size_mismatch")
+                        file.upload = await file.backend.retain_upload(upload)
+            self._records[task_id] = record
+            self.start()
+            for index, item in enumerate(inputs):
+                if item.url is not None or record.file_states[index].upload is not None:
+                    self._start_file(record, index)
+            record.operation = asyncio.create_task(self._monitor(record), name=f"mineru-task-{task_id}")
+            return record
+        except BaseException:
+            for file in record.file_states:
+                file.backend.release_uploads(rollback=True)
+            raise
+
+    def _start_file(self, record: _TaskRecord, index: int) -> None:
+        """事件循环内同步登记提交句柄，重复 PUT 不能创建第二个子作业。"""
+        file = record.file_states[index]
+        if file.operation is not None or file.status != "waiting_upload" or record.status == "canceled":
+            return
+        file.status = "queued"
+        record.changed.set()
+        file.operation = asyncio.create_task(self._dispatch_file(record, index), name=f"mineru-task-file-{file.execution_id}")
+        self._aggregate(record)
+
+    def _apply_execution(self, record: _TaskRecord, file: _TaskFileRecord, execution: TaskExecution) -> None:
+        """只接受单文件执行快照，取消和已发布终态不被迟到响应覆盖。"""
+        if file.status in TERMINAL_TASK_STATUSES:
+            return
+        status = execution.job.get("status")
+        if status not in {"queued", "running", "completed", "failed", "canceled"}:
+            _invalid("Invalid file status from execution backend", code="invalid_response", status_code=502)
+        if status == "completed" and execution.result_file_id is None:
+            _invalid("Completed file has no result", code="invalid_response", status_code=502)
+        if len(execution.job.get("files") or []) != 1:
+            _invalid("Expected one file from execution backend", code="invalid_response", status_code=502)
+        if status != file.status:
+            record.changed.set()
+        file.execution = execution
+        file.status = status
+        file.error = execution.error
+        if status in TERMINAL_TASK_STATUSES:
+            file.finished.set()
+            file.lease_refresh_at = time.monotonic() + 30
+        self._aggregate(record)
+
+    async def refresh(self, record: _TaskRecord) -> None:
+        """并发刷新独立文件；成功文件仍续租 worker 结果直到父任务收尾。"""
+        async with record.refresh_lock:
+            self._expire_uploads(record)
+            if record.status in TERMINAL_TASK_STATUSES:
+                return
+            targets = [
+                file
+                for file in record.file_states
+                if file.submitted
+                and file.status not in {"failed", "canceled"}
+                and (file.status != "completed" or file.lease_refresh_at <= time.monotonic())
+            ]
+            results = await asyncio.gather(*(file.backend.get(file.execution_id) for file in targets), return_exceptions=True)
+            for file, result in zip(targets, results):
+                if isinstance(result, BaseException):
+                    if (
+                        isinstance(result, ApiServerError)
+                        and result.status_code in {408, 429, 500, 502, 503, 504}
+                        and result.error.code not in {"invalid_response", "invalid_upstream_response"}
+                    ):
+                        logger.warning("Task file refresh failed: %s: %s", file.execution_id, result.error.code)
+                        continue
+                    if file.status not in TERMINAL_TASK_STATUSES:
+                        file.status = "failed"
+                        file.error = (
+                            result.error
+                            if isinstance(result, ApiServerError)
+                            else ErrorDetail(type="api_error", code="task_refresh_failed", message=str(result))
+                        )
+                        if file.operation is not None:
+                            file.operation.cancel()
+                    continue
+                try:
+                    self._apply_execution(record, file, result)
+                    if file.status == "completed":
+                        file.lease_refresh_at = time.monotonic() + 30
+                except ApiServerError as exc:
+                    file.status = "failed"
+                    file.error = exc.error
+                    if file.operation is not None:
+                        file.operation.cancel()
+            self._aggregate(record)
+
+    async def _dispatch_file(self, record: _TaskRecord, index: int) -> None:
+        """每个文件独立提交，失败或取消只清理自己的作业与源文件租约。"""
+        file = record.file_states[index]
+        try:
+            execution = await file.backend.submit(
+                file.execution_id, record.options, [record.inputs[index]], {0: file.upload} if file.upload is not None else {}
+            )
+            file.submitted = True
+            self._apply_execution(record, file, execution)
+            file.backend.release_uploads(rollback=False)
+            if file.status not in TERMINAL_TASK_STATUSES:
+                await file.finished.wait()
+        except asyncio.CancelledError:
+            try:
+                await drain_future(asyncio.create_task(file.backend.cancel(file.execution_id)))
+            except Exception:
+                logger.exception("Task file cancellation failed: %s", file.execution_id)
+            if file.status not in TERMINAL_TASK_STATUSES:
+                file.status = "canceled"
+        except Exception as exc:
+            if file.status not in TERMINAL_TASK_STATUSES:
+                file.status = "failed"
+                file.error = (
+                    exc.error
+                    if isinstance(exc, ApiServerError)
+                    else ErrorDetail(type="api_error", code="task_submission_failed", message=str(exc))
+                )
+            try:
+                await file.backend.cancel(file.execution_id)
+            except Exception:
+                logger.exception("Task file failure cleanup failed: %s", file.execution_id)
+        finally:
+            file.finished.set()
+            record.changed.set()
+            file.backend.release_uploads(rollback=not file.submitted)
+            self._aggregate(record)
+
+    async def _monitor(self, record: _TaskRecord) -> None:
+        """应用持有父任务监控；HTTP 断连不影响执行，所有子文件清理后才开始保留期。"""
+        try:
+            while record.status not in TERMINAL_TASK_STATUSES:
+                record.changed.clear()
+                await self.refresh(record)
+                if record.status not in TERMINAL_TASK_STATUSES:
+                    await self._wait_for_change(record)
+            operations = [file.operation for file in record.file_states if file.operation is not None]
+            if operations:
+                await asyncio.gather(*operations, return_exceptions=True)
+            while any(file.upload_active for file in record.file_states) or record.lease_expires_at > time.time():
+                record.changed.clear()
+                await self._wait_for_change(record)
+            finished = time.time()
+            for file in record.file_states:
+                await file.backend.release_result(file.execution_id, finished)
+                file.backend.release_uploads(rollback=not file.submitted)
+            record.retention_epoch = finished
+        except Exception:
+            logger.exception("Task result cleanup failed: %s", record.id)
+        finally:
+            if not any(file.upload_active for file in record.file_states):
+                shutil.rmtree(record.directory, ignore_errors=True)
+
+    async def _wait_for_change(self, record: _TaskRecord) -> None:
+        """状态变更即时唤醒；没有事件时每秒检查执行与到期边界。"""
+        try:
+            await asyncio.wait_for(record.changed.wait(), timeout=1)
+        except asyncio.TimeoutError:
+            pass
+
+    async def upload(self, record: _TaskRecord, client_file_id: str, request: Request) -> bool:
+        """在接收主体前检查固定期限，已受理流不因父任务状态变化中止。"""
+        index = next((i for i, item in enumerate(record.inputs) if item.client_file_id == client_file_id), None)
+        if index is None:
+            _invalid("Unknown client_file_id", status_code=404, code="upload_not_found")
+        expected = record.inputs[index]
+        if expected.url is not None:
+            _invalid("URL inputs do not accept uploads")
+        file = record.file_states[index]
+        async with file.upload_lock:
+            if record.expires_at <= time.time():
+                self._expire_uploads(record)
+                _invalid("Upload link expired", status_code=410, code="upload_expired")
+            if record.status == "canceled":
+                _invalid("Task was canceled", status_code=409, code="task_already_terminal")
+            if file.upload is not None:
+                return True
+            if file.status != "waiting_upload":
+                _invalid("File no longer accepts uploads", status_code=409, code="file_already_terminal")
+            length = request.headers.get("content-length")
+            if length is not None:
+                try:
+                    declared = int(length)
+                except ValueError:
+                    _invalid("Invalid Content-Length", code="upload_size_mismatch")
+                if declared != expected.bytes:
+                    _invalid("Content-Length does not match declared file size", code="upload_size_mismatch")
+            file.upload_active = True
+            record.directory.mkdir(parents=True, exist_ok=True)
+            path = record.directory / secrets.token_hex(16)
+
+            def was_canceled() -> bool:
+                """只在本文件被取消时中止已受理上传，不把上传截止时间当作传输超时。"""
+                return record.status == "canceled" or file.status == "canceled"
+
+            try:
+                upload = await _save_upload(
+                    request.stream(),
+                    path,
+                    expected.file_name,
+                    request.headers.get("content-type", "application/octet-stream"),
+                    expected=expected,
+                    canceled=was_canceled,
+                )
+                if was_canceled():
+                    _invalid("Task was canceled during upload", status_code=409, code="task_already_terminal")
+                retained = await file.backend.retain_upload(upload)
+                if was_canceled():
+                    file.backend.release_uploads(rollback=True)
+                    _invalid("Task was canceled during upload", status_code=409, code="task_already_terminal")
+                file.upload = retained
+                self._start_file(record, index)
+                return False
+            except ClientDisconnect:
+                _invalid("Upload interrupted; retry this file on the same task", code="upload_interrupted")
+            finally:
+                path.unlink(missing_ok=True)
+                file.upload_active = False
+                record.changed.set()
+                self._expire_uploads(record)
+
+    async def cancel(self, record: _TaskRecord, *, wait: bool = True) -> None:
+        """保留已完成结果，只取消未完成文件并等待真实子作业清理。"""
+        if record.status in TERMINAL_TASK_STATUSES:
+            _invalid(f"Task is {record.status}", status_code=409, code="task_already_terminal")
+        record.status = "canceled"
+        record.finished_at = JobStore._now()
+        record.finished_epoch = time.time()
+        record.changed.set()
+        for file in record.file_states:
+            if file.status not in TERMINAL_TASK_STATUSES:
+                file.status = "canceled"
+                if file.operation is not None:
+                    file.operation.cancel()
+        if wait and record.operation is not None:
+            record.lease_expires_at = 0
+            record.changed.set()
+            await drain_future(record.operation)
+
+    async def shutdown(self) -> None:
+        """停止接单并排空全部文件执行和结果租约，最后释放临时目录。"""
+        self._closing = True
+        if self._collector is not None:
+            self._collector.cancel()
+            await asyncio.gather(self._collector, return_exceptions=True)
+        for record in tuple(self._records.values()):
+            record.lease_expires_at = 0
+            if record.status not in TERMINAL_TASK_STATUSES:
+                await self.cancel(record, wait=False)
+        await asyncio.gather(
+            *(record.operation for record in self._records.values() if record.operation is not None), return_exceptions=True
+        )
+        self._temporary.cleanup()
 
 
-def _combine_archives(archives: list[tuple[int, bytes]], payload: dict[str, Any]) -> bytes:
-    """按输入序号封装批量产物，拒绝源 ZIP 中的越界路径。"""
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as target:
-        target.writestr("manifest.json", json.dumps(payload, ensure_ascii=False))
-        for index, data in archives:
-            with zipfile.ZipFile(io.BytesIO(data)) as source:
-                for info in source.infolist():
-                    path = Path(info.filename)
-                    if path.is_absolute() or ".." in path.parts or "\\" in info.filename:
-                        _invalid("Invalid ZIP member path", status_code=502, code="invalid_response")
-                    target.writestr(f"{index + 1:04d}/{info.filename}", source.read(info))
-    return buffer.getvalue()
+def _url(request: Request, path: str) -> str:
+    """生成包含反向代理 root_path 的本部署地址，客户端无需自行拼接路径。"""
+    return str(request.base_url).rstrip("/") + path
+
+
+def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
+    """逐文件合并上传与执行元数据，成功文件立即给出独立下载链接。"""
+    files: list[dict[str, Any]] = []
+    links: list[dict[str, Any]] = []
+    starts: list[str] = []
+    for item, state in zip(record.inputs, record.file_states):
+        file = item.model_dump()
+        upload = state.upload
+        file.update(
+            name=item.file_name,
+            upload_status="not_required"
+            if item.url is not None
+            else ("ready" if upload is not None else ("expired" if state.expired else "pending")),
+            status=state.status,
+            file_id=upload.file_id if upload else None,
+            result_url=None,
+        )
+        if state.execution is not None:
+            job = state.execution.job
+            results = job.get("files") or []
+            if results:
+                file.update({key: results[0].get(key) for key in ("name", "file_id", "page_range", "parse", "error")})
+            if job.get("started_at"):
+                starts.append(job["started_at"])
+            if (metadata := state.execution.input_metadata.get(0)) is not None:
+                file.update(bytes=metadata.bytes, sha256sum=metadata.sha256sum)
+            if state.status == "completed" and state.execution.result_file_id:
+                file["result_url"] = _url(request, f"/v1/files/{quote(state.execution.result_file_id, safe='')}/content")
+        if state.error is not None:
+            file["error"] = state.error.model_dump()
+        files.append(file)
+        if (
+            item.url is None
+            and state.status == "waiting_upload"
+            and record.status != "canceled"
+            and record.expires_at > time.time()
+        ):
+            links.append(
+                {
+                    "client_file_id": item.client_file_id,
+                    "upload_url": _url(request, f"/v1/tasks/{record.id}/uploads/{quote(item.client_file_id, safe='')}"),
+                    "upload_method": "PUT",
+                    "upload_headers": {"Content-Type": "application/octet-stream"},
+                    "expires_at": record.expires_at,
+                }
+            )
+    payload = {
+        "task_id": record.id,
+        "status": record.status,
+        "status_url": _url(request, f"/v1/tasks/{record.id}"),
+        "created_at": record.created_at,
+        "started_at": min(starts) if starts else None,
+        "finished_at": record.finished_at,
+        "tier": record.options.tier,
+        "output_formats": record.options.output_formats,
+        "include_model_output": record.options.include_model_output,
+        "progress": {
+            "completed": sum(file.status == "completed" for file in record.file_states),
+            "failed": sum(file.status == "failed" for file in record.file_states),
+            "total": len(files),
+        },
+        "files": files,
+        "uploads": links,
+        "error": record.error.model_dump() if record.error else None,
+    }
+    return TaskStatusResponse.model_validate(payload).model_dump()
 
 
 def _request_schema() -> dict[str, Any]:
-    """展开模型引用，为手动读取主体的两端生成相同 OpenAPI 输入定义。"""
-    schema = CreateJobRequest.model_json_schema()
+    """OpenAPI 使用与运行时相同的 JSON 清单和格式约束。"""
+    schema = CreateTaskRequest.model_json_schema()
     definitions = schema.pop("$defs", {})
 
     def expand(value: Any) -> Any:
-        """展开当前请求模型的非递归定义，避免引用未注册的组件。"""
+        """内联局部模型引用，避免 OpenAPI 把 JSON Schema 的 $defs 当成全局路径。"""
         if isinstance(value, dict):
             if "$ref" in value:
                 return expand(definitions[value["$ref"].rsplit("/", 1)[-1]])
-            if "discriminator" in value:
-                value = dict(value)
-                value["discriminator"] = {"propertyName": value["discriminator"]["propertyName"]}
             return {key: expand(item) for key, item in value.items()}
         if isinstance(value, list):
             return [expand(item) for item in value]
         return value
 
-    return {
-        "requestBody": {
-            "required": True,
-            "content": {
-                "application/json": {"schema": expand(schema)},
-                "multipart/form-data": {
-                    "schema": {
-                        "type": "object",
-                        "required": ["files"],
-                        "properties": {
-                            "files": {
-                                "type": "array",
-                                "maxItems": MAX_TASK_FILES,
-                                "items": {"type": "string", "format": "binary"},
-                            }
-                        },
-                    }
-                },
-                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
-            },
-        },
-        "parameters": [
-            {"name": name, "in": "query", "required": False, "schema": value}
-            for name, value in UploadTaskOptions.model_json_schema()["properties"].items()
-        ]
-        + [
-            {
-                "name": "Content-Length",
-                "in": "header",
-                "required": False,
-                "description": "Required for application/octet-stream; must match actual file bytes.",
-                "schema": {"type": "integer", "minimum": 1, "maximum": MAX_TASK_FILE_BYTES},
-            }
-        ],
-    }
+    return {"requestBody": {"required": True, "content": {"application/json": {"schema": expand(schema)}}}}
 
 
 def build_task_router(factory: Callable[[Request], TaskBackend]) -> APIRouter:
-    """注册相同 V1 路由，后台实现由显式工厂选择。"""
+    """两类部署使用同一任务协议，下载交给已有 Files 入口。"""
     router = APIRouter(prefix="/v1", tags=["Tasks"])
+
+    @router.get("/tasks", response_model=TaskListResponse)
+    async def list_tasks(
+        request: Request,
+        status_filter: str | None = Query(None, alias="status"),
+        limit: int = Query(20, ge=1, le=100),
+        after: str | None = None,
+        order: Literal["asc", "desc"] = "desc",
+        created_after: str | None = None,
+    ) -> TaskListResponse:
+        """读取当前调用方的父任务列表，子任务不进入公开列表。"""
+        backend = factory(request)
+        return request.app.state.task_store.list_tasks(
+            backend.owner_scope,
+            status_filter=status_filter,
+            limit=limit,
+            after=after,
+            order=order,
+            created_after=created_after,
+        )
 
     @router.post("/tasks", status_code=202, response_model=TaskStatusResponse, openapi_extra=_request_schema())
     async def create_task(request: Request) -> Response:
-        """提交任务后立即返回公共 ID，缓存命中时不读取请求主体。"""
+        """先验证 JSON 再建立稳定任务 ID，HTTP 结束后逐文件工作独立继续。"""
         backend = factory(request)
+        store: TaskStore = request.app.state.task_store
         try:
-            with tempfile.TemporaryDirectory(prefix="mineru-task-") as directory:
-                body, uploads, skipped = await _prepare_submission(
-                    request, backend, Path(directory), sync=False, force_zip=False
-                )
-                job = await backend.submit(body, uploads)
-        finally:
-            backend.release_uploads()
-        return JSONResponse(
-            task_payload(job),
-            status_code=202,
-            headers={"Connection": "close"} if skipped and request.scope.get("http_version") == "1.1" else None,
-        )
+            options, inputs = await _read_submission(request)
+            record = await store.create(backend, options, inputs, lease_seconds=_retention_lease(request) or 0)
+        except BaseException:
+            backend.release_uploads(rollback=True)
+            raise
+        return JSONResponse(task_payload(record, request), status_code=202)
 
     @router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
     async def get_task(task_id: str, request: Request) -> Response:
-        """查询与 V1 Job 共用的任务记录。"""
-        return JSONResponse(task_payload(await factory(request).get(task_id)))
+        """读取逐文件状态与结果地址，上传链接截止时间保持不变。"""
+        store: TaskStore = request.app.state.task_store
+        record = store.lookup(task_id, factory(request).owner_scope)
+        store.update_lease(record, _retention_lease(request))
+        await store.refresh(record)
+        return JSONResponse(task_payload(record, request))
 
-    @router.delete("/tasks/{task_id}")
+    @router.put(
+        "/tasks/{task_id}/uploads/{client_file_id}",
+        response_model=TaskStatusResponse,
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+            }
+        },
+    )
+    async def upload_task_file(task_id: str, client_file_id: str, request: Request) -> Response:
+        """每条上传链接只接收一个文件，该文件就绪后立即提交执行。"""
+        store: TaskStore = request.app.state.task_store
+        record = store.lookup(task_id, factory(request).owner_scope)
+        lease_seconds = _retention_lease(request)
+        store.update_lease(record, lease_seconds)
+        skipped = await store.upload(record, client_file_id, request)
+        # 大文件转传可超过租约长度；受理完成时续租，保护紧接着发布的结果。
+        store.update_lease(record, lease_seconds)
+        return JSONResponse(
+            task_payload(record, request),
+            headers={"Connection": "close"} if skipped and request.scope.get("http_version") == "1.1" else None,
+        )
+
+    @router.delete("/tasks/{task_id}", response_model=TaskStatusResponse)
     async def cancel_task(task_id: str, request: Request) -> Response:
-        """通过后台已有取消机制取消任务。"""
-        return JSONResponse(task_payload(await factory(request).cancel(task_id)))
-
-    @router.get(
-        "/tasks/{task_id}/result",
-        response_model=None,
-        responses={
-            200: {
-                "model": TaskResultResponse,
-                "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
-            },
-            202: {"model": TaskStatusResponse},
-        },
-    )
-    async def get_result(task_id: str, request: Request, response_format: ResponseFormat = "json") -> Response:
-        """根据任务终态返回内联 JSON 或既有 ZIP 产物。"""
-        backend = factory(request)
-        return await build_task_result(await backend.get(task_id), backend, response_format)
-
-    @router.post(
-        "/file_parse",
-        response_model=None,
-        openapi_extra=_request_schema(),
-        responses={
-            200: {
-                "model": TaskResultResponse,
-                "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
-            },
-            202: {"model": TaskStatusResponse},
-        },
-    )
-    async def file_parse(
-        request: Request, response_format: ResponseFormat = "json", wait_timeout: int = Query(default=300, ge=1, le=3600)
-    ) -> Response:
-        """同步包装共享异步任务，等待超时不取消后台工作。"""
-        backend = factory(request)
-        try:
-            with tempfile.TemporaryDirectory(prefix="mineru-task-") as directory:
-                body, uploads, skipped = await _prepare_submission(
-                    request, backend, Path(directory), sync=True, force_zip=response_format == "zip"
-                )
-                job = await backend.submit(body, uploads)
-        finally:
-            backend.release_uploads()
-        job = await backend.wait(job["job_id"], wait_timeout)
-        response = await build_task_result(job, backend, response_format)
-        if skipped and request.scope.get("http_version") == "1.1":
-            response.headers["Connection"] = "close"
-        return response
+        """统一取消等待上传与正在执行的任务，不重建后台作业。"""
+        store: TaskStore = request.app.state.task_store
+        record = store.lookup(task_id, factory(request).owner_scope)
+        await store.refresh(record)
+        await store.cancel(record, wait=False)
+        return JSONResponse(task_payload(record, request))
 
     return router
 
 
 class ApiTaskBackend:
-    """把便捷接口适配到 API server 唯一的文件存储和 JobStore。"""
+    """把上传准备接入 API server 的唯一文件存储和 JobStore。"""
 
     def __init__(self, request: Request) -> None:
-        """保留已通过鉴权的请求及当前应用资源。"""
-        self.request = request
+        """保留轻量请求上下文，不跨请求持有上传主体。"""
+        self.request = Request(dict(request.scope))
         self.files: FileStore = request.app.state.file_store
         self.jobs: JobStore = request.app.state.job_store
-        self._cached_pins: list[str] = []
-        self.access: AccessLevel = "registered" if request.app.state.api_key else "anonymous"
+        self.owner_scope = "local"
+        self._pins: list[str] = []
+        self._owned_files: list[str] = []
 
-    def release_uploads(self) -> None:
-        """释放当前请求的哈希预检引用，失败和取消同样经过此处。"""
-        for sha in self._cached_pins:
-            self.files.unpin_cached_blob(sha)
-        self._cached_pins.clear()
+    def fork(self) -> ApiTaskBackend:
+        """为单个文件隔离源字节引用，其他文件提交不释放本文件资源。"""
+        return ApiTaskBackend(self.request)
+
+    async def release_result(self, task_id: str, finished: float) -> None:
+        """由父 Task 统一开始子作业与结果文件的保留期。"""
+        self.jobs.release_task_result(task_id, finished)
+
+    async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileItem]) -> None:
+        """复用引擎就绪状态，提前校验显式 tier 与轻量格式能力。"""
+        _require_model_preload_ready(self.request)
+        if self.jobs._closing:
+            _invalid("Server is shutting down", code="server_shutting_down", status_code=503)
+        state = self.request.app.state
+        for index, item in enumerate(inputs):
+            if item.url is not None:
+                try:
+                    _validate_source_policy(
+                        _UrlSource(url=item.url),
+                        allow_http_source=state.allow_http_source,
+                    )
+                except ValueError as exc:
+                    _invalid(str(exc), param=f"files.{index}.url")
+        options.tier = resolve_task_tier(options, inputs, set(state.tier_runtime_options), state.default_tier)
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
-        """原子查找并持有可复用字节，直到提交或输入校验完成。"""
+        """原子查找并取得缓存租约，准备阶段不会因原文件视图到期丢失字节。"""
         path = self.files.pin_cached_blob(sha256sum)
         if path is None:
             return None
-        self._cached_pins.append(sha256sum)
+        self._pins.append(sha256sum)
         return TaskUpload(path, filename, path.stat().st_size, sha256sum)
 
-    async def submit(self, body: CreateJobRequest, uploads: dict[int, TaskUpload]) -> dict[str, Any]:
-        """注册源字节后调用共享任务提交函数，失败时回滚文件视图。"""
-        registered: list[str] = []
-        try:
-            for index, upload in uploads.items():
-                file_id = self.files._new_file_id()
-                registered.append(file_id)
-                await run_sync(self.files.register_source_file, upload.filename, upload.path, upload.sha256sum, file_id)
-                body.files[index].source = FileIdSource(file_id=file_id)
-            rec = await submit_parse_job(body, self.request, self.files, self.jobs, self.access)
-            return self.jobs.build_response(rec, access_level=self.access).model_dump(by_alias=True)
-        except BaseException:
-            for file_id in registered:
+    async def retain_upload(self, upload: TaskUpload) -> TaskUpload:
+        """立即按内容去重并登记独立文件视图，后续文件失败不丢弃已成功上传项。"""
+        file_id = self.files._new_file_id()
+        self._owned_files.append(file_id)
+        await run_sync(
+            self.files.register_source_file, upload.filename, upload.path, upload.sha256sum, file_id, keep_alive=True
+        )
+        path = self.files.pin_cached_blob(upload.sha256sum)
+        if path is None:
+            raise RuntimeError("New source file disappeared")
+        self._pins.append(upload.sha256sum)
+        return replace(upload, path=path, file_id=file_id)
+
+    def release_uploads(self, *, rollback: bool) -> None:
+        """成功提交后交接输入；准备失败时删除本任务视图但保留其他任务引用。"""
+        if rollback:
+            for file_id in self._owned_files:
                 if file_id in self.files._files:
                     self.files.delete_file(file_id)
-            raise
+        else:
+            self.files.finalize_source_views(self._owned_files)
+        self._owned_files.clear()
+        for sha in self._pins:
+            self.files.unpin_cached_blob(sha)
+        self._pins.clear()
 
-    async def get(self, task_id: str) -> dict[str, Any]:
-        """返回现有 Job 的规范数据。"""
-        return self.jobs.build_response(self.jobs.get(task_id), access_level=self.access).model_dump(by_alias=True)
+    async def submit(
+        self, task_id: str, options: UploadTaskOptions, inputs: list[TaskFileItem], uploads: dict[int, TaskUpload]
+    ) -> TaskExecution:
+        """提交单文件子作业，在同一次解析中生成专用产物并持有结果租约。"""
+        # 接单时已持有源字节；用户删除文件视图也不能破坏尚在等待其他文件的任务。
+        for upload in uploads.values():
+            await run_sync(
+                self.files.register_source_file, upload.filename, upload.path, upload.sha256sum, upload.file_id, keep_alive=True
+            )
+        body = _ParseRequest(
+            files=[
+                _ParseInput(
+                    source=_UrlSource(url=item.url) if item.url is not None else _StoredSource(file_id=uploads[index].file_id),
+                    page_range=item.page_range or None,
+                )
+                for index, item in enumerate(inputs)
+            ],
+            tier=options.tier,
+            ocr_mode=options.ocr_mode,
+            output_formats=options.output_formats,
+            include_model_output=options.include_model_output,
+        )
 
-    async def cancel(self, task_id: str) -> dict[str, Any]:
-        """取消同一份 Job 并返回当前完整状态。"""
-        self.jobs.cancel(task_id)
+        await submit_execution(
+            body,
+            self.request,
+            self.files,
+            self.jobs,
+            job_id=task_id,
+            input_specs={index: _JobInputSpec(item.file_name, item.bytes, item.sha256sum) for index, item in enumerate(inputs)},
+        )
         return await self.get(task_id)
 
-    async def wait(self, task_id: str, timeout: float) -> dict[str, Any]:
-        """等待清理完成事件，不把 HTTP 请求取消传播到解析。"""
-        await self.jobs.wait_for_terminal(task_id, timeout)
-        return await self.get(task_id)
+    async def get(self, task_id: str) -> TaskExecution:
+        """只读取 Job 与最终 File 的标识，不在状态请求中访问产物正文。"""
+        record = self.jobs.get(task_id)
+        return TaskExecution(
+            self.jobs.snapshot(record),
+            record.task_result_file_id,
+            None,
+            dict(record.input_metadata),
+        )
 
-    async def read_output(self, file_id: str) -> bytes:
-        """沿用文件存储的产物下载权限检查。"""
-        return await run_sync(self.files.read_file_data, file_id)
+    async def cancel(self, task_id: str) -> None:
+        """沿用 JobStore 取消及线程清理边界，终态竞争不影响已经完成的任务。"""
+        record = self.jobs._jobs.get(task_id)
+        if record is None:
+            return
+        if record.status not in TERMINAL_TASK_STATUSES:
+            self.jobs.cancel(task_id)
+        await self.jobs.wait_for_terminal(task_id, 3600)
 
 
 __all__ = [
     "ApiTaskBackend",
+    "CreateTaskRequest",
     "TaskBackend",
-    "TaskResultResponse",
+    "TaskExecution",
+    "TaskFileItem",
+    "TaskFileInput",
+    "TaskListItem",
+    "TaskListResponse",
     "TaskStatusResponse",
+    "TaskStore",
     "TaskUpload",
+    "UploadTaskOptions",
     "build_task_router",
+    "file_chunks",
+    "resolve_task_tier",
     "task_payload",
 ]

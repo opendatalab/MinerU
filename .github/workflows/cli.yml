@@ -13,31 +13,64 @@ on:
 jobs:
   cli-test:
     if: github.repository == 'opendatalab/MinerU'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     strategy:
-      fail-fast: true
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13', '3.14']
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
 
     steps:
       - name: PDF cli
         uses: actions/checkout@v6
         with:
-          ref: dev
           fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
 
       - name: install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: install&test
+      - name: Install and check dependencies
         run: |
           uv --version
-          uv venv --python 3.12
-          source .venv/bin/activate
-          uv pip install .[test]
-          cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')"
+          uv pip install '.[test]'
+          uv pip check
+
+      - name: Check Python syntax
+        run: uv run --no-project --no-sync python -m compileall -q mineru scripts tests
+
+      - name: Run Linux unit tests
+        if: runner.os == 'Linux' && matrix.python != '3.12'
+        run: uv run --no-project --no-sync python -m pytest -o addopts='' tests/unittest
+
+      - name: Run Linux unit tests with coverage
+        if: runner.os == 'Linux' && matrix.python == '3.12'
+        run: |
+          uv run --no-project --no-sync python tests/clean_coverage.py
           # 统一使用 pytest-cov 采集覆盖率，避免叠加启动 coverage 采集器。
-          cd $GITHUB_WORKSPACE && python -m pytest tests/unittest
-          cd $GITHUB_WORKSPACE && python tests/get_coverage.py
+          uv run --no-project --no-sync python -m pytest tests/unittest
+          uv run --no-project --no-sync python tests/get_coverage.py
+
+      - name: Run Windows and macOS public contract tests
+        if: runner.os != 'Linux'
+        run: |
+          uv run --no-project --no-sync python -m pytest -o addopts='' \
+            tests/unittest/test_docvortex_import_boundary.py \
+            tests/unittest/test_backend_architecture.py \
+            tests/unittest/test_docvortex_protocol.py \
+            tests/unittest/test_docvortex_routing.py \
+            tests/unittest/test_parser_api_contract.py
 
 #  notify_to_feishu:
 #    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure')}}

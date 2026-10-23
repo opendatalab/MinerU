@@ -23,10 +23,10 @@ def _require_gradio_dependencies() -> None:
             "dependency_missing",
             t("Gradio is a base dependency; repair the installation with `pip install 'mineru'`."),
         )
-    if version("gradio") not in SpecifierSet(">=6.8,<7"):
+    if version("gradio") not in SpecifierSet(">=6.21,<7"):
         exit_with_message(
             "dependency_incompatible",
-            t("Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
+            t("Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
         )
 
 

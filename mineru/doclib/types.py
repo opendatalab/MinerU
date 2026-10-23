@@ -412,8 +412,8 @@ class RemoteUsageCurrent(DoclibModel):
 
 
 class RemoteUsageLimits(DoclibModel):
-    max_pages_per_file: int
-    max_file_size_bytes: int
+    max_pages_per_file: int | None
+    max_file_size_bytes: int | None
     max_files_per_job: int
     max_concurrent_jobs: int
     max_file_retention_days: int | None = None

@@ -143,6 +143,7 @@ ZH_MESSAGES: dict[str, str] = {
     "File retention: {retention}": "文件保留期: {retention}",
     "{start} - ongoing": "{start} - 进行中",
     "not specified": "未指定",
+    "unlimited": "无限制",
     "{days} day": "{days} 天",
     "{days} days": "{days} 天",
     # ------------------------------------------------------------------ list
@@ -463,8 +464,8 @@ ZH_MESSAGES: dict[str, str] = {
     "Gradio is a base dependency; repair the installation with `pip install 'mineru'`.": (
         "Gradio 是基础依赖;请用 `pip install 'mineru'` 修复安装。"
     ),
-    "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
-        "需要 Gradio >=6.8,<7;请用 `pip install --upgrade 'mineru'` 升级。"
+    "Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
+        "需要 Gradio >=6.21,<7;请用 `pip install --upgrade 'mineru'` 升级。"
     ),
     "Unsupported API server tier '{tier}'. Supported tiers: {tiers}": "不支持的 API server 档位 '{tier}'。支持的档位: {tiers}",
     "{name} must be greater than zero": "{name} 必须大于零",
@@ -488,6 +489,10 @@ ZH_MESSAGES: dict[str, str] = {
     "Server host": "服务监听主机",
     "Server port": "服务监听端口",
     "Upload directory": "上传目录",
+    "Start the synchronous single-file Tasks wrapper service.": "启动单文件同步 Tasks 包装服务。",
+    "Upstream Tasks API base URL": "上游 Tasks API 基础 URL",
+    "Upstream Bearer API key": "上游 Bearer API 密钥",
+    "File parse recovery state directory": "同步解析请求恢复目录",
     "Server capability tier: flash, basic, or standard": "服务能力档位: flash、basic 或 standard",
     "Disable Flash tier advertisement and execution": "禁用 Flash 档位的广播与执行",
     "Disable Advanced tier advertisement and execution": "禁用 Advanced 档位的广播与执行",

@@ -333,8 +333,6 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     assert inline_text(pages[1].blocks[0].content) == "newer"  # type: ignore[union-attr]
 
 
-
-
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:
     assert api_server_args_for_tier("standard", host="127.0.0.1", port=16580) == [
         "--tier",
@@ -343,7 +341,6 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "127.0.0.1",
         "--port",
         "16580",
-        "--allow-local-source",
         "--no-flash",
         "--preload-models",
         "--log-level",
@@ -356,7 +353,6 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "127.0.0.2",
         "--port",
         "16581",
-        "--allow-local-source",
         "--no-flash",
         "--preload-models",
         "--log-level",

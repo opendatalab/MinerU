@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -330,40 +329,29 @@ def test_api_job_through_http_vlm_to_middle_json(
     source = _pdf_input(tmp_path)
     app = api_server.create_app(
         upload_dir=str(tmp_path / "api"),
-        allow_local_source=True,
         api_key="inbound-key",
         no_flash=True,
         vlm_config=_settings(openai_server),
     )
     with TestClient(app, headers={"Authorization": "Bearer inbound-key"}) as client:
-        submitted = client.post(
-            "/v1/parse/jobs",
-            json={
-                "files": [{"source": {"type": "local", "path": str(source)}}],
-                "tier": tier,
-                "ocr_mode": "ocr",
-                "output_formats": ["middle_json"],
-            },
-        )
-        assert submitted.status_code == 202, submitted.text
-        job_id = submitted.json()["job_id"]
-        deadline = time.monotonic() + 15
-        while True:
-            job = client.get(f"/v1/parse/jobs/{job_id}").json()
-            if job["status"] in {"completed", "failed", "partial"}:
-                break
-            assert time.monotonic() < deadline, job
-            time.sleep(0.01)
+        from task_test_utils import submit_task, wait_task
+
+        task = submit_task(client, source, tier=tier, ocr_mode="ocr")
+        job = wait_task(client, task, timeout=15)
         if chat_status != 200:
             assert job["status"] == "failed", job
             assert job["files"][0]["error"]["code"] == "parse_failed"
             return
         assert job["status"] == "completed", job
-        file_id = job["files"][0]["output_files"]["middle_json"]["file_id"]
-        output = client.get(f"/v1/files/{file_id}/content")
+        import io
+        import zipfile
+
+        output = client.get(job["files"][0]["result_url"])
         assert output.status_code == 200
-        assert output.json()["extensions"]["mineru"]["tier"] == tier
-        assert "Remote VLM text" in output.text
+        with zipfile.ZipFile(io.BytesIO(output.content)) as archive:
+            middle_text = archive.read("middle_json.json").decode()
+        assert json.loads(middle_text)["extensions"]["mineru"]["tier"] == tier
+        assert "Remote VLM text" in middle_text
         assert all(request[1] == "Bearer test-key" for request in openai_server.requests)
 
 

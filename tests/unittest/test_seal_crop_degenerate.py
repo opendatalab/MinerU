@@ -19,13 +19,13 @@ from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
 _REFERENCE = json.loads((Path(__file__).parents[1] / "fixtures/seal_crop_degenerate.json").read_text())
 
 
-@pytest.fixture(params=["python", "rust"])
-def image_backend(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """两种共享图像后端均检查无效轮廓和有效裁片的像素契约。"""
+@pytest.fixture
+def image_backend() -> Iterator[None]:
+    """共享原生图像内核检查无效轮廓和有效裁片的像素契约。"""
     from docvortex._compute_backend import get_native
 
-    monkeypatch.setenv("DOCVORTEX_COMPUTE_BACKEND", request.param)
     get_native.cache_clear()
+    get_native()
     try:
         yield
     finally:

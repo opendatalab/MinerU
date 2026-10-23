@@ -6,8 +6,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import io
-import json
 from importlib.resources import files as package_resources
 import logging
 import os
@@ -18,7 +16,6 @@ import shutil
 import tempfile
 import threading
 import time
-import zipfile
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -29,18 +26,18 @@ from urllib.parse import urlparse
 import click
 import httpx
 import uvicorn
-from docvortex.assets import validate_image_sidecar_path
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi_offline import FastAPIOffline
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer
 from filelock import FileLock, Timeout as FileLockTimeout
 from ..utils.retention import resolve_retention_seconds, RETENTION_SCAN_INTERVAL_SECONDS
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
+from starlette.types import Receive, Scope, Send
 
 from ..config import VlmConfig
 from ..config import config as mineru_config
@@ -59,7 +56,6 @@ from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
-from .base import ParseResult
 from .page_range import (
     PAGE_RANGE_DESCRIPTION,
     normalize_page_range_input,
@@ -78,56 +74,13 @@ from .tier import (
     ensure_tier_runtime_dependencies,
     runtime_options_for_tier,
 )
-from .writer import DataWriter
+from ..task_types import TASK_OUTPUT_FORMATS, TaskOutputFormat
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
-_MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
 _MAX_FILES_PER_JOB_DEFAULT = 100
-_MAX_FILE_SIZE_BYTES_DEFAULT = 209715200
-_LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
-    "markdown",
-    "middle_json",
-    "structured_content",
-    "zip",
-)
-_BASE_PARSE_SOURCES: tuple[SourceType, ...] = ("file_id", "url", "inline")
+_MAX_URL_BYTES_DEFAULT = 209715200
+
 logger = logging.getLogger("mineru.parser.api_server")
-
-
-def _sanitize_surrogates(value: str) -> str:
-    return "".join("\ufffd" if 0xD800 <= ord(ch) <= 0xDFFF else ch for ch in value)
-
-
-def _sanitize_json_for_utf8(value: object) -> object:
-    if isinstance(value, str):
-        return _sanitize_surrogates(value)
-    if isinstance(value, list):
-        return [_sanitize_json_for_utf8(item) for item in value]
-    if isinstance(value, tuple):
-        return [_sanitize_json_for_utf8(item) for item in value]
-    if isinstance(value, dict):
-        return {_sanitize_json_for_utf8(key): _sanitize_json_for_utf8(item) for key, item in value.items()}
-    return value
-
-
-def _text_utf8_bytes(value: str) -> bytes:
-    return _sanitize_surrogates(value).encode("utf-8")
-
-
-def _json_utf8_bytes(value: object) -> bytes:
-    return json.dumps(_sanitize_json_for_utf8(value), ensure_ascii=False).encode("utf-8")
-
-
-class _ZipDataWriter(DataWriter):
-    def __init__(self, archive: zipfile.ZipFile) -> None:
-        self._archive = archive
-
-    def write(self, path: str, data: bytes) -> None:
-        safe_path = validate_image_sidecar_path(path)
-        self._archive.writestr(safe_path, data)
-
-    def write_string(self, path: str, data: str) -> None:
-        self.write(path, _text_utf8_bytes(data))
 
 
 class ParseServerStartupError(RuntimeError):
@@ -142,31 +95,11 @@ JobStatus = Literal["queued", "running", "completed", "partial", "failed", "canc
 FileStatus = Literal["queued", "running", "completed", "failed"]
 """Per-file status within a job."""
 
-UploadStatus = Literal["pending", "completed", "cancelled", "expired"]
-"""Upload lifecycle states."""
-
-OutputFormat = Literal[
-    "markdown",
-    "middle_json",
-    "structured_content",
-    "html",
-    "latex",
-    "docx",
-    "zip",
-]
-"""Output artifact formats."""
-
-OutputFormatReqToken = Literal["html", "latex", "docx"]
-"""Output formats that require a valid API key."""
-
-SourceType = Literal["file_id", "url", "inline", "local"]
-"""File source types."""
-
 AccessLevel = Literal["anonymous", "registered"]
 """Account access level determined by API Key."""
 
-FilePurpose = Literal["parse", "parse_output", "input_image"]
-"""File purpose: source files, parse artifacts, or chat/response input images."""
+FilePurpose = Literal["parse", "parse_output"]
+"""文件用途限定为解析输入或产物。"""
 
 # ── helper ───────────────────────────────────────────────────────────
 
@@ -300,8 +233,9 @@ def _http_exception_error(exc: HTTPException) -> ErrorDetail:
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
     webhook: bool = False
-    output_formats: list[OutputFormat] = Field(default_factory=lambda: list(_LOCAL_PARSE_OUTPUT_FORMATS))
-    sources: list[SourceType] = Field(default_factory=lambda: list(_BASE_PARSE_SOURCES))
+    task_output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: list(TASK_OUTPUT_FORMATS))
+    sources: list[Literal["upload", "url"]] = Field(default_factory=lambda: ["upload", "url"])
+    task_model_output: bool = True
 
 
 class HealthResponse(BaseModel):
@@ -362,45 +296,6 @@ class TierInfoData(TypedDict):
 # ── Upload ───────────────────────────────────────────────────────────
 
 
-class ExpiresAfter(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    anchor: Literal["created_at"] = "created_at"
-    seconds: int = Field(default=3600, ge=3600, le=2592000)
-
-
-class CreateUploadRequest(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    filename: str = Field(min_length=1)
-    bytes: int = Field(gt=0)
-    mime_type: str = Field(min_length=1)
-    purpose: Literal["parse", "input_image"] = "parse"
-    sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    expires_after: ExpiresAfter | None = None
-
-
-class CompleteUploadRequest(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-
-
-class UploadResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    id: str
-    object: Literal["upload"] = "upload"
-    bytes: int
-    created_at: int
-    expires_at: int
-    filename: str
-    purpose: FilePurpose = "parse"
-    mime_type: str
-    sha256sum: str | None = None
-    status: UploadStatus
-    upload_url: str | None = None
-    upload_method: Literal["PUT"] | None = None
-    upload_headers: dict[str, str] | None = None
-    file: FileObjectModel | None = None
-
-
 # ── File ─────────────────────────────────────────────────────────────
 
 
@@ -413,7 +308,7 @@ class FileObjectModel(BaseModel):
     bytes: int
     created_at: int
     expires_at: int | None = None
-    filename: str
+    file_name: str
     purpose: FilePurpose
     sha256sum: str | None = None
 
@@ -437,70 +332,47 @@ class FileListResponse(BaseModel):
 # ── Job sources ──────────────────────────────────────────────────────
 
 
-class FileIdSource(BaseModel):
+class _StoredSource(BaseModel):
     model_config = _PYDANTIC_CONFIG
     type: Literal["file_id"] = "file_id"
     file_id: str
 
 
-class UrlSource(BaseModel):
+class _UrlSource(BaseModel):
     model_config = _PYDANTIC_CONFIG
     type: Literal["url"] = "url"
     url: str
 
 
-class InlineSource(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    type: Literal["inline"] = "inline"
-    name: str = Field(min_length=1)
-    data: str = Field(min_length=1)
-
-
-class LocalSource(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    type: Literal["local"] = "local"
-    path: str = Field(min_length=1)
-
-
-FileSource = Annotated[
-    FileIdSource | UrlSource | InlineSource | LocalSource,
+_ExecutionSource = Annotated[
+    _StoredSource | _UrlSource,
     Field(discriminator="type"),
 ]
 
 
-class JobFileEntry(BaseModel):
+class _ParseInput(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    source: FileSource
+    source: _ExecutionSource
     page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION, examples=["1-5,8,r3-r1", "all"])
 
 
-class CallbackConfig(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    url: str
-    secret: str | None = None
+class _ParseRequest(BaseModel):
+    """Tasks 构造的私有执行请求，不属于公开 HTTP 协议。"""
 
-
-class CreateJobRequest(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    files: list[JobFileEntry] = Field(min_length=1, max_length=_MAX_FILES_PER_JOB_DEFAULT)
+    files: list[_ParseInput] = Field(min_length=1, max_length=_MAX_FILES_PER_JOB_DEFAULT)
     tier: Tier | None = None
     ocr_mode: Literal["auto", "txt", "ocr"] = Field(
         default="auto", description="OCR mode for this parse job: auto-detect, native text, or forced OCR."
     )
-    output_formats: list[str] = ["markdown"]
-    callback: CallbackConfig | None = None
+    output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"])
+    include_model_output: bool = False
 
 
 # ── Job responses ────────────────────────────────────────────────────
 
 
-class JobLinks(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    self: str
-    cancel: str
-
-
-class JobProgress(BaseModel):
+class TaskProgress(BaseModel):
     model_config = _PYDANTIC_CONFIG
     completed: int = 0
     failed: int = 0
@@ -514,73 +386,14 @@ class FileParseInfo(BaseModel):
     parser_version: str | None = None
 
 
-class OutputFileRef(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    file_id: str
-    bytes: int
-
-
-class OutputFiles(BaseModel):
-    """Per-file output artifacts. Content is downloaded via the Files API."""
-
-    model_config = _PYDANTIC_CONFIG
-    markdown: OutputFileRef | None = None
-    middle_json: OutputFileRef | None = None
-    structured_content: OutputFileRef | None = None
-    html: OutputFileRef | None = None
-    latex: OutputFileRef | None = None
-    docx: OutputFileRef | None = None
-    zip: OutputFileRef | None = None
-
-
-class JobFileResult(BaseModel):
+class _ExecutionFile(BaseModel):
     model_config = _PYDANTIC_CONFIG
     file_id: str | None = None
     name: str
     page_range: str
     status: FileStatus
     parse: FileParseInfo | None = None
-    output_files: OutputFiles | None = None
     error: ErrorDetail | None = None
-
-
-class JobAsyncResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    job_id: str
-    status: JobStatus
-    created_at: str  # ISO-8601 UTC
-    started_at: str | None = None
-    finished_at: str | None = None
-    tier: Tier
-    output_formats: list[OutputFormat]
-    access_level: AccessLevel
-    progress: JobProgress | None = None
-    files: list[JobFileResult]
-    links: JobLinks
-
-
-class JobListItem(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    job_id: str
-    status: JobStatus
-    created_at: str
-    file_count: int
-
-
-class JobListResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    object: Literal["list"] = "list"
-    data: list[JobListItem]
-    first_id: str | None = None
-    last_id: str | None = None
-    has_more: bool = False
-
-
-class JobCancelResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    job_id: str
-    status: Literal["canceled"] = "canceled"
-    canceled_at: str
 
 
 # ── Usage ────────────────────────────────────────────────────────────
@@ -601,8 +414,8 @@ class UsageCurrent(BaseModel):
 
 class UsageLimits(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    max_pages_per_file: int = 1000
-    max_file_size_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT
+    max_pages_per_file: int | None = None
+    max_file_size_bytes: int | None = None
     max_files_per_job: int = _MAX_FILES_PER_JOB_DEFAULT
     max_concurrent_jobs: int = 1
     max_file_retention_days: int | None = None
@@ -623,20 +436,6 @@ class UsageResponse(BaseModel):
 
 
 @dataclass
-class _UploadRecord:
-    id: str
-    filename: str
-    bytes: int
-    mime_type: str
-    created_at: int
-    expires_at: int
-    purpose: FilePurpose = "parse"
-    sha256sum: str | None = None
-    status: UploadStatus = "pending"
-    file_id: str | None = None  # set on complete
-
-
-@dataclass
 class _FileRecord:
     id: str
     filename: str
@@ -645,7 +444,6 @@ class _FileRecord:
     purpose: FilePurpose
     sha256sum: str | None = None
     expires_at: int | None = None
-    upload_id: str | None = None
     job_id: str | None = None
 
 
@@ -661,7 +459,6 @@ class FileStore:
         self._root = root
         self._blobs = root / "blobs"
         self._blobs.mkdir(parents=True, exist_ok=True)
-        self._uploads: dict[str, _UploadRecord] = {}
         self._files: dict[str, _FileRecord] = {}
 
     def claim_directory(self) -> None:
@@ -734,10 +531,6 @@ class FileStore:
             for file_id, rec in tuple(self._files.items()):
                 if rec.expires_at is not None and rec.expires_at <= now:
                     self._files.pop(file_id)
-            for upload_id, rec in tuple(self._uploads.items()):
-                if rec.expires_at <= now:
-                    self._uploads.pop(upload_id)
-                    (self._blobs / "_uploads" / upload_id).unlink(missing_ok=True)
             referenced = {rec.sha256sum for rec in self._files.values()} | set(self._pins)
             for prefix in self._blobs.iterdir():
                 if prefix.is_symlink() or not prefix.is_dir() or not re.fullmatch(r"[0-9a-f]{2}", prefix.name):
@@ -755,22 +548,8 @@ class FileStore:
                     # 刚写入但尚未注册的文件及当前扫描期间的写入受锁和年龄门槛保护。
                     if blob.stat().st_mtime + self.retention_seconds <= now:
                         blob.unlink(missing_ok=True)
-            pending = self._blobs / "_uploads"
-            if pending.is_dir():
-                for blob in pending.iterdir():
-                    if (
-                        blob.is_file()
-                        and re.fullmatch(r"upload_[0-9a-f]{24}", blob.name)
-                        and blob.name not in self._uploads
-                        and blob.stat().st_mtime + self.retention_seconds <= now
-                    ):
-                        blob.unlink(missing_ok=True)
 
     # ── ID generation ────────────────────────────────────────────────
-
-    @staticmethod
-    def _new_upload_id() -> str:
-        return "upload_" + secrets.token_hex(12)
 
     @staticmethod
     def _new_file_id() -> str:
@@ -802,7 +581,9 @@ class FileStore:
                 finally:
                     temporary.unlink(missing_ok=True)
 
-    def register_source_file(self, filename: str, path: pathlib.Path, sha256sum: str, file_id: str | None = None) -> str:
+    def register_source_file(
+        self, filename: str, path: pathlib.Path, sha256sum: str, file_id: str | None = None, *, keep_alive: bool = False
+    ) -> str:
         """从已校验的暂存文件原子注册源字节及独立的文件名视图。"""
         with self._lock:
             target = self._blob_abs(sha256sum)
@@ -823,9 +604,53 @@ class FileStore:
                 created_at=now,
                 purpose="parse",
                 sha256sum=sha256sum,
-                expires_at=now + self.retention_seconds if self.retention_seconds else None,
+                expires_at=now + self.retention_seconds if self.retention_seconds and not keep_alive else None,
             )
             return file_id
+
+    def finalize_source_views(self, file_ids: list[str]) -> None:
+        """准备完成后恢复源文件视图的正常保留期，执行所需字节另由 Job 租约保护。"""
+        with self._lock:
+            expires_at = int(time.time()) + self.retention_seconds if self.retention_seconds else None
+            for file_id in file_ids:
+                record = self._files.get(file_id)
+                if record is not None:
+                    record.expires_at = expires_at
+
+    def create_file_for_output_path(self, filename: str, path: pathlib.Path, *, job_id: str) -> str:
+        """从已完成的文件流式登记产物，避免批量 ZIP 再次整体载入内存。"""
+        hasher = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                hasher.update(chunk)
+        sha = hasher.hexdigest()
+        with self._lock:
+            file_id = self.register_source_file(filename, path, sha)
+            record = self._files[file_id]
+            record.purpose = "parse_output"
+            record.job_id = job_id
+            record.expires_at = None
+            pins = self._job_output_pins.setdefault(job_id, set())
+            if sha not in pins:
+                pins.add(sha)
+                self._pins[sha] = self._pins.get(sha, 0) + 1
+            return file_id
+
+    def pin_output_file(self, file_id: str) -> tuple[pathlib.Path, str, str]:
+        """检查产物权限并取得下载租约，防止传输途中被保留策略删除。"""
+        with self._lock:
+            rec = self.get_file(file_id)
+            if rec.purpose != "parse_output":
+                _raise_api_error(
+                    403,
+                    error_type="permission_error",
+                    code="feature_requires_api_key",
+                    message="Source files cannot be downloaded",
+                )
+            if rec.sha256sum is None or not self._blob_abs(rec.sha256sum).is_file():
+                _raise_api_error(404, error_type="invalid_request_error", code="file_not_found", message="Output expired")
+            self._pins[rec.sha256sum] = self._pins.get(rec.sha256sum, 0) + 1
+            return self._blob_abs(rec.sha256sum), rec.filename, rec.sha256sum
 
     def read_blob(self, sha256hex: str) -> bytes:
         with self._lock:
@@ -833,220 +658,6 @@ class FileStore:
             if not p.is_file():
                 raise FileNotFoundError(sha256hex)
             return p.read_bytes()
-
-    # ── uploads ──────────────────────────────────────────────────────
-
-    def create_upload(self, req: CreateUploadRequest, *, base_url: str = "") -> UploadResponse:
-        with self._lock:
-            now = int(time.time())
-            expires_seconds = req.expires_after.seconds if req.expires_after else 3600
-
-            # sha256sum dedup
-            if req.sha256sum and self.blob_exists(req.sha256sum):
-                if self._blob_abs(req.sha256sum).stat().st_size != req.bytes:
-                    _raise_api_error(
-                        400,
-                        error_type="invalid_request_error",
-                        code="upload_size_mismatch",
-                        message="Declared size does not match the cached file",
-                        param="bytes",
-                    )
-                file_id = self._new_file_id()
-                self._files[file_id] = _FileRecord(
-                    id=file_id,
-                    filename=req.filename,
-                    bytes=req.bytes,
-                    created_at=now,
-                    purpose=req.purpose,
-                    sha256sum=req.sha256sum,
-                    expires_at=now + expires_seconds,
-                )
-                upload_id = self._new_upload_id()
-                self._uploads[upload_id] = _UploadRecord(
-                    id=upload_id,
-                    filename=req.filename,
-                    bytes=req.bytes,
-                    mime_type=req.mime_type,
-                    created_at=now,
-                    expires_at=now + expires_seconds,
-                    purpose=req.purpose,
-                    sha256sum=req.sha256sum,
-                    status="completed",
-                    file_id=file_id,
-                )
-                return self._make_upload_response(self._uploads[upload_id], base_url=base_url, expose_upload_url=True)
-
-            upload_id = self._new_upload_id()
-            self._uploads[upload_id] = _UploadRecord(
-                id=upload_id,
-                filename=req.filename,
-                bytes=req.bytes,
-                mime_type=req.mime_type,
-                created_at=now,
-                expires_at=now + expires_seconds,
-                purpose=req.purpose,
-                sha256sum=req.sha256sum,
-            )
-            return self._make_upload_response(self._uploads[upload_id], base_url=base_url, expose_upload_url=True)
-
-    def get_upload(self, upload_id: str) -> _UploadRecord:
-        with self._lock:
-            rec = self._uploads.get(upload_id)
-            if rec is None:
-                _raise_api_error(
-                    404,
-                    error_type="invalid_request_error",
-                    code="upload_not_found",
-                    message=f"Upload {upload_id} not found",
-                )
-            if int(time.time()) >= rec.expires_at:
-                rec.status = "expired"
-                (self._blobs / "_uploads" / upload_id).unlink(missing_ok=True)
-                _raise_api_error(
-                    404, error_type="invalid_request_error", code="upload_not_found", message=f"Upload {upload_id} expired"
-                )
-            return rec
-
-    def _read_upload_data(self, upload_id: str) -> bytes:
-        with self._lock:
-            p = self._blobs / "_uploads" / upload_id
-            if not p.is_file():
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_not_ready",
-                    message="Upload bytes not yet received",
-                )
-            return p.read_bytes()
-
-    def complete_upload(self, upload_id: str, sha256hex: str | None) -> UploadResponse:
-        with self._lock:
-            rec = self.get_upload(upload_id)
-            if rec.status == "completed":
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_already_terminal",
-                    message="Upload is already completed",
-                )
-            if rec.status in ("cancelled", "expired"):
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_already_terminal",
-                    message=f"Upload is {rec.status}",
-                )
-
-            # compute sha256 from uploaded data if not provided
-            data = self._read_upload_data(upload_id)
-            if len(data) != rec.bytes:
-                _raise_api_error(
-                    413,
-                    error_type="invalid_request_error",
-                    code="upload_size_mismatch",
-                    message=f"Upload expects {rec.bytes} bytes, received {len(data)}",
-                )
-            actual_sha = hashlib.sha256(data).hexdigest()
-
-            if sha256hex and sha256hex != actual_sha:
-                _raise_api_error(
-                    400,
-                    error_type="invalid_request_error",
-                    code="file_hash_mismatch",
-                    message="SHA-256 mismatch",
-                )
-            if rec.sha256sum and rec.sha256sum != actual_sha:
-                _raise_api_error(
-                    400,
-                    error_type="invalid_request_error",
-                    code="file_hash_mismatch",
-                    message="SHA-256 mismatch",
-                )
-
-            # move from upload blob to content-addressed blob
-            sha = sha256hex or actual_sha
-            if not self.blob_exists(sha):
-                self.store_blob(data, sha256hex=sha)
-            # remove temp upload blob
-            (self._blobs / "_uploads" / upload_id).unlink(missing_ok=True)
-
-            now = int(time.time())
-            file_id = self._new_file_id()
-            self._files[file_id] = _FileRecord(
-                id=file_id,
-                filename=rec.filename,
-                bytes=rec.bytes,
-                created_at=now,
-                purpose=rec.purpose,
-                sha256sum=sha,
-                expires_at=rec.expires_at,
-                upload_id=upload_id,
-            )
-            rec.status = "completed"
-            rec.file_id = file_id
-            rec.sha256sum = sha
-            return self._make_upload_response(rec)
-
-    def cancel_upload(self, upload_id: str) -> UploadResponse:
-        with self._lock:
-            rec = self.get_upload(upload_id)
-            if rec.status in ("completed", "cancelled", "expired"):
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_already_terminal",
-                    message=f"Upload is {rec.status}",
-                )
-            rec.status = "cancelled"
-            return self._make_upload_response(rec)
-
-    def store_upload_data(self, upload_id: str, data: bytes) -> None:
-        """Store raw bytes for an upload (before complete)."""
-        with self._lock:
-            rec = self.get_upload(upload_id)
-            if rec.status != "pending":
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_already_terminal",
-                    message=f"Upload is {rec.status}",
-                )
-            if len(data) != rec.bytes:
-                _raise_api_error(
-                    413,
-                    error_type="invalid_request_error",
-                    code="upload_size_mismatch",
-                    message=f"Upload expects {rec.bytes} bytes, received {len(data)}",
-                )
-            # store temporarily under upload_id in blobs dir
-            p = self._blobs / "_uploads" / upload_id
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(data)
-
-    def _make_upload_response(
-        self, rec: _UploadRecord, *, base_url: str = "", expose_upload_url: bool = False
-    ) -> UploadResponse:
-        with self._lock:
-            resp = UploadResponse(
-                id=rec.id,
-                bytes=rec.bytes,
-                created_at=rec.created_at,
-                expires_at=rec.expires_at,
-                filename=rec.filename,
-                mime_type=rec.mime_type,
-                purpose=rec.purpose,
-                sha256sum=rec.sha256sum,
-                status=rec.status,
-            )
-            if expose_upload_url and rec.status == "pending":
-                resp.upload_url = f"{base_url}/v1/uploads/{rec.id}/content"
-                resp.upload_method = "PUT"
-                resp.upload_headers = {"Content-Type": rec.mime_type}
-            elif rec.status == "completed" and rec.file_id and rec.file_id in self._files:
-                resp.file = self._make_file_object(self._files[rec.file_id])
-            return resp
-
-    # ── files ────────────────────────────────────────────────────────
 
     def create_file_for_output(
         self, filename: str, data: bytes, *, sha256hex: str | None = None, job_id: str | None = None
@@ -1093,7 +704,7 @@ class FileStore:
             bytes=rec.bytes,
             created_at=rec.created_at,
             expires_at=rec.expires_at,
-            filename=rec.filename,
+            file_name=rec.filename,
             purpose=rec.purpose,
             sha256sum=rec.sha256sum,
         )
@@ -1166,14 +777,6 @@ class FileStore:
         app_state.file_store = self
 
 
-def _build_self_contained_zip_output(result: ParseResult) -> bytes:
-    """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        result.save(_ZipDataWriter(zf))
-    return buf.getvalue()
-
-
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -1198,63 +801,25 @@ def _resolve_access_level(request: Request) -> AccessLevel:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-_OUTPUT_FORMATS_LOCAL = set(_LOCAL_PARSE_OUTPUT_FORMATS)
-
-
-def _parse_sources_for_server(*, allow_local_source: bool) -> list[SourceType]:
-    sources = list(_BASE_PARSE_SOURCES)
-    if allow_local_source:
-        sources.append("local")
-    return sources
-
-
-def _decode_inline_data(data: str) -> bytes:
-    try:
-        return base64.b64decode(data, validate=True)
-    except Exception as exc:
-        raise ValueError("inline source data must be valid base64") from exc
-
-
-def _validate_source_policy(
-    source: FileSource,
-    *,
-    allow_local_source: bool,
-    max_inline_bytes: int,
-    allow_http_source: bool,
-) -> None:
-    if isinstance(source, UrlSource):
-        scheme = urlparse(source.url).scheme.lower()
-        if scheme == "https":
-            return
-        if scheme == "http" and allow_http_source:
-            return
-        if scheme == "http":
-            raise ValueError("url source must use https unless --allow-http-source is enabled")
-        raise ValueError("url source must use http or https")
-    if isinstance(source, InlineSource):
-        data = _decode_inline_data(source.data)
-        if len(data) > max_inline_bytes:
-            raise ValueError(f"inline source exceeds max_inline_bytes ({max_inline_bytes})")
+def _validate_source_policy(source: _ExecutionSource, *, allow_http_source: bool) -> None:
+    """执行层仅接受已校验的源文件引用或遵守服务策略的 URL。"""
+    if isinstance(source, _StoredSource):
         return
-    if isinstance(source, LocalSource):
-        if not allow_local_source:
-            raise ValueError("local source is disabled; enable --allow-local-source")
+    scheme = urlparse(source.url).scheme.lower()
+    if scheme == "https" or (scheme == "http" and allow_http_source):
         return
+    raise ValueError("url source must use https unless --allow-http-source is enabled")
 
 
 def _validate_job_source_policy(
-    req: CreateJobRequest,
+    req: _ParseRequest,
     *,
-    allow_local_source: bool,
-    max_inline_bytes: int,
     allow_http_source: bool,
 ) -> None:
     for index, entry in enumerate(req.files):
         try:
             _validate_source_policy(
                 entry.source,
-                allow_local_source=allow_local_source,
-                max_inline_bytes=max_inline_bytes,
                 allow_http_source=allow_http_source,
             )
         except ValueError as exc:
@@ -1269,6 +834,23 @@ def _validate_job_source_policy(
             )
 
 
+@dataclass(frozen=True)
+class _JobInputSpec:
+    """仅在服务内部传递 tasks 的逻辑文件名及可选完整性声明。"""
+
+    filename: str
+    bytes: int | None = None
+    sha256sum: str | None = None
+
+
+@dataclass(frozen=True)
+class _JobInputMetadata:
+    """记录完整下载且校验通过的实际输入信息，不扩展公开 Jobs 协议。"""
+
+    bytes: int
+    sha256sum: str
+
+
 @dataclass
 class _JobRecord:
     id: str
@@ -1277,21 +859,24 @@ class _JobRecord:
     started_at: str | None = None
     finished_at: str | None = None
     tier: Tier = _DEFAULT_API_SERVER_TIER
-    output_formats: list[OutputFormat] = None  # type: ignore[assignment]
-    progress: JobProgress | None = None
-    files: list[JobFileResult] = None  # type: ignore[assignment]
-    links: JobLinks | None = None
+    progress: TaskProgress | None = None
+    files: list[_ExecutionFile] = None  # type: ignore[assignment]
     input_blobs: dict[str, str] = field(default_factory=dict)
+    input_specs: dict[int, _JobInputSpec] = field(default_factory=dict)
+    input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
     file_store: FileStore | None = None
     usage_counted: bool = False
+    task_result_file_id: str | None = None
+    task_output_formats: list[TaskOutputFormat] = field(default_factory=lambda: ["default"])
+    include_model_output: bool = False
+    retention_held: bool = False
+    retention_epoch: float | None = None
 
     def __post_init__(self) -> None:
         if self.files is None:
             self.files = []
-        if self.output_formats is None:
-            self.output_formats = ["markdown"]
         if self.progress is None:
-            self.progress = JobProgress()
+            self.progress = TaskProgress()
 
 
 class JobStore:
@@ -1360,7 +945,8 @@ class JobStore:
             self._tasks.pop(rec.id, None)
             rec.finished_at = self._now()
             if rec.file_store is not None:
-                rec.file_store.finalize_outputs(rec.id, int(time.time()))
+                if not rec.retention_held:
+                    rec.file_store.finalize_outputs(rec.id, int(rec.retention_epoch or time.time()))
                 rec.file_store.release_inputs(rec.input_blobs)
             if not task.cancelled():
                 error = task.exception()
@@ -1412,27 +998,35 @@ class JobStore:
     def _now() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def create(self, req: CreateJobRequest, file_store: FileStore) -> _JobRecord:
+    def create(
+        self,
+        req: _ParseRequest,
+        file_store: FileStore,
+        *,
+        job_id: str | None = None,
+        input_specs: dict[int, _JobInputSpec] | None = None,
+    ) -> _JobRecord:
+        """创建唯一执行记录，允许 tasks 使用上传准备阶段预先分配的 ID。"""
         if req.tier is None:
-            raise ValueError("CreateJobRequest.tier must be resolved before job creation")
-        job_id = self._new_job_id()
+            raise ValueError("_ParseRequest.tier must be resolved before job creation")
+        job_id = job_id or self._new_job_id()
+        if job_id in self._jobs:
+            _raise_api_error(409, error_type="invalid_request_error", code="job_already_exists", message="Job already exists")
         now = self._now()
         rec = _JobRecord(
             id=job_id,
             status="queued",
             created_at=now,
             tier=req.tier,
-            output_formats=req.output_formats,
-            links=JobLinks(
-                self=f"/v1/parse/jobs/{job_id}",
-                cancel=f"/v1/parse/jobs/{job_id}",
-            ),
+            task_output_formats=req.output_formats,
+            include_model_output=req.include_model_output,
+            input_specs=dict(input_specs or {}),
         )
-        for entry in req.files:
-            name = _source_name(entry.source, file_store)
+        for index, entry in enumerate(req.files):
+            name = _source_name(entry.source, file_store, input_spec=rec.input_specs.get(index))
             rec.files.append(
-                JobFileResult(
-                    file_id=entry.source.file_id if isinstance(entry.source, FileIdSource) else None,
+                _ExecutionFile(
+                    file_id=entry.source.file_id if isinstance(entry.source, _StoredSource) else None,
                     name=name,
                     page_range=entry.page_range or "",
                     status="queued",
@@ -1440,7 +1034,7 @@ class JobStore:
             )
         rec.progress.total = len(rec.files)
         rec.input_blobs = file_store.acquire_inputs(
-            [entry.source.file_id for entry in req.files if isinstance(entry.source, FileIdSource)]
+            [entry.source.file_id for entry in req.files if isinstance(entry.source, _StoredSource)]
         )
         rec.file_store = file_store
         self._jobs[job_id] = rec
@@ -1453,13 +1047,23 @@ class JobStore:
             return
         now = time.time()
         for job_id, rec in tuple(self._jobs.items()):
-            if job_id in self._tasks or rec.finished_at is None:
+            if job_id in self._tasks or rec.finished_at is None or rec.retention_held:
                 continue
-            finished = datetime.fromisoformat(rec.finished_at.replace("Z", "+00:00")).timestamp()
+            finished = rec.retention_epoch or datetime.fromisoformat(rec.finished_at.replace("Z", "+00:00")).timestamp()
             if finished + self.retention_seconds <= now:
                 self._record_usage(rec)
                 self._jobs.pop(job_id)
                 self._completion_events.pop(job_id, None)
+
+    def release_task_result(self, job_id: str, finished: float) -> None:
+        """父 Task 收尾后才开始子作业与产物的保留期，不更改真实完成时间。"""
+        rec = self._jobs.get(job_id)
+        if rec is None:
+            return
+        rec.retention_held = False
+        rec.retention_epoch = finished
+        if rec.file_store is not None:
+            rec.file_store.finalize_outputs(job_id, int(finished))
 
     def get(self, job_id: str) -> _JobRecord:
         self.collect_expired()
@@ -1488,60 +1092,18 @@ class JobStore:
             task.cancel()
         return rec
 
-    def list_jobs(
-        self,
-        *,
-        status_filter: str | None,
-        limit: int,
-        after: str | None,
-        created_after: str | None,
-        order: str = "desc",
-    ) -> JobListResponse:
-        self.collect_expired()
-        recs = list(self._jobs.values())
-        if status_filter:
-            allowed = set(status_filter.split(","))
-            recs = [r for r in recs if r.status in allowed]
-        if created_after:
-            recs = [r for r in recs if r.created_at >= created_after]
-        reverse = order == "desc"
-        recs.sort(key=lambda r: r.created_at, reverse=reverse)
-        start = 0
-        if after:
-            for i, r in enumerate(recs):
-                if r.id == after:
-                    start = i + 1
-                    break
-        page = recs[start : start + limit]
-        return JobListResponse(
-            data=[
-                JobListItem(
-                    job_id=r.id,
-                    status=r.status,
-                    created_at=r.created_at,
-                    file_count=len(r.files),
-                )
-                for r in page
-            ],
-            first_id=page[0].id if page else None,
-            last_id=page[-1].id if page else None,
-            has_more=(start + limit) < len(recs),
-        )
-
-    def build_response(self, rec: _JobRecord, *, access_level: AccessLevel) -> JobAsyncResponse:
-        return JobAsyncResponse(
-            job_id=rec.id,
-            status=rec.status,
-            created_at=rec.created_at,
-            started_at=rec.started_at,
-            finished_at=rec.finished_at,
-            tier=rec.tier,
-            output_formats=rec.output_formats,
-            access_level=access_level,
-            progress=rec.progress,
-            files=rec.files,
-            links=rec.links or JobLinks(self="", cancel=""),
-        )
+    def snapshot(self, rec: _JobRecord) -> dict[str, Any]:
+        """返回私有执行快照，不包含公开 Jobs 链接或产物协议。"""
+        return {
+            "job_id": rec.id,
+            "status": rec.status,
+            "created_at": rec.created_at,
+            "started_at": rec.started_at,
+            "finished_at": rec.finished_at,
+            "tier": rec.tier,
+            "progress": rec.progress.model_dump(),
+            "files": [item.model_dump() for item in rec.files],
+        }
 
     def _record_usage(self, rec: _JobRecord) -> None:
         """完成计数只累计一次，元数据过期后服务总用量不倒退。"""
@@ -1579,33 +1141,42 @@ class JobStore:
 # ── source helpers ───────────────────────────────────────────────────
 
 
-def _source_name(source: FileSource, file_store: FileStore | None = None) -> str:
-    if isinstance(source, FileIdSource) and file_store is not None:
+def _source_name(
+    source: _ExecutionSource, file_store: FileStore | None = None, *, input_spec: _JobInputSpec | None = None
+) -> str:
+    """使用 Tasks 的逻辑文件名识别类型，源存储不改变业务文件名。"""
+    if input_spec is not None:
+        return input_spec.filename
+    if isinstance(source, _StoredSource) and file_store is not None:
         try:
             return file_store.get_file(source.file_id).filename
         except Exception:
             pass
         return source.file_id
-    if isinstance(source, UrlSource):
+    if isinstance(source, _UrlSource):
         return source.url.rsplit("/", 1)[-1].split("?")[0] or "unknown"
-    if isinstance(source, InlineSource):
-        return source.name
-    if isinstance(source, LocalSource):
-        return pathlib.Path(source.path).name
     return "unknown"
 
 
-def _job_can_default_to_flash(req: CreateJobRequest, file_store: FileStore) -> bool:
+def _job_can_default_to_flash(
+    req: _ParseRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
+) -> bool:
     """判断整批输入是否已知为 Flash-only，或需下载后识别类型的无扩展名 URL。"""
     return all(
-        is_flash_only_parse_extension(_source_name(entry.source, file_store))
-        or (isinstance(entry.source, UrlSource) and not pathlib.Path(_source_name(entry.source)).suffix)
-        for entry in req.files
+        is_flash_only_parse_extension(name) or (isinstance(entry.source, _UrlSource) and not pathlib.Path(name).suffix)
+        for index, entry in enumerate(req.files)
+        for name in [_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index))]
     )
 
 
-def _job_has_any_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
-    return any(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
+def _job_has_any_flash_only_inputs(
+    req: _ParseRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
+) -> bool:
+    """使用与执行一致的逻辑文件名检查批次中是否包含 Flash-only 格式。"""
+    return any(
+        is_flash_only_parse_extension(_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index)))
+        for index, entry in enumerate(req.files)
+    )
 
 
 def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
@@ -1629,31 +1200,27 @@ class _ExtractedSource:
 
 
 async def _extract_bytes(
-    source: FileSource,
+    source: _ExecutionSource,
     file_store: FileStore,
     *,
     url_timeout: int = 60,
-    allow_local_source: bool = False,
-    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     input_blobs: dict[str, str] | None = None,
 ) -> _ExtractedSource:
     """按既有来源策略读取字节，并保留不会由临时文件替代的来源上下文。"""
     _validate_source_policy(
         source,
-        allow_local_source=allow_local_source,
-        max_inline_bytes=max_inline_bytes,
         allow_http_source=allow_http_source,
     )
-    if isinstance(source, FileIdSource):
+    if isinstance(source, _StoredSource):
         sha = (input_blobs or {}).get(source.file_id)
         if sha is None:
             sha = file_store.get_file(source.file_id).sha256sum
         if sha is None:
             raise ValueError("File has no content")
         return _ExtractedSource(file_store.read_blob(sha))
-    if isinstance(source, UrlSource):
+    if isinstance(source, _UrlSource):
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
             # 流式读取并在超过 max_url_bytes 时中止，避免无上限响应被整包缓冲进内存。
             async with cli.stream("GET", source.url) as r:
@@ -1671,11 +1238,6 @@ async def _extract_bytes(
                     transport_encoding=r.charset_encoding,
                     media_type=(r.headers.get("content-type") or "").partition(";")[0].strip().casefold() or None,
                 )
-    if isinstance(source, InlineSource):
-        return _ExtractedSource(_decode_inline_data(source.data))
-    if isinstance(source, LocalSource):
-        path = pathlib.Path(source.path).expanduser().resolve(strict=False)
-        return _ExtractedSource(path.read_bytes(), source_uri=path.as_uri(), local_resource_root=path.parent)
     raise ValueError(f"Unknown source type: {type(source)}")
 
 
@@ -1689,15 +1251,13 @@ def _suffix_type(filename: str) -> str:
 
 async def _run_job(
     rec: _JobRecord,
-    req: CreateJobRequest,
+    req: _ParseRequest,
     file_store: FileStore,
     *,
     image_analysis: bool,
     url_timeout: int = 60,
-    allow_local_source: bool = False,
-    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     flash_enabled: bool = True,
     vlm_config: VlmConfig | None = None,
     job_store: JobStore | None = None,
@@ -1715,20 +1275,29 @@ async def _run_job(
             fr = rec.files[i]
             try:
                 file_started = time.monotonic()
+                fr.status = "running"
                 extracted = await _extract_bytes(
                     entry.source,
                     file_store,
                     url_timeout=url_timeout,
-                    allow_local_source=allow_local_source,
-                    max_inline_bytes=max_inline_bytes,
                     allow_http_source=allow_http_source,
                     max_url_bytes=max_url_bytes,
                     input_blobs=rec.input_blobs,
                 )
                 data = extracted.data
+                input_spec = rec.input_specs.get(i)
+                if input_spec is not None and isinstance(entry.source, _UrlSource):
+                    if not data:
+                        raise MineruError("invalid_request", "Empty files are not supported")
+                    if input_spec.bytes is not None and len(data) != input_spec.bytes:
+                        raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
+                    sha = hashlib.sha256(data).hexdigest()
+                    if input_spec.sha256sum is not None and sha != input_spec.sha256sum:
+                        raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
+                    rec.input_metadata[i] = _JobInputMetadata(bytes=len(data), sha256sum=sha)
                 suffix = pathlib.Path(fr.name).suffix
                 stype = _suffix_type(fr.name)
-                if not stype and not suffix and isinstance(entry.source, UrlSource) and extracted.media_type == "text/html":
+                if not stype and not suffix and isinstance(entry.source, _UrlSource) and extracted.media_type == "text/html":
                     stype = "html"
                     suffix = ".html"
                 if not stype:
@@ -1765,50 +1334,29 @@ async def _run_job(
 
                 if rec.status in {"canceled", "failed"}:
                     break
-                # collect outputs
-                out_formats = set(rec.output_formats)
-                output_files = OutputFiles()
+                from .task_outputs import build_task_output
 
-                for fmt in (
-                    "markdown",
-                    "middle_json",
-                    "structured_content",
-                ):
-                    if fmt not in out_formats:
-                        continue
-                    if fmt == "markdown":
-                        md = await run_sync(result.markdown)
-                        content_bytes = _text_utf8_bytes(md or "")
-                        sha = hashlib.sha256(content_bytes).hexdigest()
-                        file_store.store_blob(content_bytes, sha256hex=sha)
-                        fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha, job_id=rec.id)
-                        output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
-                    elif fmt == "middle_json":
-                        mj = _json_utf8_bytes(result.to_dict(skip_defaults=True))
-                        sha = hashlib.sha256(mj).hexdigest()
-                        file_store.store_blob(mj, sha256hex=sha)
-                        fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha, job_id=rec.id)
-                        output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
-                    elif fmt == "structured_content":
-                        cl2 = _json_utf8_bytes(await run_sync(result.structured_content))
-                        sha = hashlib.sha256(cl2).hexdigest()
-                        file_store.store_blob(cl2, sha256hex=sha)
-                        fid = file_store.create_file_for_output(
-                            f"{fr.name}.structured_content.json", cl2, sha256hex=sha, job_id=rec.id
-                        )
-                        output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
-
-                # zip
-                if "zip" in out_formats:
-                    zip_bytes = await run_sync(_build_self_contained_zip_output, result)
-                    zip_sha = hashlib.sha256(zip_bytes).hexdigest()
-                    file_store.store_blob(zip_bytes, sha256hex=zip_sha)
-                    zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha, job_id=rec.id)
-                    output_files.zip = OutputFileRef(file_id=zip_fid, bytes=len(zip_bytes))
+                try:
+                    artifact = await run_sync(
+                        build_task_output,
+                        result,
+                        rec.task_output_formats,
+                        pathlib.Path(tmpdir) / f"outputs_{i}",
+                        include_model_output=rec.include_model_output,
+                    )
+                    if rec.status in {"canceled", "failed"}:
+                        break
+                    rec.task_result_file_id = await run_sync(
+                        file_store.create_file_for_output_path,
+                        pathlib.Path(fr.name).stem + artifact.suffix,
+                        artifact,
+                        job_id=rec.id,
+                    )
+                except Exception as exc:
+                    raise MineruError("result_packaging_failed", str(exc)) from exc
 
                 fr.status = "completed"
                 fr.page_range = _page_range_from_result_pages(result.pages)
-                fr.output_files = output_files
 
                 fr.parse = FileParseInfo(
                     model_used=None,
@@ -1855,23 +1403,24 @@ _router = APIRouter(prefix="/v1")
 
 # OpenAPI tag metadata: drives the group order and descriptions on /docs.
 _OPENAPI_TAGS: list[dict[str, str]] = [
-    {"name": "Tasks", "description": "One-request parsing, asynchronous tasks and inline or ZIP results."},
+    {"name": "Tasks", "description": "Form submissions, per-file uploads and asynchronous ZIP download links."},
     {"name": "Health", "description": "Liveness and server readiness."},
     {"name": "Tiers", "description": "Parsing tiers and runtime capability advertised by this server."},
     {"name": "Models", "description": "VLM models available for parsing."},
-    {"name": "Uploads", "description": "Create and manage upload sessions for source documents."},
     {"name": "Files", "description": "Inspect uploaded files and fetch parsed content."},
-    {"name": "Jobs", "description": "Submit parse jobs and poll for results."},
     {"name": "Usage", "description": "Remote service quota and usage reporting."},
 ]
 
 _FASTAPI_DESCRIPTION = """\
 Parse documents into structured Middle JSON via self-hosted or remote capacity.
 
-Use `/v1/file_parse` for a synchronous result or `/v1/tasks` for a one-request
-asynchronous submission. Both share the existing parse job lifecycle.
-The resource workflow remains: create an upload, complete it, submit a parse job for the
-resulting file, then poll the job and fetch its outputs. Health and usage
+Submit a JSON files array to `/v1/tasks`, upload missing files to their one-hour URLs,
+then poll the task and download each completed file's `result_url`. Each file runs
+as soon as it is ready; other files may still be waiting for upload. File
+entries can instead provide a source `url`, with optional `bytes`; workers download
+these inputs in the background. Choose one or more of default/docx/html/latex in
+`output_formats`. Task status contains metadata only, never inline result bytes.
+Health and usage
 endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
 `standard`, `advanced`) select the quality/speed trade-off; the set advertised
 by `/v1/tiers` is what this server can actually serve.
@@ -1917,7 +1466,7 @@ async def get_health(request: Request) -> HealthResponse:
     _require_model_preload_ready(request)
     return HealthResponse(
         version=__version__,
-        features=HealthFeatures(sources=_parse_sources_for_server(allow_local_source=request.app.state.allow_local_source)),
+        features=HealthFeatures(),
     )
 
 
@@ -1984,92 +1533,6 @@ async def list_tiers(request: Request) -> TierListResponse:
     )
 
 
-# ── Uploads ──────────────────────────────────────────────────────────
-
-
-@_router.post(
-    "/uploads",
-    response_model=None,
-    status_code=status.HTTP_200_OK,
-    responses={200: {"model": UploadResponse}, **_ERR_400, **_ERR_413},
-    tags=["Uploads"],
-)
-async def create_upload(
-    body: CreateUploadRequest,
-    request: Request,
-    store: FileStore = Depends(_get_store),
-) -> Response:
-    """Create an Upload."""
-    base = str(request.base_url).rstrip("/")
-    resp = store.create_upload(body, base_url=base)
-    if resp.status == "completed":
-        return JSONResponse(content=resp.model_dump(by_alias=True), status_code=200)
-    return JSONResponse(content=resp.model_dump(by_alias=True), status_code=200)
-
-
-@_router.get(
-    "/uploads/{upload_id}",
-    response_model=UploadResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404},
-    tags=["Uploads"],
-)
-async def get_upload(
-    upload_id: str = Path(description="Upload ID (upload_...)"),
-    store: FileStore = Depends(_get_store),
-) -> UploadResponse:
-    """Retrieve an Upload by ID."""
-    return store._make_upload_response(store.get_upload(upload_id))
-
-
-@_router.put(
-    "/uploads/{upload_id}/content",
-    response_model=None,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404, **_ERR_409, **_ERR_413},
-    tags=["Uploads"],
-)
-async def upload_content(
-    upload_id: str = Path(description="Upload ID"),
-    data: bytes = Body(media_type="application/octet-stream"),
-    store: FileStore = Depends(_get_store),
-) -> Response:
-    """Upload raw bytes for an upload (OpenAI-compatible)."""
-    store.store_upload_data(upload_id, data)
-    return Response(status_code=200)
-
-
-@_router.post(
-    "/uploads/{upload_id}/complete",
-    response_model=UploadResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_400, **_ERR_404, **_ERR_409, **_ERR_413},
-    tags=["Uploads"],
-)
-async def complete_upload(
-    upload_id: str = Path(description="Upload ID"),
-    body: CompleteUploadRequest | None = None,
-    store: FileStore = Depends(_get_store),
-) -> UploadResponse:
-    """Complete an upload, creating the File object."""
-    return store.complete_upload(upload_id, body.sha256sum if body else None)
-
-
-@_router.post(
-    "/uploads/{upload_id}/cancel",
-    response_model=UploadResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404, **_ERR_409},
-    tags=["Uploads"],
-)
-async def cancel_upload(
-    upload_id: str = Path(description="Upload ID"),
-    store: FileStore = Depends(_get_store),
-) -> UploadResponse:
-    """Cancel an in-progress upload."""
-    return store.cancel_upload(upload_id)
-
-
 # ── Files ────────────────────────────────────────────────────────────
 
 
@@ -2105,6 +1568,36 @@ async def get_file(
     return store._make_file_object(store.get_file(file_id))
 
 
+class _OutputFileResponse(FileResponse):
+    """把文件租约绑定到 ASGI 响应，正常结束和断连都释放引用。"""
+
+    def __init__(self, store: FileStore, file_id: str) -> None:
+        """在响应头发送之前完成权限检查，并固定实际文件路径。"""
+        path, filename, sha = store.pin_output_file(file_id)
+        self._store = store
+        self._sha = sha
+        try:
+            super().__init__(
+                path,
+                filename=filename,
+                media_type={
+                    ".zip": "application/zip",
+                    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".html": "text/html",
+                }.get(pathlib.Path(filename).suffix.lower(), "application/octet-stream"),
+            )
+        except BaseException:
+            store.unpin_cached_blob(sha)
+            raise
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """让文件响应负责分块和 Range，同时确保取消不会泄漏租约。"""
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._store.unpin_cached_blob(self._sha)
+
+
 @_router.get(
     "/files/{file_id}/content",
     response_model=None,
@@ -2121,9 +1614,8 @@ async def get_file_content(
     file_id: str = Path(description="File ID"),
     store: FileStore = Depends(_get_store),
 ) -> Response:
-    """Download parse-output content."""
-    data = store.read_file_data(file_id)
-    return Response(content=data, media_type="application/octet-stream")
+    """直接流式发送已保存的产物，下载期间持有文件租约。"""
+    return _OutputFileResponse(store, file_id)
 
 
 @_router.delete(
@@ -2142,54 +1634,29 @@ async def delete_file(
     return FileDeletionResponse(id=file_id, deleted=True)
 
 
-# ── Parse Jobs ───────────────────────────────────────────────────────
+# ── 私有解析执行 ─────────────────────────────────────────────────────
 
 
-async def submit_parse_job(
-    body: CreateJobRequest,
+async def submit_execution(
+    body: _ParseRequest,
     request: Request,
     file_store: FileStore,
     job_store: JobStore,
-    access_level: AccessLevel,
+    *,
+    job_id: str | None = None,
+    input_specs: dict[int, _JobInputSpec] | None = None,
 ) -> _JobRecord:
-    """统一校验并提交后台解析任务，供 V1 Job 与便捷入口共同调用。"""
+    """校验并提交 Tasks 的私有执行单元，复用唯一并发和生命周期管理。"""
     for index, entry in enumerate(body.files):
         try:
             entry.page_range = normalize_page_range_input(entry.page_range) or None
         except MineruError as exc:
             _raise_api_error(400, error_type=exc.type, code=exc.code, message=str(exc), param=f"files.{index}.page_range")
     _require_model_preload_ready(request)
-    if body.callback is not None:
-        _raise_api_error(
-            400,
-            error_type="invalid_request_error",
-            code="invalid_request",
-            message=(
-                "Webhook callback is not supported by this Local Parse Server. Use polling via GET /v1/parse/jobs/{job_id}."
-            ),
-        )
-
-    # validate output formats — advanced formats require API key
-    for fmt in body.output_formats:
-        if fmt in ("html", "latex", "docx") and access_level == "anonymous":
-            _raise_api_error(
-                403,
-                error_type="permission_error",
-                code="feature_requires_api_key",
-                message=f"Output format '{fmt}' requires an API key",
-            )
-        if fmt not in _OUTPUT_FORMATS_LOCAL:
-            _raise_api_error(
-                400,
-                error_type="invalid_request_error",
-                code="unsupported_output_format",
-                message=f"Unknown output format: {fmt}",
-            )
-
     # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
     default_tier: Tier | None = request.app.state.default_tier
-    can_default_to_flash = _job_can_default_to_flash(body, file_store)
-    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store):
+    can_default_to_flash = _job_can_default_to_flash(body, file_store, input_specs)
+    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store, input_specs):
         _raise_api_error(
             400,
             error_type="invalid_request_error",
@@ -2226,17 +1693,14 @@ async def submit_parse_job(
 
     _validate_job_source_policy(
         body,
-        allow_local_source=request.app.state.allow_local_source,
-        max_inline_bytes=request.app.state.max_inline_bytes,
         allow_http_source=request.app.state.allow_http_source,
     )
 
     if job_store._closing:
         _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
-    rec = job_store.create(body, file_store)
+    rec = job_store.create(body, file_store, job_id=job_id, input_specs=input_specs)
+    rec.retention_held = True
     url_timeout_val: int = request.app.state.url_timeout
-    allow_local_source_val: bool = request.app.state.allow_local_source
-    max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
     max_url_bytes_val: int = request.app.state.max_url_bytes
     flash_enabled_val: bool = request.app.state.flash_enabled
@@ -2251,8 +1715,6 @@ async def submit_parse_job(
             file_store,
             image_analysis=image_analysis_val,
             url_timeout=url_timeout_val,
-            allow_local_source=allow_local_source_val,
-            max_inline_bytes=max_inline_bytes_val,
             allow_http_source=allow_http_source_val,
             max_url_bytes=max_url_bytes_val,
             flash_enabled=flash_enabled_val,
@@ -2268,89 +1730,6 @@ async def submit_parse_job(
         job_store._jobs_created -= 1
         raise
     return rec
-
-
-@_router.post(
-    "/parse/jobs",
-    response_model=None,
-    status_code=status.HTTP_202_ACCEPTED,
-    responses={
-        202: {"model": JobAsyncResponse},
-        **_ERR_400,
-        **_ERR_403,
-        **_ERR_429,
-        **_ERR_503,
-    },
-    tags=["Jobs"],
-)
-async def create_job(
-    body: CreateJobRequest,
-    request: Request,
-    file_store: FileStore = Depends(_get_store),
-    job_store: JobStore = Depends(_get_job_store),
-    access_level: AccessLevel = Depends(_resolve_access_level),
-) -> Response:
-    """通过共享任务服务创建 V1 Job，保持既有响应结构。"""
-    rec = await submit_parse_job(body, request, file_store, job_store, access_level)
-    return JSONResponse(
-        content=job_store.build_response(rec, access_level=access_level).model_dump(by_alias=True), status_code=202
-    )
-
-
-@_router.get(
-    "/parse/jobs/{job_id}",
-    response_model=JobAsyncResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404},
-    tags=["Jobs"],
-)
-async def get_job(
-    job_id: str = Path(description="Job ID (job_...)"),
-    job_store: JobStore = Depends(_get_job_store),
-    access_level: AccessLevel = Depends(_resolve_access_level),
-) -> JobAsyncResponse:
-    """Retrieve a job's current status and results."""
-    return job_store.build_response(job_store.get(job_id), access_level=access_level)
-
-
-@_router.get(
-    "/parse/jobs",
-    response_model=JobListResponse,
-    status_code=status.HTTP_200_OK,
-    tags=["Jobs"],
-)
-async def list_jobs(
-    status_filter: str | None = Query(default=None, alias="status", description="Filter by status (comma-separated)"),
-    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
-    after: str | None = Query(default=None, description="Pagination cursor (last_id from previous page)"),
-    order: Literal["asc", "desc"] = Query(default="desc", description="Sort by created_at"),
-    created_after: str | None = Query(default=None, description="ISO-8601 lower bound for created_at"),
-    job_store: JobStore = Depends(_get_job_store),
-) -> JobListResponse:
-    """List jobs for the current tenant."""
-    return job_store.list_jobs(
-        status_filter=status_filter,
-        limit=limit,
-        after=after,
-        order=order,
-        created_after=created_after,
-    )
-
-
-@_router.delete(
-    "/parse/jobs/{job_id}",
-    response_model=JobCancelResponse,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404, **_ERR_409},
-    tags=["Jobs"],
-)
-async def cancel_job(
-    job_id: str = Path(description="Job ID"),
-    job_store: JobStore = Depends(_get_job_store),
-) -> JobCancelResponse:
-    """Cancel a queued or running job."""
-    rec = job_store.cancel(job_id)
-    return JobCancelResponse(job_id=rec.id, status="canceled", canceled_at=JobStore._now())
 
 
 # ── Usage ─────────────────────────────────────────────────────────────
@@ -2556,9 +1935,7 @@ def create_app(
     no_advanced: bool = False,
     concurrency: int = 1,
     url_timeout: int = 60,
-    allow_local_source: bool = False,
-    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     allow_http_source: bool = False,
     api_key: str | None = None,
     image_analysis: bool = True,
@@ -2583,10 +1960,6 @@ def create_app(
         Maximum concurrent parse jobs (default 1).
     url_timeout:
         Timeout in seconds for downloading url sources (default 60).
-    allow_local_source:
-        Whether ``local`` sources may read paths visible to the server process.
-    max_inline_bytes:
-        Maximum decoded bytes accepted for ``inline`` sources.
     max_url_bytes:
         Maximum bytes downloaded for ``url`` sources; larger responses are
         aborted mid-download instead of being buffered into memory.
@@ -2614,8 +1987,6 @@ def create_app(
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
-    if max_inline_bytes < 0:
-        raise ValueError("max_inline_bytes must be non-negative")
     if max_url_bytes < 0:
         raise ValueError("max_url_bytes must be non-negative")
 
@@ -2637,8 +2008,6 @@ def create_app(
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
         application.state.url_timeout = url_timeout
-        application.state.allow_local_source = allow_local_source
-        application.state.max_inline_bytes = max_inline_bytes
         application.state.max_url_bytes = max_url_bytes
         application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
@@ -2650,6 +2019,7 @@ def create_app(
         job_store: JobStore = application.state.job_store
         file_store: FileStore = application.state.file_store
         file_store.claim_directory()
+        application.state.task_store.start()
         collection_task: asyncio.Task[None] | None = None
 
         async def collect_loop() -> None:
@@ -2694,6 +2064,7 @@ def create_app(
                 collection_task.cancel()
                 await asyncio.gather(collection_task, return_exceptions=True)
             try:
+                await application.state.task_store.shutdown()
                 await job_store.shutdown()
             finally:
                 file_store.release_directory()
@@ -2766,8 +2137,6 @@ def create_app(
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
     application.state.url_timeout = url_timeout
-    application.state.allow_local_source = allow_local_source
-    application.state.max_inline_bytes = max_inline_bytes
     application.state.max_url_bytes = max_url_bytes
     application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
@@ -2839,8 +2208,9 @@ def create_app(
 
     application.middleware("http")(_auth_middleware)
     application.include_router(_build_v1_router())
-    from .task_api import ApiTaskBackend, build_task_router
+    from .task_api import ApiTaskBackend, TaskStore, build_task_router
 
+    application.state.task_store = TaskStore(retention_seconds)
     application.include_router(build_task_router(ApiTaskBackend))
     return application
 
@@ -2919,21 +2289,10 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     help="Timeout in seconds for url source downloads (default: 60)",
 )
 @click.option(
-    "--allow-local-source",
-    is_flag=True,
-    help="Allow local sources to read any path visible to the server process.",
-)
-@click.option(
-    "--max-inline-bytes",
-    default=_MAX_INLINE_BYTES_DEFAULT,
-    type=int,
-    help=f"Maximum decoded bytes for inline sources (default: {_MAX_INLINE_BYTES_DEFAULT})",
-)
-@click.option(
     "--max-url-bytes",
-    default=_MAX_FILE_SIZE_BYTES_DEFAULT,
+    default=_MAX_URL_BYTES_DEFAULT,
     type=int,
-    help=f"Maximum bytes downloaded for url sources (default: {_MAX_FILE_SIZE_BYTES_DEFAULT})",
+    help=f"Maximum bytes downloaded for url sources (default: {_MAX_URL_BYTES_DEFAULT})",
 )
 @click.option(
     "--allow-http-source",
@@ -2974,8 +2333,6 @@ def main(
     no_advanced: bool,
     concurrency: int,
     url_timeout: int,
-    allow_local_source: bool,
-    max_inline_bytes: int,
     max_url_bytes: int,
     allow_http_source: bool,
     disable_image_analysis: bool,
@@ -3032,8 +2389,6 @@ def main(
             no_advanced=no_advanced,
             concurrency=concurrency,
             url_timeout=url_timeout,
-            allow_local_source=allow_local_source,
-            max_inline_bytes=max_inline_bytes,
             max_url_bytes=max_url_bytes,
             allow_http_source=allow_http_source,
             api_key=api_key,

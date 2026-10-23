@@ -116,7 +116,7 @@ def main() -> None:
     parser.add_argument("--utils-wheel", type=Path, required=True)
     parser.add_argument("--docvortex-wheel", type=Path, required=True)
     parser.add_argument("--platform", choices=tuple(PLATFORMS), required=True)
-    parser.add_argument("--python", nargs="+", default=["3.10", "3.11", "3.12", "3.13", "3.14"])
+    parser.add_argument("--python", nargs="+", default=["3.11", "3.12", "3.13", "3.14"])
     parser.add_argument("--transformers", choices=["5.10.1", "5.14.0", "5.16.1"])
     parser.add_argument("--extras", nargs="+", default=["base", "torch", "full", "all"])
     parser.add_argument("--utils-matrix", action="store_true")

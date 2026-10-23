@@ -14,11 +14,19 @@ import pytest
 
 from mineru.model.runtime import onnx_calibration as calibration
 from mineru.model.runtime.windows_gpu import GpuAdapter
+from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, WebGPUDevice
+from mineru.model.runtime.onnx_rec import CompactRecModel, REC_OUTPUT_FORMAT
 from scripts.benchmark_onnx_selection import derive_threshold
 
 
 def gpu() -> GpuAdapter:
     return GpuAdapter(2, "id", "test", 0x8086, 1, True, 0)
+
+
+@pytest.fixture(autouse=True)
+def fake_rec_preparation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Protocol tests mock sessions; real graph conversion is covered separately."""
+    monkeypatch.setattr(calibration, "prepare_rec_model", lambda path: CompactRecModel("compact.onnx", 4, "raw", "compact"))
 
 
 def test_installed_samples_are_fixed_and_complete() -> None:
@@ -44,36 +52,122 @@ def test_corrupt_sample_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         calibration.prepare_input()
 
 
-def test_measurement_reuses_input_and_excludes_warmup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def measure_fake(
+    monkeypatch: pytest.MonkeyPatch,
+    durations: dict[str, list[float]],
+    *,
+    gpu_first: bool = False,
+    changes: dict[str, int] | None = None,
+    gpu_token: int = 1,
+) -> tuple[dict, list[str], list[str]]:
     from mineru.model.runtime import onnx
 
     tensor = np.zeros((6, 3, 48, 320), dtype=np.float32)
-    feeds = []
-    providers = []
     monkeypatch.setattr(calibration, "prepare_input", lambda: (tensor, {"shape": list(tensor.shape)}))
-    ticks = iter([0, 4, 10, 110, 200, 202, 300, 303, 400, 408, 500, 600, 700, 701, 800, 802])
-    monkeypatch.setattr(calibration.time, "perf_counter", lambda: next(ticks))
-    model = tmp_path / "model.onnx"
-    model.write_bytes(b"fake weights")
+    clock = [0.0]
+    monkeypatch.setattr(calibration.time, "perf_counter", lambda: clock[0])
+    created: list[str] = []
+    calls: list[str] = []
 
     def create(path: str, **kwargs: object) -> SimpleNamespace:
-        provider = "DmlExecutionProvider" if kwargs["adapter"] else "CPUExecutionProvider"
-        providers.append(provider)
+        device = "gpu" if kwargs["adapter"] else "cpu"
+        created.append(device)
+        clock[0] += 4 if device == "cpu" else 8
+        provider = "DmlExecutionProvider" if device == "gpu" else "CPUExecutionProvider"
+        count = 0
 
         def run(names: object, feed: dict[str, np.ndarray]) -> list[np.ndarray]:
-            feeds.append(feed["image"])
-            return [np.ones((6, 3, 4), dtype=np.float32)]
+            nonlocal count
+            assert names == ["mineru_rec_ids", "mineru_rec_scores"]
+            assert feed["image"] is tensor
+            clock[0] += durations[device][count]
+            count += 1
+            calls.append(device)
+            token = gpu_token if device == "gpu" else 1
+            if (changes or {}).get(device) == count:
+                token = 2
+            return [np.full((6, 3), token, dtype=np.int64), np.ones((6, 3), dtype=np.float32)]
 
         return SimpleNamespace(get_inputs=lambda: [SimpleNamespace(name="image")], run=run, get_providers=lambda: [provider])
 
     monkeypatch.setattr(onnx, "create_ort_session", create)
-    result = calibration.measure_rec(str(model), gpu())
-    assert providers == ["CPUExecutionProvider", "DmlExecutionProvider"]
-    assert len(feeds) == 6 and all(feed is tensor for feed in feeds)
-    assert result["cpu_elapsed"] == 5
-    assert result["gpu_elapsed"] == 3
-    assert result["cpu"]["first_s"] == result["gpu"]["first_s"] == 100
+    return calibration.measure_rec("rec.onnx", gpu(), gpu_first=gpu_first), created, calls
+
+
+@pytest.mark.parametrize("gpu_first", [False, True])
+@pytest.mark.parametrize("ratio", [0.4, 1.2])
+def test_stable_clear_winner_stops_after_one_plus_three(monkeypatch: pytest.MonkeyPatch, gpu_first: bool, ratio: float) -> None:
+    result, created, calls = measure_fake(
+        monkeypatch, {"cpu": [100, 1, 1, 1], "gpu": [100, ratio, ratio, ratio]}, gpu_first=gpu_first
+    )
+    order = ["gpu", "cpu"] if gpu_first else ["cpu", "gpu"]
+    assert created == order
+    assert calls == [device for device in order for _ in range(4)]
+    assert result["sampling"]["stage"] == "initial"
+    assert result["sampling"]["warmup_runs"] == 1 and result["sampling"]["timed_runs"] == 3
+    assert result["sampling"]["extension_reasons"] == []
+    assert result["ratio"] == pytest.approx(ratio)
+    assert result["decision_valid"] is True
+    assert result["cpu"]["warmup_s"] == pytest.approx([100])
     assert result["cpu"]["init_s"] == 4 and result["gpu"]["init_s"] == 8
+    assert result["measurement"] == calibration.CALIBRATION_MEASUREMENT
+    assert result["model_sha256"] == "compact" and result["source_model_sha256"] == "raw"
+
+
+@pytest.mark.parametrize("gpu_first", [False, True])
+def test_extension_reuses_sessions_and_reclassifies_first_three_calls(monkeypatch: pytest.MonkeyPatch, gpu_first: bool) -> None:
+    durations = {"cpu": [100, 200, 300, 1, 1, 1, 1, 1, 1, 999], "gpu": [100, 200, 300, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 99]}
+    result, created, calls = measure_fake(monkeypatch, durations, gpu_first=gpu_first)
+    order = ["gpu", "cpu"] if gpu_first else ["cpu", "gpu"]
+    assert created == order  # No sessions recreated when extending.
+    assert calls == [device for count in [4, 6] for device in order for _ in range(count)]
+    assert result["sampling"]["stage"] == "extended"
+    assert result["sampling"]["warmup_runs"] == 3 and result["sampling"]["timed_runs"] == 7
+    assert "cpu_spread" in result["sampling"]["extension_reasons"]
+    assert result["cpu"]["warmup_s"] == pytest.approx(durations["cpu"][:3])
+    assert result["cpu"]["timed_s"] == durations["cpu"][3:]
+    assert result["gpu"]["timed_s"] == pytest.approx(durations["gpu"][3:])
+    assert len(result["sampling"]["initial"]["cpu"]["timed_s"]) == 3
+    assert result["cpu_elapsed"] == 1
+    assert result["gpu_elapsed"] == pytest.approx(0.4)
+    assert result["decision_valid"] is True  # One isolated outlier does not defeat the median.
+
+
+@pytest.mark.parametrize("ratio", [0.7, 0.8, 0.9])
+def test_near_threshold_always_extends(monkeypatch: pytest.MonkeyPatch, ratio: float) -> None:
+    result, _, calls = measure_fake(monkeypatch, {"cpu": [2] + [1] * 9, "gpu": [2] + [ratio] * 9})
+    assert len(calls) == 20
+    assert "near_threshold" in result["sampling"]["extension_reasons"]
+    assert result["decision_valid"] is True
+    assert result["ratio"] == pytest.approx(ratio)
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+def test_persistent_drift_does_not_produce_a_valid_decision(monkeypatch: pytest.MonkeyPatch, device: str) -> None:
+    durations = {"cpu": [10] + [1] * 9, "gpu": [10] + [0.4] * 9}
+    durations[device] = [10, 1, 2, 1, 1, 1, 2, 2, 2, 2]
+    result, _, calls = measure_fake(monkeypatch, durations)
+    assert len(calls) == 20
+    assert result["decision_valid"] is False
+    assert result["outputs_match"] is True
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("change_at", [2, 4, 5, 10])
+def test_text_checks_cover_initial_and_extended_runs(monkeypatch: pytest.MonkeyPatch, device: str, change_at: int) -> None:
+    with pytest.raises(ValueError, match="changed between runs"):
+        measure_fake(monkeypatch, {"cpu": [2] + [1] * 9, "gpu": [2] + [0.8] * 9}, changes={device: change_at})
+
+
+def test_cpu_gpu_mismatch_rejected_before_extension(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="CPU and GPU rec calibration text differ"):
+        measure_fake(monkeypatch, {"cpu": [2, 1, 1, 1], "gpu": [2, 0.8, 0.8, 0.8]}, gpu_token=2)
+
+
+@pytest.mark.parametrize("invalid", [0, -1, float("nan"), float("inf")])
+def test_each_timing_must_be_finite_positive(monkeypatch: pytest.MonkeyPatch, invalid: float) -> None:
+    with pytest.raises(ValueError, match="invalid timings"):
+        measure_fake(monkeypatch, {"cpu": [invalid], "gpu": []})
 
 
 def test_worker_timeout_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,7 +184,7 @@ def test_worker_silent_fallback_is_not_a_measurement(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(
         calibration.subprocess, "run", Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps(output)))
     )
-    with pytest.raises(ValueError, match="DirectML"):
+    with pytest.raises(ValueError, match="DmlExecutionProvider"):
         calibration.run_calibration("rec.onnx", gpu())
 
 
@@ -143,4 +237,123 @@ def test_invalid_calibration_set_is_rejected(failure: str) -> None:
     else:
         data[0]["runs"][0]["gpu_elapsed"] = 1.5
     with pytest.raises(ValueError):
+        derive_threshold(data)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        "fallback",
+        "wrong_backend",
+        "wrong_output_format",
+        "wrong_measurement",
+        "nan",
+        "mismatch",
+        "counts",
+        "median",
+        "stability",
+        "threshold",
+    ],
+)
+def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, failure: str | None) -> None:
+    output = {
+        "schema_version": 5,
+        "backend": "webgpu",
+        "sampling": {"stage": "initial", "warmup_runs": 1, "timed_runs": 3},
+        "measurement": dict(calibration.CALIBRATION_MEASUREMENT),
+        "decision_threshold": 0.8,
+        "decision_valid": True,
+        "output_format": REC_OUTPUT_FORMAT,
+        "cpu_elapsed": 1,
+        "gpu_elapsed": 0.4,
+        "ratio": 0.4,
+        "outputs_match": True,
+        "gpu": {"providers": [WEBGPU_PROVIDER, "CPUExecutionProvider"], "warmup_s": [2], "timed_s": [0.4] * 3, "median_s": 0.4},
+        "cpu": {"providers": ["CPUExecutionProvider"], "warmup_s": [2], "timed_s": [1] * 3, "median_s": 1},
+    }
+    if failure == "counts":
+        output["gpu"]["timed_s"].pop()
+    elif failure == "median":
+        output["gpu"]["median_s"] = 3
+    elif failure == "stability":
+        output["decision_valid"] = False
+    elif failure == "threshold":
+        output["decision_threshold"] = 0.9
+    elif failure == "fallback":
+        output["gpu"]["providers"] = ["CPUExecutionProvider"]
+    elif failure == "wrong_backend":
+        output["backend"] = "dml"
+    elif failure == "wrong_output_format":
+        output["output_format"] = "full-probabilities"
+    elif failure == "wrong_measurement":
+        output["measurement"] = {"warmup_runs": 1, "timed_runs": 2, "statistic": "sum"}
+    elif failure == "nan":
+        output["gpu_elapsed"] = float("nan")
+    elif failure == "mismatch":
+        output["outputs_match"] = False
+    runner = Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps(output)))
+    monkeypatch.setattr(calibration.subprocess, "run", runner)
+    descriptor = WebGPUDevice(1, 2, (("pci_bus_id", "test"),))
+    if failure:
+        with pytest.raises(ValueError):
+            calibration.run_calibration("rec.onnx", descriptor)
+    else:
+        assert calibration.run_calibration("rec.onnx", descriptor)["backend"] == "webgpu"
+    request = json.loads(runner.call_args.kwargs["input"])
+    assert request["backend"] == "webgpu"
+    assert request["adapter"]["metadata"] == [["pci_bus_id", "test"]]
+
+
+def test_threshold_derivation_rejects_mixed_backends_and_ep_options() -> None:
+    data = reports()
+    data[0]["backend"] = "webgpu"
+    with pytest.raises(ValueError, match="mix"):
+        derive_threshold(data)
+    for report in data:
+        report["backend"] = "webgpu"
+        report["expected"] = "cpu" if report["label"] == "i7" else "gpu"
+        for run in report["runs"]:
+            run.update(backend="webgpu", ep_version="0.4.0", webgpu_options={"preferredLayout": "NHWC"})
+            run["gpu"]["providers"] = [WEBGPU_PROVIDER]
+    assert derive_threshold(data)["backend"] == "webgpu"
+    data[0]["runs"][0]["webgpu_options"] = {"preferredLayout": "NCHW"}
+    with pytest.raises(ValueError, match="EP version/options"):
+        derive_threshold(data)
+
+
+def test_threshold_derivation_rejects_mixed_output_contracts() -> None:
+    data = reports()
+    data[0]["runs"][0]["output_format"] = REC_OUTPUT_FORMAT
+    with pytest.raises(ValueError, match="differ"):
+        derive_threshold(data)
+
+
+def test_threshold_derivation_rejects_mixed_measurement_protocols() -> None:
+    data = reports()
+    for report in data:
+        for run in report["runs"]:
+            run["measurement"] = dict(calibration.CALIBRATION_MEASUREMENT)
+            run["decision_valid"] = True
+            run["decision_threshold"] = 0.8
+    assert derive_threshold(data)["threshold"] == 0.775
+    data[0]["runs"][0].pop("measurement")
+    with pytest.raises(ValueError, match="measurement protocols differ"):
+        derive_threshold(data)
+
+
+def test_threshold_derivation_rejects_unstable_adaptive_result() -> None:
+    data = reports()
+    data[0]["runs"][0]["decision_valid"] = False
+    with pytest.raises(ValueError, match="Unstable"):
+        derive_threshold(data)
+
+
+def test_threshold_derivation_rejects_different_adaptive_decision_thresholds() -> None:
+    data = reports()
+    for report in data:
+        for run in report["runs"]:
+            run.update(measurement=dict(calibration.CALIBRATION_MEASUREMENT), decision_valid=True, decision_threshold=0.8)
+    data[0]["runs"][0]["decision_threshold"] = 0.9
+    with pytest.raises(ValueError, match="measurement protocols differ"):
         derive_threshold(data)

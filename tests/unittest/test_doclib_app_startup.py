@@ -1,11 +1,7 @@
 import asyncio
 import logging
 import subprocess
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
+import tomllib
 import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path

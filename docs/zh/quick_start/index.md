@@ -4,7 +4,7 @@
 
 ## 安装 MinerU
 
-MinerU 包支持 Python `>=3.10,<3.15`。建议新建 Python 3.12 环境；vLLM、LMDeploy、Torch 等可选引擎还受各自 wheel、操作系统和驱动约束，包支持的 Python 范围不等于所有引擎均支持该范围。
+MinerU 包支持 Python `>=3.11,<3.15`。建议新建 Python 3.12 环境；vLLM、LMDeploy、Torch 等可选引擎还受各自 wheel、操作系统和驱动约束，包支持的 Python 范围不等于所有引擎均支持该范围。
 
 ```bash
 uv venv --python 3.12 .venv

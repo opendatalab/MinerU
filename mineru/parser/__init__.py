@@ -9,12 +9,13 @@ from docvortex.document.contracts import HtmlSourceContext
 from ..config import VlmConfig
 from ..utils.logger import configure_global_log_level
 from ..types import Tier
-from .api_client import ApiJobStatus, MinerUApiParser
+from .api_client import ApiJobStatus, ApiTaskStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
 from .mineru_parser import MinerUParser
 
 __all__ = [
     "ApiJobStatus",
+    "ApiTaskStatus",
     "DocumentParser",
     "MinerUApiParser",
     "MinerUParser",

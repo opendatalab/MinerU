@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Python 最低版本提升至 3.11，支持范围为 `>=3.11,<3.15`。从下一正式版本开始，请先停止旧环境中的 MinerU 服务，再使用 Python 3.11–3.14 新建虚拟环境、重新安装依赖，并更新服务启动配置中的解释器路径；建议新环境使用 Python 3.12。升级后通过 `mineru version --json` 核对实际版本。
+
 - 图片命名变更：CLI/API ZIP 的新物化图片统一采用 Gradio 的视觉父块命名，表内图按所有 img src 顺序编号，冲突追加 `_duplicate_n`。引用同步更新，图片字节及 MiddleJson 2.0 不变；历史 ZIP 仍按已有引用读取。需要 `docvortex>=0.4.19,<1`。
 
 - 破坏性变更：移除 `mineru-kit parse` 的 `--backend` 参数（该参数在 4.0 alpha 阶段引入）。它仅用于推断 tier，没有独立作用，请改用 `--tier`：`pipeline` → `--tier basic`；`vlm-engine`、`vlm-auto-engine`、`vlm-http-client` → `--tier advanced`；`hybrid-engine`、`hybrid-auto-engine` → `--tier standard`（或省略该参数）；`flash` → `--tier flash`。使用远程 VLM 服务由 VLM 服务配置表达，与该参数无关。

@@ -13,7 +13,7 @@ The client retries requests only when replay cannot create duplicate parse jobs:
 - Retry `GET` requests for health, upload state, job polling, and output downloads.
 - Retry the upload content `PUT` with the same bytes and headers.
 - After a transport failure from upload completion, query the upload. Return its file when completed, or retry completion while it remains pending.
-- Do not automatically retry `POST /v1/parse/jobs`. The API does not currently provide an idempotency contract, so a lost response may already represent a created and billable job.
+- Do not automatically retry `POST /v1/tasks`. The API does not currently provide an idempotency contract, so a lost response may already represent a created and billable job.
 
 Retries use a small bounded exponential delay. HTTP application errors are not transport retries; they continue through the existing structured response handling.
 
@@ -31,11 +31,10 @@ If a remote job itself returns `parse_failed`, the client preserves that structu
 
 ## Implementation Shape
 
-`mineru/parser/api_client.py` owns matching synchronous and asynchronous request helpers. The helpers apply the retry policy and raise a typed internal transport error after exhaustion. Upload completion adds state recovery through `GET /v1/uploads/{upload_id}`.
 
 `ParseService` maps typed transport failures according to the selected API target and records the resulting error code on the parse task. Existing `_V1APIError` handling remains responsible for structured API and job errors.
 
-Job submission idempotency is a separate API change. Once the server supports an idempotency key, the client can safely retry `POST /v1/parse/jobs` with a stable key.
+Job submission idempotency is a separate API change. Once the server supports an idempotency key, the client can safely retry `POST /v1/tasks` with a stable key.
 
 ## Tests
 

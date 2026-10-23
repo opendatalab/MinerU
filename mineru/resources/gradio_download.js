@@ -25,16 +25,11 @@
     }
     if (action === "begin") {
         const [runId] = args;
-        if (!runId || state.runId !== runId || state.pending.has(format)) return [skip(), skip(), skip()];
+        // 串联事件仍会继续执行，拒绝开始时清空令牌，避免复用旧请求再次导出。
+        if (!runId || state.runId !== runId || state.pending.has(format)) return ["", skip(), skip()];
         const token = JSON.stringify({ run_id: runId, sequence: ++state.sequence });
         state.pending.set(format, token);
         return [token, button(`${label} · ${text("preparing_download")}`, false), ""];
-    }
-    if (action === "busy") {
-        const [token, runId] = args;
-        // 即使开始回执晚于换文件或清除，也只能修改当前仍在等待的同一个请求。
-        if (!token || state.pending.get(format) !== token || !runId || state.runId !== runId) return [skip(), skip()];
-        return [button(`${label} · ${text("preparing_download")}`, false), ""];
     }
     if (action === "complete") {
         const [file, receiptText, runId] = args;

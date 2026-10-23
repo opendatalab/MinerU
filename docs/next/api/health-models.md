@@ -23,8 +23,9 @@ GET /v1/health HTTP/1.1
   "version": "1.0.0",
   "features": {
     "webhook": true,
-    "output_formats": ["markdown", "middle_json", "structured_content", "html", "latex", "docx", "zip"],
-    "sources": ["file_id", "url", "inline"]
+    "task_output_formats": ["default", "docx", "html", "latex"],
+    "task_model_output": true,
+    "sources": ["upload", "url"]
   }
 }
 ```
@@ -37,8 +38,9 @@ GET /v1/health HTTP/1.1
 | `version` | string | 是 | API 服务版本。 |
 | `features` | object | 是 | 当前部署支持的外围能力。 |
 | `features.webhook` | bool | 是 | 是否支持 Webhook 回调。 |
-| `features.output_formats` | array | 是 | 当前部署支持的 parse job `output_formats` 值。 |
-| `features.sources` | array | 是 | 当前部署允许的 parse job source 类型。 |
+| `features.task_output_formats` | array | 是 | 当前部署支持的 Tasks `output_formats` 值。 |
+| `features.task_model_output` | bool | 是 | 是否支持附加可用原始模型输出。 |
+| `features.sources` | array | 是 | 当前部署允许的 Tasks 输入类型（upload/url）。 |
 
 错误:
 
@@ -73,7 +75,7 @@ GET /v1/models HTTP/1.1
 }
 ```
 
-- `/v1/models` 只广告一个**虚拟模型**：id 为 `mineru-<服务版本>`，标识服务端版本，不对应任何可单独调用的引擎。解析质量始终通过 parse job 的 `tier` 字段选择，模型 id 不参与路由。
+- `/v1/models` 只广告一个**虚拟模型**：id 为 `mineru-<服务版本>`，标识服务端版本，不对应任何可单独调用的引擎。解析质量始终通过 Task 的 `tier` 字段选择，模型 id 不参与路由。
 - `created` 为该部署的注册时间（本地 server 取进程启动时刻），同一部署内多次请求返回相同值。
 - 模型列表与启动 `--tier`、tier 禁用开关无关：档位增减只反映在 `/v1/tiers`，虚拟模型恒在列表中。
 - 服务端升级后 id 随版本变化（如 `mineru-4.0.11` → `mineru-4.0.12`）。客户端应重新发现，不要缓存 id 硬编码进请求。
@@ -156,7 +158,7 @@ Tier 对象字段:
 
 v1 协议中面向用户读取文档的质量档位以 [解析 Tier](../tiers.md) 为准。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
 
-请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 这类支持多 tier 的输入，默认选择不能等价于 `flash`；OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 的批量规则归一为 `flash`，其它 text 不作为解析输入。
+请求创建 Task 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 这类支持多 tier 的输入，默认选择不能等价于 `flash`；OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 的批量规则归一为 `flash`，其它 text 不作为解析输入。
 
 更完整产品语义见 [解析 Tier](../tiers.md)。
 
@@ -170,13 +172,13 @@ Local Parse Server 的 `health` 通常返回:
   "version": "1.0.0",
   "features": {
     "webhook": false,
-    "output_formats": ["markdown", "middle_json", "structured_content", "zip"],
-    "sources": ["file_id", "url", "inline"]
+    "task_output_formats": ["default", "docx", "html", "latex"],
+    "task_model_output": true,
+    "sources": ["upload", "url"]
   }
 }
 ```
 
-如果 Local Parse Server 启动时开启 `--allow-local-source`，`features.sources` 额外包含 `local`。
 
 本地 `GET /v1/models` 和 `GET /v1/tiers` 必须反映当前 server 实际可用能力。常见组合:
 

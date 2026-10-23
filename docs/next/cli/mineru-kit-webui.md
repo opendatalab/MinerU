@@ -6,7 +6,7 @@
 
 ## PDF 预览与版本要求
 
-Gradio 界面要求 `gradio>=6.8,<7`，不再支持 Gradio 5，也不再需要安装 `gradio-pdf`。
+Gradio 界面要求 `gradio>=6.21,<7`，使用 6.21 修复后的纯前端事件链式触发，不再需要安装 `gradio-pdf`。
 PDF 预览使用独立 iframe 和随 MinerU 分发的 PDF.js 6.3.289，支持连续阅读、翻页、页码跳转、缩放和适应宽度。
 核心模块、worker、CMap、标准字体及解码资源均从当前 Gradio 站点加载，预览无需外部 CDN 或 npm。
 
@@ -15,9 +15,9 @@ PDF 预览使用独立 iframe 和随 MinerU 分发的 PDF.js 6.3.289，支持连
 需要密码或损坏的 PDF 会显示预览错误。文字搜索、编辑、打印和缩略图不在当前预览功能范围内。
 静态资源和文件沿用 Gradio 的认证与文件路由，支持反向代理子路径；自定义挂载仍需传入自己的结果目录 `allowed_paths`。
 
-Gradio 6.26 的 `huggingface-hub>=1.16` 与当前 Transformers 4 的依赖范围不兼容。
-使用最新 Gradio 时，将 UI 安装在独立环境，通过 `--api-url` 连接推理服务；与本地模型同环境安装时，
-让依赖解析器选择兼容的 Gradio 6.x，当前相关约束可解析到 6.17.3，无需升级 Transformers。
+Gradio 6.21 要求 `starlette>=1.0.1,<2` 和 `huggingface-hub>=1.16,<2`，与当前 MinerU 的 Transformers 5 依赖范围兼容。
+安装时让依赖解析器同时处理 MinerU 和推理后端，无需为 WebUI 单独提高 Transformers、vLLM 或 LMDeploy 的下限。
+UI 也可安装在独立环境，通过 `--api-url` 连接推理服务。
 
 维护预览资源时执行 `python scripts/vendor_pdfjs.py`，脚本会校验固定上游压缩包并生成逐文件 SHA-256 清单。
 构建后使用 `python scripts/verify_pdfjs_distribution.py dist/*.whl dist/*.tar.gz` 检查资源和许可证是否完整。
@@ -47,7 +47,7 @@ mineru-kit webui \
   --api-key "$MINERU_API_KEY"
 ```
 
-未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 Standard 能力上限、开启 Flash 和 Advanced、关闭 `local` source，文件通过 V1 Uploads API 提交。
+未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 Standard 能力上限、开启 Flash 和 Advanced。所有文件通过 Tasks 提交 hash 清单，缓存未命中时上传，同机也不使用路径免上传。
 
 未指定 `--server-port` 时，界面由 Gradio 从 `7860` 开始寻找空闲端口；可通过 `GRADIO_SERVER_PORT` 设置起始端口、`GRADIO_NUM_PORTS` 设置尝试数量（默认 `100`）。显式指定 `--server-port 7861` 时只尝试该端口，覆盖环境变量；该端口已被占用则启动失败。界面最终访问地址以启动输出为准，与内部 API server 的端口不同。
 
@@ -101,13 +101,13 @@ OCR 模式由每次 V1 解析任务决定；API Server 不再提供启动时的 
 
 Gradio 转换事件保留 `raw_page_range` 字符串接口，仍接受 V1 `page_range` 语法，例如 `1-5,8,r1`。未指定时按当前上限选择前若干页，无上限则全部；显式选区（包括 `all`）超限会返回 `page_range_invalid`，不会截断。提交端按真实页数复核，直接调用事件也不能绕过上限。该限制不改变通用 Python、V1 API 或 Doclib 的选页规则。
 
-Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser` 上传文件、创建 `/v1/parse/jobs`、轮询任务并下载 ZIP 结果。解析结果保存为严格 Middle JSON 2.0。
+Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser` 提交 hash 清单到 `/v1/tasks`、按需上传、轮询父任务并下载逐文件默认 ZIP 结果。解析结果保存为严格 Middle JSON 2.0。
 
 左下角使用与 3.4.5 一致的两列步骤卡片，展示准备请求、检查服务、提交任务、排队、解析中、下载结果、整理输出和完成。排队状态来自本地任务槽或 V1 的 `queued` 响应，圆点每秒循环更新；不显示前方任务数。每个界面服务仍一次执行一个转换，等待中的会话也会立即显示排队动画。
 
 收到 V1 的 `running` 后开始解析计时，由浏览器本地刷新；收到任务终态时冻结。API 路径的最终完成文案优先使用响应中已有的 `files[0].parse.duration_ms`，包含服务端解析和结果导出/打包，不包含排队、客户端下载和 WebUI 整理输出，因此即使轮询跳过 `running` 也能显示亚秒耗时。HF 等直接调用解析函数的适配层继续使用实际阶段通知之间的计时；缺少 API 耗时字段时也保留这种计时回退。完成数值按两位小数四舍五入，最低显示 `0.01 秒`。两种路径均不承诺该值等同于日志中的纯 `infer` 耗时。界面动画不增加 API 请求，任务轮询仍为每秒一次。清除或更换文件会停止当前会话的状态流并释放本地等待位置，不向 V1 发送远端取消请求。
 
-`MinerUApiParser.parse()` 和 `parse_async()` 提供可选的 `status_callback` 参数，接收公开的 `ApiJobStatus`（`queued`、`running`、`completed`、`partial`、`failed`、`canceled`）。回调在任务提交响应及每次轮询响应后同步调用；回调异常只记录日志。这里的 `completed` 表示服务端任务完成，解析方法仍需下载并构造 `ParseResult` 后才返回。可选的 `duration_callback` 在最终成功响应之后、开始下载之前接收既有文件耗时（浮点毫秒）；缺失或非法耗时不触发回调，回调异常不影响解析结果。该值属于本次调用，不存放在共享 parser 实例或 `ParseResult` 中。
+`MinerUApiParser.parse()` 和 `parse_async()` 提供可选的 `status_callback` 参数，接收公开的 `ApiTaskStatus`（`waiting_upload`、`queued`、`running`、`completed`、`partial`、`failed`、`canceled`）。回调在任务提交响应及每次轮询响应后同步调用；回调异常只记录日志。这里的 `completed` 表示服务端任务完成，解析方法仍需下载并构造 `ParseResult` 后才返回。可选的 `duration_callback` 在最终成功响应之后、开始下载之前接收既有文件耗时（浮点毫秒）；缺失或非法耗时不触发回调，回调异常不影响解析结果。该值属于本次调用，不存放在共享 parser 实例或 `ParseResult` 中。
 
 ## 结果与下载
 
@@ -144,3 +144,5 @@ Office 转换开始、失败及成功后都保留已挂载的源预览。“忽�
 PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用 schema 2.0 顶层 block/bbox 生成语义 overlay。无法生成 overlay 时仍保留 origin PDF 预览。
 
 `mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
+
+Gradio 使用 Tasks 能力发现，只在服务声明 `task_model_output` 时请求模型输出；下载菜单仍从保存的 Middle JSON 按需导出。

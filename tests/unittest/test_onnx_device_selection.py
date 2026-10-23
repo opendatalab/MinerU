@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from mineru.config import Config
 from mineru.model.runtime import onnx_device as policy
 from mineru.model.runtime.windows_gpu import GpuAdapter, preferred_gpu
+from mineru.model.runtime.webgpu import WebGPUDevice
 
 settings = importlib.import_module("mineru.config")
 
@@ -31,7 +32,7 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(settings.config.model, "onnx_device", "auto")
     monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(policy, "_selections", {})
-    monkeypatch.setattr(policy, "ONNX_GPU_TIME_RATIO_THRESHOLD", 0.75)
+    monkeypatch.setattr(policy, "ONNX_GPU_TIME_RATIO_THRESHOLDS", {"dml": 0.75, "webgpu": 0.8})
     monkeypatch.setattr(policy, "discover_gpus", lambda **_: (adapter(),))
     import onnxruntime
     from mineru.model import registry
@@ -39,7 +40,9 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     monkeypatch.setattr(onnxruntime, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=lambda: "rec.onnx")))
-    monkeypatch.setattr(onnx_calibration, "run_calibration", Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": 1.0}))
+    monkeypatch.setattr(
+        onnx_calibration, "run_calibration", Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": 1.0})
+    )
     return target
 
 
@@ -111,7 +114,7 @@ def test_cpu_never_discovers_or_benchmarks(config_file: Path, monkeypatch: pytes
 def test_calibration_saved_once(config_file: Path, monkeypatch: pytest.MonkeyPatch, gpu_time: float, expected: str) -> None:
     from mineru.model.runtime import onnx_calibration
 
-    measure = Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
     assert policy.resolve_onnx_device().device == expected
     assert policy.resolve_onnx_device().device == expected
@@ -120,6 +123,22 @@ def test_calibration_saved_once(config_file: Path, monkeypatch: pytest.MonkeyPat
     policy._selections.clear()  # A new process reads the persisted choice instead of benchmarking again.
     assert policy.resolve_onnx_device().device == expected
     assert measure.call_count == 1
+
+
+def test_offline_calibration_never_downloads_or_poison_online_cache(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mineru.model import registry
+
+    def ensure(*, source: str | None = None) -> str:
+        if source == "local":
+            raise FileNotFoundError("not cached")
+        return "rec.onnx"
+
+    loader = Mock(side_effect=ensure)
+    monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=loader)))
+    assert policy.resolve_onnx_device(allow_download=False).device == "cpu"
+    loader.assert_called_once_with(source="local")
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
+    assert policy.resolve_onnx_device().device == "gpu"
 
 
 def test_discrete_skips_calibration_and_persists_only_after_session(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,9 +195,9 @@ def test_discovery_and_unavailable_states(config_file: Path, monkeypatch: pytest
     elif mode == "discovery_error":
         monkeypatch.setattr(policy, "discover_gpus", Mock(side_effect=OSError("DXGI error")))
     elif mode == "pending":
-        monkeypatch.setattr(policy, "ONNX_GPU_TIME_RATIO_THRESHOLD", None)
+        monkeypatch.setitem(policy.ONNX_GPU_TIME_RATIO_THRESHOLDS, "dml", None)
     else:
-        monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="linux"))
+        monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="darwin"))
     assert policy.resolve_onnx_device().device == "cpu"
     assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == ("cpu" if mode == "no_gpu" else "auto")
 
@@ -224,3 +243,151 @@ def test_manual_reset_to_auto_recalibrates(config_file: Path) -> None:
     policy._selections.clear()  # New process after the explicit reset.
     policy.resolve_onnx_device()
     assert onnx_calibration.run_calibration.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("requested", "uma", "gpu_time", "expected"),
+    [
+        ("cpu", True, 1.0, "cpu"),
+        ("gpu", True, 1.0, "gpu"),
+        ("auto", True, 1.0, "gpu"),
+        ("auto", True, 1.6, "cpu"),
+        ("auto", False, 1.0, "gpu"),
+    ],
+)
+def test_unet_first_model_shares_selection_and_persistence(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested: str,
+    uma: bool,
+    gpu_time: float,
+    expected: str,
+) -> None:
+    from mineru.model.runtime import onnx, onnx_calibration
+    from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet
+
+    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    config_file.write_text(f"model:\n  onnx_device: {requested}\n  source: local\n", encoding="utf-8")
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu" if expected == "gpu" else "cuda")
+    discover = Mock(return_value=(adapter(index=7, uma=uma),))
+    monkeypatch.setattr(policy, "discover_gpus", discover)
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
+    factory = Mock(
+        side_effect=lambda *args, **kwargs: SimpleNamespace(
+            get_providers=lambda: [name for name, options in kwargs["providers"]], disable_fallback=Mock()
+        )
+    )
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    model = TSRUnet({"model_path": "unet.onnx", "small_backend": "onnx", "intra_op_num_threads": 2})
+    provider = "DmlExecutionProvider" if expected == "gpu" else "CPUExecutionProvider"
+    assert model.session.session.get_providers()[0] == provider
+    onnx.ort_session("layout.onnx", model_kind="layout")
+    onnx.ort_session("rec.onnx", model_kind="ocr_rec")
+    assert all(call.kwargs["providers"][0][0] == provider for call in factory.call_args_list)
+    assert discover.call_count == (0 if requested == "cpu" else 1)
+    assert measure.call_count == (1 if requested == "auto" and uma else 0)
+    if measure.called:
+        assert measure.call_args.kwargs["intra_op_num_threads"] == 2
+    if expected == "gpu":
+        assert factory.call_args_list[0].kwargs["providers"][0][1] == {"device_id": 7, "disable_metacommands": "true"}
+    assert yaml.safe_load(config_file.read_text())["model"] == {"onnx_device": expected, "source": "local"}
+
+
+@pytest.fixture
+def linux_config(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(WebGPUDevice(0x1002, 1),)))
+    return config_file
+
+
+@pytest.mark.parametrize(("gpu_time", "expected"), [(1.5, "gpu"), (1.6, "gpu"), (1.601, "cpu")])
+@pytest.mark.parametrize("hardware", ["integrated", "discrete"])
+def test_linux_calibrates_both_gpu_types_and_uses_own_threshold(
+    linux_config: Path, monkeypatch: pytest.MonkeyPatch, gpu_time: float, expected: str, hardware: str
+) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    descriptor = WebGPUDevice(0x1002, 1, (("type", hardware),))
+    monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(descriptor,)))
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
+    selection = policy.resolve_onnx_device()
+    assert selection.device == expected and selection.backend == "webgpu"
+    assert policy.resolve_onnx_device() is selection
+    measure.assert_called_once_with("rec.onnx", descriptor, intra_op_num_threads=0, inter_op_num_threads=0, threshold=0.8)
+    assert yaml.safe_load(linux_config.read_text())["model"] == {"onnx_device": expected, "source": "local"}
+
+
+@pytest.mark.parametrize("requested", ["cpu", "gpu"])
+def test_linux_explicit_modes_do_not_calibrate(linux_config: Path, monkeypatch: pytest.MonkeyPatch, requested: str) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    assert policy.resolve_onnx_device().device == requested
+    onnx_calibration.run_calibration.assert_not_called()
+    assert policy.discover_webgpu_devices.call_count == (0 if requested == "cpu" else 1)
+
+
+@pytest.mark.parametrize("error", [ImportError("plugin"), OSError("Vulkan"), TimeoutError("worker"), ValueError("outputs")])
+def test_linux_failures_preserve_auto_and_do_not_retry(
+    linux_config: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    failing = Mock(side_effect=error)
+    if isinstance(error, (ImportError, OSError)) and not isinstance(error, TimeoutError):
+        monkeypatch.setattr(policy, "discover_webgpu_devices", failing)
+    else:
+        monkeypatch.setattr(onnx_calibration, "run_calibration", failing)
+    for _ in range(2):
+        assert policy.resolve_onnx_device().device == "cpu"
+    assert failing.call_count == 1
+    assert yaml.safe_load(linux_config.read_text())["model"]["onnx_device"] == "auto"
+
+
+def test_linux_environment_override_never_persists(linux_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "get_config_source", lambda key: "env")
+    assert policy.resolve_onnx_device().device == "gpu"
+    assert yaml.safe_load(linux_config.read_text())["model"]["onnx_device"] == "auto"
+
+
+@pytest.mark.parametrize("state", ["no_devices", "pending_threshold"])
+def test_linux_unavailable_state_preserves_auto(linux_config: Path, monkeypatch: pytest.MonkeyPatch, state: str) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    if state == "no_devices":
+        monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=()))
+    else:
+        monkeypatch.setitem(policy.ONNX_GPU_TIME_RATIO_THRESHOLDS, "webgpu", None)
+    assert policy.resolve_onnx_device().device == "cpu"
+    onnx_calibration.run_calibration.assert_not_called()
+    assert yaml.safe_load(linux_config.read_text())["model"]["onnx_device"] == "auto"
+
+
+def test_linux_waiting_process_rechecks_saved_choice(linux_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class OtherProcessSaved:
+        def acquire(self) -> None:
+            linux_config.write_text("model:\n  onnx_device: cpu\n")
+
+        def release(self) -> None:
+            pass
+
+    monkeypatch.setattr(policy, "FileLock", lambda *args, **kwargs: OtherProcessSaved())
+    assert policy.resolve_onnx_device().device == "cpu"
+    policy.discover_webgpu_devices.assert_not_called()
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_unstable_calibration_keeps_auto(config_file: Path, monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(policy, "discover_webgpu_devices", lambda: (WebGPUDevice(0x8086, 0x7D51),))
+    measure = Mock(return_value={"decision_valid": False, "cpu_elapsed": 2.0, "gpu_elapsed": 1.0})
+    monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
+    selected = policy.resolve_onnx_device()
+    assert selected.device == "cpu" and selected.reason == "calibration_unstable"
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
+    assert policy.resolve_onnx_device() == selected
+    measure.assert_called_once()

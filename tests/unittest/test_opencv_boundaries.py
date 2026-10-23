@@ -245,28 +245,21 @@ def test_unet_input_tensor_keeps_inplace_channel_exchange() -> None:
 
 
 @pytest.mark.parametrize("case", _REFERENCE["seal_cases"], ids=lambda case: case["name"] + "-" + case["interpolation"])
-@pytest.mark.parametrize("backend", ["python", "rust"])
-def test_seal_homography_keeps_frozen_pixels(case: dict[str, Any], backend: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """两个后端验证横竖曲线、四边形、短多边形和退化回退的既有像素。"""
-    from docvortex._compute_backend import get_native
+def test_seal_homography_keeps_frozen_pixels(case: dict[str, Any]) -> None:
+    """原生内核验证横竖曲线、四边形、短多边形和退化处理的既有像素。"""
     from mineru.model.ocr.seal_det_warp import AutoRectifier
 
-    monkeypatch.setenv("DOCVORTEX_COMPUTE_BACKEND", backend)
-    get_native.cache_clear()
-    try:
-        image = np.random.default_rng(29).integers(0, 256, (96, 96, 3), dtype=np.uint8)
-        original = image.copy()
-        points = np.float32(case["points"])
-        rectifier = AutoRectifier()
-        actual = rectifier(image, points, interpolation=case["interpolation"])
-        _assert_array_reference(actual, case["crop"])
-        outputs, visual = rectifier.run(image, [points.reshape(-1).tolist()], interpolation=case["interpolation"])
-        _assert_array_reference(outputs[0], case["crop"])
-        _assert_array_reference(visual, case["visual"])
-        np.testing.assert_array_equal(image, original)
-        assert not np.shares_memory(actual, image)
-    finally:
-        get_native.cache_clear()
+    image = np.random.default_rng(29).integers(0, 256, (96, 96, 3), dtype=np.uint8)
+    original = image.copy()
+    points = np.float32(case["points"])
+    rectifier = AutoRectifier()
+    actual = rectifier(image, points, interpolation=case["interpolation"])
+    _assert_array_reference(actual, case["crop"])
+    outputs, visual = rectifier.run(image, [points.reshape(-1).tolist()], interpolation=case["interpolation"])
+    _assert_array_reference(outputs[0], case["crop"])
+    _assert_array_reference(visual, case["visual"])
+    np.testing.assert_array_equal(image, original)
+    assert not np.shares_memory(actual, image)
 
 
 def test_default_seal_rectification_runs_without_opencv() -> None:
@@ -315,10 +308,7 @@ def test_seal_rejects_removed_mode(mode: str) -> None:
 
 def test_base_dependencies_exclude_opencv_and_keep_product_extras() -> None:
     """基础声明移除 OpenCV，ONNX、llama.cpp、Torch/full 和苹果自动 extra 保持原样。"""
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
     from packaging.requirements import Requirement
 
     project = tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]

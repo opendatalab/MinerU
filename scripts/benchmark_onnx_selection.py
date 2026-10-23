@@ -14,6 +14,7 @@ from typing import Any
 from mineru.model.runtime.onnx_calibration import run_calibration
 from mineru.model.runtime.onnx_device import choose_gpu
 from mineru.model.runtime.windows_gpu import discover_gpus, preferred_gpu
+from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, discover_webgpu_devices, select_webgpu_device
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
@@ -57,37 +58,62 @@ def environment() -> dict[str, Any]:
 def derive_threshold(reports: list[dict[str, Any]]) -> dict[str, Any]:
     """Choose the midpoint of the separating interval; reject mismatched or failed protocols."""
     by_label = {report["label"]: report for report in reports}
-    if len(reports) != 3 or set(by_label) != {"ultra5", "i7", "max395"}:
+    backends = {report.get("backend", "dml") for report in reports}
+    if len(backends) != 1 or not backends <= {"dml", "webgpu"}:
+        raise ValueError("Do not mix DML and WebGPU calibration reports")
+    backend = next(iter(backends))
+    if backend == "dml" and (len(reports) != 3 or set(by_label) != {"ultra5", "i7", "max395"}):
         raise ValueError("Exactly one ultra5, i7 and max395 report is required")
+    if backend == "webgpu" and (len(reports) < 3 or len(by_label) != len(reports)):
+        raise ValueError("WebGPU derivation needs at least three distinctly labeled hosts")
     signatures = set()
     ratios: dict[str, list[float]] = {}
+    expected = {}
     for label, report in by_label.items():
+        expected[label] = report.get("expected") or (("cpu" if label == "i7" else "gpu") if backend == "dml" else None)
+        if expected[label] not in {"cpu", "gpu"}:
+            raise ValueError("WebGPU reports must declare --expect cpu or gpu from independent performance evidence")
         if report.get("errors") or len(report["runs"]) != 5 or report.get("threshold") is not None:
             raise ValueError(f"{label} needs five successful calibration processes")
         ratios[label] = []
         for run in report["runs"]:
-            if not run.get("outputs_match") or run["gpu"]["providers"][0] != "DmlExecutionProvider":
-                raise ValueError("Missing DirectML execution evidence")
+            provider = WEBGPU_PROVIDER if backend == "webgpu" else "DmlExecutionProvider"
+            if run.get("backend", "dml") != backend or not run.get("outputs_match") or run["gpu"]["providers"][0] != provider:
+                raise ValueError("Missing matching backend execution evidence")
+            adaptive = run.get("measurement", {}).get("strategy") == "adaptive-v1"
+            if run.get("decision_valid", not adaptive) is not True:
+                raise ValueError("Unstable adaptive calibration cannot be used to derive a threshold")
             signatures.add(
                 (
                     run["input"]["manifest_sha256"],
                     run["input"]["input_sha256"],
                     run["model_sha256"],
+                    run.get("output_format", "full-probabilities"),
                     run["ort_version"],
                     run["intra_threads"],
                     run["inter_threads"],
+                    backend,
+                    run.get("ep_version", run["ort_version"]),
+                    json.dumps(run.get("webgpu_options"), sort_keys=True),
+                    json.dumps(run.get("measurement", {"warmup_runs": 1, "timed_runs": 2, "statistic": "sum"}), sort_keys=True),
+                    run.get("decision_threshold"),
                 )
             )
             ratio = run["gpu_elapsed"] / run["cpu_elapsed"]
             choose_gpu(run["cpu_elapsed"], run["gpu_elapsed"], 0.5)  # Validate finite positive timings only.
             ratios[label].append(ratio)
     if len(signatures) != 1:
-        raise ValueError("Samples, weights, ORT or thread settings differ across calibration runs")
-    lower = max(*ratios["ultra5"], *ratios["max395"])
-    upper = min(*ratios["i7"], 1.0)
+        raise ValueError(
+            "Samples, weights, ORT, EP version/options, thread settings or measurement protocols differ across runs"
+        )
+    if set(expected.values()) != {"cpu", "gpu"}:
+        raise ValueError("Threshold derivation requires both CPU-winning and GPU-winning hosts")
+    lower = max(value for label, values in ratios.items() if expected[label] == "gpu" for value in values)
+    upper = min(1.0, min(value for label, values in ratios.items() if expected[label] == "cpu" for value in values))
     if lower >= upper:
         raise ValueError(f"No separating interval: L={lower}, U={upper}; revise samples and rerun")
     return {
+        "backend": backend,
         "threshold": (lower + upper) / 2,
         "lower": lower,
         "upper": upper,
@@ -98,14 +124,22 @@ def derive_threshold(reports: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> None:
-    adapters = discover_gpus()
-    if args.luid:
-        adapter = next((gpu for gpu in adapters if gpu.luid == args.luid), None)
+    backend = "webgpu" if sys.platform == "linux" else "dml"
+    if backend == "webgpu":
+        if args.luid:
+            raise ValueError("--luid is only supported by DirectML; WebGPU uses the default high-performance adapter")
+        adapters = discover_webgpu_devices()
+        adapter = select_webgpu_device(adapters)
+        if args.threshold is not None and args.expect is None:
+            raise ValueError("WebGPU independent validation requires --expect cpu or gpu")
     else:
-        adapter = preferred_gpu(adapters)
+        if args.label not in {"ultra5", "i7", "max395"}:
+            raise ValueError("DirectML calibration labels are ultra5, i7 and max395")
+        adapters = discover_gpus()
+        adapter = next((gpu for gpu in adapters if gpu.luid == args.luid), None) if args.luid else preferred_gpu(adapters)
     if adapter is None:
         raise ValueError("Requested hardware GPU was not found")
-    if adapter.uma is not True:
+    if backend == "dml" and adapter.uma is not True:
         raise ValueError("Threshold calibration must explicitly target a confirmed integrated GPU")
     if args.model is None:
         from mineru.model.registry import MINERU_4_MODELS_ONNX
@@ -117,6 +151,8 @@ def run(args: argparse.Namespace) -> None:
     args.output.mkdir(parents=True, exist_ok=False)
     report: dict[str, Any] = {
         "label": args.label,
+        "backend": backend,
+        "expected": args.expect or (("cpu" if args.label == "i7" else "gpu") if backend == "dml" else None),
         "environment": environment(),
         "adapter": asdict(adapter),
         "threshold": args.threshold,
@@ -133,12 +169,15 @@ def run(args: argparse.Namespace) -> None:
                 intra_op_num_threads=4,
                 inter_op_num_threads=1,
                 gpu_first=args.threshold is None and index % 2 == 1,
+                threshold=args.threshold,
             )
+            report["runs"].append(result)
+            if not result["decision_valid"]:
+                raise ValueError("Calibration remained unstable after 3+7; no performance decision")
             if args.threshold is not None:
                 result["selected"] = (
                     "gpu" if choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], args.threshold) else "cpu"
                 )
-            report["runs"].append(result)
             print(
                 f"{args.label} {index + 1}/{count}: ratio={result['ratio']:.6f}, wall={result['worker_wall_s']:.3f}s",
                 flush=True,
@@ -148,7 +187,7 @@ def run(args: argparse.Namespace) -> None:
             print(f"{args.label} {index + 1}/{count}: {error}", flush=True)
         write_json(target, report)
     if args.threshold is not None:
-        expected = "cpu" if args.label == "i7" else "gpu"
+        expected = report["expected"]
         report["validation_passed"] = not report["errors"] and all(row["selected"] == expected for row in report["runs"])
         write_json(target, report)
     if report["errors"] or report.get("validation_passed") is False:
@@ -160,17 +199,19 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("devices")
     measure = commands.add_parser("run")
-    measure.add_argument("--label", choices=("ultra5", "i7", "max395"), required=True)
+    measure.add_argument("--label", required=True, help="Host label; DML uses ultra5/i7/max395, WebGPU accepts any label")
+    measure.add_argument("--expect", choices=("cpu", "gpu"), help="Expected device for independent validation")
     measure.add_argument("--luid", help="Benchmark-only adapter identity; use devices to find the iGPU")
     measure.add_argument("--model", type=Path)
     measure.add_argument("--output", type=Path, required=True)
     measure.add_argument("--threshold", type=float, help="Run three independent validation processes")
     derive = commands.add_parser("derive")
-    derive.add_argument("reports", type=Path, nargs=3)
+    derive.add_argument("reports", type=Path, nargs="+")
     derive.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "devices":
-        print(json.dumps([asdict(gpu) for gpu in discover_gpus()], ensure_ascii=False, indent=2))
+        devices = discover_webgpu_devices() if sys.platform == "linux" else discover_gpus()
+        print(json.dumps([asdict(gpu) for gpu in devices], ensure_ascii=False, indent=2))
     elif args.command == "run":
         run(args)
     else:

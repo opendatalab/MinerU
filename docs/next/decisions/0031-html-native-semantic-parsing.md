@@ -2,7 +2,7 @@
 
 状态: Accepted，已实现
 日期: 2026-08-27
-相关文档: ../sdk/parser.md, ../cli/mineru-kit-parse.md, ../api/parse-jobs.md, 0024-file-type-tier-normalization.md
+相关文档: ../sdk/parser.md, ../cli/mineru-kit-parse.md, ../api/tasks.md, 0024-file-type-tier-normalization.md
 
 ## 背景
 
