@@ -108,8 +108,8 @@ def test_tasks_sdk_upload_cache_and_lost_response(
         if request.method == "POST":
             assert request.url.path == "/v1/tasks"
             body = json.loads(request.content)
-            assert body["manifest"][0]["sha256sum"] == hashlib.sha256(source.read_bytes()).hexdigest()
-            assert body["manifest"][0]["page_range"] == "1"
+            assert body["files"][0]["sha256sum"] == hashlib.sha256(source.read_bytes()).hexdigest()
+            assert body["files"][0]["page_range"] == "1"
             assert body["ocr_mode"] == "txt" and body["tier"] == "flash"
             return httpx.Response(202, json=copy.deepcopy(state))
         if request.method == "PUT":
@@ -270,7 +270,7 @@ def test_task_model_output_requires_default() -> None:
     """不把原本单文件的 HTML/DOCX 请求隐式改成 ZIP。"""
     with pytest.raises(ValueError, match="requires default"):
         CreateTaskRequest(
-            manifest=[{"client_file_id": "file", "filename": "a.pdf", "bytes": 1}],
+            files=[{"client_file_id": "file", "file_name": "a.pdf", "bytes": 1}],
             output_formats=["html"],
             include_model_output=True,
         )

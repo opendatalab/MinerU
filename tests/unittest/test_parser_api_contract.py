@@ -1008,7 +1008,7 @@ def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: 
         response = client.post(
             "/v1/tasks",
             json={
-                "manifest": [{"client_file_id": "file", "filename": source.name, "bytes": source.stat().st_size}],
+                "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
                 "tier": "advanced",
             },
         )
@@ -1032,7 +1032,7 @@ def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeyp
         response = client.post(
             "/v1/tasks",
             json={
-                "manifest": [{"client_file_id": "file", "filename": source.name, "bytes": source.stat().st_size}],
+                "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
                 "tier": "advanced",
             },
         )
@@ -1054,7 +1054,7 @@ def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: 
     response = TestClient(app).post(
         "/v1/tasks",
         json={
-            "manifest": [{"client_file_id": "file", "filename": source.name, "bytes": source.stat().st_size}],
+            "files": [{"client_file_id": "file", "file_name": source.name, "bytes": source.stat().st_size}],
             "tier": "flash",
         },
     )

@@ -23,7 +23,7 @@ from ...parser.api_server import ApiServerError, ErrorDetail, _JobInputMetadata,
 from ...parser.task_api import (
     TERMINAL_TASK_STATUSES,
     TaskExecution,
-    TaskManifestItem,
+    TaskFileItem,
     TaskStatusResponse,
     TaskUpload,
     UploadTaskOptions,
@@ -262,13 +262,13 @@ class RouterTaskBackend:
             result_route.metadata["payload"]["expires_at"] = route.metadata["task_result_retain_until"]
             result_route.metadata["task_result_retain_until"] = route.metadata["task_result_retain_until"]
 
-    async def validate(self, options: UploadTaskOptions, manifest: list[TaskManifestItem]) -> None:
+    async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileItem]) -> None:
         """能力预检不推进轮询游标，也不为尚未上传的任务预占 worker。"""
         tiers = self.pool.available_tiers()
-        options.tier = resolve_task_tier(options, manifest, tiers, select_default_quality_tier(tiers))
+        options.tier = resolve_task_tier(options, inputs, tiers, select_default_quality_tier(tiers))
         checked_workers: set[str] = set()
-        for item in manifest:
-            lightweight = is_flash_only_parse_extension(item.filename)
+        for item in inputs:
+            lightweight = is_flash_only_parse_extension(item.file_name)
             selection_tier = "flash" if lightweight else options.tier
             candidates = self.pool.capable_workers(
                 tier=selection_tier,
@@ -324,7 +324,7 @@ class RouterTaskBackend:
         self._pins.close()
 
     async def _wait_for_input_files(
-        self, worker: WorkerState, upstream_id: str, generation: int, manifest: list[TaskManifestItem]
+        self, worker: WorkerState, upstream_id: str, generation: int, inputs: list[TaskFileItem]
     ) -> dict[str, Any]:
         """等待已上传项生成公共 File；级联 Router 的上传就绪可能早于下游引用交接。"""
         while True:
@@ -338,11 +338,11 @@ class RouterTaskBackend:
             )
             require_worker_generation(worker, generation)
             ready = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
-            if ready["task_id"] != upstream_id or len(ready["files"]) != len(manifest) or ready["status"] == "waiting_upload":
+            if ready["task_id"] != upstream_id or len(ready["files"]) != len(inputs) or ready["status"] == "waiting_upload":
                 _raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker inputs are not ready"
                 )
-            if any(item["client_file_id"] != source.client_file_id for item, source in zip(ready["files"], manifest)):
+            if any(item["client_file_id"] != source.client_file_id for item, source in zip(ready["files"], inputs)):
                 _raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
                 )
@@ -351,7 +351,7 @@ class RouterTaskBackend:
                 and item["upload_status"] == "ready"
                 and item["file_id"] is None
                 and item["status"] in {"queued", "running"}
-                for item, source in zip(ready["files"], manifest)
+                for item, source in zip(ready["files"], inputs)
             )
             if not pending:
                 return ready
@@ -359,17 +359,17 @@ class RouterTaskBackend:
             await asyncio.sleep(1)
 
     async def submit(
-        self, task_id: str, options: UploadTaskOptions, manifest: list[TaskManifestItem], uploads: dict[int, TaskUpload]
+        self, task_id: str, options: UploadTaskOptions, inputs: list[TaskFileItem], uploads: dict[int, TaskUpload]
     ) -> TaskExecution:
         """预占后提交 worker 任务，只向 worker 上传它实际缺失的文件。"""
-        lightweight = all(is_flash_only_parse_extension(item.filename) for item in manifest)
+        lightweight = all(is_flash_only_parse_extension(item.file_name) for item in inputs)
         tier = "flash" if lightweight else options.tier
         reservation = self.pool.reserve_job(
             tier=tier,
-            required_sources={"url" if item.url is not None else "upload" for item in manifest},
+            required_sources={"url" if item.url is not None else "upload" for item in inputs},
             required_task_outputs=set(options.output_formats),
             require_model_output=options.include_model_output,
-            require_flash=any(is_flash_only_parse_extension(item.filename) for item in manifest),
+            require_flash=any(is_flash_only_parse_extension(item.file_name) for item in inputs),
         )
         if reservation is None:
             _raise_api_error(
@@ -381,11 +381,11 @@ class RouterTaskBackend:
         registered_inputs: list[str] = []
         transferred = False
         try:
-            worker_manifest = [
+            worker_inputs = [
                 item.model_dump(exclude_none=True)
                 if item.url is not None
                 else {**item.model_dump(exclude_none=True), "sha256sum": uploads[index].sha256sum}
-                for index, item in enumerate(manifest)
+                for index, item in enumerate(inputs)
             ]
             response = await _worker_request(
                 self.pool,
@@ -394,7 +394,7 @@ class RouterTaskBackend:
                 "/v1/tasks",
                 request=self.request,
                 json_body={
-                    "manifest": worker_manifest,
+                    "files": worker_inputs,
                     "tier": options.tier,
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
@@ -420,7 +420,7 @@ class RouterTaskBackend:
                 upstream_headers={"authorization": authorization} if authorization else {},
                 payload={"job_id": task_id, "status": "queued", "files": []},
             )
-            by_client_id = {item.client_file_id: index for index, item in enumerate(manifest)}
+            by_client_id = {item.client_file_id: index for index, item in enumerate(inputs)}
             for link in payload["uploads"]:
                 index = by_client_id.get(link["client_file_id"])
                 if index not in uploads or link["upload_method"] != "PUT":
@@ -449,10 +449,10 @@ class RouterTaskBackend:
                 if response.status_code >= 400:
                     _checked_json(response)
                 require_worker_generation(worker, reservation.generation)
-            ready = await self._wait_for_input_files(worker, upstream_id, reservation.generation, manifest)
+            ready = await self._wait_for_input_files(worker, upstream_id, reservation.generation, inputs)
             aliases: dict[str, str] = {}
             for index, item in enumerate(ready["files"]):
-                if manifest[index].url is not None:
+                if inputs[index].url is not None:
                     if item["upload_status"] != "not_required":
                         _raise_api_error(
                             502, error_type="api_error", code="invalid_upstream_response", message="Unexpected URL upload"
@@ -468,7 +468,7 @@ class RouterTaskBackend:
                     {
                         "id": upstream_file_id,
                         "object": "file",
-                        "filename": upload.filename,
+                        "file_name": upload.filename,
                         "bytes": upload.bytes,
                         "sha256sum": upload.sha256sum,
                         "purpose": "parse",

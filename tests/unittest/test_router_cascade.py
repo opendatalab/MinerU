@@ -84,10 +84,10 @@ async def _submit(client: httpx.AsyncClient, *, filename: str = "input.html", ur
         "/v1/tasks",
         json={
             "tier": "flash",
-            "manifest": [
+            "files": [
                 {
                     "client_file_id": "file",
-                    "filename": filename,
+                    "file_name": filename,
                     "bytes": len(HTML),
                     "sha256sum": hashlib.sha256(HTML).hexdigest(),
                     **({"url": url} if url is not None else {}),
@@ -171,7 +171,7 @@ def test_cascade_can_cancel_while_waiting_for_source_file(tmp_path: Path) -> Non
                 await outer.state.task_store._records[task["task_id"]].operation
                 for record in inner.state.task_store._records.values():
                     # 下游仍有结果租约，取消清理只需等待实际子文件退出。
-                    await asyncio.gather(*(file.operation for file in record.files if file.operation is not None))
+                    await asyncio.gather(*(file.operation for file in record.file_states if file.operation is not None))
             assert not worker.state.job_store._jobs
             for app in (outer, inner):
                 assert all(item.active_jobs == 0 for item in app.state.worker_pool.workers)

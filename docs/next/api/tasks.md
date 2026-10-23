@@ -21,7 +21,7 @@ Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 
 | JSON 字段 | 默认值 | 说明 |
 |---|---|---|
-| `manifest` | 必填 | 1–100 个文件组成的 JSON 数组，不接受 JSON 字符串。 |
+| `files` | 必填 | 1–100 个文件组成的 JSON 数组，不接受 JSON 字符串。 |
 | `tier` | 服务默认值 | `flash/basic/standard/advanced`，受部署能力约束。 |
 | `ocr_mode` | `auto` | `auto/txt/ocr`。 |
 | `page_range` | 整本 | 全局 PDF 页范围，支持 `1-5`、`r1`、`all` 等现有语法。 |
@@ -33,14 +33,17 @@ Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `client_file_id` | 是 | 任务内唯一，1–64 个字母、数字、下划线或短横线。 |
-| `filename` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
+| `client_file_id` | 否 | 任务内唯一，1–64 个字母、数字、下划线或短横线；省略或 `null` 时由服务端补全。 |
+| `file_name` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
 | `url` | 否 | HTTP(S) 文件下载地址，受部署来源策略约束；省略或 `null` 表示客户端上传。 |
 | `bytes` | 条件 | 上传项必填；URL 项可省略或为 `null`。提供时必须是严格正整数。 |
 | `sha256sum` | 否 | 64 位小写十六进制 SHA-256；用于完整性校验，上传项还用于源文件缓存预检。 |
 | `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
 
-先从真实文件生成 JSON 请求：
+服务端先预留全部显式 `client_file_id`，再按缺省项的输入顺序，从 `f1` 开始分配最小未占用的 `fN`。例如显式占用了 `f2`，两项缺省 ID 分别生成 `f1`、`f3`。空字符串、非法 ID 和重复显式 ID 返回 400。
+创建响应的 `files` 顺序与输入一致，`files[]` 和 `uploads[]` 始终返回非空 ID；生成后上传、查询及 Router 转发均保持不变。
+
+先从真实文件生成 JSON 请求（本例省略 ID，由服务端补全）：
 
 ```bash
 python3 - a.pdf b.pdf > task.json <<'PY'
@@ -49,20 +52,19 @@ import json
 from pathlib import Path
 import sys
 
-manifest = []
-for index, value in enumerate(sys.argv[1:], start=1):
+files = []
+for value in sys.argv[1:]:
     path = Path(value)
     hasher = hashlib.sha256()
     with path.open('rb') as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b''):
             hasher.update(chunk)
-    manifest.append({
-        'client_file_id': f'f{index}',
-        'filename': path.name,
+    files.append({
+        'file_name': path.name,
         'bytes': path.stat().st_size,
         'sha256sum': hasher.hexdigest(),
     })
-print(json.dumps({'manifest': manifest, 'tier': 'flash', 'ocr_mode': 'txt',
+print(json.dumps({'files': files, 'tier': 'flash', 'ocr_mode': 'txt',
                   'output_formats': ['default', 'latex']}, ensure_ascii=False))
 PY
 
@@ -80,16 +82,16 @@ URL 输入同样先创建 JSON 任务：
 
 ```json
 {
-  "manifest": [
-    {"client_file_id": "remote", "filename": "document.pdf", "url": "https://example.com/download?signature=example"},
-    {"client_file_id": "local", "filename": "other.pdf", "bytes": 12345}
+  "files": [
+    {"client_file_id": "remote", "file_name": "document.pdf", "url": "https://example.com/download?signature=example"},
+    {"client_file_id": "local", "file_name": "other.pdf", "bytes": 12345}
   ],
   "output_formats": ["html"]
 }
 ```
 
 - URL 项的 `upload_status` 为 `not_required`，不生成上传链接、不接受 PUT；源 `file_id` 为 `null`。创建后即进入执行队列，不等待其他上传。
-- URL 保留原始签名地址，使用逻辑 `filename` 识别类型；不要求 HEAD 或 `Content-Length`。下载后返回实际 `bytes` 和 `sha256sum`，提供的大小/hash 必须匹配。URL 每次下载，不用 hash 缓存跳过下载。
+- URL 保留原始签名地址，使用逻辑 `file_name` 识别类型；不要求 HEAD 或 `Content-Length`。下载后返回实际 `bytes` 和 `sha256sum`，提供的大小/hash 必须匹配。URL 每次下载，不用 hash 缓存跳过下载。
 - 上传项 hash 命中时为 `ready`，不返回上传链接，立即排队；未命中或无 hash 时返回该文件的链接。上传后仍计算 hash、校验大小并对源字节去重。
 - 缓存只复用源文件，不复用不匹配的解析结果；每个文件使用本次解析参数独立执行。
 - 每个上传项校验完成即排队，不需要客户端发送完成确认。等待上传不占解析并发，也不预占 worker。
@@ -220,6 +222,9 @@ URL 交给 worker 下载，客户端上传字节按 worker 的缓存预检结果
 健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`，`task_model_output` 声明模型输出能力。
 不声明新 Tasks 能力的旧 worker 不参与 Tasks 调度，更新时应先更新 worker，再更新 Router 和客户端。
 Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。已完成任务按 worker 并行续租，每轮网络等待最多 10 秒，避免失联 worker 阻塞其他 worker 的结果保留。
+
+创建请求仅接受 `files` 和 `file_name`，不兼容 `manifest`、`filename`；新旧字段混传同样返回 400。Tasks 响应及 Files 列表、详情统一使用 `file_name`。
+这是同一 `/v1` 下的破坏性变更：先停收请求并排空在途任务，再协调更新 worker、Router、SDK、file_parse 包装服务及其他客户端；SaaS 由部署方同步对齐。
 
 本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
 客户端应改用 JSON、`files[].result_url` 及逐文件保存方式。

@@ -114,7 +114,7 @@ class Upstream:
             if self.create_failure == "auth":
                 return httpx.Response(401, json={"error": {"code": "invalid_api_key", "message": "Bad upstream key"}})
             body = json.loads(await request.aread())
-            assert len(body["manifest"]) == 1
+            assert len(body["files"]) == 1
             task_id = f"task_{len(self.tasks) + 1}"
             self.tasks[task_id] = {
                 "options": body,
@@ -135,7 +135,7 @@ class Upstream:
             self.uploads += 1
             assert request.headers["x-upload-token"] == "storage-token"
             content = await request.aread()
-            assert len(content) == task["options"]["manifest"][0]["bytes"]
+            assert len(content) == task["options"]["files"][0]["bytes"]
             if self.upload_failures:
                 self.upload_failures -= 1
                 return httpx.Response(503)

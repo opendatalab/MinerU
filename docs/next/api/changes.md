@@ -4,6 +4,9 @@
 
 | 旧方式 | 新方式 |
 |---|---|
+| Tasks 创建请求 `manifest` | `files`，仍为 1–100 项数组；旧字段或新旧混传返回 400。 |
+| Tasks / Files JSON `filename` | `file_name`；下载附件命名规则保持不变。 |
+| 创建请求必填 `client_file_id` | 可省略或为 `null`；服务端按输入顺序补全最小可用的 `fN`，避开所有显式 ID，响应仍必填。 |
 | 创建 Upload、PUT、complete | POST `/v1/tasks` 提交清单，只 PUT 缺失文件；上传成功自动排队。 |
 | 创建、查询、取消 Job | POST/GET/DELETE Tasks；GET `/v1/tasks` 列出父任务。 |
 | `files[].output_files` | `files[].result_url`，每个输入一个完整产物链接。 |
@@ -15,4 +18,4 @@
 `--allow-local-source` 和 `--max-inline-bytes` 同时删除。Files CRUD、Health、Tiers、Models、Usage 保留；同步 `file_parse` 继续作为独立包装服务运行。
 SDK 保留 `MinerUApiParser` 方法和返回类型，状态类型改为 `ApiTaskStatus`，保留 `ApiJobStatus` Python 别名。直接本地 parser 与 HF CPU/ZeroGPU 内嵌解析不经过 HTTP。
 
-停收旧请求、等待在途任务完成，再协调升级 worker、Router、SDK 和应用。SaaS Go 服务需部署方按同一契约配套更新；进程内任务和缓存索引不保证跨重启恢复。
+停收旧请求、等待在途任务完成，再协调升级 worker、Router、SDK、file_parse 包装服务和应用。SaaS Go 服务需部署方按同一契约配套更新；进程内任务和缓存索引不保证跨重启恢复。

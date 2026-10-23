@@ -11,7 +11,7 @@ TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_task_exam
 直接提供 URL 时只需提交 JSON：
 
 ```json
-{"manifest":[{"client_file_id":"report","filename":"report.pdf","url":"https://example.com/report.pdf"}],"output_formats":["default"],"include_model_output":false}
+{"files":[{"client_file_id":"report","file_name":"report.pdf","url":"https://example.com/report.pdf"}],"output_formats":["default"],"include_model_output":false}
 ```
 
 对 `/v1/tasks` 执行 POST，保存返回的 `task_id/status_url`。本地文件清单包含 `bytes` 和可选 `sha256sum`；仅对响应中的待上传项使用返回的 PUT 地址。

@@ -10,7 +10,9 @@ OUTPUT_FORMATS=default,docx MINERU_API_URL=http://127.0.0.1:8000 bash scripts/ht
 
 ## 文件清单与上传
 
-向 `POST /v1/tasks` 提交 `application/json`：`manifest` 每项包含唯一 `client_file_id`、逻辑 `filename`、上传文件的 `bytes` 和可选 `sha256sum/page_range`。也可以提供 URL，此时 bytes 可省略。解析选项为 `tier/ocr_mode/page_range/output_formats/include_model_output`。
+Tasks 与 Files JSON 统一使用 `file_name`；旧字段 `manifest`、`filename` 及新旧混传返回 400。
+
+向 `POST /v1/tasks` 提交 `application/json`：`files` 每项包含必填逻辑 `file_name`、上传文件的 `bytes` 和可选 `client_file_id/sha256sum/page_range`。`client_file_id` 省略或为 `null` 时，先预留全部显式 ID，再按输入顺序从 `f1` 开始分配最小未占用的 `fN`；创建后上传和查询均保持不变。也可以提供 URL，此时 bytes 可省略。解析选项为 `tier/ocr_mode/page_range/output_formats/include_model_output`。
 
 创建返回稳定的 `task_id/status_url` 和待上传项的链接。客户端只上传缺失文件，使用响应指定的 PUT 地址及请求头，无需 complete。每个文件就绪即独立排队，其他文件等待上传不会阻塞它。
 同机也使用相同流程。SDK 总是计算 hash；已完成上传的有效缓存可以免传。并发首次请求允许重复传输，但源字节去重。缓存默认保留 24 小时、每 5 分钟扫描，正在执行及传输的引用受保护。

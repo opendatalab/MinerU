@@ -82,7 +82,7 @@
   │
   └─ v1 API 调用
       -> Official API 或 Local Parse Server
-      -> Tasks manifest / hash preflight / optional upload
+      -> Tasks files / hash preflight / optional upload
       -> parse-server
       -> per-file result_url / requested formats
 ```

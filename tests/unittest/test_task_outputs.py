@@ -172,7 +172,7 @@ def test_task_formats_use_only_service_authentication(tmp_path: Path, formats: l
     """启用 Key 时四种格式都需要服务认证，通过认证后都可执行。"""
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
     with TestClient(app) as client:
-        body = {"manifest": [{"client_file_id": "f1", "filename": "a.html", "bytes": len(HTML)}], "output_formats": formats}
+        body = {"files": [{"client_file_id": "f1", "file_name": "a.html", "bytes": len(HTML)}], "output_formats": formats}
         assert client.post("/v1/tasks", json=body).status_code == 401
         headers = {"Authorization": "Bearer secret"}
         task = _submit(client, [("a.html", HTML)], output_formats=formats, headers=headers)

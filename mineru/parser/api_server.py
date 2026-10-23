@@ -308,7 +308,7 @@ class FileObjectModel(BaseModel):
     bytes: int
     created_at: int
     expires_at: int | None = None
-    filename: str
+    file_name: str
     purpose: FilePurpose
     sha256sum: str | None = None
 
@@ -704,7 +704,7 @@ class FileStore:
             bytes=rec.bytes,
             created_at=rec.created_at,
             expires_at=rec.expires_at,
-            filename=rec.filename,
+            file_name=rec.filename,
             purpose=rec.purpose,
             sha256sum=rec.sha256sum,
         )
@@ -1414,9 +1414,9 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
 _FASTAPI_DESCRIPTION = """\
 Parse documents into structured Middle JSON via self-hosted or remote capacity.
 
-Submit a JSON manifest to `/v1/tasks`, upload missing files to their one-hour URLs,
+Submit a JSON files array to `/v1/tasks`, upload missing files to their one-hour URLs,
 then poll the task and download each completed file's `result_url`. Each file runs
-as soon as it is ready; other files may still be waiting for upload. Manifest
+as soon as it is ready; other files may still be waiting for upload. File
 entries can instead provide a source `url`, with optional `bytes`; workers download
 these inputs in the background. Choose one or more of default/docx/html/latex in
 `output_formats`. Task status contains metadata only, never inline result bytes.

@@ -9,7 +9,7 @@ Files 保存源文件视图与已生成的结果。异步解析统一使用 [Tas
 | GET | `/v1/files/{file_id}/content` | 流式下载已保存的解析产物；源文件不提供公共下载。 |
 | DELETE | `/v1/files/{file_id}` | 删除文件视图；正在执行和下载的引用继续受保护。 |
 
-元数据包括 `id/object/filename/bytes/created_at/expires_at/purpose/sha256sum`。
+元数据包括 `id/object/file_name/bytes/created_at/expires_at/purpose/sha256sum`。
 `purpose` 为 `parse`（源文件）或 `parse_output`（结果）；删除返回 `id/object/deleted`。
 列表使用 `object: list`、`data`、`first_id`、`last_id`、`has_more`；默认 20 条，上限 100。
 

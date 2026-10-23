@@ -227,7 +227,7 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
     with TestClient(app) as client:
         response = client.post(
             "/v1/tasks",
-            json={"manifest": [{"client_file_id": "file", "filename": "article.html", "url": "https://example.com/article"}]},
+            json={"files": [{"client_file_id": "file", "file_name": "article.html", "url": "https://example.com/article"}]},
         )
 
     assert response.status_code == 202

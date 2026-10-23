@@ -18,7 +18,7 @@ from mineru.parser import api_server
 from mineru.kit.router import RouterSettings, create_app
 from mineru.kit.router.workers import JobReservation
 
-BODY = {"tier": "standard", "manifest": [{"client_file_id": "file", "filename": "source.pdf", "bytes": 5}]}
+BODY = {"tier": "standard", "files": [{"client_file_id": "file", "file_name": "source.pdf", "bytes": 5}]}
 
 
 @pytest.mark.parametrize("formats", [["unknown"], "markdown", None, 1, {}, [{}], [1]])
@@ -77,10 +77,10 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
     )
     form = {
         "tier": "standard",
-        "manifest": [
+        "files": [
             {
                 "client_file_id": "f1",
-                "filename": "source.pdf",
+                "file_name": "source.pdf",
                 "bytes": 3,
             }
         ],
@@ -127,7 +127,7 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
                     assert task["uploads"] == []
                 tasks.append(task)
                 deadline = time.monotonic() + 5
-                while not app.state.task_store._records[task["task_id"]].files[0].submitted:
+                while not app.state.task_store._records[task["task_id"]].file_states[0].submitted:
                     assert time.monotonic() < deadline
                     time.sleep(0.01)
             assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [5, 5]

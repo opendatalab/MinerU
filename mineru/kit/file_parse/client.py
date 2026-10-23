@@ -175,10 +175,10 @@ class TaskClient:
         options = {key: value for key, value in record.options.items() if value is not None}
         payload = {
             **options,
-            "manifest": [
+            "files": [
                 {
                     "client_file_id": "file",
-                    "filename": record.filename,
+                    "file_name": record.filename,
                     "bytes": record.size,
                     "sha256sum": record.sha256sum,
                 }

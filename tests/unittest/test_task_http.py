@@ -134,13 +134,13 @@ def _submit(client: httpx.Client, files: list[tuple[str, bytes]], *, hashes: boo
     manifest = [
         {
             "client_file_id": f"f{index + 1}",
-            "filename": name,
+            "file_name": name,
             "bytes": len(data),
             **({"sha256sum": hashlib.sha256(data).hexdigest()} if hashes else {}),
         }
         for index, (name, data) in enumerate(files)
     ]
-    response = client.post("/v1/tasks", json={"manifest": manifest, "tier": "flash", "ocr_mode": "txt", **options})
+    response = client.post("/v1/tasks", json={"files": manifest, "tier": "flash", "ocr_mode": "txt", **options})
     assert response.status_code == 202, response.text
     return response.json()
 
@@ -163,6 +163,57 @@ def _members(data: bytes) -> dict[str, bytes]:
     """比较 ZIP 成员而非时间戳或压缩包装，验证语义与素材保持不变。"""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         return {name: archive.read(name) for name in archive.namelist()}
+
+
+def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _LiveService, tmp_path: Path) -> None:
+    """真实 TCP 上传 PDF，确认自动标识、Files 元数据、附件命名及缓存命中后的正文均正确。"""
+    from reportlab.pdfgen.canvas import Canvas
+
+    buffer = io.BytesIO()
+    canvas = Canvas(buffer, pagesize=(595, 842))
+    canvas.drawString(72, 770, "Tasks field migration")
+    canvas.drawString(72, 740, "Generated file IDs stay stable across uploads and queries.")
+    canvas.save()
+    data = buffer.getvalue()
+    (tmp_path / "report.v2.pdf").write_bytes(data)
+    payload = {
+        "files": [{"file_name": "report.v2.pdf", "bytes": len(data), "sha256sum": hashlib.sha256(data).hexdigest()}],
+        "tier": "flash",
+        "ocr_mode": "txt",
+    }
+    with _client(live_service) as client:
+        response = client.post("/v1/tasks", json=payload)
+        assert response.status_code == 202, response.text
+        task = response.json()
+        assert task["files"][0]["client_file_id"] == task["uploads"][0]["client_file_id"] == "f1"
+        link = task["uploads"][0]
+        for _ in range(2):
+            upload = client.put(link["upload_url"], content=data, headers=link["upload_headers"])
+            assert upload.status_code == 200, upload.text
+        completed = _wait(client, task)
+        assert completed["status"] == "completed", completed
+        item = completed["files"][0]
+        assert item["client_file_id"] == "f1" and item["file_name"] == "report.v2.pdf" and "filename" not in item
+        result = client.get(item["result_url"].removesuffix("/content"))
+        assert result.status_code == 200 and result.json()["file_name"] == "report.v2.zip"
+        download = client.get(item["result_url"])
+        assert download.status_code == 200
+        assert download.headers["content-disposition"] == 'attachment; filename="report.v2.zip"'
+        (tmp_path / "report.v2.zip").write_bytes(download.content)
+        members = _members(download.content)
+        assert b"Tasks field migration" in members["markdown.md"]
+        assert b"Generated file IDs stay stable" in members["markdown.md"]
+        assert len(json.loads(members["middle_json.json"])["pages"]) == 1
+        cached = client.post("/v1/tasks", json=payload)
+        assert cached.status_code == 202, cached.text
+        cached_task = cached.json()
+        assert cached_task["uploads"] == [] and cached_task["files"][0]["client_file_id"] == "f1"
+        assert cached_task["files"][0]["upload_status"] == "ready"
+        cached_result = _wait(client, cached_task)
+        assert cached_result["status"] == "completed", cached_result
+        cached_download = client.get(cached_result["files"][0]["result_url"])
+        assert cached_download.status_code == 200
+        assert _members(cached_download.content)["markdown.md"] == members["markdown.md"]
 
 
 def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -> None:
@@ -309,8 +360,8 @@ def test_hash_preflight_sends_only_missing_file_bytes(live_service: _LiveService
             "/v1/tasks",
             headers={"Authorization": "Bearer wrong"},
             json={
-                "manifest": [
-                    {"client_file_id": "f1", "filename": "a.html", "bytes": len(HTML)},
+                "files": [
+                    {"client_file_id": "f1", "file_name": "a.html", "bytes": len(HTML)},
                 ]
             },
         )
@@ -401,7 +452,7 @@ def test_upload_over_200_mib_is_accepted(live_service: _LiveService, tmp_path: P
     with _client(live_service) as client:
         response = client.post(
             "/v1/tasks",
-            json={"tier": "flash", "manifest": [{"client_file_id": "large", "filename": source.name, "bytes": size}]},
+            json={"tier": "flash", "files": [{"client_file_id": "large", "file_name": source.name, "bytes": size}]},
         )
         assert response.status_code == 202, response.text
         task = response.json()
@@ -507,7 +558,7 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             worker.state.allow_http_source = True
         item = {
             "client_file_id": "url-1",
-            "filename": f"logical.{document}",
+            "file_name": f"logical.{document}",
             "url": f"{source_server.url}/opaque?signature=a%2Fb&part=1",
             **({"page_range": "2"} if document == "pdf" else {}),
         }
@@ -515,7 +566,7 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             response = client.post(
                 "/v1/tasks",
                 json={
-                    "manifest": [item],
+                    "files": [item],
                     "tier": "flash",
                     "ocr_mode": "txt",
                     "page_range": "1" if document == "pdf" else "",
@@ -535,13 +586,13 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             assert "authorization" not in requests[0].headers
             if document == "html":
                 # 同一原始 URL 保留 HTML 来源上下文，重复执行的产物应完全一致。
-                response = client.post("/v1/tasks", json={"tier": "flash", "ocr_mode": "txt", "manifest": [item]})
+                response = client.post("/v1/tasks", json={"tier": "flash", "ocr_mode": "txt", "files": [item]})
                 assert response.status_code == 202, response.text
                 baseline_result = _wait(client, response.json())
                 assert baseline_result["status"] == "completed"
                 baseline_url = baseline_result["files"][0]["result_url"]
             else:
-                baseline = _submit(client, [(item["filename"], data)], page_range="2")
+                baseline = _submit(client, [(item["file_name"], data)], page_range="2")
                 assert client.put(baseline["uploads"][0]["upload_url"], content=data).status_code == 200
                 baseline_result = _wait(client, baseline)
                 assert baseline_result["status"] == "completed"
@@ -581,14 +632,14 @@ class _CloudState:
         record = self.tasks[task_id]
         ready, expired = record["ready"], record["expired"]
         files = []
-        for index, item in enumerate(record["manifest"]):
+        for index, item in enumerate(record["files"]):
             client_id = item["client_file_id"]
             status = "completed" if client_id in ready else "waiting_upload"
             if client_id in expired:
                 status = "failed"
             if client_id in ready and self.forced_status in {"failed", "running"}:
                 status = self.forced_status
-            if self.forced_status == "partial" and index == len(record["manifest"]) - 1 and client_id in ready:
+            if self.forced_status == "partial" and index == len(record["files"]) - 1 and client_id in ready:
                 status = "failed"
             result_url = None
             if status == "completed":
@@ -598,7 +649,7 @@ class _CloudState:
             files.append(
                 {
                     **item,
-                    "name": item["filename"],
+                    "name": item["file_name"],
                     "upload_status": "ready" if client_id in ready else ("expired" if client_id in expired else "pending"),
                     "status": status,
                     "result_url": result_url,
@@ -623,7 +674,7 @@ class _CloudState:
                 "upload_headers": {"Content-Type": "application/octet-stream", "X-Upload-Token": "storage-token"},
                 "expires_at": record["expires_at"],
             }
-            for item in record["manifest"]
+            for item in record["files"]
             if item["client_file_id"] not in ready | expired
         ]
         payload = {
@@ -663,10 +714,10 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         state.gateway_body_sizes.append(len(body))
         assert len(body) < 4096
         submitted = await request.json()
-        manifest = submitted["manifest"]
+        manifest = submitted["files"]
         task_id = f"cloud_{len(state.tasks) + 1}"
         state.tasks[task_id] = {
-            "manifest": manifest,
+            "files": manifest,
             "ready": {item["client_file_id"] for item in manifest if item.get("sha256sum") in state.cache},
             "upload_version": 0,
             "download_version": 0,
@@ -711,7 +762,7 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         if state.transient_upload and state.upload_attempts[key] == 1:
             return Response(status_code=503)
         data = await request.body()
-        item = next(item for item in record["manifest"] if item["client_file_id"] == client_file_id)
+        item = next(item for item in record["files"] if item["client_file_id"] == client_file_id)
         assert len(data) == item["bytes"]
         actual = hashlib.sha256(data).hexdigest()
         assert item.get("sha256sum") in {None, actual}

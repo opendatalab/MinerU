@@ -176,16 +176,16 @@ def test_api_rejects_bad_ranges_before_creating_jobs(tmp_path: Path) -> None:
                 "/v1/tasks",
                 json={
                     "tier": "flash",
-                    "manifest": [
-                        {"client_file_id": "first", "filename": "a.pdf", "bytes": 1},
-                        {"client_file_id": "second", "filename": "b.pdf", "bytes": 1, "page_range": raw},
+                    "files": [
+                        {"client_file_id": "first", "file_name": "a.pdf", "bytes": 1},
+                        {"client_file_id": "second", "file_name": "b.pdf", "bytes": 1, "page_range": raw},
                     ],
                 },
             )
             assert response.status_code == 400
             error = response.json()["error"]
             assert error["code"] == "page_range_invalid"
-            assert error["param"] == "manifest.1.page_range"
+            assert error["param"] == "files.1.page_range"
         schema = client.get("/openapi.json").json()
         assert "r1" in schema["components"]["schemas"]["TaskFileStatus"]["properties"]["page_range"]["description"]
 

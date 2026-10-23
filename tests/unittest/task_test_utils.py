@@ -39,10 +39,10 @@ def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any
     response = client.post(
         "/v1/tasks",
         json={
-            "manifest": [
+            "files": [
                 {
                     "client_file_id": "file",
-                    "filename": path.name,
+                    "file_name": path.name,
                     "bytes": len(data),
                     "sha256sum": hashlib.sha256(data).hexdigest(),
                 }

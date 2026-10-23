@@ -75,7 +75,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
                 *(
                     app.state.job_store.wait_for_terminal(file.execution_id, 2)
                     for record in app.state.task_store._records.values()
-                    for file in record.files
+                    for file in record.file_states
                 )
             )
             await asyncio.gather(*(record.operation for record in app.state.task_store._records.values()))
@@ -93,7 +93,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
             response = getattr(client, method)(
                 path,
                 **(
-                    {"json": {"tier": "flash", "manifest": [{"client_file_id": "file", "filename": "new.pdf", "bytes": 3}]}}
+                    {"json": {"tier": "flash", "files": [{"client_file_id": "file", "file_name": "new.pdf", "bytes": 3}]}}
                     if method == "post"
                     else {}
                 ),

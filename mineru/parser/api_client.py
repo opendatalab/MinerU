@@ -162,10 +162,10 @@ class MinerUApiParser(DocumentParser):
         if not path.is_file():
             raise FileNotFoundError(path)
         payload: dict[str, Any] = {
-            "manifest": [
+            "files": [
                 {
                     "client_file_id": "file",
-                    "filename": path.name,
+                    "file_name": path.name,
                     "bytes": path.stat().st_size,
                     "sha256sum": _sha256_file(path),
                     "page_range": page_range,
@@ -237,7 +237,7 @@ class MinerUApiParser(DocumentParser):
             )
             task = self._snapshot(response)
             _notify_job_status(task, status_callback)
-            task = self._upload_input(cli, task, file_path, status_callback, size=payload["manifest"][0]["bytes"])
+            task = self._upload_input(cli, task, file_path, status_callback, size=payload["files"][0]["bytes"])
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break
@@ -394,7 +394,7 @@ class MinerUApiParser(DocumentParser):
             )
             task = self._snapshot(response)
             _notify_job_status(task, status_callback)
-            task = await self._async_upload_input(cli, task, file_path, status_callback, size=payload["manifest"][0]["bytes"])
+            task = await self._async_upload_input(cli, task, file_path, status_callback, size=payload["files"][0]["bytes"])
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break

@@ -1,6 +1,6 @@
 # V1 HTTP API
 
-Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON manifest, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](../../next/api/tasks.md) and [Python SDK](sdk_api.md).
+Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON `files` array, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](../../next/api/tasks.md) and [Python SDK](sdk_api.md).
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
@@ -10,7 +10,7 @@ OUTPUT_FORMATS=default,docx MINERU_API_URL=http://127.0.0.1:8000 bash scripts/ht
 
 ## Create and upload
 
-Send application/json to POST `/v1/tasks`. Each manifest entry contains a unique client_file_id, filename, bytes for uploaded files, and optional sha256sum/page_range. URL entries may omit bytes. Options are tier, ocr_mode, page_range, output_formats and include_model_output.
+Send application/json to POST `/v1/tasks`. Each `files` entry requires `file_name` and, for uploaded files, `bytes`; `sha256sum`, `page_range`, and `client_file_id` are optional. Omitted or null IDs are assigned the smallest available `fN`, starting at `f1`, in input order after reserving all explicit IDs. IDs remain stable in task responses and upload links. URL entries may omit bytes. Options are tier, ocr_mode, page_range, output_formats and include_model_output.
 
 The response contains task_id, status_url and upload links for missing files. Follow each returned PUT URL and its headers; no completion request is needed. Each ready file queues independently. Waiting for uploads consumes no parsing slot.
 
@@ -34,4 +34,4 @@ Both shell examples delegate to the standard-library Python Tasks client. RESULT
 
 Creation is not automatically retried. MAX_POLLS/POLL_INTERVAL bound polling; CONNECT_TIMEOUT/REQUEST_TIMEOUT bound individual requests. Exit codes are 0 (success), 2 (partial success), 1 (failure or cancellation) and 124 (poll budget exhausted). Completed downloads remain on disk.
 
-The standalone upload and Jobs APIs have been removed. Coordinate server, Router and SDK upgrades; see [migration notes](../../next/api/changes.md). The separate [file_parse wrapper](../../next/api/file-parse.md) provides recoverable synchronous single-file calls.
+Tasks and Files JSON use `file_name`; creation accepts `files`. Old `manifest`/`filename` fields and mixed old/new fields are rejected with 400. The standalone upload and Jobs APIs have been removed. Coordinate server, Router and SDK upgrades; see [migration notes](../../next/api/changes.md). The separate [file_parse wrapper](../../next/api/file-parse.md) provides recoverable synchronous single-file calls.

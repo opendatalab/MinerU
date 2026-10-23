@@ -242,7 +242,7 @@ def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeyp
             "/v1/tasks",
             json={
                 "tier": "flash",
-                "manifest": [{"client_file_id": "f1", "filename": "input.pdf", "bytes": 3, "sha256sum": sha}],
+                "files": [{"client_file_id": "f1", "file_name": "input.pdf", "bytes": 3, "sha256sum": sha}],
             },
         )
         assert response.status_code == 400

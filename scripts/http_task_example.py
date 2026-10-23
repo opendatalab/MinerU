@@ -47,9 +47,9 @@ class InputFile:
     size: int
     sha256sum: str | None
 
-    def manifest(self) -> dict[str, Any]:
+    def task_file(self) -> dict[str, Any]:
         """生成 JSON 清单条目；关闭 hash 时完全省略该可选字段。"""
-        item: dict[str, Any] = {"client_file_id": self.client_file_id, "filename": self.path.name, "bytes": self.size}
+        item: dict[str, Any] = {"client_file_id": self.client_file_id, "file_name": self.path.name, "bytes": self.size}
         if self.sha256sum is not None:
             item["sha256sum"] = self.sha256sum
         return item
@@ -254,8 +254,8 @@ class TaskClient:
                 raise ClientError("Invalid or duplicate client_file_id")
             seen.add(client_id)
             local = self.by_id[client_id]
-            if item.get("filename") != local.path.name or item.get("bytes") != local.size:
-                raise ClientError("Task manifest differs from local inputs; use the original file list and order")
+            if item.get("file_name") != local.path.name or item.get("bytes") != local.size:
+                raise ClientError("Task files differ from local inputs; use the original file list and order")
             if local.sha256sum is not None and item.get("sha256sum") not in {None, local.sha256sum}:
                 raise ClientError("Task hash differs from the local file")
             if item.get("upload_status") not in {"pending", "ready", "expired"}:
@@ -305,7 +305,7 @@ class TaskClient:
         if not formats or any(value not in {"default", "docx", "html", "latex"} for value in formats):
             raise ClientError("OUTPUT_FORMATS must contain default/docx/html/latex")
         body: dict[str, Any] = {
-            "manifest": [file.manifest() for file in self.files],
+            "files": [file.task_file() for file in self.files],
             "ocr_mode": os.environ.get("OCR_MODE", "auto"),
             "page_range": os.environ.get("PAGE_RANGE", ""),
             "output_formats": list(dict.fromkeys(formats)),
