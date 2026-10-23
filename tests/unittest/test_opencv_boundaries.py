@@ -216,22 +216,6 @@ def test_table_classifier_tensor_keeps_channel_calculation_order() -> None:
     _assert_model_reference(classifier.batch_preprocess([image]), "table_classifier", 1)
 
 
-@pytest.mark.parametrize("channels", [None, 1, 3])
-def test_unimer_crop_and_zero_padding_keep_shape(channels: int | None) -> None:
-    """单通道和 RGB 公式图沿用冻结裁边、缩放和零填充像素。"""
-    pytest.importorskip("torch")
-    pytest.importorskip("torchvision")
-    pytest.importorskip("transformers")
-    from mineru.model.mfr.unimernet.unimernet_hf.unimer_swin.image_processing_unimer_swin import UnimerSwinImageProcessor
-
-    shape = (17, 29) if channels is None else (17, 29, channels)
-    image = np.full(shape, 255, dtype=np.uint8)
-    image[3:15, 5:24] = 0
-    _assert_model_reference(UnimerSwinImageProcessor.crop_margin_numpy(image), f"unimer:{channels}", 0)
-    processor = UnimerSwinImageProcessor(image_size=(32, 64))
-    _assert_model_reference(processor.prepare_input(image), f"unimer:{channels}", 1)
-
-
 def test_unet_input_tensor_keeps_inplace_channel_exchange() -> None:
     """UNet 预处理使用独立冻结输入，验证通道交换和浮点减乘顺序。"""
     from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet

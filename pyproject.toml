@@ -149,6 +149,8 @@ zip-safe = false
 testpaths = ["tests"]
 addopts = "-s --cov=mineru --cov-report html"
 markers = [
+  "torch: 需要可选 Torch/Transformers 依赖，由独立 CPU 测试任务执行",
+  "accelerator: 需要实际 GPU/NPU 设备，不属于 CPU CI 回归",
   "e2e: MinerU CLI 端到端用例（脚本化 docs/next/cli/mineru-e2e-test-cases.md）",
   "smoke: 快速回归子集（无需本地 quality tier）",
   "slow: 单用例预计超过 60s",

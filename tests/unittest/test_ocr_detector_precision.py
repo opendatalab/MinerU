@@ -10,6 +10,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.torch
+
 torch = pytest.importorskip("torch")
 
 from mineru.model._internal.pytorchocr import base_ocr_v20

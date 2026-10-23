@@ -56,7 +56,7 @@ def test_frozen_native_text_pipeline_restores_source_words(effort: str, owned: b
     model_dict["pages"] = pages
     model = ModelJson.from_dict(model_dict)
     middle = model_json_to_middle_json(model)
-    markdown = ParseResult(middle, model).markdown()
+    markdown = ParseResult(middle_json=middle).markdown()
     for value in [json.dumps(model.to_dict(), ensure_ascii=False), json.dumps(middle.to_dict(), ensure_ascii=False), markdown]:
         assert "This book is a practical" in value
         assert value.count("financial") == 5

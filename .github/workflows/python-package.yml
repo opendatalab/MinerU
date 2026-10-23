@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Python package
 
 on:
@@ -12,54 +9,34 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 
 jobs:
 
-  update-version:
+  validate-source:
+    if: github.repository == 'opendatalab/MinerU'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: master
-          fetch-depth: 0
-          # Push to master must authenticate as the PAT; the default GITHUB_TOKEN
-          # only has contents:read and is rejected with 403.
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - name: Verify release source before running the matrix
+        run: uv run --no-project --with packaging python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
 
-      - name: Update version.py
-        run: |
-          python -m pip install packaging
-          python update_version.py
-
-      - name: Verify version.py
-        run: |
-          ls -l mineru/version.py
-          cat mineru/version.py
-
-      - name: Commit changes
-        id: commit_changes
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mineru/version.py
-          if git diff-index --quiet HEAD; then
-            echo "No changes to commit"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-          else
-            git commit -m "Update version.py with new version"
-            echo "committed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push changes
-        if: steps.commit_changes.outputs.committed == 'true'
-        run: |
-          git push origin HEAD:master
+  tests:
+    needs: validate-source
+    uses: ./.github/workflows/cli.yml
 
   check-install:
     needs: [ build ]
@@ -71,6 +48,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -90,23 +68,26 @@ jobs:
     - name: Install and verify release wheel
       run: |
         python -m pip install --upgrade pip
-        python -m pip install dist/*.whl
+        python -m pip install --only-binary=docvortex dist/*.whl
         python -m pip check
         python -I -c "from mineru.parser import MinerUParser, MinerUApiParser, parse, parse_async; from mineru.render import render; from mineru.types import MiddleJson"
         mineru version --json
         mineru-kit --version
 
   build:
-    needs: [ update-version ]
+    needs: [ tests ]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
 
     steps:
 
     - name: Checkout code
       uses: actions/checkout@v6
       with:
-        ref: master
-        fetch-depth: 0
+        ref: ${{ github.sha }}
+        persist-credentials: false
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -118,6 +99,9 @@ jobs:
         python -m pip install wheel
         pip install build twine
 
+    - name: Verify tagged source
+      run: python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
+
     - name: Build wheel
       run: |
         python -m build --wheel
@@ -125,23 +109,8 @@ jobs:
     - name: Check wheel metadata
       run: |
         python -m twine check --strict dist/*.whl
-        python - <<'PY'
-        from email.parser import BytesParser
-        from pathlib import Path
-        from zipfile import ZipFile
-
-        from packaging.specifiers import SpecifierSet
-
-        # 核验待发布产物的实际声明，安装矩阵与发布任务复用同一份 wheel。
-        wheels = list(Path("dist").glob("*.whl"))
-        assert len(wheels) == 1, wheels
-        with ZipFile(wheels[0]) as archive:
-            metadata_path = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
-            metadata = BytesParser().parsebytes(archive.read(metadata_path))
-        assert SpecifierSet(metadata["Requires-Python"]) == SpecifierSet(">=3.11,<3.15"), metadata["Requires-Python"]
-        classifiers = set(metadata.get_all("Classifier", []))
-        assert all(f"Programming Language :: Python :: 3.{minor}" in classifiers for minor in range(11, 15))
-        PY
+        python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA" \
+          --wheel-dir dist --output build/release.json
 
     - name: Upload artifact
       uses: actions/upload-artifact@v6
@@ -150,9 +119,17 @@ jobs:
         path: dist/*.whl
         retention-days: 30
 
+    - name: Upload release provenance
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-provenance
+        path: build/release.json
+        if-no-files-found: error
+        retention-days: 30
+
   publish:
-    needs: [ build, check-install ]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [ tests, build, check-install ]
+    if: github.repository == 'opendatalab/MinerU' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -166,11 +143,19 @@ jobs:
           name: wheel-file
           path: dist
 
+      - name: Download release provenance
+        uses: actions/download-artifact@v7
+        with:
+          name: release-provenance
+          path: provenance
+
       - name: Create and Upload Release
         id: create_release
         uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
         with:
-          files: './dist/*.whl'
+          files: |
+            dist/*.whl
+            provenance/release.json
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
