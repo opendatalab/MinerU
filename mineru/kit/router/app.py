@@ -9,10 +9,10 @@ import hashlib
 import json
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator
 
 import httpx
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from ...parser.api_server import ApiServerError
@@ -96,34 +96,6 @@ def _healthy_worker_or_503(pool: WorkerPool) -> WorkerState:
     if not workers:
         raise RouterProxyError(503, "upstream_unavailable", "No healthy MinerU V1 upstream is available")
     return workers[0]
-
-
-def _list_registered_files(
-    registry: ResourceRegistry,
-    *,
-    owner_scope: str,
-    after: str | None,
-    limit: int,
-    order: Literal["asc", "desc"],
-    purpose: str | None,
-) -> dict[str, Any]:
-    """从 Router 注册表构造 V1 Files 列表与游标。"""
-    data = [
-        copy.deepcopy(route.metadata["payload"])
-        for route in registry.list("file", owner_scope=owner_scope)
-        if isinstance(route.metadata.get("payload"), dict)
-        and (purpose is None or route.metadata["payload"].get("purpose") == purpose)
-    ]
-    data.sort(key=lambda item: int(item.get("created_at") or 0), reverse=order == "desc")
-    start = next((index + 1 for index, item in enumerate(data) if item.get("id") == after), 0) if after else 0
-    page = data[start : start + limit]
-    return {
-        "object": "list",
-        "data": page,
-        "first_id": page[0]["id"] if page else None,
-        "last_id": page[-1]["id"] if page else None,
-        "has_more": start + limit < len(data),
-    }
 
 
 def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPool, owner_scope: str) -> dict[str, Any]:
@@ -331,7 +303,6 @@ def create_app(
                 "features": {
                     "webhook": False,
                     "task_output_formats": task_output_formats,
-                    "task_model_output": any(worker.features.get("task_model_output") is True for worker in workers),
                     "sources": sources,
                 },
             }
@@ -377,24 +348,6 @@ def create_app(
             )
             data.append(tier_info)
         return {"object": "list", "data": data}
-
-    @application.get("/v1/files")
-    async def list_files(
-        request: Request,
-        after: str | None = None,
-        limit: int = Query(default=100, ge=1, le=1000),
-        order: Literal["asc", "desc"] = "desc",
-        purpose: str | None = None,
-    ) -> dict[str, Any]:
-        """列出当前 Router 进程注册的 V1 files。"""
-        return _list_registered_files(
-            registry,
-            owner_scope=_caller_scope(request),
-            after=after,
-            limit=limit,
-            order=order,
-            purpose=purpose,
-        )
 
     @application.get("/v1/files/{file_id}")
     async def get_file(file_id: str, request: Request) -> Response:

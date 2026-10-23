@@ -15,8 +15,6 @@
 | `GET /v1/tasks/{task_id}` | 200 | `application/json` | 完整 `TaskStatusResponse`，包括失败或取消后的状态。 |
 | `DELETE /v1/tasks/{task_id}` | 200 | `application/json` | 取消后的完整 `TaskStatusResponse`，不是删除确认。 |
 | 本地 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}` | 200 | `application/json` | 当前完整 `TaskStatusResponse`。对象存储上传由存储服务定义响应。 |
-| `GET /v1/tasks` | 200 | `application/json` | 父任务摘要分页列表。 |
-| `GET /v1/files` | 200 | `application/json` | 文件元数据分页列表。 |
 | `GET /v1/files/{file_id}` | 200 | `application/json` | 完整 `FileObject`。 |
 | `DELETE /v1/files/{file_id}` | 200 | `application/json` | `id/object/deleted` 删除确认。 |
 | `GET /v1/files/{file_id}/content` | 200（完整下载） | 随产物格式 | ZIP、DOCX 或 HTML 文件字节。 |

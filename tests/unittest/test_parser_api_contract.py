@@ -720,15 +720,16 @@ def test_api_server_logs_traceback_when_job_file_fails(
 
 
 def test_parse_info_uses_parser_version_not_backend_version() -> None:
-    parse = FileParseInfo(model_used="model-a", duration_ms=12, parser_version="3.2.1")
+    """解析统计仅保留耗时和解析器版本，不新增逐文件档位。"""
+    parse = FileParseInfo(duration_ms=12, parser_version="3.2.1")
     assert parse.model_dump(exclude_none=True) == {
-        "model_used": "model-a",
         "duration_ms": 12,
         "parser_version": "3.2.1",
     }
 
-    with pytest.raises(ValidationError):
-        FileParseInfo.model_validate({"backend_version": "3.2.1"})
+    for removed in ("backend_version", "model_used", "tier"):
+        with pytest.raises(ValidationError):
+            FileParseInfo.model_validate({removed: "unused"})
 
 
 @pytest.mark.parametrize("field", ["backend_version", "parser_version"])

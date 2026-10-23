@@ -40,7 +40,6 @@ class _FakeV1Upstream:
                     "webhook": False,
                     "sources": ["upload", "url"],
                     "task_output_formats": ["default", "docx", "html", "latex"],
-                    "task_model_output": True,
                 },
             }
         elif request.url.path == "/v1/tiers":
@@ -57,8 +56,8 @@ class _FakeV1Upstream:
             }
         elif request.url.path == "/v1/models":
             payload = {"object": "list", "data": [{"id": f"{self.name}-model", "object": "model", "created": 1}]}
-        elif request.url.path == "/v1/files":
-            payload = {"object": "list", "data": []}
+        elif request.url.path == "/v1/usage":
+            payload = {"object": "usage", "current": {}}
         else:
             return httpx.Response(404, json={"error": {"code": "task_not_found", "message": "missing"}}, request=request)
         return httpx.Response(200, json=payload, request=request)

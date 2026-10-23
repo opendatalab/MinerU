@@ -127,7 +127,7 @@ class TaskClient:
             if list(dict.fromkeys(task.output_formats)) != formats:
                 raise ValueError("Task output formats changed")
             task.status_url = self.resolve(task.status_url, metadata=True)
-            for link in task.uploads:
+            for link in task.pending_uploads:
                 link.upload_url = self.resolve(link.upload_url)
             if task.files[0].result_url:
                 task.files[0].result_url = self.resolve(task.files[0].result_url)
@@ -198,16 +198,16 @@ class TaskClient:
             item = task.files[0]
             if item.upload_status == "ready" or item.status in {"completed", "failed", "canceled"}:
                 return task
-            if not task.uploads:
+            if not task.pending_uploads:
                 raise GatewayError("upstream_protocol_error", "Pending file has no upload link")
-            link = task.uploads[0]
+            link = task.pending_uploads[0]
             if link.expires_at <= time.time():
                 raise GatewayError("upload_expired", "The task upload link has expired", 410)
             try:
                 headers = self.headers(link.upload_url, link.upload_headers)
                 headers["content-length"] = str(size)
                 async with self.client.stream(
-                    link.upload_method,
+                    "PUT",
                     link.upload_url,
                     headers=headers,
                     content=file_chunks(path),

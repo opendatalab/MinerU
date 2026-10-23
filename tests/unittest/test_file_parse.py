@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import itertools
 import json
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -88,12 +90,11 @@ class Upstream:
                     "error": {"code": "upload_expired"} if expired else None,
                 }
             ],
-            "uploads": []
+            "pending_uploads": []
             if ready or expired
             else [
                 {
                     "client_file_id": "file",
-                    "upload_method": "PUT",
                     "upload_url": f"{self.storage_url}/upload/{task_id}",
                     "upload_headers": {"x-upload-token": "storage-token"},
                     "expires_at": task["expires_at"],
@@ -378,6 +379,55 @@ def test_restart_uses_existing_task_and_isolates_upstream(tmp_path: Path) -> Non
     app = create_app(FileParseSettings("https://different.test", state_dir=tmp_path))
     with TestClient(app) as client:
         assert client.get("/v1/file_parse/request_1").status_code == 404
+
+
+def test_new_protocol_preserves_but_does_not_restore_legacy_records(tmp_path: Path) -> None:
+    """新协议隔离旧数据库和源文件，同名请求只恢复新空间中已确认的任务。"""
+    upstream = Upstream()
+    settings = FileParseSettings(upstream.api_url, "secret", tmp_path)
+    legacy_namespace = hashlib.sha256(f"{settings.api_url}\0secret".encode()).hexdigest()
+    assert settings.namespace == "tasks-v2-" + legacy_namespace
+    legacy = tmp_path / legacy_namespace
+    source = legacy / "sources" / "old-input"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"old source")
+    result = legacy / "results" / "old-result.zip"
+    result.parent.mkdir()
+    result.write_bytes(b"old result")
+    old_options = {**ParseOptions().model_dump(), "include_model_output": True}
+    old_record = Record("request_1", "report.pdf", 10, "a" * 64, old_options, str(source), "old-fingerprint")
+    database = legacy / "requests.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE requests (request_id TEXT PRIMARY KEY, data TEXT NOT NULL)")
+        connection.execute("INSERT INTO requests VALUES (?, ?)", (old_record.request_id, old_record.to_json()))
+    before = {path: path.read_bytes() for path in legacy.rglob("*") if path.is_file()}
+
+    with TestClient(application(tmp_path, upstream)) as client:
+        assert client.get("/v1/file_parse/request_1").status_code == 404
+        assert upstream.calls == []
+        assert submit(client).status_code == 200
+        assert "include_model_output" not in upstream.tasks["task_1"]["options"]
+    with TestClient(application(tmp_path, upstream)) as client:
+        assert client.get("/v1/file_parse/request_1").json()["task_id"] == "task_1"
+        assert client.get("/v1/file_parse/request_1/result").status_code == 200
+    assert len(upstream.tasks) == 1
+    assert {path: path.read_bytes() for path in legacy.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize("enabled", ["false", "true"])
+def test_removed_model_output_form_field_is_rejected(tmp_path: Path, enabled: str) -> None:
+    """旧表单字段无论取值都报错，不创建上游任务或恢复记录。"""
+    upstream = Upstream()
+    app = application(tmp_path, upstream)
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/file_parse",
+            files={"file": ("report.pdf", b"source", "application/pdf")},
+            data={"request_id": "removed-option", "include_model_output": enabled},
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_request"
+        assert not app.state.service.records and not upstream.calls
 
 
 @pytest.mark.parametrize("stage", ["prepared", "pending", "expired", "submitting"])

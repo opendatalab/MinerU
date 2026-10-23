@@ -260,9 +260,9 @@ class TaskClient:
                 raise ClientError("Task hash differs from the local file")
             if item.get("upload_status") not in {"pending", "ready", "expired"}:
                 raise ClientError("Unknown upload_status")
-        uploads = payload.get("uploads")
+        uploads = payload.get("pending_uploads")
         if not isinstance(uploads, list):
-            raise ClientError("Missing uploads list")
+            raise ClientError("Missing pending_uploads list")
         seen_uploads: set[str] = set()
         pending = {item["client_file_id"] for item in files if item["upload_status"] == "pending"}
         for link in uploads:
@@ -272,8 +272,8 @@ class TaskClient:
             if not isinstance(client_id, str) or client_id not in self.by_id or client_id in seen_uploads:
                 raise ClientError("Invalid or duplicate upload client_file_id")
             seen_uploads.add(client_id)
-            if link.get("upload_method") != "PUT" or not isinstance(link.get("upload_url"), str) or not link["upload_url"]:
-                raise ClientError("Invalid upload URL or method")
+            if not isinstance(link.get("upload_url"), str) or not link["upload_url"]:
+                raise ClientError("Invalid upload URL")
             if not isinstance(link.get("upload_headers"), dict):
                 raise ClientError("Invalid upload headers")
         if not seen_uploads.issubset(pending):
@@ -310,13 +310,6 @@ class TaskClient:
             "page_range": os.environ.get("PAGE_RANGE", ""),
             "output_formats": list(dict.fromkeys(formats)),
         }
-        model_output = os.environ.get("INCLUDE_MODEL_OUTPUT", "0")
-        if model_output not in {"0", "1"}:
-            raise ClientError("INCLUDE_MODEL_OUTPUT must be 0 or 1")
-        if model_output == "1":
-            if "default" not in formats:
-                raise ClientError("INCLUDE_MODEL_OUTPUT requires default output format")
-            body["include_model_output"] = True
         if os.environ.get("MINERU_TIER"):
             body["tier"] = os.environ["MINERU_TIER"]
         return self.json_request(
@@ -345,7 +338,7 @@ class TaskClient:
 
     def upload_missing(self, task: dict[str, Any]) -> dict[str, Any]:
         """逐文件上传与恢复，已经 ready 的文件永远不会重新发送。"""
-        for original in task["uploads"]:
+        for original in task["pending_uploads"]:
             client_id = original["client_file_id"]
             local = self.by_id[client_id]
             link = original
@@ -376,7 +369,9 @@ class TaskClient:
                         break
                     if remote["status"] in {"failed", "canceled"}:
                         break
-                    replacement = next((item for item in current["uploads"] if item["client_file_id"] == client_id), None)
+                    replacement = next(
+                        (item for item in current["pending_uploads"] if item["client_file_id"] == client_id), None
+                    )
                     if replacement is None:
                         raise ClientError("Pending file has no upload URL") from exc
                     if exc.status == 403 and replacement["upload_url"] == link["upload_url"]:
@@ -472,11 +467,11 @@ class TaskClient:
             task = self.create()
         print(f"task_id={self.task_id}", file=sys.stderr)
         self.download_completed(task, output)
-        for link in list(task["uploads"]):
-            current_links = [item for item in task["uploads"] if item["client_file_id"] == link["client_file_id"]]
+        for link in list(task["pending_uploads"]):
+            current_links = [item for item in task["pending_uploads"] if item["client_file_id"] == link["client_file_id"]]
             if not current_links:
                 continue
-            task = self.upload_missing({**task, "uploads": current_links})
+            task = self.upload_missing({**task, "pending_uploads": current_links})
             self.download_completed(task, output)
         polls = 0
         while task["status"] not in TERMINAL:

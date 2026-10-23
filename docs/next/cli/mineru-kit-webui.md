@@ -145,4 +145,4 @@ PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用
 
 `mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
 
-Gradio 使用 Tasks 能力发现，只在服务声明 `task_model_output` 时请求模型输出；下载菜单仍从保存的 Middle JSON 按需导出。
+Gradio 使用 Tasks 能力发现和 `pending_uploads`，固定使用 PUT 上传；仅保存 Middle JSON 和素材，下载菜单从保存的 Middle JSON 按需导出。

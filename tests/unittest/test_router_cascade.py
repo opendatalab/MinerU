@@ -127,7 +127,7 @@ def test_cascade_waits_for_source_file_and_reuses_cached_upload(tmp_path: Path) 
         """通过提交等待固定竞争窗口，验证内外层均不提前判错。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(task["uploads"][0]["upload_url"], content=HTML)
+            response = await client.put(task["pending_uploads"][0]["upload_url"], content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
             inner_record = next(iter(inner.state.task_store._records.values()))
@@ -144,7 +144,7 @@ def test_cascade_waits_for_source_file_and_reuses_cached_upload(tmp_path: Path) 
             assert result["files"][0]["file_id"] is not None
             await _check_download(client, result)
             cached = await _submit(client, filename="renamed.html")
-            assert cached["uploads"] == []
+            assert cached["pending_uploads"] == []
             result = await _terminal(client, cached)
             assert result["status"] == "completed", result
             await _check_download(client, result)
@@ -161,7 +161,7 @@ def test_cascade_can_cancel_while_waiting_for_source_file(tmp_path: Path) -> Non
         """阻塞实际任务提交后取消外层父任务，确认没有遗留解析或缓存租约。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(task["uploads"][0]["upload_url"], content=HTML)
+            response = await client.put(task["pending_uploads"][0]["upload_url"], content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
             response = await client.delete(task["status_url"])

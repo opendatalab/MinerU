@@ -1,10 +1,9 @@
 # Files
 
-Files 保存源文件视图与已生成的结果。异步解析统一使用 [Tasks](tasks.md)，客户端按 `files[].result_url` 下载，不自行拼接存储路径。
+Files 保存源文件视图与已生成的结果，不提供文件列表。异步解析统一使用 [Tasks](tasks.md)，客户端按 `files[].result_url` 下载，不自行拼接存储路径。
 
 | 方法 | 地址 | 行为 |
 |---|---|---|
-| GET | `/v1/files` | 按 `purpose/limit/after/order` 查询当前调用方的文件列表。 |
 | GET | `/v1/files/{file_id}` | 返回文件元数据。 |
 | GET | `/v1/files/{file_id}/content` | 流式下载已保存的解析产物；源文件不提供公共下载。 |
 | DELETE | `/v1/files/{file_id}` | 删除文件视图；正在执行和下载的引用继续受保护。 |
@@ -45,41 +44,6 @@ Files 的时间字段为 Unix 秒级整数，与 Tasks 的 ISO-8601 时间字符
 ```
 
 示例中的 ID、大小、时间和 hash 为示意值。源文件元数据使用相同结构，`purpose` 为 `parse`，`file_name` 为输入文件名。
-
-## GET /v1/files：列出文件
-
-成功返回 **`200 OK` + `application/json`**，每个 `data` 元素都是完整的 `FileObject`：
-
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "file-result0123456789abcdef",
-      "object": "file",
-      "bytes": 4096,
-      "created_at": 1792728001,
-      "expires_at": null,
-      "file_name": "report.zip",
-      "purpose": "parse_output",
-      "sha256sum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    }
-  ],
-  "first_id": "file-result0123456789abcdef",
-  "last_id": "file-result0123456789abcdef",
-  "has_more": false
-}
-```
-
-| 字段 | JSON 类型 | 可为 null | 含义 |
-|---|---|---|---|
-| `object` | string | 否 | 固定为 `list`。 |
-| `data` | array of object | 否 | 本页文件对象，空页为 `[]`。 |
-| `first_id` | string | 是 | 本页首个文件 ID，空页为 `null`。 |
-| `last_id` | string | 是 | 本页最后一个文件 ID，空页为 `null`；用作下一页 `after`。 |
-| `has_more` | boolean | 否 | 是否还有下一页。 |
-
-`limit` 默认 20、上限 100。`purpose`、`order` 和 `after` 按当前调用方的文件视图筛选与分页。
 
 ## DELETE /v1/files/{file_id}：删除文件视图
 

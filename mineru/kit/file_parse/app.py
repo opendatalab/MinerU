@@ -121,7 +121,7 @@ async def _receive_file(request: Request, service: FileParseService) -> tuple[Re
         raise GatewayError("invalid_request", "Parameters must be supplied as multipart fields", 400)
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "multipart/form-data":
         raise GatewayError("unsupported_media_type", "Expected multipart/form-data", 415)
-    allowed = {"file", "request_id", "wait_timeout", "tier", "ocr_mode", "page_range", "output_formats", "include_model_output"}
+    allowed = {"file", "request_id", "wait_timeout", "tier", "ocr_mode", "page_range", "output_formats"}
     source: Path | None = None
     accepted = False
     try:
@@ -146,7 +146,7 @@ async def _receive_file(request: Request, service: FileParseService) -> tuple[Re
                     raise ValueError("wait_timeout out of range")
                 options = ParseOptions.model_validate(
                     {
-                        **{key: form[key] for key in ("tier", "ocr_mode", "page_range", "include_model_output") if key in form},
+                        **{key: form[key] for key in ("tier", "ocr_mode", "page_range") if key in form},
                         "output_formats": form.getlist("output_formats") if "output_formats" in form else ["default"],
                     }
                 )

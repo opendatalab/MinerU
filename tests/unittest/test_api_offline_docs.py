@@ -33,8 +33,10 @@ def test_offline_docs_resources_and_proxy_paths(tmp_path: Path, monkeypatch: pyt
             )
         schema = client.get(root + "/openapi.json").json()
         assert schema["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
-        assert client.get(root + "/v1/files").status_code == 401
-        assert client.get(root + "/v1/files", headers={"Authorization": "Bearer secret"}).status_code == 200
+        assert client.get(root + "/v1/usage").status_code == 401
+        assert client.get(root + "/v1/usage", headers={"Authorization": "Bearer secret"}).status_code == 200
+        for path, status_code in (("/v1/tasks", 405), ("/v1/files", 404)):
+            assert client.get(root + path, headers={"Authorization": "Bearer secret"}).status_code == status_code
 
 
 def test_disabled_docs_mount_no_resources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

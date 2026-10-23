@@ -35,7 +35,6 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 | `ocr_mode` | `auto` | `auto/txt/ocr`。 |
 | `page_range` | 整本 | 与 Tasks 一致，PDF 支持 `1-5`、`r1`、`all`；格式支持范围由上游校验。 |
 | `output_formats` | `default` | `default/docx/html/latex`；重复同名字段表达列表，重复值按首次出现去重。 |
-| `include_model_output` | `false` | 附加可用原始模型输出；开启时 output_formats 必须包含 default，参与 request_id 的解析身份。 |
 | `wait_timeout` | `3600` | 整数秒，范围 `0–3600`。 |
 | `request_id` | 自动生成 | 1–64 个字母、数字、下划线或短横线。提前指定并保存它，可在连接中断后查询。 |
 
@@ -50,6 +49,8 @@ curl --max-time 7200 -D response.headers -o response.body \
 ```
 
 `output_formats` 的列表语义与 [Tasks](tasks.md) 一致；multipart 中不使用 JSON 字符串或逗号分隔字符串。
+
+已删除 `include_model_output`；表单携带该字段时返回 400，不接受旧参数。
 
 ## 响应结构与格式
 
@@ -72,7 +73,7 @@ JSON 正文使用 UTF-8；可空字段输出 `null`，不以省略字段代替�
 
 | `output_formats` | 下载文件名 | Content-Type | 文件内容 |
 |---|---|---|---|
-| `["default"]` | `report.zip` | `application/zip` | `markdown.md`、`middle_json.json`、`structured_content.json`、`images/`；显式启用后附加可用 `model_output.json`。 |
+| `["default"]` | `report.zip` | `application/zip` | `markdown.md`、`middle_json.json`、`structured_content.json`、`images/`；不包含模型输出。 |
 | `["docx"]` | `report.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | 图片内嵌的 DOCX。 |
 | `["html"]` | `report.html` | `text/html; charset=utf-8` | 图片内嵌的 UTF-8 HTML。 |
 | `["latex"]` | `report.zip` | `application/zip` | `document.tex`、`images/`。 |
@@ -99,7 +100,7 @@ X-Task-ID: job_0123456789abcdef01234567
 
 ### StatusResponse：查询与 202 的完整 JSON 对象
 
-以下七个顶层字段均会出现。状态对象不返回 Tasks 的 `files/uploads/progress`，不暴露上游上传链接或签名下载地址。
+以下七个顶层字段均会出现。状态对象不返回 Tasks 的 `files/pending_uploads/progress`，不暴露上游上传链接或签名下载地址。
 
 | 字段 | JSON 类型 | 可为 null | 含义 |
 |---|---|---|---|
@@ -323,3 +324,8 @@ python scripts/http_file_parse_example.py report.pdf --wait-timeout 0 \
 ```
 
 后续查询和下载仍使用上面的包装接口，不需要安装 MinerU SDK 或重建 `ParseResult`。
+
+## 升级与恢复记录
+
+本次协议升级要求 API Server、Router、SDK、Gradio 与包装服务同步更新，先停收请求并排空旧任务。
+恢复记录目录使用 `tasks-v2-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧目录。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。

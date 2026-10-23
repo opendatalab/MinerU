@@ -44,12 +44,10 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `GET` | `/v1/models` | 列出模型 |
 | `GET` | `/v1/models/{model}` | 查询单个模型 |
 | `GET` | `/v1/tiers` | 列出解析档位 |
-| `GET` | `/v1/files` | 列出文件 |
 | `GET` | `/v1/files/{file_id}` | 查询文件元信息 |
 | `GET` | `/v1/files/{file_id}/content` | 下载解析产物 |
 | `DELETE` | `/v1/files/{file_id}` | 删除文件 |
 | `POST` | `/v1/tasks` | JSON 清单创建任务，返回缺失文件上传链接 |
-| `GET` | `/v1/tasks` | 列出当前调用方的父任务，支持筛选和分页 |
 | `DELETE` | `/v1/tasks/{task_id}` | 取消未完成文件 |
 | `GET` | `/v1/tasks/{task_id}` | 查询总状态和逐文件状态，取得每个成功文件的下载链接 |
 | `PUT` | 返回的上传链接 | 每个链接上传一个文件 |

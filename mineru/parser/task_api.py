@@ -11,12 +11,11 @@ import tempfile
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NoReturn, Protocol
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import ClientDisconnect
@@ -90,14 +89,6 @@ class UploadTaskOptions(BaseModel):
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
-    include_model_output: bool = False
-
-    @model_validator(mode="after")
-    def validate_model_output(self) -> UploadTaskOptions:
-        """模型输出只能附加到 default 结果包，不改变单文件 HTML/DOCX 的交付类型。"""
-        if self.include_model_output and "default" not in self.output_formats:
-            raise ValueError("include_model_output requires default output format")
-        return self
 
 
 class CreateTaskRequest(UploadTaskOptions):
@@ -111,7 +102,6 @@ class TaskUploadLink(BaseModel):
 
     client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     upload_url: str
-    upload_method: Literal["PUT"] = "PUT"
     upload_headers: dict[str, str]
     expires_at: int
 
@@ -139,30 +129,10 @@ class TaskStatusResponse(BaseModel):
     finished_at: str | None = None
     tier: Tier | None = None
     output_formats: list[TaskOutputFormat]
-    include_model_output: bool = False
     progress: TaskProgress
     files: list[TaskFileStatus]
-    uploads: list[TaskUploadLink] = Field(default_factory=list)
+    pending_uploads: list[TaskUploadLink]
     error: ErrorDetail | None = None
-
-
-class TaskListItem(BaseModel):
-    """任务列表只公开父任务摘要，不暴露内部逐文件执行。"""
-
-    task_id: str
-    status: TaskStatus
-    created_at: str
-    file_count: int
-
-
-class TaskListResponse(BaseModel):
-    """保持统一的游标分页结构，列表数据按调用方隔离。"""
-
-    object: Literal["list"] = "list"
-    data: list[TaskListItem]
-    first_id: str | None = None
-    last_id: str | None = None
-    has_more: bool = False
 
 
 @dataclass(frozen=True)
@@ -489,60 +459,6 @@ class TaskStore:
         if record is None or record.backend.owner_scope != owner_scope:
             _invalid(f"Task {task_id} not found", status_code=404, code="task_not_found")
         return record
-
-    def list_tasks(
-        self,
-        owner_scope: str,
-        *,
-        status_filter: str | None,
-        limit: int,
-        after: str | None,
-        order: Literal["asc", "desc"],
-        created_after: str | None,
-    ) -> TaskListResponse:
-        """对父任务应用稳定排序和游标；同秒创建的任务以 ID 明确排序。"""
-        self.collect_expired()
-        cutoff: datetime | None = None
-        if created_after is not None:
-            try:
-                cutoff = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
-                if cutoff.tzinfo is None:
-                    raise ValueError("Timezone is required")
-                cutoff = cutoff.astimezone(timezone.utc)
-            except (ValueError, OverflowError):
-                _invalid("created_after must be an ISO-8601 timestamp with a timezone", param="created_after")
-        allowed = set(status_filter.split(",")) if status_filter else None
-        if allowed is not None and not allowed.issubset({"waiting_upload", "queued", "running", *TERMINAL_TASK_STATUSES}):
-            _invalid("Unknown task status", param="status")
-        records = sorted(
-            (record for record in self._records.values() if record.backend.owner_scope == owner_scope),
-            key=lambda record: (record.created_at, record.id),
-            reverse=order == "desc",
-        )
-        if after:
-            cursor = self.lookup(after, owner_scope)
-            key = (cursor.created_at, cursor.id)
-            records = [
-                record
-                for record in records
-                if ((record.created_at, record.id) > key if order == "asc" else (record.created_at, record.id) < key)
-            ]
-        records = [
-            record
-            for record in records
-            if (allowed is None or record.status in allowed)
-            and (cutoff is None or datetime.fromisoformat(record.created_at.replace("Z", "+00:00")) >= cutoff)
-        ]
-        page = records[:limit]
-        return TaskListResponse(
-            data=[
-                TaskListItem(task_id=r.id, status=r.status, created_at=r.created_at, file_count=len(r.file_states))
-                for r in page
-            ],
-            first_id=page[0].id if page else None,
-            last_id=page[-1].id if page else None,
-            has_more=len(records) > limit,
-        )
 
     def update_lease(self, record: _TaskRecord, seconds: int | None) -> None:
         """续租只保护结果保留期，从不延长上传窗口，也不复活已释放的结果。"""
@@ -877,7 +793,6 @@ def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
                 {
                     "client_file_id": item.client_file_id,
                     "upload_url": _url(request, f"/v1/tasks/{record.id}/uploads/{quote(item.client_file_id, safe='')}"),
-                    "upload_method": "PUT",
                     "upload_headers": {"Content-Type": "application/octet-stream"},
                     "expires_at": record.expires_at,
                 }
@@ -891,14 +806,13 @@ def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
         "finished_at": record.finished_at,
         "tier": record.options.tier,
         "output_formats": record.options.output_formats,
-        "include_model_output": record.options.include_model_output,
         "progress": {
             "completed": sum(file.status == "completed" for file in record.file_states),
             "failed": sum(file.status == "failed" for file in record.file_states),
             "total": len(files),
         },
         "files": files,
-        "uploads": links,
+        "pending_uploads": links,
         "error": record.error.model_dump() if record.error else None,
     }
     return TaskStatusResponse.model_validate(payload).model_dump()
@@ -925,26 +839,6 @@ def _request_schema() -> dict[str, Any]:
 def build_task_router(factory: Callable[[Request], TaskBackend]) -> APIRouter:
     """两类部署使用同一任务协议，下载交给已有 Files 入口。"""
     router = APIRouter(prefix="/v1", tags=["Tasks"])
-
-    @router.get("/tasks", response_model=TaskListResponse)
-    async def list_tasks(
-        request: Request,
-        status_filter: str | None = Query(None, alias="status"),
-        limit: int = Query(20, ge=1, le=100),
-        after: str | None = None,
-        order: Literal["asc", "desc"] = "desc",
-        created_after: str | None = None,
-    ) -> TaskListResponse:
-        """读取当前调用方的父任务列表，子任务不进入公开列表。"""
-        backend = factory(request)
-        return request.app.state.task_store.list_tasks(
-            backend.owner_scope,
-            status_filter=status_filter,
-            limit=limit,
-            after=after,
-            order=order,
-            created_after=created_after,
-        )
 
     @router.post("/tasks", status_code=202, response_model=TaskStatusResponse, openapi_extra=_request_schema())
     async def create_task(request: Request) -> Response:
@@ -1095,7 +989,6 @@ class ApiTaskBackend:
             tier=options.tier,
             ocr_mode=options.ocr_mode,
             output_formats=options.output_formats,
-            include_model_output=options.include_model_output,
         )
 
         await submit_execution(
@@ -1135,8 +1028,6 @@ __all__ = [
     "TaskExecution",
     "TaskFileItem",
     "TaskFileInput",
-    "TaskListItem",
-    "TaskListResponse",
     "TaskStatusResponse",
     "TaskStore",
     "TaskUpload",

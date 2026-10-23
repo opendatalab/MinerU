@@ -24,7 +24,6 @@ GET /v1/health HTTP/1.1
   "features": {
     "webhook": true,
     "task_output_formats": ["default", "docx", "html", "latex"],
-    "task_model_output": true,
     "sources": ["upload", "url"]
   }
 }
@@ -39,7 +38,6 @@ GET /v1/health HTTP/1.1
 | `features` | object | 是 | 当前部署支持的外围能力。 |
 | `features.webhook` | bool | 是 | 是否支持 Webhook 回调。 |
 | `features.task_output_formats` | array | 是 | 当前部署支持的 Tasks `output_formats` 值。 |
-| `features.task_model_output` | bool | 是 | 是否支持附加可用原始模型输出。 |
 | `features.sources` | array | 是 | 当前部署允许的 Tasks 输入类型（upload/url）。 |
 
 错误:
@@ -173,7 +171,6 @@ Local Parse Server 的 `health` 通常返回:
   "features": {
     "webhook": false,
     "task_output_formats": ["default", "docx", "html", "latex"],
-    "task_model_output": true,
     "sources": ["upload", "url"]
   }
 }

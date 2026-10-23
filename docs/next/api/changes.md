@@ -8,14 +8,21 @@
 | Tasks / Files JSON `filename` | `file_name`；下载附件命名规则保持不变。 |
 | 创建请求必填 `client_file_id` | 可省略或为 `null`；服务端按输入顺序补全最小可用的 `fN`，避开所有显式 ID，响应仍必填。 |
 | 创建 Upload、PUT、complete | POST `/v1/tasks` 提交清单，只 PUT 缺失文件；上传成功自动排队。 |
-| 创建、查询、取消 Job | POST/GET/DELETE Tasks；GET `/v1/tasks` 列出父任务。 |
+| 创建、查询、取消 Job | POST `/v1/tasks`；按 task_id GET/DELETE，不提供任务列表。 |
 | `files[].output_files` | `files[].result_url`，每个输入一个完整产物链接。 |
 | `markdown/middle_json/structured_content/zip` 输出选项 | `default` 默认 ZIP；另可组合 `docx/html/latex`。 |
 | `local/inline/file_id` 输入 | 文件上传或 URL；同机先计算 hash，缓存未命中也需上传。 |
-| 默认 ZIP 中的模型输出 | 显式 `include_model_output=true`，并包含 `default` 格式。 |
-| Health `output_formats` | `task_output_formats`；sources 为 upload/url，task_model_output 声明附加模型输出能力。 |
+| `include_model_output` 与模型输出文件 | 参数已删除，HTTP 提交返回 400；ModelJson 仅在内部解析使用，不进入 API、SDK、CLI 或 Gradio 结果。 |
+| Health `output_formats` | `task_output_formats`；sources 为 upload/url；删除 `task_model_output`。 |
+| GET 任务列表 / 文件列表 | 已移除；合法认证下 `/v1/tasks` 返回 405，`/v1/files` 返回 404。 |
+| 响应 `uploads` | `pending_uploads`，无旧字段别名；上传路由路径仍含 `/uploads/`。 |
+| `upload_method` | 字段删除，客户端固定使用 PUT，并原样使用 URL 和请求头。 |
+| `files[].parse.model_used` | 删除；仅保留 `duration_ms/parser_version`，不重复返回任务顶层 `tier`。 |
 
-`--allow-local-source` 和 `--max-inline-bytes` 同时删除。Files CRUD、Health、Tiers、Models、Usage 保留；同步 `file_parse` 继续作为独立包装服务运行。
+`--allow-local-source` 和 `--max-inline-bytes` 同时删除。Files 按 ID 查询、下载与删除、Health、Tiers、Models、Usage 保留；同步 `file_parse` 继续作为独立包装服务运行。
 SDK 保留 `MinerUApiParser` 方法和返回类型，状态类型改为 `ApiTaskStatus`，保留 `ApiJobStatus` Python 别名。直接本地 parser 与 HF CPU/ZeroGPU 内嵌解析不经过 HTTP。
 
 停收旧请求、等待在途任务完成，再协调升级 worker、Router、SDK、file_parse 包装服务和应用。SaaS Go 服务需部署方按同一契约配套更新；进程内任务和缓存索引不保证跨重启恢复。
+
+Router 通过候选 worker 的 `/v1/usage` 校验认证，不再依赖 Files 列表。
+file_parse 恢复状态 namespace 增加 `tasks-v2-` 前缀，旧记录和目录保留但不加载；新空间内继续支持 request_id 幂等和重启恢复。不提供旧客户端或旧 worker 的协议回退。

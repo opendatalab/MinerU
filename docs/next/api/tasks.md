@@ -12,10 +12,9 @@
 | 方法与路径 | 行为 |
 |---|---|
 | `POST /v1/tasks` | 仅接受 `application/json`，返回 `202` 和稳定 `task_id`。 |
-| 返回的 `upload_method` 与 `upload_url` | 每个链接上传一个文件；本地使用 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}`。 |
+| `PUT` 返回的 `upload_url` | 每个链接上传一个文件；本地使用 `PUT /v1/tasks/{task_id}/uploads/{client_file_id}`。 |
 | `GET /v1/tasks/{task_id}` | 返回 `200`，包含总状态、逐文件状态、尚有效的上传链接和已完成文件的下载链接。 |
 | `DELETE /v1/tasks/{task_id}` | 返回 `200` 和取消后的完整任务对象，保留已经完成文件的下载链接。 |
-| `GET /v1/tasks` | 返回 `200` 和父任务摘要分页列表。 |
 
 创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
 业务参数必须放在 JSON 主体中，POST 查询参数、未知字段、非法值返回 `400 invalid_request`。
@@ -30,7 +29,7 @@ Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 | `page_range` | 整本 | 全局 PDF 页范围，支持 `1-5`、`r1`、`all` 等现有语法。 |
 | `output_formats` | `["default"]` | 非空列表，值为 `default/docx/html/latex` 中一个或多个；重复值按首次出现去重。 |
 
-`include_model_output` 默认为 `false`。为 `true` 时必须包含 `default` 输出格式，存在原始模型输出时在结果 ZIP 中增加 `model_output.json`；其他格式组合不满足条件时返回 400。创建和查询响应都携带该选项。
+ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。请求携带已删除的 `include_model_output` 字段（包括值为 `false`）返回 400。
 
 每个清单条目包含：
 
@@ -44,7 +43,7 @@ Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 | `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
 
 服务端先预留全部显式 `client_file_id`，再按缺省项的输入顺序，从 `f1` 开始分配最小未占用的 `fN`。例如显式占用了 `f2`，两项缺省 ID 分别生成 `f1`、`f3`。空字符串、非法 ID 和重复显式 ID 返回 400。
-创建响应的 `files` 顺序与输入一致，`files[]` 和 `uploads[]` 始终返回非空 ID；生成后上传、查询及 Router 转发均保持不变。
+创建响应的 `files` 顺序与输入一致，`files[]` 和 `pending_uploads[]` 始终返回非空 ID；生成后上传、查询及 Router 转发均保持不变。
 
 先从真实文件生成 JSON 请求（本例省略 ID，由服务端补全）：
 
@@ -100,10 +99,9 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
 | `finished_at` | string | 是 | 父任务进入终态的时间；非终态时为 `null`，取消成功时也会填写。 |
 | `tier` | string | 是 | 任务级档位，非空时为 `flash/basic/standard/advanced`；文件实际采用的流程还受格式约束。 |
 | `output_formats` | array of string | 否 | 本次任务采用的输出格式，按首次出现去重。 |
-| `include_model_output` | boolean | 否 | 是否请求在 default ZIP 中附加可用模型输出。 |
 | `progress` | object | 否 | 文件计数，结构见下表。 |
 | `files` | array of object | 否 | 完整逐文件快照，顺序始终与创建请求一致，结构见下表。 |
-| `uploads` | array of object | 否 | 仍有效、尚未确认就绪的上传描述；无需上传或任务取消后为 `[]`。 |
+| `pending_uploads` | array of object | 否 | 仍有效、尚未确认就绪的上传描述；无需上传或任务取消后为 `[]`。 |
 | `error` | object | 是 | 父任务级错误，结构为 `ErrorDetail`；逐文件失败应检查 `files[].error`。 |
 
 ### progress：文件计数
@@ -139,19 +137,21 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
 
 ### files[].parse：解析统计
 
+仅包含耗时和解析器版本；档位保留在任务顶层 `tier`，逐文件统计不重复提供。
+
 | 字段 | JSON 类型 | 可为 null | 含义 |
 |---|---|---|---|
-| `model_used` | string | 是 | 执行模型信息；当前本地解析实现为 `null`，不根据该字段推断 tier。 |
 | `duration_ms` | integer | 是 | 毫秒级文件执行耗时；当前实现包含源读取/下载、解析和导出，不含等待上传及排队时间。 |
 | `parser_version` | string | 是 | 执行 worker 的 MinerU 版本，不保证与 Router 的版本一致。 |
 
-### uploads[]：上传描述
+### pending_uploads[]：待上传描述
+
+每个条目固定使用 **PUT** 上传原始文件字节；响应不包含 `upload_method`。客户端原样使用 `upload_url` 和 `upload_headers`。
 
 | 字段 | JSON 类型 | 含义 |
 |---|---|---|
 | `client_file_id` | string | 对应 `files[]` 中同 ID 的输入。 |
 | `upload_url` | string | 上传一个文件的完整 URL；签名地址必须原样使用。 |
-| `upload_method` | string | 当前为 `PUT`，客户端按返回值发送请求。 |
 | `upload_headers` | object | 字符串到字符串的映射；上传时发送这些请求头，不假定总是固定头集合。 |
 | `expires_at` | integer | Unix 秒级截止时间，创建任务后固定，查询不续期。 |
 
@@ -174,7 +174,7 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
 ### POST /v1/tasks：创建任务
 
 成功返回 **`202 Accepted` + `application/json`**，正文为 `TaskStatusResponse`。`202` 只表示任务已接单，不表示文件已经解析成功。
-初始状态通常为 `waiting_upload`；URL 或缓存命中项可以直接进入 `queued`。`uploads` 只列出当前需要客户端上传的文件。
+初始状态通常为 `waiting_upload`；URL 或缓存命中项可以直接进入 `queued`。`pending_uploads` 只列出当前需要客户端上传的文件。
 
 请求示例：
 
@@ -203,7 +203,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
   "output_formats": [
     "default"
   ],
-  "include_model_output": false,
   "progress": {
     "completed": 0,
     "failed": 0,
@@ -241,11 +240,10 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
       "error": null
     }
   ],
-  "uploads": [
+  "pending_uploads": [
     {
       "client_file_id": "f1",
       "upload_url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f1",
-      "upload_method": "PUT",
       "upload_headers": {
         "Content-Type": "application/octet-stream"
       },
@@ -254,7 +252,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
     {
       "client_file_id": "f2",
       "upload_url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f2",
-      "upload_method": "PUT",
       "upload_headers": {
         "Content-Type": "application/octet-stream"
       },
@@ -282,7 +279,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
   "output_formats": [
     "default"
   ],
-  "include_model_output": false,
   "progress": {
     "completed": 1,
     "failed": 0,
@@ -301,7 +297,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
       "name": "report.html",
       "status": "completed",
       "parse": {
-        "model_used": null,
         "duration_ms": 125,
         "parser_version": "4.0.12"
       },
@@ -324,11 +319,10 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
       "error": null
     }
   ],
-  "uploads": [
+  "pending_uploads": [
     {
       "client_file_id": "f2",
       "upload_url": "http://127.0.0.1:8000/v1/tasks/job_0123456789abcdef01234567/uploads/f2",
-      "upload_method": "PUT",
       "upload_headers": {
         "Content-Type": "application/octet-stream"
       },
@@ -341,7 +335,7 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
 
 ### DELETE /v1/tasks/{task_id}：取消任务
 
-成功返回 **`200 OK` + `application/json`**，正文为取消后的完整 `TaskStatusResponse`，`status` 为 `canceled`，`uploads` 为 `[]`。
+成功返回 **`200 OK` + `application/json`**，正文为取消后的完整 `TaskStatusResponse`，`status` 为 `canceled`，`pending_uploads` 为 `[]`。
 这个接口取消未完成文件，不删除 Task 或已完成的结果；返回时后台不可中断计算或资源清理可能仍在收尾。
 已经成功或失败的文件保持原状态，成功文件继续提供 `result_url`。对任意已终结的父任务再次取消，返回 `409 task_already_terminal`。
 
@@ -357,7 +351,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
   "output_formats": [
     "default"
   ],
-  "include_model_output": false,
   "progress": {
     "completed": 1,
     "failed": 0,
@@ -376,7 +369,6 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
       "name": "report.html",
       "status": "completed",
       "parse": {
-        "model_used": null,
         "duration_ms": 125,
         "parser_version": "4.0.12"
       },
@@ -399,7 +391,7 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
       "error": null
     }
   ],
-  "uploads": [],
+  "pending_uploads": [],
   "error": null
 }
 ```
@@ -407,46 +399,11 @@ JSON 响应使用 `Content-Type: application/json`，正文为 UTF-8。下表列
 ### PUT /v1/tasks/{task_id}/uploads/{client_file_id}：本地上传响应
 
 本地 API Server 和 Router 的上传成功返回 **`200 OK` + `application/json`**，正文仍为上面定义的完整 `TaskStatusResponse`。
-本次上传文件的 `upload_status` 为 `ready`，通常从 `uploads` 中移除并进入 `queued/running`；其他文件和已完成结果也包含在响应中。
+本次上传文件的 `upload_status` 为 `ready`，通常从 `pending_uploads` 中移除并进入 `queued/running`；其他文件和已完成结果也包含在响应中。
 有效期内重复 PUT 已确认文件同样返回 `200` 和当前快照；上传链接到期后返回 `410`，不会重新读取或覆盖源字节。
 
 SaaS 返回的上传目标可能是独立对象存储：其成功状态码和响应体由该存储服务决定，不要求返回 Tasks JSON。
 通用客户端应接受目标服务的成功响应，随后查询 `status_url` 确认就绪情况，不把对象存储上传响应直接作为任务状态解析。
-
-### GET /v1/tasks：列出父任务
-
-成功返回 **`200 OK` + `application/json`**，正文为 `TaskListResponse`，不是完整的 `TaskStatusResponse`：
-
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "task_id": "job_0123456789abcdef01234567",
-      "status": "canceled",
-      "created_at": "2026-10-23T04:00:00Z",
-      "file_count": 2
-    }
-  ],
-  "first_id": "job_0123456789abcdef01234567",
-  "last_id": "job_0123456789abcdef01234567",
-  "has_more": false
-}
-```
-
-| 字段 | JSON 类型 | 可为 null | 含义 |
-|---|---|---|---|
-| `object` | string | 否 | 固定为 `list`。 |
-| `data` | array of object | 否 | 父任务摘要；没有结果时为 `[]`。 |
-| `data[].task_id` | string | 否 | 父任务 ID。 |
-| `data[].status` | string | 否 | 与完整任务对象相同的父任务状态枚举。 |
-| `data[].created_at` | string | 否 | ISO-8601 UTC 创建时间。 |
-| `data[].file_count` | integer | 否 | 该任务的输入文件总数。 |
-| `first_id` | string | 是 | 本页第一项 task ID；空页为 `null`。 |
-| `last_id` | string | 是 | 本页最后一项 task ID；空页为 `null`，作为下一页 `after`。 |
-| `has_more` | boolean | 否 | 是否还有下一页。 |
-
-列表不返回 `files/uploads/progress/result_url`；需要详情时逐任务查询。筛选与分页参数见本页“父任务列表与缓存”。
 
 ## 各接口错误响应
 
@@ -475,7 +432,6 @@ SaaS 返回的上传目标可能是独立对象存储：其成功状态码和响
 | 本地 PUT | 404 | `upload_not_found` | task 中不存在该 `client_file_id`。 |
 | 本地 PUT | 409 | `task_already_terminal`、`file_already_terminal` | 任务已取消或文件已不接受上传。 |
 | 本地 PUT | 410 | `upload_expired` | 固定上传窗口已过期。 |
-| GET 列表 | 400 / 404 | `invalid_request` / `task_not_found` | 筛选参数非法，或 `after` 游标不存在、已清理或越权。 |
 | 所有受保护接口 | 401 | `invalid_api_key` | 服务启用认证，但调用方未提供有效凭据。 |
 
 Router 或网关还可能返回远端依赖相关的 5xx 错误；错误格式及部署扩展见 [响应与错误](responses.md)。
@@ -557,7 +513,7 @@ Task 顶层没有 `result_url`；`files[]` 不暴露底层 `output_files`。
 多格式 ZIP 内 DOCX 和 HTML 分别为 `document.docx`、`document.html`。
 `default` 和 LaTeX 共用同一套物化图片及 `images/` 引用；无图片时目录可为空。
 DOCX 和 HTML 即使放入多格式 ZIP，也保持图片内嵌。
-`default` 不自动包含 `model_output.json`；不生成跨输入文件的总 ZIP 或批次 `manifest.json`。
+`default` 不包含 `model_output.json`；不生成跨输入文件的总 ZIP 或批次 `manifest.json`。
 
 每个输入只解析一次，基于同一结果生成所选格式。全部所选格式完成并保存后才发布该文件的 `completed` 和链接。
 任一格式失败，该文件为 `failed/result_packaging_failed` 且链接为空，不提供不完整产物；其他文件继续执行。
@@ -598,7 +554,6 @@ TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
 | `SEND_HASH` | `1` | `0` 时不计算或提交 hash。 |
 | `TASK_ID` | 空 | 恢复已有任务，跳过 ready 文件。 |
 | `MINERU_TIER`、`OCR_MODE`、`PAGE_RANGE` | 服务默认 / `auto` / 整本 | 解析参数。 |
-| `INCLUDE_MODEL_OUTPUT` | `0` | `1` 时附加可用模型输出，必须包含 default 格式。 |
 | `OUTPUT_FORMATS` | `default` | 逗号分隔，转为 JSON 数组。 |
 | `RESULT_DIR` | `results` | 逐文件结果目录。 |
 | `MAX_POLLS`、`POLL_INTERVAL` | `300`、`1` | 查询预算和间隔秒数。 |
@@ -616,11 +571,13 @@ URL 下载沿用服务的来源策略：默认 HTTPS；HTTP 需启用 `--allow-h
 
 Router 按就绪文件独立选择 worker 并预占负载，同一父 Task 可使用多个 worker。
 URL 交给 worker 下载，客户端上传字节按 worker 的缓存预检结果传输。
-健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`，`task_model_output` 声明模型输出能力。
+健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`。
+Router 创建任务前使用候选 worker 的受保护 `/v1/usage` 校验认证，不调用列表接口，不预占解析名额。
 不声明新 Tasks 能力的旧 worker 不参与 Tasks 调度，更新时应先更新 worker，再更新 Router 和客户端。
 Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。已完成任务按 worker 并行续租，每轮网络等待最多 10 秒，避免失联 worker 阻塞其他 worker 的结果保留。
 
-创建请求仅接受 `files` 和 `file_name`，不兼容 `manifest`、`filename`；新旧字段混传同样返回 400。Tasks 响应及 Files 列表、详情统一使用 `file_name`。
+创建请求仅接受 `files` 和 `file_name`，不兼容 `manifest`、`filename`；新旧字段混传同样返回 400。Tasks 响应及 Files 详情统一使用 `file_name`。
+任务和文件列表接口已移除；使用创建响应中的 `task_id/status_url` 恢复任务，按 `files[].result_url` 下载。合法认证下 `GET /v1/tasks` 返回 405，`GET /v1/files` 返回 404。
 这是同一 `/v1` 下的破坏性变更：先停收请求并排空在途任务，再协调更新 worker、Router、SDK、file_parse 包装服务及其他客户端；SaaS 由部署方同步对齐。
 
 本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
@@ -629,10 +586,6 @@ API Server 和 Router 不提供 `/v1/file_parse`、`/v1/tasks/{task_id}/result`�
 需要同步单文件调用时，独立启动 [file_parse 包装服务](file-parse.md)，由它调用本页的共同 Tasks 契约。
 SaaS Go 服务和对象存储配置由部署方按此共同契约实现，不属于本地 Python 服务代码。
 
-## 父任务列表与缓存
-
-`GET /v1/tasks` 返回当前调用方的父任务摘要。支持 `status`（逗号分隔）、`limit`（默认 20，上限 100）、`after`（上一页 last_id）、`order`（默认 desc）、`created_after`。`created_after` 必须是带时区的 ISO-8601 时间，按实际时间过滤（包含边界），支持 UTC、时区偏移和小数秒；非法值返回 400。按 created_at 和 task_id 稳定排序；游标不存在、过期或属于其他调用方时返回 404。
-
-响应为 `object=list/data/first_id/last_id/has_more`；每项包含 `task_id/status/created_at/file_count`，不展示内部子执行。
+## 源文件缓存
 
 SDK 即使连接同机也计算 hash 并提交清单。缓存有效且已完成上传的同 hash 后续免传；并发首次上传允许重复传输但源字节去重。默认缓存保留 24 小时、每 5 分钟扫描，沿用 retention 配置；活动任务与传输引用保护字节。缓存过期或服务重启后允许重新上传。

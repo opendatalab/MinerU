@@ -52,7 +52,7 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
             payload = response.json()
             payload["features"]["task_output_formats"] = ["default", "docx", "html", "latex"]
             return httpx.Response(200, json=payload, request=request)
-        if request.url.path == "/v1/files":
+        if request.url.path == "/v1/usage":
             checked.append(request.url.host)
             if request.url.host == "worker-b" and request.headers.get("authorization") != "Bearer owner":
                 return httpx.Response(
@@ -66,7 +66,7 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
                     },
                     request=request,
                 )
-            return httpx.Response(200, json={"object": "list", "data": []}, request=request)
+            return httpx.Response(200, json={"object": "usage", "current": {}}, request=request)
         return await (first if request.url.host == "worker-a" else second).handle(request)
 
     app = create_app(
@@ -88,9 +88,10 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
     with TestClient(app) as client:
         cursors = dict(app.state.worker_pool._selection_cursors)
         assert client.post("/v1/tasks", json=form).status_code == 401
+        assert client.post("/v1/tasks", json=form, headers={"authorization": "Bearer wrong"}).status_code == 401
         accepted = client.post("/v1/tasks", json=form, headers={"authorization": "Bearer owner"})
         assert accepted.status_code == 202, accepted.text
-        assert checked == ["worker-b", "worker-b"]
+        assert checked == ["worker-b", "worker-b", "worker-b"]
         assert app.state.worker_pool._selection_cursors == cursors
         assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [0, 0]
 
@@ -124,7 +125,7 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
                     assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [0, 0]
                     _upload(client, task, [("source.html", HTML)])
                 else:
-                    assert task["uploads"] == []
+                    assert task["pending_uploads"] == []
                 tasks.append(task)
                 deadline = time.monotonic() + 5
                 while not app.state.task_store._records[task["task_id"]].file_states[0].submitted:

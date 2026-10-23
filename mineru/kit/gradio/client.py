@@ -53,7 +53,6 @@ class V1ServerCapabilities:
     tiers: tuple[str, ...]
     output_formats: tuple[str, ...]
     sources: tuple[str, ...]
-    model_output: bool = False
 
 
 def normalize_v1_base_url(value: str) -> str:
@@ -176,7 +175,6 @@ class V1ArtifactClient:
             tiers=tuple(tiers),
             output_formats=output_formats,
             sources=sources,
-            model_output=features.get("task_model_output") is True,
         )
         self._capabilities = capabilities
         return capabilities
@@ -190,7 +188,7 @@ class V1ArtifactClient:
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
-        """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
+        """通过 V1 API 解析单个文件，并返回带图片素材的 `ParseResult`。"""
         page_range = normalize_page_range_input(page_range)
         if not path.is_file():
             raise FileNotFoundError(path)
@@ -212,7 +210,6 @@ class V1ArtifactClient:
             tier=cast(Tier, tier),
             ocr_mode=ocr_mode,
             include_images=True,
-            include_model_output=self._capabilities.model_output,
         )
 
         def on_job_status(status: ApiTaskStatus) -> None:

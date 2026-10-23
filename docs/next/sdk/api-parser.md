@@ -10,7 +10,7 @@ result = parser.parse("report.pdf", page_range="1-5")
 print(result.markdown())
 ```
 
-构造参数保留 `api_url/api_key/tier/ocr_mode/include_images/include_model_output`。
+构造参数保留 `api_url/api_key/tier/ocr_mode/include_images`。
 地址默认读取 `MINERU_API_URL`，否则使用 `https://mineru.net/api`；密钥默认读取 `MINERU_API_KEY`。
 `tier=None` 和 `ocr_mode=None` 省略对应请求字段；服务默认 OCR 模式是 `auto`。
 `parse()` 和 `parse_async()` 均接收 `page_range/status_callback/duration_callback`。
@@ -19,10 +19,10 @@ print(result.markdown())
 
 1. 校验文件及页范围，计算大小和 SHA-256，包括同机 HTTP 请求。
 2. 向 `/v1/tasks` 提交一个 `client_file_id="file"` 的 files 数组，固定请求 `output_formats=["default"]`。
-3. 缓存命中不上传；未命中按服务返回的 PUT 链接和 headers 流式上传，并按清单大小设置 `Content-Length`。无需完成确认。
+3. 缓存命中不上传；未命中遍历 `pending_uploads`，固定使用 PUT 向返回的链接按 headers 流式上传，并按清单大小设置 `Content-Length`。无需完成确认。
 4. 按返回的同源 `status_url` 每秒查询，轮询预算 3600 次；用 `client_file_id` 关联结果。
 5. 从该文件的 `result_url` 流式下载并校验 ZIP，读取 `middle_json.json`。
-6. `include_images=True` 恢复图片素材；`include_model_output=True` 请求并读取可用的 `model_output.json`。没有原始模型输出时不生成占位数据。
+6. `include_images=True` 恢复图片素材。`ParseResult` 只持有 MiddleJson，不携带或导出 ModelJson。
 
 HTTP 输入只有上传和 URL；SDK 的路径参数始终代表客户端文件，不再传递服务端路径。上传 HTML 不自动附带同目录资源，应使用自包含文件或 Tasks URL 输入；直接本地 Python parser 仍可读取本地路径。
 

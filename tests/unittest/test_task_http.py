@@ -185,8 +185,8 @@ def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _
         response = client.post("/v1/tasks", json=payload)
         assert response.status_code == 202, response.text
         task = response.json()
-        assert task["files"][0]["client_file_id"] == task["uploads"][0]["client_file_id"] == "f1"
-        link = task["uploads"][0]
+        assert task["files"][0]["client_file_id"] == task["pending_uploads"][0]["client_file_id"] == "f1"
+        link = task["pending_uploads"][0]
         for _ in range(2):
             upload = client.put(link["upload_url"], content=data, headers=link["upload_headers"])
             assert upload.status_code == 200, upload.text
@@ -207,7 +207,7 @@ def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _
         cached = client.post("/v1/tasks", json=payload)
         assert cached.status_code == 202, cached.text
         cached_task = cached.json()
-        assert cached_task["uploads"] == [] and cached_task["files"][0]["client_file_id"] == "f1"
+        assert cached_task["pending_uploads"] == [] and cached_task["files"][0]["client_file_id"] == "f1"
         assert cached_task["files"][0]["upload_status"] == "ready"
         cached_result = _wait(client, cached_task)
         assert cached_result["status"] == "completed", cached_result
@@ -248,8 +248,8 @@ def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -
             for index in range(2):
                 task = _submit(client, [(f"document-{index}.html", HTML)])
                 assert urlsplit(task["status_url"]).scheme == "https"
-                assert len(task["uploads"]) == (1 if index == 0 else 0)
-                for upload in task["uploads"]:
+                assert len(task["pending_uploads"]) == (1 if index == 0 else 0)
+                for upload in task["pending_uploads"]:
                     # 以本地 HTTP 模拟 TLS 终止代理到 Router 的后段连接，保留真实入站代理头。
                     response = client.put(urlsplit(upload["upload_url"]).path, content=HTML)
                     assert response.status_code == 200, response.text
@@ -342,18 +342,18 @@ def test_hash_preflight_sends_only_missing_file_bytes(live_service: _LiveService
     """真实网络计数证明混合命中仅上传缺失文件，全命中不发送任何文件 PUT。"""
     with _client(live_service) as client:
         first = _submit(client, [("a.html", HTML)])
-        assert client.put(first["uploads"][0]["upload_url"], content=HTML).status_code == 200
+        assert client.put(first["pending_uploads"][0]["upload_url"], content=HTML).status_code == 200
         assert _wait(client, first)["status"] == "completed"
         second_data = b"<h1>second</h1>"
         mixed = _submit(client, [("renamed.html", HTML), ("b.html", second_data)])
-        assert [link["client_file_id"] for link in mixed["uploads"]] == ["f2"]
-        assert client.put(mixed["uploads"][0]["upload_url"], content=second_data).status_code == 200
+        assert [link["client_file_id"] for link in mixed["pending_uploads"]] == ["f2"]
+        assert client.put(mixed["pending_uploads"][0]["upload_url"], content=second_data).status_code == 200
         assert _wait(client, mixed)["status"] == "completed"
         base = f"/v1/tasks/{mixed['task_id']}/uploads/"
         assert live_service.counts.get(base + "f1", 0) == 0
         assert live_service.counts[base + "f2"] == len(second_data)
         hit = _submit(client, [("a.html", HTML), ("b.html", second_data)])
-        assert hit["uploads"] == []
+        assert hit["pending_uploads"] == []
         assert _wait(client, hit)["status"] == "completed"
         assert not any(hit["task_id"] in path for path in live_service.counts)
         denied = client.post(
@@ -376,8 +376,8 @@ def test_disconnect_then_resume_keeps_uploaded_files(live_service: _LiveService,
     second_path.write_bytes(second)
     with _client(live_service) as client:
         task = _submit(client, [(first_path.name, HTML), (second_path.name, second)])
-        assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
-        target = urlsplit(task["uploads"][1]["upload_url"])
+        assert client.put(task["pending_uploads"][0]["upload_url"], content=HTML).status_code == 200
+        target = urlsplit(task["pending_uploads"][1]["upload_url"])
         connection = socket.create_connection((target.hostname, target.port), timeout=5)
         prefix = second[:4096]
         try:
@@ -397,7 +397,7 @@ def test_disconnect_then_resume_keeps_uploaded_files(live_service: _LiveService,
         assert [item["upload_status"] for item in pending["files"]] == ["ready", "pending"]
         result = _run_script(_script_env(tmp_path, live_service.url, TASK_ID=task["task_id"]), first_path, second_path)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert live_service.counts[urlsplit(task["uploads"][0]["upload_url"]).path] == len(HTML)
+        assert live_service.counts[urlsplit(task["pending_uploads"][0]["upload_url"]).path] == len(HTML)
         assert live_service.counts[target.path] == len(prefix) + len(second)
         assert len(live_service.app.state.task_store._records) == 1
         members = _members((tmp_path / "results/f2/b.zip").read_bytes())
@@ -422,7 +422,7 @@ def test_cancel_response_does_not_wait_for_native_thread_cleanup(
     try:
         with _client(live_service) as client:
             task = _submit(client, [("a.html", HTML)])
-            assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
+            assert client.put(task["pending_uploads"][0]["upload_url"], content=HTML).status_code == 200
             assert entered.wait(5)
             canceled = client.delete(task["status_url"], timeout=2)
             assert canceled.status_code == 200 and canceled.json()["status"] == "canceled"
@@ -457,9 +457,11 @@ def test_upload_over_200_mib_is_accepted(live_service: _LiveService, tmp_path: P
         assert response.status_code == 202, response.text
         task = response.json()
         with source.open("rb") as stream:
-            uploaded = client.put(task["uploads"][0]["upload_url"], content=stream, headers={"Content-Length": str(size)})
+            uploaded = client.put(
+                task["pending_uploads"][0]["upload_url"], content=stream, headers={"Content-Length": str(size)}
+            )
         assert uploaded.status_code == 200, uploaded.text
-        assert live_service.counts[urlsplit(task["uploads"][0]["upload_url"]).path] == size
+        assert live_service.counts[urlsplit(task["pending_uploads"][0]["upload_url"]).path] == size
         assert started.wait(60)
         assert client.get(task["status_url"]).json()["files"][0]["upload_status"] == "ready"
         assert client.delete(task["status_url"]).json()["status"] == "canceled"
@@ -476,7 +478,7 @@ def test_large_page_count_pdf_is_not_rejected(live_service: _LiveService, page_c
     data = buffer.getvalue()
     with _client(live_service) as client:
         task = _submit(client, [("many-pages.pdf", data)])
-        assert client.put(task["uploads"][0]["upload_url"], content=data).status_code == 200
+        assert client.put(task["pending_uploads"][0]["upload_url"], content=data).status_code == 200
         result = _wait(client, task, timeout=90)
         assert result["status"] == "completed", result
         download = client.get(result["files"][0]["result_url"])
@@ -512,7 +514,7 @@ def test_real_documents_match_local_parser_outputs(live_service: _LiveService, d
         expected = build_task_output(baseline, ["default"], Path(directory) / "outputs").read_bytes()
     with _client(live_service) as client:
         task = _submit(client, [(name, data)], page_range=page_range, output_formats=["default"])
-        assert client.put(task["uploads"][0]["upload_url"], content=data).status_code == 200
+        assert client.put(task["pending_uploads"][0]["upload_url"], content=data).status_code == 200
         result = _wait(client, task)
         assert result["status"] == "completed", result
         output = client.get(result["files"][0]["result_url"])
@@ -574,7 +576,7 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             )
             assert response.status_code == 202, response.text
             task = response.json()
-            assert task["uploads"] == [] and task["files"][0]["upload_status"] == "not_required"
+            assert task["pending_uploads"] == [] and task["files"][0]["upload_status"] == "not_required"
             result = _wait(client, task)
             assert result["status"] == "completed", result
             assert result["files"][0]["bytes"] == len(data)
@@ -593,7 +595,7 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
                 baseline_url = baseline_result["files"][0]["result_url"]
             else:
                 baseline = _submit(client, [(item["file_name"], data)], page_range="2")
-                assert client.put(baseline["uploads"][0]["upload_url"], content=data).status_code == 200
+                assert client.put(baseline["pending_uploads"][0]["upload_url"], content=data).status_code == 200
                 baseline_result = _wait(client, baseline)
                 assert baseline_result["status"] == "completed"
                 baseline_url = baseline_result["files"][0]["result_url"]
@@ -669,7 +671,6 @@ class _CloudState:
         uploads = [
             {
                 "client_file_id": item["client_file_id"],
-                "upload_method": "PUT",
                 "upload_url": f"{self.storage_url}/objects/{task_id}/{item['client_file_id']}?signature=0",
                 "upload_headers": {"Content-Type": "application/octet-stream", "X-Upload-Token": "storage-token"},
                 "expires_at": record["expires_at"],
@@ -682,7 +683,7 @@ class _CloudState:
             "status": status,
             "status_url": f"{self.gateway_url}/v1/tasks/{task_id}",
             "files": files,
-            "uploads": uploads,
+            "pending_uploads": uploads,
             "error": None,
             "output_formats": record["output_formats"],
         }

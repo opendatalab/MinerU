@@ -274,7 +274,6 @@ class RouterTaskBackend:
                 tier=selection_tier,
                 required_sources={"url" if item.url is not None else "upload"},
                 required_task_outputs=set(options.output_formats),
-                require_model_output=options.include_model_output,
                 require_flash=lightweight,
             )
             if not candidates:
@@ -287,7 +286,7 @@ class RouterTaskBackend:
             # 能力预检不预占名额，不推进轮询游标；认证沿用所选部署的服务认证。
             worker = candidates[0]
             if worker.worker_id not in checked_workers:
-                _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/files?limit=1", request=self.request))
+                _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/usage", request=self.request))
                 checked_workers.add(worker.worker_id)
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
@@ -368,7 +367,6 @@ class RouterTaskBackend:
             tier=tier,
             required_sources={"url" if item.url is not None else "upload" for item in inputs},
             required_task_outputs=set(options.output_formats),
-            require_model_output=options.include_model_output,
             require_flash=any(is_flash_only_parse_extension(item.file_name) for item in inputs),
         )
         if reservation is None:
@@ -398,7 +396,6 @@ class RouterTaskBackend:
                     "tier": options.tier,
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
-                    "include_model_output": options.include_model_output,
                 },
                 headers={"x-mineru-task-lease-seconds": "120"},
             )
@@ -421,9 +418,9 @@ class RouterTaskBackend:
                 payload={"job_id": task_id, "status": "queued", "files": []},
             )
             by_client_id = {item.client_file_id: index for index, item in enumerate(inputs)}
-            for link in payload["uploads"]:
+            for link in payload["pending_uploads"]:
                 index = by_client_id.get(link["client_file_id"])
-                if index not in uploads or link["upload_method"] != "PUT":
+                if index not in uploads:
                     _raise_api_error(
                         502, error_type="api_error", code="invalid_upstream_response", message="Unexpected worker upload"
                     )

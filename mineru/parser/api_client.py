@@ -117,7 +117,6 @@ class MinerUApiParser(DocumentParser):
         tier: Tier | None = None,
         ocr_mode: Literal["auto", "txt", "ocr"] | None = None,
         include_images: bool = False,
-        include_model_output: bool = False,
     ) -> None:
         """只保存显式配置，不在构造时联网或读取文件。"""
         if ocr_mode is not None and ocr_mode not in ("auto", "txt", "ocr"):
@@ -128,7 +127,6 @@ class MinerUApiParser(DocumentParser):
         self.tier = validate_tier(tier) if tier is not None else None
         self.ocr_mode = ocr_mode
         self.include_images = include_images
-        self.include_model_output = include_model_output
 
     def _headers(self) -> dict[str, str]:
         """生成仅用于 API 同源地址的认证头。"""
@@ -172,7 +170,6 @@ class MinerUApiParser(DocumentParser):
                 }
             ],
             "output_formats": ["default"],
-            "include_model_output": self.include_model_output,
         }
         if self.tier is not None:
             payload["tier"] = self.tier
@@ -190,7 +187,7 @@ class MinerUApiParser(DocumentParser):
             or not isinstance(task.get("status"), str)
             or task.get("status") not in _JOB_STATUSES
             or task.get("output_formats") != ["default"]
-            or task.get("include_model_output", False) != self.include_model_output
+            or not isinstance(task.get("pending_uploads"), list)
             or not isinstance(files, list)
             or len(files) != 1
             or not isinstance(files[0], dict)
@@ -253,9 +250,7 @@ class MinerUApiParser(DocumentParser):
             with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
                 target = Path(directory) / "result.zip"
                 self._download_task(cli, task, target)
-                return _parse_result_from_zip_bytes(
-                    target, include_images=self.include_images, include_model_output=self.include_model_output
-                )
+                return _parse_result_from_zip_bytes(target, include_images=self.include_images)
 
     def _query(self, cli: httpx.Client, task: dict[str, Any]) -> dict[str, Any]:
         """按服务返回的同源状态链接查询，保留元数据请求的有限重试。"""
@@ -281,9 +276,9 @@ class MinerUApiParser(DocumentParser):
         for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
             if task["files"][0].get("upload_status") != "pending":
                 return task
-            links = task.get("uploads", [])
+            links = task["pending_uploads"]
             link = next((item for item in links if isinstance(item, dict) and item.get("client_file_id") == "file"), None)
-            if not link or link.get("upload_method") != "PUT":
+            if not link:
                 raise _V1APIError("invalid_response", "Missing task upload link")
             url = self._resolve(link["upload_url"])
             headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
@@ -410,9 +405,7 @@ class MinerUApiParser(DocumentParser):
             with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
                 target = Path(directory) / "result.zip"
                 await self._async_download_task(cli, task, target)
-                return _parse_result_from_zip_bytes(
-                    target, include_images=self.include_images, include_model_output=self.include_model_output
-                )
+                return _parse_result_from_zip_bytes(target, include_images=self.include_images)
 
     async def _async_query(self, cli: httpx.AsyncClient, task: dict[str, Any]) -> dict[str, Any]:
         """按服务返回的同源状态链接查询，保留元数据请求的有限重试。"""
@@ -438,9 +431,9 @@ class MinerUApiParser(DocumentParser):
         for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
             if task["files"][0].get("upload_status") != "pending":
                 return task
-            links = task.get("uploads", [])
+            links = task["pending_uploads"]
             link = next((item for item in links if isinstance(item, dict) and item.get("client_file_id") == "file"), None)
-            if not link or link.get("upload_method") != "PUT":
+            if not link:
                 raise _V1APIError("invalid_response", "Missing task upload link")
             url = self._resolve(link["upload_url"])
             headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
@@ -785,41 +778,12 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _extract_model_output_from_archive(archive: zipfile.ZipFile) -> Any | None:
-    """从已打开的 zip 读取原始模型输出。"""
-    names = set(archive.namelist())
-    local_name = "model_output.json"
-    if local_name in names:
-        model_output_name = local_name
-    else:
-        legacy_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
-        if not legacy_names:
-            return None
-        if len(legacy_names) > 1:
-            available = ", ".join(legacy_names)
-            raise _V1APIError("invalid_model_output", f"ZIP output contained multiple model outputs: {available}")
-        model_output_name = legacy_names[0]
-
-    from ..types import ModelJson
-
-    raw = archive.read(model_output_name)
-    try:
-        model = ModelJson.from_json(raw)
-        from ..integrations.docvortex import validate_mineru_metadata
-
-        validate_mineru_metadata(model)
-        return model
-    except (ValueError, TypeError) as exc:
-        raise _V1APIError("invalid_model_output", f"Invalid Model JSON document: {exc}") from exc
-
-
 def _parse_result_from_zip_bytes(
     zip_bytes: bytes | Path,
     *,
     include_images: bool,
-    include_model_output: bool,
 ) -> ParseResult:
-    """解析自包含 zip 包：读取 middle_json、图片 sidecar 和可选 model_output。"""
+    """解析自包含 zip 包，只读取 Middle JSON 和图片素材。"""
     try:
         with zipfile.ZipFile(zip_bytes if isinstance(zip_bytes, Path) else io.BytesIO(zip_bytes)) as archive:
             mid_json = _read_middle_json_from_zip(archive)
@@ -827,12 +791,7 @@ def _parse_result_from_zip_bytes(
                 images = _read_image_sidecars_from_zip(archive, mid_json)
                 if images:
                     _inline_image_sidecars(mid_json, images)
-            result = _parse_result_from_middle_json(mid_json)
-            if include_model_output:
-                model_output = _extract_model_output_from_archive(archive)
-                if model_output is not None:
-                    result._model_output = model_output
-            return result
+            return _parse_result_from_middle_json(mid_json)
     except zipfile.BadZipFile as exc:
         raise _V1APIError("invalid_zip_output", "zip output is not a valid ZIP archive") from exc
     except ValueError as exc:

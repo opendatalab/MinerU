@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ...task_types import TaskOutputFormat
 
@@ -43,17 +43,16 @@ class GatewayError(Exception):
 class ParseOptions(BaseModel):
     """保持与 Tasks 一致的解析参数，等待时间不属于解析身份。"""
 
+    model_config = ConfigDict(extra="forbid")
+
     tier: Literal["flash", "basic", "standard", "advanced"] | None = None
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
-    include_model_output: bool = False
 
     @model_validator(mode="after")
     def normalize(self) -> ParseOptions:
         """按首次出现去重格式，并统一整本页范围的等价写法。"""
-        if self.include_model_output and "default" not in self.output_formats:
-            raise ValueError("include_model_output requires default output format")
         self.output_formats = list(dict.fromkeys(self.output_formats))
         self.page_range = self.page_range.strip()
         if self.page_range.lower() == "all":
@@ -76,7 +75,6 @@ class UploadLink(BaseModel):
 
     client_file_id: str
     upload_url: str
-    upload_method: Literal["PUT"]
     upload_headers: dict[str, str]
     expires_at: int
 
@@ -88,14 +86,14 @@ class RemoteTask(BaseModel):
     status: Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
     status_url: str = Field(min_length=1)
     files: list[RemoteFile] = Field(min_length=1, max_length=1)
-    uploads: list[UploadLink] = Field(default_factory=list, max_length=1)
+    pending_uploads: list[UploadLink] = Field(max_length=1)
     output_formats: list[TaskOutputFormat] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_file(self) -> RemoteTask:
         """确保返回的文件和链接仍对应本次唯一清单项。"""
         item = self.files[0]
-        if item.client_file_id != "file" or any(link.client_file_id != "file" for link in self.uploads):
+        if item.client_file_id != "file" or any(link.client_file_id != "file" for link in self.pending_uploads):
             raise ValueError("Unexpected client_file_id")
         if item.status == "completed" and not item.result_url:
             raise ValueError("Completed file has no result_url")
@@ -133,9 +131,6 @@ class Record:
 def fingerprint(filename: str, size: int, sha256sum: str, options: ParseOptions) -> str:
     """用文件内容、逻辑名称与归一化参数区分同 ID 的冲突提交。"""
     normalized = options.model_dump()
-    # 缺省关闭不改变此前已持久化请求的身份；显式启用才引入新的结果选项。
-    if not normalized["include_model_output"]:
-        normalized.pop("include_model_output")
     value = {"filename": filename, "size": size, "sha256sum": sha256sum, "options": normalized}
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 

@@ -72,7 +72,6 @@ def test_api_parser_serializes_request_ocr_mode(
         ],
         "tier": "flash",
         "output_formats": ["default"],
-        "include_model_output": False,
     }
     if ocr_mode is not None:
         expected["ocr_mode"] = ocr_mode

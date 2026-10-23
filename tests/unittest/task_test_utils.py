@@ -28,9 +28,9 @@ def execution_output(store: FileStore, record: _JobRecord, name: str) -> bytes:
 
 
 def build_default_zip(result: ParseResult) -> bytes:
-    """使用真实 Tasks 产物构建器，保留可用原始模型输出。"""
+    """使用真实 Tasks 产物构建器，保存 Middle JSON 和图片素材。"""
     with tempfile.TemporaryDirectory() as directory:
-        return build_task_output(result, ["default"], Path(directory), include_model_output=True).read_bytes()
+        return build_task_output(result, ["default"], Path(directory)).read_bytes()
 
 
 def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any]:
@@ -52,7 +52,7 @@ def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any
     )
     assert response.status_code == 202, response.text
     task = response.json()
-    for link in task["uploads"]:
+    for link in task["pending_uploads"]:
         response = client.put(link["upload_url"], content=data, headers=link["upload_headers"])
         assert response.status_code < 400, response.text
     return task

@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 import click
 import httpx
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi_offline import FastAPIOffline
@@ -235,7 +235,6 @@ class HealthFeatures(BaseModel):
     webhook: bool = False
     task_output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: list(TASK_OUTPUT_FORMATS))
     sources: list[Literal["upload", "url"]] = Field(default_factory=lambda: ["upload", "url"])
-    task_model_output: bool = True
 
 
 class HealthResponse(BaseModel):
@@ -320,15 +319,6 @@ class FileDeletionResponse(BaseModel):
     deleted: bool = True
 
 
-class FileListResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    object: Literal["list"] = "list"
-    data: list[FileObjectModel]
-    first_id: str | None = None
-    last_id: str | None = None
-    has_more: bool = False
-
-
 # ── Job sources ──────────────────────────────────────────────────────
 
 
@@ -366,7 +356,6 @@ class _ParseRequest(BaseModel):
         default="auto", description="OCR mode for this parse job: auto-detect, native text, or forced OCR."
     )
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"])
-    include_model_output: bool = False
 
 
 # ── Job responses ────────────────────────────────────────────────────
@@ -381,7 +370,6 @@ class TaskProgress(BaseModel):
 
 class FileParseInfo(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    model_used: str | None = None
     duration_ms: int | None = None
     parser_version: str | None = None
 
@@ -739,38 +727,6 @@ class FileStore:
                 )
             del self._files[file_id]
 
-    def list_files(
-        self,
-        *,
-        after: str | None,
-        limit: int,
-        order: str,
-        purpose: FilePurpose | None,
-    ) -> FileListResponse:
-        with self._lock:
-            now = int(time.time())
-            recs = [rec for rec in self._files.values() if rec.expires_at is None or rec.expires_at > now]
-            # filter
-            if purpose is not None:
-                recs = [r for r in recs if r.purpose == purpose]
-            # sort by created_at
-            reverse = order == "desc"
-            recs.sort(key=lambda r: r.created_at, reverse=reverse)
-            # cursor
-            start = 0
-            if after is not None:
-                for i, r in enumerate(recs):
-                    if r.id == after:
-                        start = i + 1
-                        break
-            page = recs[start : start + limit]
-            return FileListResponse(
-                data=[self._make_file_object(r) for r in page],
-                first_id=page[0].id if page else None,
-                last_id=page[-1].id if page else None,
-                has_more=(start + limit) < len(recs),
-            )
-
     # ── defaults → app state ─────────────────────────────────────────
 
     def install(self, app_state: State) -> None:
@@ -868,7 +824,6 @@ class _JobRecord:
     usage_counted: bool = False
     task_result_file_id: str | None = None
     task_output_formats: list[TaskOutputFormat] = field(default_factory=lambda: ["default"])
-    include_model_output: bool = False
     retention_held: bool = False
     retention_epoch: float | None = None
 
@@ -1019,7 +974,6 @@ class JobStore:
             created_at=now,
             tier=req.tier,
             task_output_formats=req.output_formats,
-            include_model_output=req.include_model_output,
             input_specs=dict(input_specs or {}),
         )
         for index, entry in enumerate(req.files):
@@ -1342,7 +1296,6 @@ async def _run_job(
                         result,
                         rec.task_output_formats,
                         pathlib.Path(tmpdir) / f"outputs_{i}",
-                        include_model_output=rec.include_model_output,
                     )
                     if rec.status in {"canceled", "failed"}:
                         break
@@ -1359,7 +1312,6 @@ async def _run_job(
                 fr.page_range = _page_range_from_result_pages(result.pages)
 
                 fr.parse = FileParseInfo(
-                    model_used=None,
                     duration_ms=int((time.monotonic() - file_started) * 1000),
                     parser_version=__version__,
                 )
@@ -1534,23 +1486,6 @@ async def list_tiers(request: Request) -> TierListResponse:
 
 
 # ── Files ────────────────────────────────────────────────────────────
-
-
-@_router.get(
-    "/files",
-    response_model=FileListResponse,
-    status_code=status.HTTP_200_OK,
-    tags=["Files"],
-)
-async def list_files(
-    after: str | None = Query(default=None, description="Cursor: last_id from previous page"),
-    limit: int = Query(default=100, ge=1, le=1000),
-    order: Literal["asc", "desc"] = Query(default="desc"),
-    purpose: FilePurpose | None = Query(default=None),
-    store: FileStore = Depends(_get_store),
-) -> FileListResponse:
-    """List files for the current tenant."""
-    return store.list_files(after=after, limit=limit, order=order, purpose=purpose)
 
 
 @_router.get(

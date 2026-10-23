@@ -19,7 +19,7 @@ from mineru.parser import api_client
 from mineru.parser.task_api import CreateTaskRequest
 from mineru.parser.task_outputs import build_task_output
 from mineru.parser.base import ParseResult
-from mineru.types import MiddleJson, ModelJson, PageInfo
+from mineru.types import MiddleJson, PageInfo
 from mineru.integrations.docvortex import build_metadata
 from docvortex.schema import Producer
 
@@ -49,7 +49,6 @@ def task_snapshot(status: str = "completed", *, upload: bool = False) -> dict[st
         "status_url": "https://api.test/v1/tasks/task-one",
         "status": status,
         "output_formats": ["default"],
-        "include_model_output": False,
         "files": [
             {
                 "client_file_id": "file",
@@ -59,11 +58,10 @@ def task_snapshot(status: str = "completed", *, upload: bool = False) -> dict[st
                 "result_url": "https://storage.test/result?signature=original" if status == "completed" else None,
             }
         ],
-        "uploads": (
+        "pending_uploads": (
             [
                 {
                     "client_file_id": "file",
-                    "upload_method": "PUT",
                     "upload_url": "https://storage.test/input",
                     "upload_headers": {},
                     "expires_at": 9999999999,
@@ -208,7 +206,7 @@ def test_tasks_sdk_transport_recovery(
         ("task_id", "other"),
         ("status_url", "https://evil.test/metadata"),
         ("output_formats", ["html"]),
-        ("include_model_output", True),
+        ("pending_uploads", None),
     ],
 )
 def test_tasks_sdk_rejects_changed_identity(
@@ -244,36 +242,30 @@ def test_tasks_sdk_preserves_file_errors(
         parse(MinerUApiParser(api_url="https://api.test"), source, asynchronous)
 
 
-@pytest.mark.parametrize("include", [False, True])
-@pytest.mark.parametrize("has_model", [False, True])
-def test_task_model_output_contract(tmp_path: Path, include: bool, has_model: bool) -> None:
-    """模型输出显式启用且真实存在时才写入，默认包不变。"""
-    model = (
-        ModelJson(
-            pages=[[{"raw": "model"}]],
-            page_index_map=[0],
-            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="4.0")},
-            extensions=build_metadata(effort="flash", parse_mode="txt"),
-        )
-        if has_model
-        else None
-    )
-    result = ParseResult(middle_json=middle(), _model_output=model)
-    output = build_task_output(result, ["default"], tmp_path, include_model_output=include)
-    restored = api_client._parse_result_from_zip_bytes(output, include_images=True, include_model_output=include)
-    assert (restored._model_output is not None) == (include and has_model)
-    with zipfile.ZipFile(output) as archive:
-        assert ("model_output.json" in archive.namelist()) == (include and has_model)
+def test_task_output_preserves_middle_without_model_output(tmp_path: Path) -> None:
+    """本地保存和远端 ZIP 往返均只交付语义结果，不暴露内部模型数据。"""
+    from mineru.kit.common import save_parse_result
+
+    result = ParseResult(middle_json=middle())
+    output = build_task_output(result, ["default"], tmp_path / "api")
+    restored = api_client._parse_result_from_zip_bytes(output, include_images=True)
+    assert restored.middle_json == result.middle_json
+    assert not hasattr(result, "_model_output") and not hasattr(restored, "_model_output")
+    local_output = tmp_path / "local.zip"
+    save_parse_result(result, local_output, "zip")
+    for target in (output, local_output):
+        with zipfile.ZipFile(target) as archive:
+            assert {"middle_json.json", "markdown.md", "structured_content.json"}.issubset(archive.namelist())
+            assert "model_output.json" not in archive.namelist()
 
 
-def test_task_model_output_requires_default() -> None:
-    """不把原本单文件的 HTML/DOCX 请求隐式改成 ZIP。"""
-    with pytest.raises(ValueError, match="requires default"):
-        CreateTaskRequest(
-            files=[{"client_file_id": "file", "file_name": "a.pdf", "bytes": 1}],
-            output_formats=["html"],
-            include_model_output=True,
-        )
+@pytest.mark.parametrize("enabled", [False, True])
+def test_removed_model_output_option_is_rejected_by_sdk_and_schema(enabled: bool) -> None:
+    """SDK 构造和任务请求模型都拒绝已删除选项，不提供旧调用兼容。"""
+    with pytest.raises(TypeError, match="include_model_output"):
+        MinerUApiParser(include_model_output=enabled)
+    with pytest.raises(ValueError, match="include_model_output"):
+        CreateTaskRequest(files=[{"file_name": "a.pdf", "bytes": 1}], include_model_output=enabled)
     assert ApiJobStatus is ApiTaskStatus
 
 
@@ -332,22 +324,20 @@ def test_tasks_sdk_rejects_malformed_creation(
     assert len(calls) == 1
 
 
-def test_task_model_output_changes_wrapper_identity() -> None:
-    """同步包装服务区分模型输出选项，不能复用另一种结果的 request_id。"""
+def test_file_parse_identity_uses_only_current_options() -> None:
+    """恢复身份由当前有效参数计算，已删除选项在模型入口明确拒绝。"""
     from mineru.kit.file_parse.models import ParseOptions, fingerprint
 
-    ordinary = ParseOptions()
-    with_model = ParseOptions(include_model_output=True)
-    assert ordinary.model_dump()["include_model_output"] is False
-    prior_options = ordinary.model_dump(exclude={"include_model_output"})
-    prior_value = {"filename": "a.pdf", "size": 3, "sha256sum": "a" * 64, "options": prior_options}
+    options = ParseOptions()
+    assert "include_model_output" not in options.model_dump()
+    identity = {"filename": "a.pdf", "size": 3, "sha256sum": "a" * 64, "options": options.model_dump()}
     assert (
-        fingerprint("a.pdf", 3, "a" * 64, ordinary)
-        == hashlib.sha256(json.dumps(prior_value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        fingerprint("a.pdf", 3, "a" * 64, options)
+        == hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     )
-    assert fingerprint("a.pdf", 3, "a" * 64, ordinary) != fingerprint("a.pdf", 3, "a" * 64, with_model)
-    with pytest.raises(ValueError, match="requires default"):
-        ParseOptions(output_formats=["docx"], include_model_output=True)
+    for enabled in (False, True):
+        with pytest.raises(ValueError, match="include_model_output"):
+            ParseOptions(include_model_output=enabled)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
