@@ -59,6 +59,9 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 
 JSON、逐文件上传、独立结果链接与 Router 负载规则见 [V1 tasks](tasks.md)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
 
+各接口的成功状态码、Content-Type 和返回对象见 [响应总览](responses.md#成功响应)。
+创建、查询、取消及本地上传均返回完整的 [TaskStatusResponse](tasks.md#taskstatusresponse)；列表返回分页摘要，Files 下载返回二进制附件。
+
 需要单文件直传和同步附件响应时，可另外启动 [file_parse 包装服务](file-parse.md)，它提供自己的 `/v1/file_parse`、查询和下载接口，并通过上面的 Tasks 协议连接任意部署。
 
 ## 认证
@@ -79,7 +82,7 @@ Local Parse Server 默认监听 loopback 且不启用鉴权。启用 `--api-key`
 - 错误响应使用 OpenAI-compatible envelope，详见 [响应与错误](responses.md)。
 - 资源级接口及 `POST /v1/tasks` 使用 JSON，上传字节使用返回链接要求的内容类型。
 - 时间字段按 endpoint 语义选择 ISO-8601 UTC 字符串或 Unix 秒级时间戳。
-- 成功和失败响应都应携带 `X-Request-Id`。
+- 请求追踪属于部署扩展；当前 Python API Server 和 Router 不统一提供 `X-Request-Id`，详见 [请求追踪](responses.md#请求追踪)。
 - `Idempotency-Key` 支持属于部署能力；当前自部署 tasks 不提供创建请求幂等重试保证，恢复操作应使用原 `task_id`。
 - 未知响应字段必须被客户端忽略，以支持服务端向后兼容扩展。
 - 请求中的可选字段可以省略；省略时按该字段默认值处理。

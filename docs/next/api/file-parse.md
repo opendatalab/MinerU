@@ -44,58 +44,261 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 curl --max-time 7200 -D response.headers -o response.body \
   http://127.0.0.1:8003/v1/file_parse \
   -F 'file=@report.pdf' \
-  -F 'request_id=report-20261022-001' \
+  -F 'request_id=report-20261023-001' \
   -F 'tier=flash' -F 'ocr_mode=txt' \
   -F 'output_formats=default' -F 'output_formats=docx'
 ```
 
 `output_formats` 的列表语义与 [Tasks](tasks.md) 一致；multipart 中不使用 JSON 字符串或逗号分隔字符串。
 
-| 选择 | HTTP 成功附件 |
-|---|---|
-| 单选 `default` | ZIP，包含 Markdown、中间协议、Structured Content、外置图片。 |
-| 单选 `docx` | 图片内嵌的 DOCX。 |
-| 单选 `html` | 图片内嵌的 HTML。 |
-| 单选 `latex` | ZIP，包含 TeX 和外置图片。 |
-| 多个不同格式 | 上游生成的单个 ZIP。 |
+## 响应结构与格式
 
-成功返回 `200`、正确的 Content-Type 和 `Content-Disposition: attachment`，文件名为 `<输入文件主名>.<扩展名>`，并携带 `X-Request-ID`、`X-Task-ID`。包装服务原样返回验证过的上游产物，不重新渲染或打包。
+以下三个接口均属于独立 file_parse 包装服务。它们的 JSON 状态对象是下文的 `StatusResponse`，不是 Tasks 的 `TaskStatusResponse`。
+
+| 接口 | HTTP | Content-Type | 正文格式 |
+|---|---|---|---|
+| `POST /v1/file_parse`，同步等待成功 | 200 | 随输出格式 | ZIP、DOCX 或 HTML 附件字节。 |
+| `POST /v1/file_parse`，等待到期或 `wait_timeout=0` | 202 | `application/json` | 完整 `StatusResponse`，保存 `status_url` 后继续查询。 |
+| `GET /v1/file_parse/{request_id}`，查询成功 | 200 | `application/json` | 完整 `StatusResponse`，即使已知任务状态为失败、取消或提交结果未知。 |
+| `GET /v1/file_parse/{request_id}/result`，下载成功 | 200 | 随输出格式 | 与同步成功时相同的附件字节。 |
+| 上述接口的已知业务、存储或上游调用错误 | 4xx / 5xx | `application/json` | 包装服务错误对象；已有恢复记录时同时携带状态字段。 |
+
+JSON 正文使用 UTF-8；可空字段输出 `null`，不以省略字段代替。下列示例的 ID、地址为示意值。
+
+### POST /v1/file_parse：200 附件响应
+
+成功时直接返回文件内容，不包含 JSON 外层包装，也不把文件编码为 Base64。
+文件名为 `<输入文件主名>.<产物扩展名>`，例如输入 `report.pdf`：
+
+| `output_formats` | 下载文件名 | Content-Type | 文件内容 |
+|---|---|---|---|
+| `["default"]` | `report.zip` | `application/zip` | `markdown.md`、`middle_json.json`、`structured_content.json`、`images/`；显式启用后附加可用 `model_output.json`。 |
+| `["docx"]` | `report.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | 图片内嵌的 DOCX。 |
+| `["html"]` | `report.html` | `text/html; charset=utf-8` | 图片内嵌的 UTF-8 HTML。 |
+| `["latex"]` | `report.zip` | `application/zip` | `document.tex`、`images/`。 |
+| 多个不同格式 | `report.zip` | `application/zip` | 各格式平铺在一个 ZIP 中，不嵌套 ZIP；DOCX/HTML 成员为 `document.docx`、`document.html`。 |
+
+包装服务原样返回验证过的上游产物，不重新渲染或打包。完整成员规则、图片及公式行为沿用 [Tasks 输出格式](tasks.md#输出格式与下载)。
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/zip
+Content-Disposition: attachment; filename="report.zip"
+X-Request-ID: report-20261023-001
+X-Task-ID: job_0123456789abcdef01234567
+
+<ZIP 文件二进制内容>
+```
+
+| 响应头 | 类型 | 返回条件及含义 |
+|---|---|---|
+| `Content-Type` | string | 成功附件的 MIME 类型，按上表确定。 |
+| `Content-Disposition` | string | `attachment` 及建议文件名；非 ASCII 文件名可能使用标准的 `filename*` 编码。 |
+| `X-Request-ID` | string | 成功附件必带，值为包装服务的请求 ID。 |
+| `X-Task-ID` | string | 成功附件必带，值为已确认的上游 Tasks ID。 |
+
+### StatusResponse：查询与 202 的完整 JSON 对象
+
+以下七个顶层字段均会出现。状态对象不返回 Tasks 的 `files/uploads/progress`，不暴露上游上传链接或签名下载地址。
+
+| 字段 | JSON 类型 | 可为 null | 含义 |
+|---|---|---|---|
+| `request_id` | string | 否 | 包装服务的恢复标识，来自请求或自动生成。 |
+| `task_id` | string | 是 | 已确认的上游父任务 ID；尚未获得有效创建响应时为 `null`。 |
+| `status` | string | 否 | 包装服务保存的单文件状态，具体取值见下表。 |
+| `status_url` | string | 否 | 包装服务自身的完整状态查询 URL。 |
+| `result_url` | string | 是 | `completed` 时指向包装服务自身的 `/v1/file_parse/{request_id}/result`，其他状态为 `null`。 |
+| `output_formats` | array of string | 否 | 按首次出现去重后的输出格式。 |
+| `error` | object | 是 | 保存的最近错误或上游逐文件错误；无错误时为 `null`，具体字段见“错误响应”。 |
+
+| `status` | 含义 |
+|---|---|
+| `prepared` | 本地源文件和恢复记录已持久化，尚未开始提交。 |
+| `submitting` | 正在向上游创建任务，尚无确认后的 `task_id`。 |
+| `waiting_upload` | 上游源文件尚未确认就绪。 |
+| `queued` | 已进入上游执行队列。 |
+| `running` | 上游正在解析或导出。 |
+| `completed` | 上游完整产物已生成，可通过包装服务下载。 |
+| `failed` | 已知失败，读取 `error`。 |
+| `canceled` | 上游单文件任务已被取消。 |
+| `submission_unknown` | 创建请求可能已被上游接受，但包装服务没有获得有效任务 ID，不自动重放创建请求。 |
+
+包装服务仅处理一个输入，不使用父 Tasks 的 `partial` 聚合状态。`completed` 表示上游产物已就绪；实际下载仍可能因结果过期或传输失败返回错误。
+
+### POST /v1/file_parse：202 JSON 响应
+
+等待预算耗尽时，返回 `202 Accepted` 和完整 `StatusResponse`。这表示上游继续执行，不是解析失败。
+`wait_timeout=0` 在源文件确认就绪后直接返回 `202`；即使任务已经完成，也返回 JSON，此时 `status` 可以是 `completed`，`result_url` 已非空。
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+Location: http://127.0.0.1:8003/v1/file_parse/report-20261023-001
+Retry-After: 2
+X-Request-ID: report-20261023-001
+X-Task-ID: job_0123456789abcdef01234567
+```
+
+| 响应头 | 返回条件及含义 |
+|---|---|
+| `Location` | 202 必带，与正文 `status_url` 相同。 |
+| `Retry-After` | 202 必带，当前值为字符串 `2`，单位为秒，提示查询间隔。 |
+| `X-Request-ID` | 202 必带，与正文 `request_id` 相同。 |
+| `X-Task-ID` | 已确认上游任务 ID 时携带，与正文 `task_id` 相同。 |
+
+完整 JSON 正文示例：
+
+```json
+{
+  "request_id": "report-20261023-001",
+  "task_id": "job_0123456789abcdef01234567",
+  "status": "running",
+  "status_url": "http://127.0.0.1:8003/v1/file_parse/report-20261023-001",
+  "result_url": null,
+  "output_formats": [
+    "default"
+  ],
+  "error": null
+}
+```
+
+### GET /v1/file_parse/{request_id}：200 状态查询
+
+查询已有记录且上游状态刷新成功时，返回 `200 OK`、`Content-Type: application/json` 和完整 `StatusResponse`。
+返回值可以是 `running`，也可以是 `completed/failed/canceled/submission_unknown`；HTTP `200` 不表示解析成功。
+当前状态查询不统一附加 `X-Request-ID/X-Task-ID`，从 JSON 字段读取这两个标识。
+
+```json
+{
+  "request_id": "report-20261023-001",
+  "task_id": "job_0123456789abcdef01234567",
+  "status": "completed",
+  "status_url": "http://127.0.0.1:8003/v1/file_parse/report-20261023-001",
+  "result_url": "http://127.0.0.1:8003/v1/file_parse/report-20261023-001/result",
+  "output_formats": [
+    "default"
+  ],
+  "error": null
+}
+```
+
+若刷新上游时本次调用失败，则返回非 2xx 错误 JSON；原任务仍可能存在并继续执行，使用相同 `request_id` 继续查询。
+
+### GET /v1/file_parse/{request_id}/result：200 附件下载
+
+成功响应的二进制格式、MIME、命名及 `X-Request-ID/X-Task-ID` 与同步 POST 的 200 附件相同。
+调用者不需要上游 API Key。每次下载先查询原任务并获取当前下载链接；结果未就绪返回 `409 result_not_ready`，没有已确认上游任务时也可能返回 `409 task_not_created`。
+下载中断可以再次 GET。签名失效时重新查询原任务，最多尝试 3 次；上游结果已过期且无法恢复时返回错误，不自动重新解析。
+
+## 错误响应
+
+file_parse 使用自己的错误结构，不能按主 Tasks 接口的 `ErrorDetail` 要求 `type/param` 必带。
+包装层直接返回的 `error` 包含以下三个字段，JSON 值中的 `upstream_status` 不省略：
+
+| 字段 | JSON 类型 | 可为 null | 含义 |
+|---|---|---|---|
+| `error.code` | string | 否 | 包装层错误码或保留的上游错误码。 |
+| `error.message` | string | 否 | 错误说明。 |
+| `error.upstream_status` | integer | 是 | 已知上游 HTTP 错误状态码；本地错误、网络异常或通过任务状态得知的解析失败可以为 `null`。 |
+
+### 没有恢复记录时
+
+只返回顶层 `error`，没有 `request_id/task_id/status_url` 等状态字段。例如提交 JSON 而不是 multipart：
+
+```http
+HTTP/1.1 415 Unsupported Media Type
+Content-Type: application/json
+```
+
+```json
+{
+  "error": {
+    "code": "unsupported_media_type",
+    "message": "Expected multipart/form-data",
+    "upstream_status": null
+  }
+}
+```
+
+### 已有恢复记录时
+
+返回完整 `StatusResponse` 的七个顶层字段，但用本次操作的错误覆盖正文 `error`。`status` 仍表示该记录当前状态，不会因为本次 HTTP 失败就统一改成 `failed`。
+例如查询尚未完成的结果，HTTP 为 `409 Conflict`，任务仍为 `running`：
+
+```json
+{
+  "request_id": "report-20261023-001",
+  "task_id": "job_0123456789abcdef01234567",
+  "status": "running",
+  "status_url": "http://127.0.0.1:8003/v1/file_parse/report-20261023-001",
+  "result_url": null,
+  "output_formats": [
+    "default"
+  ],
+  "error": {
+    "code": "result_not_ready",
+    "message": "The result is not ready",
+    "upstream_status": null
+  }
+}
+```
+
+当前错误响应不保证附加 `X-Request-ID/X-Task-ID` 或 `Location`，恢复信息从 JSON 正文读取。只取得了客户端预先指定的 ID、但没有对应恢复记录时，仍使用前一种仅含 `error` 的结构。
+
+状态查询成功响应中的 `error` 是持久化的错误快照：它可能是上述三字段结构并额外含 `http_status`，也可能保留上游逐文件错误的 `type/code/message/param` 或其他字段。
+其中 `http_status` 是包装层保存的错误响应状态，不是 `upstream_status`；客户端应容忍错误对象的扩展字段。
+例如创建结果未知后，状态查询仍可返回 `200 OK` 和以下完整状态，不自动再次创建任务：
+
+```json
+{
+  "request_id": "report-20261023-001",
+  "task_id": null,
+  "status": "submission_unknown",
+  "status_url": "http://127.0.0.1:8003/v1/file_parse/report-20261023-001",
+  "result_url": null,
+  "output_formats": [
+    "default"
+  ],
+  "error": {
+    "code": "submission_unknown",
+    "message": "Task creation outcome is unknown; not resubmitting",
+    "upstream_status": null,
+    "http_status": 502
+  }
+}
+```
+
+### 常见错误状态码
+
+| HTTP | 常见 code | 含义 |
+|---|---|---|
+| 400 | `invalid_request`、`upload_interrupted` | 参数、多文件、空文件等校验失败，或完整接受前上传中断。 |
+| 404 | `request_not_found` | 包装服务中没有记录，或恢复记录已过保留期。 |
+| 408 | `upload_receive_timeout` | 接收入站请求体时发生传输空闲超时。 |
+| 409 | `request_id_conflict`、`result_not_ready`、`task_not_created` 或取消错误码 | ID 对应不同请求、结果未就绪、尚无确认任务或上游已取消。 |
+| 410 | `upload_expired` | 包装层确认上游上传窗口已经过期。 |
+| 415 | `unsupported_media_type` | POST 不是 `multipart/form-data`。 |
+| 500 | `storage_error` | 包装服务保存源文件、结果或访问本地存储失败。 |
+| 502 | `submission_unknown`、`upstream_unreachable`、`upstream_protocol_error`、`invalid_result`、下载错误码或上游错误码 | 上游创建、查询、传输或解析失败，或结果校验失败。 |
+
+上游认证失败以包装层的 `502` 返回，例如 `error.code="invalid_api_key"`、`error.upstream_status=401`；包装入口本身没有 API Key 认证，不把上游配置错误伪报为入口鉴权失败。
+`submission_unknown` 首次创建失败通常返回 `502`；后续请求仍可能得到 `409/502`，应查询原恢复记录，不自动重放创建。
+
+## 等待、超时与断连后查询
 
 每次调用在确认上游文件就绪后开始计时，等待包含排队、解析与导出。接收文件、上游上传和结果下载不占此预算，独立使用传输空闲超时。缓存命中跳过上传。
 
 - 正常轮询间隔为 2 秒。
 - 连接、元数据请求、传输空闲超时分别为 10、30、600 秒。
-- `wait_timeout=0` 在文件就绪后直接返回 `202` 查询信息；即使已经完成也不下载附件。
-- 等待到期返回 `202` JSON 和 `Location: <status_url>`，上游继续执行。
 - HTTP 客户端和反向代理的读取超时应覆盖上传、同步等待和结果传输；例如客户端配置 7200 秒，代理按业务文件大小配置相应超时。
 
-## 超时与断连后查询
-
-```json
-{
-  "request_id": "report-20261022-001",
-  "task_id": "task_example",
-  "status": "running",
-  "status_url": "http://127.0.0.1:8003/v1/file_parse/report-20261022-001",
-  "result_url": null,
-  "output_formats": ["default", "docx"],
-  "error": null
-}
-```
-
-`GET /v1/file_parse/{request_id}` 查询状态，完成后 `result_url` 指向包装服务自己的 `/v1/file_parse/{request_id}/result`。调用者不需要上游密钥。
-
 ```bash
-curl http://127.0.0.1:8003/v1/file_parse/report-20261022-001
+curl http://127.0.0.1:8003/v1/file_parse/report-20261023-001
 curl --fail-with-body -o report.zip \
-  http://127.0.0.1:8003/v1/file_parse/report-20261022-001/result
+  http://127.0.0.1:8003/v1/file_parse/report-20261023-001/result
 ```
 
-结果未就绪时下载接口返回 `409 result_not_ready`。下载中断可以再次 GET；每次会查询最新下载链接。签名失效时重新查询原任务，最多尝试 3 次；上传失败同样先查询状态，确认已上传成功便不重传。
-
-状态包括接收完成后的 `prepared/submitting`，以及单文件 Tasks 的 `waiting_upload/queued/running/completed/failed/canceled`。`submission_unknown` 表示创建请求可能已被上游接受，但包装服务没有获得有效任务 ID：不会自动重放创建请求，不能承诺找回这个不确定窗口内的任务。
-
-错误响应使用 `error.code/message/upstream_status`。已接受请求的错误还包含请求 ID 和查询地址。参数错误返回 `400`，内容类型错误返回 `415`，ID 冲突或结果未就绪返回 `409`，记录不存在或已过保留期返回 `404`；上游调用或解析失败通常返回 `502` 并保留上游错误码。等待预算耗尽返回 `202`，不是解析失败。
+完整接收后的客户端断连不取消已托管的上传或解析。上传失败先查询状态，确认已经就绪便不重传；若保留的源文件仍可用，使用相同请求 ID 和相同输入可继续原任务。
 
 ## 去重与持久化边界
 
@@ -113,10 +316,10 @@ curl --fail-with-body -o report.zip \
 
 ```bash
 python scripts/http_file_parse_example.py report.pdf --output results/report.docx \
-  --output-format docx --request-id report-20261022-002
+  --output-format docx --request-id report-20261023-002
 
 python scripts/http_file_parse_example.py report.pdf --wait-timeout 0 \
-  --request-id report-20261022-003
+  --request-id report-20261023-003
 ```
 
 后续查询和下载仍使用上面的包装接口，不需要安装 MinerU SDK 或重建 `ParseResult`。
