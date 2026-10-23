@@ -31,7 +31,7 @@ from .status import (
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_ON_SERVER,
     STATUS_SUBMITTING_TASK,
-    STATUS_UPLOADING_FILE,
+    STATUS_PREPARING_FILE,
     ParseStatusUpdate,
 )
 
@@ -215,8 +215,8 @@ class V1ArtifactClient:
         def on_job_status(status: ApiTaskStatus) -> None:
             """将真实 V1 状态映射到卡片阶段，服务端完成仅代表开始下载。"""
             messages: dict[ApiTaskStatus, str] = {
-                "waiting_upload": STATUS_UPLOADING_FILE,
-                "queued": STATUS_QUEUED_ON_SERVER,
+                "waiting-file": STATUS_PREPARING_FILE,
+                "pending": STATUS_QUEUED_ON_SERVER,
                 "running": STATUS_PROCESSING_ON_SERVER,
                 "completed": STATUS_DOWNLOADING_RESULT,
                 "partial": STATUS_DOWNLOADING_RESULT,

@@ -103,11 +103,11 @@ Gradio 转换事件保留 `raw_page_range` 字符串接口，仍接受 V1 `page_
 
 Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser` 提交 hash 清单到 `/v1/tasks`、按需上传、轮询父任务并下载逐文件默认 ZIP 结果。解析结果保存为严格 Middle JSON 2.0。
 
-左下角使用与 3.4.5 一致的两列步骤卡片，展示准备请求、检查服务、提交任务、排队、解析中、下载结果、整理输出和完成。排队状态来自本地任务槽或 V1 的 `queued` 响应，圆点每秒循环更新；不显示前方任务数。每个界面服务仍一次执行一个转换，等待中的会话也会立即显示排队动画。
+左下角使用与 3.4.5 一致的两列步骤卡片，展示准备请求、检查服务、提交任务、排队、解析中、下载结果、整理输出和完成。文件准备状态来自 V1 的 `waiting-file` 响应；排队状态来自本地任务槽或 V1 的 `pending` 响应，圆点每秒循环更新；不显示前方任务数。每个界面服务仍一次执行一个转换，等待中的会话也会立即显示排队动画。
 
 收到 V1 的 `running` 后开始解析计时，由浏览器本地刷新；收到任务终态时冻结。API 路径的最终完成文案优先使用响应中已有的 `files[0].parse.duration_ms`，包含服务端解析和结果导出/打包，不包含排队、客户端下载和 WebUI 整理输出，因此即使轮询跳过 `running` 也能显示亚秒耗时。HF 等直接调用解析函数的适配层继续使用实际阶段通知之间的计时；缺少 API 耗时字段时也保留这种计时回退。完成数值按两位小数四舍五入，最低显示 `0.01 秒`。两种路径均不承诺该值等同于日志中的纯 `infer` 耗时。界面动画不增加 API 请求，任务轮询仍为每秒一次。清除或更换文件会停止当前会话的状态流并释放本地等待位置，不向 V1 发送远端取消请求。
 
-`MinerUApiParser.parse()` 和 `parse_async()` 提供可选的 `status_callback` 参数，接收公开的 `ApiTaskStatus`（`waiting_upload`、`queued`、`running`、`completed`、`partial`、`failed`、`canceled`）。回调在任务提交响应及每次轮询响应后同步调用；回调异常只记录日志。这里的 `completed` 表示服务端任务完成，解析方法仍需下载并构造 `ParseResult` 后才返回。可选的 `duration_callback` 在最终成功响应之后、开始下载之前接收既有文件耗时（浮点毫秒）；缺失或非法耗时不触发回调，回调异常不影响解析结果。该值属于本次调用，不存放在共享 parser 实例或 `ParseResult` 中。
+`MinerUApiParser.parse()` 和 `parse_async()` 提供可选的 `status_callback` 参数，接收公开的 `ApiTaskStatus`（`waiting-file`、`pending`、`running`、`completed`、`partial`、`failed`、`canceled`）。回调在任务提交响应及每次轮询响应后同步调用；回调异常只记录日志。这里的 `completed` 表示服务端任务完成，解析方法仍需下载并构造 `ParseResult` 后才返回。可选的 `duration_callback` 在最终成功响应之后、开始下载之前接收既有文件耗时（浮点毫秒）；缺失或非法耗时不触发回调，回调异常不影响解析结果。该值属于本次调用，不存放在共享 parser 实例或 `ParseResult` 中。
 
 ## 结果与下载
 
@@ -145,4 +145,4 @@ PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用
 
 `mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
 
-Gradio 使用 Tasks 能力发现和 `pending_uploads`，固定使用 PUT 上传；仅保存 Middle JSON 和素材，下载菜单从保存的 Middle JSON 按需导出。
+Gradio 使用 Tasks 能力发现和逐文件 `upload` 描述，固定使用 PUT 上传；仅保存 Middle JSON 和素材，下载菜单从保存的 Middle JSON 按需导出。

@@ -9,10 +9,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ...task_types import TaskOutputFormat
+from ...task_types import TaskFileState, TaskOutputFormat, TaskStatus, task_status_url
 
 TERMINAL = frozenset({"completed", "failed", "canceled", "submission_unknown"})
-FileStatus = Literal["waiting_upload", "queued", "running", "completed", "failed", "canceled"]
+FileStatus = TaskFileState
 
 
 class GatewayError(Exception):
@@ -60,41 +60,43 @@ class ParseOptions(BaseModel):
         return self
 
 
+class UploadLink(BaseModel):
+    """保留文件内嵌上传地址、请求头和固定截止时间。"""
+
+    url: str
+    headers: dict[str, str]
+    expires_at: int
+
+
 class RemoteFile(BaseModel):
     """仅消费共同 Tasks 契约，不依赖本地 Files 或 Job 实现。"""
 
     client_file_id: str
+    file_name: str
+    bytes: int
     status: FileStatus
-    upload_status: Literal["pending", "ready", "not_required", "expired"]
+    upload: UploadLink | None
     result_url: str | None = None
     error: dict[str, Any] | None = None
-
-
-class UploadLink(BaseModel):
-    """保留原始上传地址、请求头和固定截止时间。"""
-
-    client_file_id: str
-    upload_url: str
-    upload_headers: dict[str, str]
-    expires_at: int
 
 
 class RemoteTask(BaseModel):
     """校验单文件任务的身份和产物契约，允许上游添加其他元数据。"""
 
     task_id: str = Field(min_length=1)
-    status: Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
-    status_url: str = Field(min_length=1)
+    status: TaskStatus
     files: list[RemoteFile] = Field(min_length=1, max_length=1)
-    pending_uploads: list[UploadLink] = Field(max_length=1)
     output_formats: list[TaskOutputFormat] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_file(self) -> RemoteTask:
         """确保返回的文件和链接仍对应本次唯一清单项。"""
         item = self.files[0]
-        if item.client_file_id != "file" or any(link.client_file_id != "file" for link in self.pending_uploads):
+        task_status_url("", self.task_id)
+        if item.client_file_id != "file":
             raise ValueError("Unexpected client_file_id")
+        if item.upload is not None and item.status != "waiting-file":
+            raise ValueError("Only waiting-file accepts uploads")
         if item.status == "completed" and not item.result_url:
             raise ValueError("Completed file has no result_url")
         if item.status != "completed" and item.result_url is not None:

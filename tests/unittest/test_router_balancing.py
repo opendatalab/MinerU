@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from task_test_utils import pending_files
+
 import asyncio
 import threading
 import time
@@ -125,7 +127,7 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
                     assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [0, 0]
                     _upload(client, task, [("source.html", HTML)])
                 else:
-                    assert task["pending_uploads"] == []
+                    assert pending_files(task) == []
                 tasks.append(task)
                 deadline = time.monotonic() + 5
                 while not app.state.task_store._records[task["task_id"]].file_states[0].submitted:

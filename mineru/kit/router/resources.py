@@ -59,7 +59,8 @@ class SourceFileStore:
         self._temp_dir = tempfile.TemporaryDirectory(prefix="mineru-v1-router-sources-")
         self._root = Path(self._temp_dir.name)
         self.retention_seconds = retention_seconds
-        self._file_expiry: dict[str, int | None] = {}
+        self._file_expiry: dict[str, float | None] = {}
+        self._active_references: set[str] = set()
         self._uploads: dict[str, StoredSourceFile] = {}
         self._files: dict[str, StoredSourceFile] = {}
         self._bound_uploads: set[str] = set()
@@ -75,7 +76,7 @@ class SourceFileStore:
         mime_type: str,
         max_bytes: int | None = None,
     ) -> StoredSourceFile:
-        """流式写入一个公共 Upload 的输入字节，并计算实际大小与 SHA256。"""
+        """流式写入私有暂存输入，并计算实际大小与 SHA256。"""
         if upload_id in self._bound_uploads:
             raise ValueError(f"Upload {upload_id} is already bound to a completed file")
         path = self._root / "uploads" / upload_id
@@ -111,14 +112,14 @@ class SourceFileStore:
     def bind_file(
         self, upload_id: str, file_id: str, *, owner_scope: str = "anonymous", expires_at: int | None = None
     ) -> StoredSourceFile:
-        """把已完成 Upload 的暂存输入绑定到 Router 公共 File。"""
+        """把已完成上传的暂存输入绑定到 Router 私有源引用。"""
         stored = self._uploads.pop(upload_id)
         self.bind_source(file_id, stored, owner_scope=owner_scope, expires_at=expires_at)
         self._bound_uploads.add(upload_id)
         return stored
 
     def bind_source(self, file_id: str, stored: StoredSourceFile, *, owner_scope: str, expires_at: int | None = None) -> None:
-        """为公共文件增加缓存引用，并建立调用方隔离的哈希索引。"""
+        """增加私有源缓存引用，并建立调用方隔离的哈希索引。"""
         previous = self._files.get(file_id)
         if previous is not None:
             previous_scope = self._file_scopes.get(file_id, "anonymous")
@@ -137,6 +138,27 @@ class SourceFileStore:
         self._hash_files.setdefault((owner_scope, stored.sha256sum), set()).add(file_id)
         if previous is not None:
             self._release_path(previous.path)
+
+    def hold_reference(self, reference_id: str) -> None:
+        """准备和执行阶段固定源引用，父任务清理前不开始保留期。"""
+        if reference_id not in self._files:
+            raise KeyError(reference_id)
+        self._active_references.add(reference_id)
+        self._file_expiry[reference_id] = None
+
+    def release_reference(self, reference_id: str, finished: float) -> None:
+        """首次解除任务引用时开始缓存保留期，重复释放不延长期限。"""
+        if reference_id not in self._active_references:
+            return
+        self._active_references.remove(reference_id)
+        self._file_expiry[reference_id] = finished + self.retention_seconds if self.retention_seconds else None
+
+    def collect_expired(self) -> None:
+        """独立回收过期私有引用，传输中的字节仍由 pin 保护。"""
+        now = time.time()
+        for reference_id, deadline in tuple(self._file_expiry.items()):
+            if reference_id not in self._active_references and deadline is not None and deadline <= now:
+                self.delete_file(reference_id)
 
     def find_hash(self, owner_scope: str, sha256sum: str) -> StoredSourceFile | None:
         """只查当前调用方仍持有的源字节，不使用 worker 的哈希声明。"""
@@ -168,7 +190,7 @@ class SourceFileStore:
         path.unlink(missing_ok=True)
 
     def find_file(self, file_id: str) -> StoredSourceFile | None:
-        """读取公共 File 对应的私有暂存输入，不存在时返回 None。"""
+        """按私有源引用读取缓存输入，不存在时返回 None。"""
         return self._files.get(file_id)
 
     def discard_upload(self, upload_id: str) -> None:
@@ -181,7 +203,8 @@ class SourceFileStore:
             self._release_path(stored.path)
 
     def delete_file(self, file_id: str) -> None:
-        """删除公共 File 绑定的私有暂存输入。"""
+        """删除私有源引用，只有最后一个引用及传输租约释放后才删除字节。"""
+        self._active_references.discard(file_id)
         self._file_expiry.pop(file_id, None)
         stored = self._files.pop(file_id, None)
         if stored is not None:
@@ -200,6 +223,7 @@ class SourceFileStore:
         self._bound_uploads.clear()
         self._file_scopes.clear()
         self._file_expiry.clear()
+        self._active_references.clear()
         self._hash_files.clear()
         self._pins.clear()
         self._temp_dir.cleanup()

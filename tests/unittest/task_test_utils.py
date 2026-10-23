@@ -8,10 +8,22 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi.testclient import TestClient
+from mineru.task_types import task_status_url
 from mineru.parser.api_server import FileStore, _JobRecord
 from mineru.parser.base import ParseResult
 from mineru.parser.task_outputs import build_task_output
+
+
+def task_url(client: TestClient | httpx.Client | httpx.AsyncClient, task: dict[str, Any]) -> str:
+    """从客户端部署地址和任务 ID 构造固定查询路径，不依赖响应链接。"""
+    return task_status_url(str(client.base_url), task["task_id"])
+
+
+def pending_files(task: dict[str, Any]) -> list[dict[str, Any]]:
+    """从真实逐文件快照选取待上传项，缺少新 upload 字段时直接失败。"""
+    return [item for item in task["files"] if item["upload"] is not None]
 
 
 def stored_source(store: FileStore, path: Path) -> dict[str, str]:
@@ -52,8 +64,8 @@ def submit_task(client: TestClient, path: Path, **options: Any) -> dict[str, Any
     )
     assert response.status_code == 202, response.text
     task = response.json()
-    for link in task["pending_uploads"]:
-        response = client.put(link["upload_url"], content=data, headers=link["upload_headers"])
+    for link in pending_files(task):
+        response = client.put(link["upload"]["url"], content=data, headers=link["upload"]["headers"])
         assert response.status_code < 400, response.text
     return task
 
@@ -62,7 +74,7 @@ def wait_task(client: TestClient, task: dict[str, Any], timeout: float = 5) -> d
     """等待父任务终态，避免使用内部执行 ID 代替公开 task_id。"""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        response = client.get(task["status_url"])
+        response = client.get(task_url(client, task))
         assert response.status_code == 200, response.text
         task = response.json()
         if task["status"] in {"completed", "partial", "failed", "canceled"}:

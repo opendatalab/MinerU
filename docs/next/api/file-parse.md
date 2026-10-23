@@ -100,7 +100,7 @@ X-Task-ID: job_0123456789abcdef01234567
 
 ### StatusResponse：查询与 202 的完整 JSON 对象
 
-以下七个顶层字段均会出现。状态对象不返回 Tasks 的 `files/pending_uploads/progress`，不暴露上游上传链接或签名下载地址。
+以下七个顶层字段均会出现。状态对象不返回 Tasks 的 `files/progress`，不暴露上游上传链接或签名下载地址。
 
 | 字段 | JSON 类型 | 可为 null | 含义 |
 |---|---|---|---|
@@ -116,8 +116,8 @@ X-Task-ID: job_0123456789abcdef01234567
 |---|---|
 | `prepared` | 本地源文件和恢复记录已持久化，尚未开始提交。 |
 | `submitting` | 正在向上游创建任务，尚无确认后的 `task_id`。 |
-| `waiting_upload` | 上游源文件尚未确认就绪。 |
-| `queued` | 已进入上游执行队列。 |
+| `waiting-file` | 上游仍在接收、下载、校验或确认输入；upload=null 不表示已经就绪。 |
+| `pending` | 已进入上游执行队列。 |
 | `running` | 上游正在解析或导出。 |
 | `completed` | 上游完整产物已生成，可通过包装服务下载。 |
 | `failed` | 已知失败，读取 `error`。 |
@@ -287,7 +287,7 @@ Content-Type: application/json
 
 ## 等待、超时与断连后查询
 
-每次调用在确认上游文件就绪后开始计时，等待包含排队、解析与导出。接收文件、上游上传和结果下载不占此预算，独立使用传输空闲超时。缓存命中跳过上传。
+每次调用在确认上游文件就绪后开始计时，等待包含排队、解析与导出。接收文件、上游上传、文件下载与校验准备及结果下载不占此预算，独立使用传输空闲超时。缓存命中跳过上传；只有进入 pending/running/completed 或失败/取消终态后，才清理本地保留的源文件。
 
 - 正常轮询间隔为 2 秒。
 - 连接、元数据请求、传输空闲超时分别为 10、30、600 秒。
@@ -328,4 +328,4 @@ python scripts/http_file_parse_example.py report.pdf --wait-timeout 0 \
 ## 升级与恢复记录
 
 本次协议升级要求 API Server、Router、SDK、Gradio 与包装服务同步更新，先停收请求并排空旧任务。
-恢复记录目录使用 `tasks-v2-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧目录。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。
+恢复记录目录使用 `tasks-v4-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧 `tasks-v3-`、`tasks-v2-` 或无前缀目录。包装服务自身的 `status_url` 与 Location 头保持不变，上游 Tasks 查询改用固定路径。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。

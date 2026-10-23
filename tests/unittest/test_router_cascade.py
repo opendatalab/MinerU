@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from task_test_utils import pending_files, task_url
+
 import asyncio
 import hashlib
 import io
@@ -103,7 +105,7 @@ async def _terminal(client: httpx.AsyncClient, task: dict[str, Any]) -> dict[str
     """按真实公共链接等待终态，超时不允许测试永久挂起。"""
     async with asyncio.timeout(10):
         while True:
-            response = await client.get(task["status_url"])
+            response = await client.get(task_url(client, task))
             assert response.status_code == 200, response.text
             result = response.json()
             if result["status"] in {"completed", "partial", "failed", "canceled"}:
@@ -120,31 +122,37 @@ async def _check_download(client: httpx.AsyncClient, result: dict[str, Any]) -> 
         assert b"Preserved content" in archive.read("markdown.md")
 
 
-def test_cascade_waits_for_source_file_and_reuses_cached_upload(tmp_path: Path) -> None:
-    """上传 ready 但 file_id 尚空时继续等待，交接后正常下载并按 hash 复用源文件。"""
+def test_cascade_accepts_ready_upload_without_source_file_and_reuses_cache(tmp_path: Path) -> None:
+    """下游尚未提交解析也可确认上传，级联只依赖任务身份和私有缓存。"""
 
     async def scenario() -> None:
         """通过提交等待固定竞争窗口，验证内外层均不提前判错。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(task["pending_uploads"][0]["upload_url"], content=HTML)
+            response = await client.put(pending_files(task)[0]["upload"]["url"], content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
             inner_record = next(iter(inner.state.task_store._records.values()))
             inner_route = outer.state.registry.list("job")[0]
             ready = await outer.state.worker_pool.client.get(f"http://inner/v1/tasks/{inner_route.upstream_id}")
-            assert ready.json()["files"][0]["upload_status"] == "ready"
-            assert ready.json()["files"][0]["file_id"] is None
-            pending = (await client.get(task["status_url"])).json()
-            assert pending["files"][0]["status"] == "queued", pending
-            assert inner_record.status == "queued"
+            assert ready.json()["files"][0]["status"] == "pending"
+            assert ready.json()["files"][0]["upload"] is None
+            assert "file_id" not in ready.json()["files"][0]
+            async with asyncio.timeout(5):
+                while not outer.state.task_store._records[task["task_id"]].file_states[0].submitted:
+                    await asyncio.sleep(0.01)
+            assert not outer.state.registry.list("file")
+            assert outer.state.source_store._active_references
+            pending = (await client.get(task_url(client, task))).json()
+            assert pending["files"][0]["status"] == "pending", pending
+            assert inner_record.status == "pending"
             transport.allow_submission.set()
             result = await _terminal(client, task)
             assert result["status"] == "completed", result
-            assert result["files"][0]["file_id"] is not None
+            assert "file_id" not in result["files"][0]
             await _check_download(client, result)
             cached = await _submit(client, filename="renamed.html")
-            assert cached["pending_uploads"] == []
+            assert pending_files(cached) == []
             result = await _terminal(client, cached)
             assert result["status"] == "completed", result
             await _check_download(client, result)
@@ -154,17 +162,17 @@ def test_cascade_waits_for_source_file_and_reuses_cached_upload(tmp_path: Path) 
     asyncio.run(scenario())
 
 
-def test_cascade_can_cancel_while_waiting_for_source_file(tmp_path: Path) -> None:
-    """等待源 File 的轮询可被取消，内外层预占和准备引用都正常释放。"""
+def test_cascade_can_cancel_while_downstream_submission_is_blocked(tmp_path: Path) -> None:
+    """下游提交阻塞时仍可取消，内外层预占和准备引用都正常释放。"""
 
     async def scenario() -> None:
         """阻塞实际任务提交后取消外层父任务，确认没有遗留解析或缓存租约。"""
         async with _cascade(tmp_path, block_submission=True) as (client, outer, inner, worker, transport):
             task = await _submit(client)
-            response = await client.put(task["pending_uploads"][0]["upload_url"], content=HTML)
+            response = await client.put(pending_files(task)[0]["upload"]["url"], content=HTML)
             assert response.status_code == 200, response.text
             await asyncio.wait_for(transport.submission_started.wait(), timeout=5)
-            response = await client.delete(task["status_url"])
+            response = await client.delete(task_url(client, task))
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "canceled"
             async with asyncio.timeout(5):

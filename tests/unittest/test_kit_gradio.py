@@ -703,7 +703,7 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
             calls["page_range"] = page_range
             assert statuses == ["Preparing request...", "Submitting task..."]
             assert status_callback is not None
-            status_callback("queued")
+            status_callback("pending")
             if observe_running:
                 status_callback("running")
             status_callback("completed")

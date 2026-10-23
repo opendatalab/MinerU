@@ -56,7 +56,7 @@ class FileParseSettings:
     @property
     def namespace(self) -> str:
         """按新任务协议、上游和认证隔离记录，保留但不加载旧协议状态。"""
-        return "tasks-v2-" + hashlib.sha256(f"{self.api_url}\0{self.api_key or ''}".encode()).hexdigest()
+        return "tasks-v4-" + hashlib.sha256(f"{self.api_url}\0{self.api_key or ''}".encode()).hexdigest()
 
 
 __all__ = ["FileParseSettings", "origin"]

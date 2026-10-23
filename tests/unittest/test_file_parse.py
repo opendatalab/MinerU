@@ -72,32 +72,29 @@ class Upstream:
         ready = task["ready"] and time.monotonic() >= task["uploaded_at"] + self.ready_delay
         complete = ready and self.complete and time.monotonic() >= task["uploaded_at"] + self.complete_delay
         expired = not ready and task["expires_at"] <= time.time()
-        status = "failed" if expired else "completed" if complete else "running" if ready else "waiting_upload"
+        status = "failed" if expired else "completed" if complete else "running" if ready else "waiting-file"
         result_url = f"{self.storage_url}/result/{task_id}?signature=a%2Fb&version={task['version']}" if complete else None
         if result_url and self.redirect:
             result_url = f"{self.api_url}/redirect/{task_id}"
         return {
             "task_id": task_id,
             "status": status,
-            "status_url": f"{self.api_url}/v1/tasks/{task_id}",
             "output_formats": task["options"]["output_formats"],
             "files": [
                 {
                     "client_file_id": "file",
+                    "file_name": task["options"]["files"][0]["file_name"],
+                    "bytes": task["options"]["files"][0]["bytes"],
                     "status": status,
-                    "upload_status": "expired" if expired else "ready" if ready else "pending",
+                    "upload": None
+                    if task["ready"] or expired
+                    else {
+                        "url": f"{self.storage_url}/upload/{task_id}",
+                        "headers": {"x-upload-token": "storage-token"},
+                        "expires_at": task["expires_at"],
+                    },
                     "result_url": result_url,
                     "error": {"code": "upload_expired"} if expired else None,
-                }
-            ],
-            "pending_uploads": []
-            if ready or expired
-            else [
-                {
-                    "client_file_id": "file",
-                    "upload_url": f"{self.storage_url}/upload/{task_id}",
-                    "upload_headers": {"x-upload-token": "storage-token"},
-                    "expires_at": task["expires_at"],
                 }
             ],
         }
@@ -386,8 +383,8 @@ def test_new_protocol_preserves_but_does_not_restore_legacy_records(tmp_path: Pa
     upstream = Upstream()
     settings = FileParseSettings(upstream.api_url, "secret", tmp_path)
     legacy_namespace = hashlib.sha256(f"{settings.api_url}\0secret".encode()).hexdigest()
-    assert settings.namespace == "tasks-v2-" + legacy_namespace
-    legacy = tmp_path / legacy_namespace
+    assert settings.namespace == "tasks-v4-" + legacy_namespace
+    legacy = tmp_path / ("tasks-v3-" + legacy_namespace)
     source = legacy / "sources" / "old-input"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"old source")
@@ -457,7 +454,7 @@ def test_restart_at_upload_boundaries(tmp_path: Path, stage: str) -> None:
             try:
                 task = await remote.create(record)
                 record.remote = task.model_dump()
-                record.status = "waiting_upload"
+                record.status = "waiting-file"
                 if stage == "expired":
                     upstream.tasks[task.task_id]["expires_at"] = int(time.time()) - 1
             finally:

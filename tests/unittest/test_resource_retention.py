@@ -355,7 +355,7 @@ def test_external_worker_lost_task_releases_load_and_keeps_snapshot() -> None:
             "job", owner_scope="anonymous", worker_id=reservation.worker.worker_id, upstream_id="lost-task"
         )
         route.metadata.update(
-            active_counted=True, reservation=reservation, payload={"status": "running", "files": [{"status": "queued"}]}
+            active_counted=True, reservation=reservation, payload={"status": "running", "files": [{"status": "pending"}]}
         )
         client.portal.call(_reconcile_jobs_once, app.state.registry, pool)
         assert reservation.worker.active_jobs == 0

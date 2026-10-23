@@ -23,12 +23,13 @@ from mineru.types import MiddleJson
 @pytest.mark.parametrize(
     "statuses",
     [
-        ("queued", "running", "running", "completed"),
+        ("waiting-file", "pending", "running", "completed"),
+        ("pending", "running", "running", "completed"),
         ("completed",),
-        ("queued", "completed"),
-        ("queued", "partial"),
-        ("queued", "running", "failed"),
-        ("queued", "canceled"),
+        ("pending", "completed"),
+        ("pending", "partial"),
+        ("pending", "running", "failed"),
+        ("pending", "canceled"),
     ],
 )
 def test_parse_notifies_submission_and_polls_before_result_building(
@@ -73,13 +74,12 @@ def test_parse_notifies_submission_and_polls_before_result_building(
             200,
             json={
                 "task_id": "task_test",
-                "status_url": "/v1/tasks/task_test",
                 "status": status,
                 "output_formats": ["default"],
                 "files": [
                     {
                         "client_file_id": "file",
-                        "upload_status": "ready",
+                        "upload": None,
                         "status": "completed" if status == "partial" else status,
                         "parse": {"duration_ms": 250},
                         "result_url": "/result",

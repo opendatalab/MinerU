@@ -43,33 +43,28 @@ def zip_output() -> bytes:
 
 
 def task_snapshot(status: str = "completed", *, upload: bool = False) -> dict[str, Any]:
-    """提供可独立调整状态和上传准备情况的单文件任务快照。"""
+    """提供逐文件内嵌上传描述，不伪造已移除的查询链接或顶层档位。"""
     return {
         "task_id": "task-one",
-        "status_url": "https://api.test/v1/tasks/task-one",
         "status": status,
         "output_formats": ["default"],
         "files": [
             {
                 "client_file_id": "file",
+                "file_name": "file.pdf",
+                "bytes": 3,
                 "status": status,
-                "upload_status": "pending" if upload else "ready",
-                "parse": {"duration_ms": 250},
+                "upload": {
+                    "url": "https://storage.test/input",
+                    "headers": {},
+                    "expires_at": 9999999999,
+                }
+                if upload
+                else None,
+                "parse": {"tier": "flash", "duration_ms": 250, "parser_version": "test"} if status == "completed" else None,
                 "result_url": "https://storage.test/result?signature=original" if status == "completed" else None,
             }
         ],
-        "pending_uploads": (
-            [
-                {
-                    "client_file_id": "file",
-                    "upload_url": "https://storage.test/input",
-                    "upload_headers": {},
-                    "expires_at": 9999999999,
-                }
-            ]
-            if upload
-            else []
-        ),
     }
 
 
@@ -89,6 +84,50 @@ def parse(parser: MinerUApiParser, source: Path, asynchronous: bool, **kwargs: A
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("prefix", ["", "/gateway/api"])
+def test_task_query_uses_configured_prefix_without_status_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, prefix: str
+) -> None:
+    """响应不含查询链接时仍能轮询，代理前缀和编码后的任务 ID 均不丢失。"""
+    source = tmp_path / "file.pdf"
+    source.write_bytes(b"pdf")
+    queries: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        """区分固定 API 路径和跨源结果下载，禁止向对象存储泄漏凭据。"""
+        if request.url.host == "storage.test":
+            assert request.headers.get("authorization") is None
+            return httpx.Response(200, content=zip_output())
+        assert request.headers.get("authorization") == "Bearer secret"
+        if request.method == "POST":
+            assert request.url.path == prefix + "/v1/tasks"
+            snapshot = task_snapshot("pending")
+        else:
+            queries.append(request.url.raw_path.decode())
+            assert request.url.raw_path.decode() == prefix + "/v1/tasks/task%20one"
+            snapshot = task_snapshot()
+        snapshot["task_id"] = "task one"
+        assert "status_url" not in snapshot
+        return httpx.Response(200, json=snapshot)
+
+    bind_transport(monkeypatch, handle)
+    result = parse(MinerUApiParser(api_url="https://api.test" + prefix, api_key="secret"), source, asynchronous)
+    assert len(result.pages) == 1 and len(queries) == 1
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_tasks_sdk_rejects_missing_nested_upload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool) -> None:
+    """缺少新 upload 字段的旧响应不能被当作缓存命中或触发旧字段回退。"""
+    source = tmp_path / "file.pdf"
+    source.write_bytes(b"pdf")
+    snapshot = task_snapshot("waiting-file", upload=True)
+    del snapshot["files"][0]["upload"]
+    bind_transport(monkeypatch, lambda _: httpx.Response(202, json=snapshot))
+    with pytest.raises(api_client._V1APIError, match="upload descriptor"):
+        parse(MinerUApiParser(api_url="https://api.test"), source, asynchronous)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("lost_upload_response", [False, True])
 def test_tasks_sdk_upload_cache_and_lost_response(
@@ -98,7 +137,7 @@ def test_tasks_sdk_upload_cache_and_lost_response(
     source = tmp_path / "report.pdf"
     source.write_bytes(b"%PDF-example")
     calls: list[httpx.Request] = []
-    state = task_snapshot("completed" if cached else "waiting_upload", upload=not cached)
+    state = task_snapshot("completed" if cached else "waiting-file", upload=not cached)
 
     def handle(request: httpx.Request) -> httpx.Response:
         """记录线上协议，不接受任何独立上传或 Jobs 路由。"""
@@ -138,7 +177,7 @@ def test_tasks_sdk_upload_cache_and_lost_response(
     assert len(result.pages) == 1 and durations == [250.0]
     assert sum(r.method == "POST" for r in calls) == 1
     assert sum(r.method == "PUT" for r in calls) == (0 if cached else 1)
-    assert statuses == (["completed"] if cached else ["waiting_upload", "completed"])
+    assert statuses == (["completed"] if cached else ["waiting-file", "completed"])
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
@@ -152,7 +191,7 @@ def test_tasks_sdk_transport_recovery(
     source = tmp_path / "file.pdf"
     source.write_bytes(b"pdf")
     counts = {"POST": 0, "PUT": 0, "query": 0, "download": 0}
-    state = task_snapshot("waiting_upload" if failure == "upload" else "queued", upload=failure == "upload")
+    state = task_snapshot("waiting-file" if failure == "upload" else "pending", upload=failure == "upload")
 
     def handle(request: httpx.Request) -> httpx.Response:
         """在指定阶段只注入一次故障，观测是否重复创建或泄露认证。"""
@@ -204,9 +243,8 @@ def test_tasks_sdk_transport_recovery(
     "field,value",
     [
         ("task_id", "other"),
-        ("status_url", "https://evil.test/metadata"),
+        ("task_id", ".."),
         ("output_formats", ["html"]),
-        ("pending_uploads", None),
     ],
 )
 def test_tasks_sdk_rejects_changed_identity(
@@ -218,7 +256,7 @@ def test_tasks_sdk_rejects_changed_identity(
 
     def handle(request: httpx.Request) -> httpx.Response:
         """提交合法，后续查询注入字段变化。"""
-        response = task_snapshot("queued") if request.method == "POST" else {**task_snapshot(), field: value}
+        response = task_snapshot("pending") if request.method == "POST" else {**task_snapshot(), field: value}
         return httpx.Response(200, json=response)
 
     bind_transport(monkeypatch, handle)
@@ -282,7 +320,7 @@ def test_tasks_sdk_retries_are_bounded(
     def handle(request: httpx.Request) -> httpx.Response:
         """按阶段产生持续故障，创建请求仍只提交一次。"""
         if request.method == "POST":
-            return httpx.Response(202, json=task_snapshot("queued" if failure == "query" else "completed"))
+            return httpx.Response(202, json=task_snapshot("pending" if failure == "query" else "completed"))
         if request.url.host == "api.test":
             if failure == "query":
                 attempts.append(request)
@@ -302,9 +340,7 @@ def test_tasks_sdk_retries_are_bounded(
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize(
-    "field,value", [("task_id", None), ("status", {}), ("files", []), ("status_url", "file:///tmp/result")]
-)
+@pytest.mark.parametrize("field,value", [("task_id", None), ("status", {}), ("files", []), ("task_id", ".")])
 def test_tasks_sdk_rejects_malformed_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, field: str, value: Any
 ) -> None:
@@ -360,7 +396,7 @@ def test_tasks_sdk_retries_transient_poll_responses(
         """首次创建成功，按预算注入轮询故障，之后返回可读取的完整结果。"""
         if request.method == "POST":
             counts["post"] += 1
-            return httpx.Response(202, json=task_snapshot("queued"))
+            return httpx.Response(202, json=task_snapshot("pending"))
         if request.url.host == "api.test":
             counts["query"] += 1
             if counts["query"] <= failures:

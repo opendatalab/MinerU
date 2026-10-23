@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlsplit
 
 TERMINAL = frozenset({"completed", "partial", "failed", "canceled"})
-STATUSES = TERMINAL | {"waiting_upload", "queued", "running"}
+STATUSES = TERMINAL | {"waiting-file", "pending", "running"}
 RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 REDIRECTS = frozenset({301, 302, 303, 307, 308})
 CHUNK_BYTES = 1024 * 1024
@@ -113,8 +113,9 @@ class TaskClient:
         if not 0 <= self.poll_interval < float("inf"):
             raise ClientError("POLL_INTERVAL must be a non-negative finite number")
         self.task_id: str | None = None
-        self.status_url: str | None = None
         self.saved_ids: set[str] = set()
+        self.uploaded_ids: set[str] = set()
+        self.upload_attempts: dict[str, int] = {}
 
     def resolve(self, url: str) -> str:
         """解析服务返回的绝对或相对链接，保留 OSS 签名查询串。"""
@@ -236,12 +237,15 @@ class TaskClient:
     def validate_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         """校验任务身份和文件映射，恢复请求不能误把文件上传给另一项。"""
         task_id = payload.get("task_id")
-        if not isinstance(task_id, str) or not task_id or (self.task_id is not None and task_id != self.task_id):
+        if (
+            not isinstance(task_id, str)
+            or not task_id
+            or task_id in {".", ".."}
+            or (self.task_id is not None and task_id != self.task_id)
+        ):
             raise ClientError("Missing or inconsistent task_id")
         if payload.get("status") not in STATUSES:
             raise ClientError("Unknown task status")
-        if not isinstance(payload.get("status_url"), str) or not payload["status_url"]:
-            raise ClientError("Missing status_url")
         files = payload.get("files")
         if not isinstance(files, list) or len(files) != len(self.files):
             raise ClientError("Task file count does not match local inputs")
@@ -256,30 +260,19 @@ class TaskClient:
             local = self.by_id[client_id]
             if item.get("file_name") != local.path.name or item.get("bytes") != local.size:
                 raise ClientError("Task files differ from local inputs; use the original file list and order")
-            if local.sha256sum is not None and item.get("sha256sum") not in {None, local.sha256sum}:
-                raise ClientError("Task hash differs from the local file")
-            if item.get("upload_status") not in {"pending", "ready", "expired"}:
-                raise ClientError("Unknown upload_status")
-        uploads = payload.get("pending_uploads")
-        if not isinstance(uploads, list):
-            raise ClientError("Missing pending_uploads list")
-        seen_uploads: set[str] = set()
-        pending = {item["client_file_id"] for item in files if item["upload_status"] == "pending"}
-        for link in uploads:
+            if "upload" not in item:
+                raise ClientError("Missing file upload descriptor")
+            link = item["upload"]
+            if link is None:
+                continue
             if not isinstance(link, dict):
                 raise ClientError("Invalid upload descriptor")
-            client_id = link.get("client_file_id")
-            if not isinstance(client_id, str) or client_id not in self.by_id or client_id in seen_uploads:
-                raise ClientError("Invalid or duplicate upload client_file_id")
-            seen_uploads.add(client_id)
-            if not isinstance(link.get("upload_url"), str) or not link["upload_url"]:
+            if not isinstance(link.get("url"), str) or not link["url"]:
                 raise ClientError("Invalid upload URL")
-            if not isinstance(link.get("upload_headers"), dict):
-                raise ClientError("Invalid upload headers")
-        if not seen_uploads.issubset(pending):
-            raise ClientError("Upload descriptors do not match pending files")
-        if payload["status"] in TERMINAL and seen_uploads:
-            raise ClientError("Terminal task still returns upload URLs")
+            if not isinstance(link.get("headers"), dict) or type(link.get("expires_at")) is not int:
+                raise ClientError("Invalid upload headers or expiry")
+            if item["status"] != "waiting-file" or payload["status"] in TERMINAL:
+                raise ClientError("Upload descriptor does not match file state")
         formats = payload.get("output_formats")
         if (
             not isinstance(formats, list)
@@ -288,7 +281,7 @@ class TaskClient:
         ):
             raise ClientError("Invalid task output_formats")
         for item in files:
-            if item.get("status") not in {"waiting_upload", "queued", "running", "completed", "failed", "canceled"}:
+            if item.get("status") not in {"waiting-file", "pending", "running", "completed", "failed", "canceled"}:
                 raise ClientError("Unknown file status")
             if item["status"] == "completed":
                 if not isinstance(item.get("result_url"), str) or not item["result_url"]:
@@ -296,7 +289,6 @@ class TaskClient:
             elif item.get("result_url") is not None:
                 raise ClientError("Unfinished file has a download URL")
         self.task_id = task_id
-        self.status_url = self.resolve(payload["status_url"])
         return payload
 
     def create(self) -> dict[str, Any]:
@@ -321,9 +313,9 @@ class TaskClient:
 
     def refresh(self) -> dict[str, Any]:
         """只查询已有任务，任何查询失败都不能触发创建重试。"""
-        if self.status_url is None:
-            raise ClientError("No task status URL")
-        return self.json_request("GET", self.status_url)
+        if self.task_id is None or self.task_id in {".", ".."}:
+            raise ClientError("No valid task ID")
+        return self.json_request("GET", self.base + "/v1/tasks/" + quote(self.task_id, safe=""))
 
     def refresh_after_transfer_error(self) -> dict[str, Any]:
         """传输结果不确定时先恢复状态查询，无法确认时不盲目重复发送文件。"""
@@ -337,12 +329,19 @@ class TaskClient:
         raise AssertionError("unreachable")
 
     def upload_missing(self, task: dict[str, Any]) -> dict[str, Any]:
-        """逐文件上传与恢复，已经 ready 的文件永远不会重新发送。"""
-        for original in task["pending_uploads"]:
+        """逐文件上传与恢复，成功 PUT 或已进入后续阶段的文件不重复发送。"""
+        for original in task["files"]:
             client_id = original["client_file_id"]
             local = self.by_id[client_id]
-            link = original
-            for attempt in range(3):
+            link = original["upload"]
+            if original["status"] != "waiting-file":
+                self.uploaded_ids.add(client_id)
+            if link is None or client_id in self.uploaded_ids:
+                continue
+            if self.upload_attempts.get(client_id, 0) >= 3:
+                raise ClientError(f"Upload failed after three attempts: {local.path.name}")
+            for attempt in range(self.upload_attempts.get(client_id, 0), 3):
+                self.upload_attempts[client_id] = attempt + 1
 
                 def upload_body() -> Generator[bytes, None, None]:
                     """每次重试重新打开同一个文件，单文件从头重传。"""
@@ -351,13 +350,14 @@ class TaskClient:
                 try:
                     with self.request(
                         "PUT",
-                        link["upload_url"],
-                        headers=link["upload_headers"],
+                        link["url"],
+                        headers=link["headers"],
                         body=upload_body,
                         length=local.size,
                     ) as response:
                         if not 200 <= response.status < 300:
                             raise self._http_error(response)
+                    self.uploaded_ids.add(client_id)
                     break
                 except ClientError as exc:
                     if not exc.retryable and exc.status not in {403, 410}:
@@ -365,16 +365,13 @@ class TaskClient:
                     # 请求可能已经落盘但响应丢失；先看状态，再决定是否重传。
                     current = self.refresh_after_transfer_error()
                     remote = next(item for item in current["files"] if item["client_file_id"] == client_id)
-                    if remote["upload_status"] == "ready":
+                    if remote["status"] != "waiting-file":
+                        self.uploaded_ids.add(client_id)
                         break
-                    if remote["status"] in {"failed", "canceled"}:
-                        break
-                    replacement = next(
-                        (item for item in current["pending_uploads"] if item["client_file_id"] == client_id), None
-                    )
+                    replacement = remote["upload"]
                     if replacement is None:
-                        raise ClientError("Pending file has no upload URL") from exc
-                    if exc.status == 403 and replacement["upload_url"] == link["upload_url"]:
+                        break
+                    if exc.status == 403 and replacement["url"] == link["url"]:
                         raise
                     if attempt == 2:
                         raise ClientError(f"Upload failed after three attempts: {local.path.name}") from exc
@@ -461,17 +458,16 @@ class TaskClient:
         resume = os.environ.get("TASK_ID", "")
         if resume:
             self.task_id = resume
-            self.status_url = self.base + "/v1/tasks/" + quote(resume, safe="")
             task = self.refresh()
         else:
             task = self.create()
         print(f"task_id={self.task_id}", file=sys.stderr)
         self.download_completed(task, output)
-        for link in list(task["pending_uploads"]):
-            current_links = [item for item in task["pending_uploads"] if item["client_file_id"] == link["client_file_id"]]
-            if not current_links:
+        for original in list(task["files"]):
+            current = next(item for item in task["files"] if item["client_file_id"] == original["client_file_id"])
+            if current["upload"] is None:
                 continue
-            task = self.upload_missing({**task, "pending_uploads": current_links})
+            task = self.upload_missing({**task, "files": [current]})
             self.download_completed(task, output)
         polls = 0
         while task["status"] not in TERMINAL:
@@ -486,6 +482,13 @@ class TaskClient:
                 if not exc.retryable:
                     raise
                 continue
+            if any(
+                item["status"] == "waiting-file"
+                and item["upload"] is not None
+                and item["client_file_id"] not in self.uploaded_ids
+                for item in task["files"]
+            ):
+                task = self.upload_missing(task)
             self.download_completed(task, output)
         if task["status"] in {"failed", "canceled"}:
             print(

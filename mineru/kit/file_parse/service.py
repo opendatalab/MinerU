@@ -145,15 +145,13 @@ class FileParseService:
             if record.remote is not None and record.status in TERMINAL and item.status not in TERMINAL:
                 return
             updated = replace(record, remote=task.model_dump(), status=item.status)
-            if item.upload_status == "ready" or item.status in TERMINAL:
+            if item.status != "waiting-file":
                 updated.error = item.error
             if item.status in {"failed", "canceled"} and updated.error is None:
                 updated.error = {"code": f"task_{item.status}", "message": f"Upstream task {item.status}"}
             if updated.status in TERMINAL and updated.terminal_at is None:
                 updated.terminal_at = time.time()
-            await self._save_and_cleanup(
-                record, updated, remove_source=item.upload_status == "ready" or item.status in TERMINAL
-            )
+            await self._save_and_cleanup(record, updated, remove_source=item.status != "waiting-file")
 
     async def _remember_error(self, record: Record, error: GatewayError) -> None:
         """无任务 ID 的失败是本地终态；已知任务的传输错误保留后续查询能力。"""
@@ -183,7 +181,7 @@ class FileParseService:
                 await self._apply(record, task)
             else:
                 task = await self.refresh(record)
-            if task.files[0].upload_status == "pending" and task.files[0].status not in TERMINAL:
+            if task.files[0].status == "waiting-file":
                 if record.source_path is None or not Path(record.source_path).is_file():
                     raise GatewayError("source_unavailable", "The retained source is unavailable")
                 task = await self.client.upload(task, Path(record.source_path), record.size)
@@ -265,9 +263,9 @@ class FileParseService:
             changed.clear()
             self.raise_record_error(record)
             task = record.task
-            if record.status in TERMINAL or (task is not None and task.files[0].upload_status == "ready"):
+            if record.status in TERMINAL or (task is not None and task.files[0].status != "waiting-file"):
                 break
-            # 对象存储 PUT 成功后，网关可能稍后才确认 ready；这段等待仍属于上传准备。
+            # 文件准备包括上传确认与服务端下载；进入 pending 后才启动解析等待预算。
             await changed.wait()
         if timeout == 0:
             return False

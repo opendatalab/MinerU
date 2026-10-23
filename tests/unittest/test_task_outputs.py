@@ -74,6 +74,7 @@ def _illustrated_result() -> tuple[ParseResult, bytes]:
         ],
         is_full_document=True,
         metadata={"file_suffix": "docx", "producer": {"name": "mineru", "version": "test"}},
+        extensions={"mineru": {"tier": "flash", "parse_mode": "txt"}},
     )
     return ParseResult(middle_json=middle), png
 

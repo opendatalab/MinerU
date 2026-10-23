@@ -42,6 +42,7 @@ from starlette.types import Receive, Scope, Send
 from ..config import VlmConfig
 from ..config import config as mineru_config
 from ..errors import MineruError
+from ..integrations.docvortex import MinerUMetadata
 from ..filetypes import (
     PARSEABLE_EXTENSIONS,
     batch_effective_parse_tier,
@@ -74,7 +75,7 @@ from .tier import (
     ensure_tier_runtime_dependencies,
     runtime_options_for_tier,
 )
-from ..task_types import TASK_OUTPUT_FORMATS, TaskOutputFormat
+from ..task_types import TASK_OUTPUT_FORMATS, TaskFileState, TaskOutputFormat, TaskStatus
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _MAX_FILES_PER_JOB_DEFAULT = 100
@@ -89,10 +90,10 @@ class ParseServerStartupError(RuntimeError):
 
 # ── literal type aliases ────────────────────────────────────────────
 
-JobStatus = Literal["queued", "running", "completed", "partial", "failed", "canceled"]
+JobStatus = TaskStatus
 """Job lifecycle states."""
 
-FileStatus = Literal["queued", "running", "completed", "failed"]
+FileStatus = TaskFileState
 """Per-file status within a job."""
 
 AccessLevel = Literal["anonymous", "registered"]
@@ -370,6 +371,7 @@ class TaskProgress(BaseModel):
 
 class FileParseInfo(BaseModel):
     model_config = _PYDANTIC_CONFIG
+    tier: Tier
     duration_ms: int | None = None
     parser_version: str | None = None
 
@@ -804,13 +806,12 @@ class _JobInputMetadata:
     """记录完整下载且校验通过的实际输入信息，不扩展公开 Jobs 协议。"""
 
     bytes: int
-    sha256sum: str
 
 
 @dataclass
 class _JobRecord:
     id: str
-    status: JobStatus = "queued"
+    status: JobStatus = "pending"
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
@@ -820,6 +821,7 @@ class _JobRecord:
     input_blobs: dict[str, str] = field(default_factory=dict)
     input_specs: dict[int, _JobInputSpec] = field(default_factory=dict)
     input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
+    prepared_sources: dict[int, _PreparedInput] = field(default_factory=dict)
     file_store: FileStore | None = None
     usage_counted: bool = False
     task_result_file_id: str | None = None
@@ -843,6 +845,7 @@ class JobStore:
         self._jobs: dict[str, _JobRecord] = {}
         self._concurrency = max(1, concurrency)
         self._semaphore = asyncio.Semaphore(self._concurrency)
+        self._preparation_semaphore = asyncio.Semaphore(self._concurrency)
         self._started_at = JobStore._now()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._completion_events: dict[str, asyncio.Event] = {}
@@ -874,7 +877,13 @@ class JobStore:
             self.fail_engine(message)
             _raise_api_error(503, error_type="engine_error", code="engine_dead", message=message)
 
-    def start_task(self, rec: _JobRecord, operation: Callable[[], Awaitable[None]]) -> None:
+    def start_task(
+        self,
+        rec: _JobRecord,
+        operation: Callable[[], Awaitable[None]],
+        *,
+        prepare: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         """保存真实后台任务及所属应用租约，排队取消也不会开始解析。"""
         self.require_ready()
         if self._closing:
@@ -882,17 +891,32 @@ class JobStore:
         self._completion_events[rec.id] = asyncio.Event()
 
         async def run_owned() -> None:
-            """在整个任务期间传播应用租约，并直到清理完成才释放 job 名额。"""
+            """准备输入不占解析名额，等待解析时仍限制准备任务数以控制内存。"""
             token = runtime_owner.set(self.runtime_owner)
+            acquired = False
             try:
-                async with self._semaphore:
-                    if rec.status == "queued":
-                        await operation()
+                if prepare is not None:
+                    async with self._preparation_semaphore:
+                        if rec.status not in {"canceled", "failed"}:
+                            await prepare()
+                        if rec.status != "pending":
+                            return
+                        # 取得解析名额后才允许下一份输入准备，避免待解析字节无限堆积。
+                        await self._semaphore.acquire()
+                        acquired = True
+                else:
+                    await self._semaphore.acquire()
+                    acquired = True
+                if rec.status == "pending":
+                    await operation()
             except asyncio.CancelledError:
                 if rec.status != "failed":
                     rec.status = "canceled"
                 raise
             finally:
+                rec.prepared_sources.clear()
+                if acquired:
+                    self._semaphore.release()
                 runtime_owner.reset(token)
 
         def finished(task: asyncio.Task[None]) -> None:
@@ -970,7 +994,7 @@ class JobStore:
         now = self._now()
         rec = _JobRecord(
             id=job_id,
-            status="queued",
+            status="waiting-file" if any(isinstance(entry.source, _UrlSource) for entry in req.files) else "pending",
             created_at=now,
             tier=req.tier,
             task_output_formats=req.output_formats,
@@ -983,7 +1007,7 @@ class JobStore:
                     file_id=entry.source.file_id if isinstance(entry.source, _StoredSource) else None,
                     name=name,
                     page_range=entry.page_range or "",
-                    status="queued",
+                    status="waiting-file" if isinstance(entry.source, _UrlSource) else "pending",
                 )
             )
         rec.progress.total = len(rec.files)
@@ -1153,6 +1177,74 @@ class _ExtractedSource:
     media_type: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedInput:
+    """暂存已校验的 URL 输入及准备耗时，等待解析队列不计入文件执行耗时。"""
+
+    source: _ExtractedSource
+    duration_seconds: float
+
+
+def _validate_url_input(rec: _JobRecord, index: int, extracted: _ExtractedSource) -> None:
+    """下载完成后验证大小和 hash，只有有效输入才能进入解析队列。"""
+    data = extracted.data
+    if not data:
+        raise MineruError("invalid_request", "Empty files are not supported")
+    spec = rec.input_specs.get(index)
+    if spec is not None:
+        if spec.bytes is not None and len(data) != spec.bytes:
+            raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
+        if spec.sha256sum is not None and hashlib.sha256(data).hexdigest() != spec.sha256sum:
+            raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
+    rec.input_metadata[index] = _JobInputMetadata(bytes=len(data))
+
+
+async def _prepare_job_inputs(
+    rec: _JobRecord,
+    req: _ParseRequest,
+    file_store: FileStore,
+    *,
+    url_timeout: int,
+    allow_http_source: bool,
+    max_url_bytes: int,
+) -> None:
+    """在独立受控阶段下载 URL，保留 HTML 来源信息并逐文件收敛准备失败。"""
+    if rec.status in {"canceled", "failed"}:
+        return
+    rec.status = "waiting-file"
+    rec.started_at = rec.started_at or JobStore._now()
+    for index, entry in enumerate(req.files):
+        if rec.status in {"canceled", "failed"}:
+            return
+        if not isinstance(entry.source, _UrlSource):
+            continue
+        file = rec.files[index]
+        file.status = "waiting-file"
+        started = time.monotonic()
+        try:
+            extracted = await _extract_bytes(
+                entry.source,
+                file_store,
+                url_timeout=url_timeout,
+                allow_http_source=allow_http_source,
+                max_url_bytes=max_url_bytes,
+            )
+            _validate_url_input(rec, index, extracted)
+            rec.prepared_sources[index] = _PreparedInput(extracted, time.monotonic() - started)
+            file.status = "pending"
+        except Exception as exc:
+            logger.exception("Parse-server input preparation failed: job_id=%s file=%r", rec.id, file.name)
+            file.status = "failed"
+            file.error = (
+                ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+                if isinstance(exc, MineruError)
+                else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+            )
+            rec.progress.failed += 1
+    if rec.status not in {"canceled", "failed"}:
+        rec.status = "failed" if rec.progress.failed == rec.progress.total else "pending"
+
+
 async def _extract_bytes(
     source: _ExecutionSource,
     file_store: FileStore,
@@ -1220,35 +1312,34 @@ async def _run_job(
     if rec.status == "canceled":
         return
     rec.status = "running"
-    rec.started_at = JobStore._now()
+    rec.started_at = rec.started_at or JobStore._now()
 
     with tempfile.TemporaryDirectory(prefix="mineru_job_") as tmpdir:
         for i, entry in enumerate(req.files):
             if rec.status in {"canceled", "failed"}:
                 break
             fr = rec.files[i]
+            if fr.status in {"failed", "canceled"}:
+                continue
+            prepared = rec.prepared_sources.pop(i, None)
             try:
-                file_started = time.monotonic()
+                file_started = time.monotonic() - (prepared.duration_seconds if prepared is not None else 0)
                 fr.status = "running"
-                extracted = await _extract_bytes(
-                    entry.source,
-                    file_store,
-                    url_timeout=url_timeout,
-                    allow_http_source=allow_http_source,
-                    max_url_bytes=max_url_bytes,
-                    input_blobs=rec.input_blobs,
+                extracted = (
+                    prepared.source
+                    if prepared is not None
+                    else await _extract_bytes(
+                        entry.source,
+                        file_store,
+                        url_timeout=url_timeout,
+                        allow_http_source=allow_http_source,
+                        max_url_bytes=max_url_bytes,
+                        input_blobs=rec.input_blobs,
+                    )
                 )
                 data = extracted.data
-                input_spec = rec.input_specs.get(i)
-                if input_spec is not None and isinstance(entry.source, _UrlSource):
-                    if not data:
-                        raise MineruError("invalid_request", "Empty files are not supported")
-                    if input_spec.bytes is not None and len(data) != input_spec.bytes:
-                        raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
-                    sha = hashlib.sha256(data).hexdigest()
-                    if input_spec.sha256sum is not None and sha != input_spec.sha256sum:
-                        raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
-                    rec.input_metadata[i] = _JobInputMetadata(bytes=len(data), sha256sum=sha)
+                if prepared is None and isinstance(entry.source, _UrlSource):
+                    _validate_url_input(rec, i, extracted)
                 suffix = pathlib.Path(fr.name).suffix
                 stype = _suffix_type(fr.name)
                 if not stype and not suffix and isinstance(entry.source, _UrlSource) and extracted.media_type == "text/html":
@@ -1288,6 +1379,7 @@ async def _run_job(
 
                 if rec.status in {"canceled", "failed"}:
                     break
+                actual_metadata = MinerUMetadata.model_validate(result.middle_json.extensions.get("mineru"))
                 from .task_outputs import build_task_output
 
                 try:
@@ -1312,6 +1404,7 @@ async def _run_job(
                 fr.page_range = _page_range_from_result_pages(result.pages)
 
                 fr.parse = FileParseInfo(
+                    tier=actual_metadata.tier,
                     duration_ms=int((time.monotonic() - file_started) * 1000),
                     parser_version=__version__,
                 )
@@ -1657,8 +1750,21 @@ async def submit_execution(
             job_store=job_store,
         )
 
+    async def _bg_prepare() -> None:
+        """复用本次来源配置准备 URL 输入，只有准备成功的文件进入解析队列。"""
+        await _prepare_job_inputs(
+            rec,
+            body,
+            file_store,
+            url_timeout=url_timeout_val,
+            allow_http_source=allow_http_source_val,
+            max_url_bytes=max_url_bytes_val,
+        )
+
     try:
-        job_store.start_task(rec, _bg_run)
+        job_store.start_task(
+            rec, _bg_run, prepare=_bg_prepare if any(isinstance(entry.source, _UrlSource) for entry in body.files) else None
+        )
     except BaseException:
         file_store.release_inputs(rec.input_blobs)
         job_store._jobs.pop(rec.id, None)

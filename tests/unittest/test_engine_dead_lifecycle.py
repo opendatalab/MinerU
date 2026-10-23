@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from task_test_utils import task_url
+
 from task_test_utils import submit_task, wait_task
 
 import asyncio
@@ -60,11 +62,11 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
 
         client.portal.call(make_gate)
         jobs = []
-        for name in ("fatal", "running", "queued", "user-cancel"):
+        for name in ("fatal", "running", "pending", "user-cancel"):
             source = tmp_path / f"{name}.pdf"
             source.write_bytes(name.encode())
             jobs.append(submit_task(client, source, tier="flash"))
-        assert client.delete(jobs[-1]["status_url"]).status_code == 200
+        assert client.delete(task_url(client, jobs[-1])).status_code == 200
         client.portal.call(gate.set)
         for job in jobs:
             wait_task(client, job)
@@ -83,7 +85,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
         client.portal.call(drain_tasks)
         assert entered == ["fatal", "running"]
         assert set(cleanup) == {"fatal", "running"}
-        assert [client.get(job["status_url"]).json()["status"] for job in jobs] == [
+        assert [client.get(task_url(client, job)).json()["status"] for job in jobs] == [
             "failed",
             "failed",
             "failed",
@@ -186,7 +188,7 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
         route.metadata["payload"] = {
             "job_id": route.public_id,
             "status": "running",
-            "files": [{"status": "queued"}],
+            "files": [{"status": "pending"}],
             "progress": {"total": 1, "completed": 0},
         }
         client.portal.call(pool.refresh, state)

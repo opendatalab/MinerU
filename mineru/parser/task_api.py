@@ -22,7 +22,7 @@ from starlette.requests import ClientDisconnect
 
 from ..errors import MineruError
 from ..filetypes import is_flash_only_parse_extension
-from ..task_types import TaskOutputFormat
+from ..task_types import TaskFileState, TaskOutputFormat, TaskStatus
 from ..types import Tier
 from ..utils.async_utils import drain_future, run_sync
 from .api_server import (
@@ -48,8 +48,6 @@ from .page_range import PAGE_RANGE_DESCRIPTION, normalize_page_range_input
 MAX_TASK_FILES = 100
 TASK_UPLOAD_TTL = 3600
 TERMINAL_TASK_STATUSES = frozenset({"completed", "partial", "failed", "canceled"})
-TaskStatus = Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
-TaskFileState = Literal["waiting_upload", "queued", "running", "completed", "failed", "canceled"]
 logger = logging.getLogger(__name__)
 
 
@@ -100,22 +98,30 @@ class CreateTaskRequest(UploadTaskOptions):
 class TaskUploadLink(BaseModel):
     """描述一个文件的上传目标，客户端原样使用服务端给出的地址和请求头。"""
 
-    client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
-    upload_url: str
-    upload_headers: dict[str, str]
+    url: str
+    headers: dict[str, str]
     expires_at: int
 
 
-class TaskFileStatus(TaskFileItem):
-    """同时提供上传准备情况与逐文件解析状态，禁止内联解析正文。"""
+class TaskFileStatus(BaseModel):
+    """用统一状态描述文件准备和解析，上传对象仅表示客户端当前可执行的动作。"""
 
-    upload_status: Literal["pending", "ready", "not_required", "expired"]
-    file_id: str | None = None
-    name: str
+    client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    file_name: str
+    bytes: int | None
+    url: str | None
+    upload: TaskUploadLink | None
     status: TaskFileState
     parse: FileParseInfo | None = None
     result_url: str | None = None
     error: ErrorDetail | None = None
+
+    @model_validator(mode="after")
+    def validate_upload_action(self) -> TaskFileStatus:
+        """只有等待客户端文件的条目才能提供上传目标，服务端准备阶段可以为空。"""
+        if self.upload is not None and (self.status != "waiting-file" or self.url is not None):
+            raise ValueError("Only waiting-file without a URL source accepts uploads")
+        return self
 
 
 class TaskStatusResponse(BaseModel):
@@ -123,15 +129,12 @@ class TaskStatusResponse(BaseModel):
 
     task_id: str
     status: TaskStatus
-    status_url: str
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None
-    tier: Tier | None = None
     output_formats: list[TaskOutputFormat]
     progress: TaskProgress
     files: list[TaskFileStatus]
-    pending_uploads: list[TaskUploadLink]
     error: ErrorDetail | None = None
 
 
@@ -345,7 +348,7 @@ class _TaskFileRecord:
 
     backend: TaskBackend
     execution_id: str = field(default_factory=JobStore._new_job_id)
-    status: TaskFileState = "waiting_upload"
+    status: TaskFileState = "waiting-file"
     upload: TaskUpload | None = None
     upload_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     upload_active: bool = False
@@ -370,7 +373,7 @@ class _TaskRecord:
     expires_at: int
     file_states: list[_TaskFileRecord]
     created_at: str = field(default_factory=JobStore._now)
-    status: TaskStatus = "waiting_upload"
+    status: TaskStatus = "waiting-file"
     refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     changed: asyncio.Event = field(default_factory=asyncio.Event)
     operation: asyncio.Task[None] | None = None
@@ -413,10 +416,10 @@ class TaskStore:
         states = [file.status for file in record.file_states]
         if "running" in states:
             record.status = "running"
-        elif "queued" in states:
-            record.status = "queued"
-        elif "waiting_upload" in states:
-            record.status = "waiting_upload"
+        elif "pending" in states:
+            record.status = "pending"
+        elif "waiting-file" in states:
+            record.status = "waiting-file"
         else:
             completed = states.count("completed")
             record.status = "completed" if completed == len(states) else ("partial" if completed else "failed")
@@ -430,8 +433,8 @@ class TaskStore:
         """只终结尚未受理上传的文件；截止前已经受理的流允许继续完成。"""
         if record.expires_at > time.time() or record.status == "canceled":
             return
-        for file in record.file_states:
-            if file.status == "waiting_upload" and not file.upload_active:
+        for item, file in zip(record.inputs, record.file_states):
+            if item.url is None and file.upload is None and file.status == "waiting-file" and not file.upload_active:
                 file.expired = True
                 file.status = "failed"
                 file.error = ErrorDetail(type="invalid_request_error", code="upload_expired", message="Upload expired")
@@ -511,9 +514,9 @@ class TaskStore:
     def _start_file(self, record: _TaskRecord, index: int) -> None:
         """事件循环内同步登记提交句柄，重复 PUT 不能创建第二个子作业。"""
         file = record.file_states[index]
-        if file.operation is not None or file.status != "waiting_upload" or record.status == "canceled":
+        if file.operation is not None or file.status != "waiting-file" or record.status == "canceled":
             return
-        file.status = "queued"
+        file.status = "pending" if file.upload is not None else "waiting-file"
         record.changed.set()
         file.operation = asyncio.create_task(self._dispatch_file(record, index), name=f"mineru-task-file-{file.execution_id}")
         self._aggregate(record)
@@ -523,7 +526,7 @@ class TaskStore:
         if file.status in TERMINAL_TASK_STATUSES:
             return
         status = execution.job.get("status")
-        if status not in {"queued", "running", "completed", "failed", "canceled"}:
+        if status not in {"waiting-file", "pending", "running", "completed", "failed", "canceled"}:
             _invalid("Invalid file status from execution backend", code="invalid_response", status_code=502)
         if status == "completed" and execution.result_file_id is None:
             _invalid("Completed file has no result", code="invalid_response", status_code=502)
@@ -669,7 +672,7 @@ class TaskStore:
                 _invalid("Task was canceled", status_code=409, code="task_already_terminal")
             if file.upload is not None:
                 return True
-            if file.status != "waiting_upload":
+            if file.status != "waiting-file":
                 _invalid("File no longer accepts uploads", status_code=409, code="file_already_terminal")
             length = request.headers.get("content-length")
             if length is not None:
@@ -755,56 +758,54 @@ def _url(request: Request, path: str) -> str:
 def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
     """逐文件合并上传与执行元数据，成功文件立即给出独立下载链接。"""
     files: list[dict[str, Any]] = []
-    links: list[dict[str, Any]] = []
     starts: list[str] = []
     for item, state in zip(record.inputs, record.file_states):
-        file = item.model_dump()
-        upload = state.upload
-        file.update(
-            name=item.file_name,
-            upload_status="not_required"
-            if item.url is not None
-            else ("ready" if upload is not None else ("expired" if state.expired else "pending")),
-            status=state.status,
-            file_id=upload.file_id if upload else None,
-            result_url=None,
-        )
+        file: dict[str, Any] = {
+            "client_file_id": item.client_file_id,
+            "file_name": item.file_name,
+            "bytes": item.bytes,
+            "url": item.url,
+            "status": state.status,
+            "upload": None,
+            "parse": None,
+            "result_url": None,
+            "error": None,
+        }
         if state.execution is not None:
             job = state.execution.job
             results = job.get("files") or []
             if results:
-                file.update({key: results[0].get(key) for key in ("name", "file_id", "page_range", "parse", "error")})
+                file["error"] = results[0].get("error")
+                if state.status == "completed":
+                    file["parse"] = results[0].get("parse")
             if job.get("started_at"):
                 starts.append(job["started_at"])
             if (metadata := state.execution.input_metadata.get(0)) is not None:
-                file.update(bytes=metadata.bytes, sha256sum=metadata.sha256sum)
+                file["bytes"] = metadata.bytes
             if state.status == "completed" and state.execution.result_file_id:
                 file["result_url"] = _url(request, f"/v1/files/{quote(state.execution.result_file_id, safe='')}/content")
         if state.error is not None:
             file["error"] = state.error.model_dump()
-        files.append(file)
         if (
             item.url is None
-            and state.status == "waiting_upload"
+            and state.upload is None
+            and not state.upload_active
+            and state.status == "waiting-file"
             and record.status != "canceled"
             and record.expires_at > time.time()
         ):
-            links.append(
-                {
-                    "client_file_id": item.client_file_id,
-                    "upload_url": _url(request, f"/v1/tasks/{record.id}/uploads/{quote(item.client_file_id, safe='')}"),
-                    "upload_headers": {"Content-Type": "application/octet-stream"},
-                    "expires_at": record.expires_at,
-                }
-            )
+            file["upload"] = {
+                "url": _url(request, f"/v1/tasks/{record.id}/uploads/{quote(item.client_file_id, safe='')}"),
+                "headers": {"Content-Type": "application/octet-stream"},
+                "expires_at": record.expires_at,
+            }
+        files.append(file)
     payload = {
         "task_id": record.id,
         "status": record.status,
-        "status_url": _url(request, f"/v1/tasks/{record.id}"),
         "created_at": record.created_at,
         "started_at": min(starts) if starts else None,
         "finished_at": record.finished_at,
-        "tier": record.options.tier,
         "output_formats": record.options.output_formats,
         "progress": {
             "completed": sum(file.status == "completed" for file in record.file_states),
@@ -812,7 +813,6 @@ def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
             "total": len(files),
         },
         "files": files,
-        "pending_uploads": links,
         "error": record.error.model_dump() if record.error else None,
     }
     return TaskStatusResponse.model_validate(payload).model_dump()

@@ -40,7 +40,7 @@ def test_api_parser_serializes_request_ocr_mode(
             return httpx.Response(200, content=zip_output())
         assert request.method == "POST" and request.url.path == "/v1/tasks"
         payloads.append(json.loads(request.content))
-        return httpx.Response(202, json={**task_snapshot(), "status_url": "http://localhost:8000/v1/tasks/task-one"})
+        return httpx.Response(202, json=task_snapshot())
 
     transport = httpx.MockTransport(respond)
     sync_client, async_client = httpx.Client, httpx.AsyncClient

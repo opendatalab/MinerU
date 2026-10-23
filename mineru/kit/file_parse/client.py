@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 import httpx
 from pydantic import ValidationError
 
+from ...task_types import task_status_url
 from .models import GatewayError, Record, RemoteTask
 from .settings import FileParseSettings, origin
 
@@ -126,9 +127,13 @@ class TaskClient:
                 raise ValueError("Task identity changed")
             if list(dict.fromkeys(task.output_formats)) != formats:
                 raise ValueError("Task output formats changed")
-            task.status_url = self.resolve(task.status_url, metadata=True)
-            for link in task.pending_uploads:
-                link.upload_url = self.resolve(link.upload_url)
+            if expected is not None and (
+                task.files[0].file_name != expected.files[0].file_name or task.files[0].bytes != expected.files[0].bytes
+            ):
+                raise ValueError("Task input identity changed")
+            for item in task.files:
+                if item.upload is not None:
+                    item.upload.url = self.resolve(item.upload.url)
             if task.files[0].result_url:
                 task.files[0].result_url = self.resolve(task.files[0].result_url)
             return task
@@ -189,48 +194,53 @@ class TaskClient:
         )
 
     async def query(self, task: RemoteTask) -> RemoteTask:
-        """按服务给出的地址查询原任务，失败不会触发创建操作。"""
-        return await self._json_request("GET", task.status_url, task.output_formats, expected=task)
+        """保留部署前缀并按稳定任务 ID 查询，失败不会触发创建操作。"""
+        return await self._json_request(
+            "GET", task_status_url(self.settings.api_url, task.task_id), task.output_formats, expected=task
+        )
 
     async def upload(self, task: RemoteTask, path: Path, size: int) -> RemoteTask:
-        """上传失败先查询确认，最多重传三次，绝不续期或创建替代任务。"""
-        for attempt in range(3):
-            item = task.files[0]
-            if item.upload_status == "ready" or item.status in {"completed", "failed", "canceled"}:
-                return task
-            if not task.pending_uploads:
-                raise GatewayError("upstream_protocol_error", "Pending file has no upload link")
-            link = task.pending_uploads[0]
+        """文件准备期间只轮询，明确出现上传目标后才发送，最多重试三次。"""
+        attempts = 0
+        uploaded = False
+        last_error: GatewayError | None = None
+        while task.files[0].status == "waiting-file":
+            link = task.files[0].upload
+            if link is None or uploaded:
+                await asyncio.sleep(self.settings.poll_interval)
+                task = await self.query(task)
+                continue
+            if attempts >= 3:
+                raise last_error or GatewayError("upload_failed", "Upload retry budget exhausted")
             if link.expires_at <= time.time():
                 raise GatewayError("upload_expired", "The task upload link has expired", 410)
+            attempts += 1
             try:
-                headers = self.headers(link.upload_url, link.upload_headers)
+                headers = self.headers(link.url, link.headers)
                 headers["content-length"] = str(size)
                 async with self.client.stream(
-                    "PUT",
-                    link.upload_url,
-                    headers=headers,
-                    content=file_chunks(path),
-                    timeout=self.transfer_timeout,
+                    "PUT", link.url, headers=headers, content=file_chunks(path), timeout=self.transfer_timeout
                 ) as response:
                     body = await self._read_metadata(response)
                     if not 200 <= response.status_code < 300:
                         raise self._http_error(response.status_code, body)
-                return await self.query(task)
+                uploaded = True
+                task = await self.query(task)
             except (httpx.HTTPError, GatewayError) as exc:
-                error = (
+                last_error = (
                     exc
                     if isinstance(exc, GatewayError)
-                    else GatewayError("upload_interrupted", "Upstream upload was interrupted", retryable=True)
+                    else GatewayError("upload_interrupted", "The task upload was interrupted", retryable=True)
                 )
                 task = await self.query(task)
-                item = task.files[0]
-                if item.upload_status == "ready" or item.status in {"completed", "failed", "canceled"}:
+                if task.files[0].status != "waiting-file":
                     return task
-                if attempt == 2 or not error.retryable:
-                    raise error from exc
-                await asyncio.sleep(self.retry_delay * (attempt + 1))
-        raise AssertionError("unreachable")
+                if task.files[0].upload is None:
+                    continue
+                if attempts == 3 or not last_error.retryable:
+                    raise last_error from exc
+                await asyncio.sleep(self.retry_delay * attempts)
+        return task
 
     async def _download_once(self, url: str, path: Path) -> None:
         """逐跳重新决定认证并流式写盘，在完整接收前不向调用者发送成功响应。"""

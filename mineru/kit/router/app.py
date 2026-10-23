@@ -226,6 +226,7 @@ def create_app(
             while True:
                 await asyncio.sleep(RETENTION_SCAN_INTERVAL_SECONDS)
                 registry.collect_expired(source_store)
+                source_store.collect_expired()
 
         try:
             if resolved_settings.retention_seconds:

@@ -43,7 +43,7 @@ Files 的时间字段为 Unix 秒级整数，与 Tasks 的 ISO-8601 时间字符
 }
 ```
 
-示例中的 ID、大小、时间和 hash 为示意值。源文件元数据使用相同结构，`purpose` 为 `parse`，`file_name` 为输入文件名。
+示例中的 ID、大小、时间和 hash 为示意值。本地源文件元数据使用相同结构，`purpose` 为 `parse`，`file_name` 为输入文件名。Tasks 不公开源 Files ID；Router 仅登记结果的公共 Files 映射。
 
 ## DELETE /v1/files/{file_id}：删除文件视图
 
@@ -91,4 +91,4 @@ JSON 字段使用 `file_name`；HTTP 附件头的标准参数仍是 `filename` �
 API Server 与 Router 默认保留 86400 秒，每 300 秒扫描。`--retention-seconds` 优先于 `MINERU_API_RETENTION_SECONDS`，0 禁用正常保留期清理。上传链接固定的一小时窗口不随该设置改变。
 
 清理只删除过期视图和无引用字节。排队、执行、上传、下载持有的引用阻止物理删除；结果保留期从父任务完成资源清理后开始。
-Router 映射自身 Files 地址，按调用方隔离缓存与元数据，后台维持 worker 结果租约。SaaS 可以提供对象存储签名地址，不要求实现本地 Files 下载路由。
+Router 映射结果 Files 地址，源缓存由按调用方隔离的私有引用管理，不依赖下游源 Files ID。父任务清理后开始私有源缓存保留期，后台独立回收并维持 worker 结果租约。SaaS 可以提供对象存储签名地址，不要求实现本地 Files 下载路由。
