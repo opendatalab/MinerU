@@ -81,6 +81,7 @@ assert "torch" not in sys.modules
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+@pytest.mark.torch
 def test_real_torch_thread_pool_propagation() -> None:
     """用独立进程验证实际 PyTorch 的后续线程按首次选定上限执行算子。"""
     # 基础 ONNX 安装不要求 Torch，真实算子验证仅在可选后端可用时执行。

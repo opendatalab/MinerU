@@ -102,6 +102,7 @@ def test_valid_crop_does_not_hide_unrelated_warp_errors(seal_image: np.ndarray, 
 def _build_seal_model(engine: str, boxes: list[np.ndarray], recognizer: Mock, debug_dir: Path) -> Any:
     """只替换检测和识别推理，保留两个引擎的真实裁剪、过滤与结果封装。"""
     if engine == "torch":
+        pytest.importorskip("torch")
         from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 
         model = PytorchPaddleOCR.__new__(PytorchPaddleOCR)
@@ -121,7 +122,7 @@ def _build_seal_model(engine: str, boxes: list[np.ndarray], recognizer: Mock, de
     return model
 
 
-@pytest.mark.parametrize("engine", ["torch", "onnx"])
+@pytest.mark.parametrize("engine", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_seal_recognition_keeps_boxes_and_debug_outputs_aligned(seal_image: np.ndarray, engine: str, tmp_path: Path) -> None:
     """跳过中间真实无效轮廓后，后一个识别文字和调试裁片仍对应最后的检测框。"""
     first = np.asarray(_REFERENCE["valid_cases"][0]["points"])
@@ -142,7 +143,7 @@ def test_seal_recognition_keeps_boxes_and_debug_outputs_aligned(seal_image: np.n
                 np.testing.assert_array_equal(np.asarray(saved), crop[:, :, ::-1])
 
 
-@pytest.mark.parametrize("engine", ["torch", "onnx"])
+@pytest.mark.parametrize("engine", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_all_invalid_seal_crops_skip_recognition(seal_image: np.ndarray, engine: str, tmp_path: Path) -> None:
     """全部轮廓无效时外层 OCR 返回既有空结果，并且不执行识别模型。"""
     invalid = np.asarray(_REFERENCE["degenerate_polygon"])
@@ -152,6 +153,7 @@ def test_all_invalid_seal_crops_skip_recognition(seal_image: np.ndarray, engine:
     recognizer.assert_not_called()
 
 
+@pytest.mark.torch
 @pytest.mark.parametrize("all_invalid", [False, True])
 def test_torch_detection_only_keeps_debug_crops_aligned(seal_image: np.ndarray, tmp_path: Path, all_invalid: bool) -> None:
     """Torch 仅检测入口实际执行裁剪时，同步过滤返回框及调试图，空裁片也能安全输出。"""

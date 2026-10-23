@@ -7,6 +7,8 @@ import pytest
 import numpy as np
 from types import SimpleNamespace
 
+pytestmark = pytest.mark.torch
+
 torch = pytest.importorskip("torch")
 pytest.importorskip("transformers", minversion="5.10.1")
 
