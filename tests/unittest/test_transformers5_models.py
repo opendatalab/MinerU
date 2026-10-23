@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.torch
+
 torch = pytest.importorskip("torch")
 transformers = pytest.importorskip("transformers", minversion="5.10.1")
 
@@ -213,7 +215,9 @@ def test_layout_configuration_constructs_the_inference_graph() -> None:
     assert any(True for _ in model.parameters())
 
 
-@pytest.mark.parametrize("device", ["cpu", "mps", "xpu"])
+@pytest.mark.parametrize(
+    "device", ["cpu", pytest.param("mps", marks=pytest.mark.accelerator), pytest.param("xpu", marks=pytest.mark.accelerator)]
+)
 def test_layout_position_embedding_preserves_native_math(device: str) -> None:
     """CPU/MPS/XPU 包装保持官方位置编码数值，且没有新增或改名的模型权重。"""
     from transformers.models.pp_doclayout_v2.modeling_pp_doclayout_v2 import PPDocLayoutV2SinePositionEmbedding

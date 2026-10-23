@@ -41,9 +41,11 @@ def test_formula_split_zero_width_fragment_preserves_valid_text() -> None:
     np.testing.assert_array_equal(output[0]["np_img"], image[4:12, 11:20])
 
 
+@pytest.mark.torch
 @pytest.mark.parametrize("mask_right", (10, 20))
 def test_torch_ocr_discards_invalid_crops_without_text_misalignment(mask_right: int) -> None:
     """Torch 整体 OCR 同步过滤零宽框和裁图，全部被过滤时不调用识别器。"""
+    pytest.importorskip("torch")
     from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 
     model = object.__new__(PytorchPaddleOCR)

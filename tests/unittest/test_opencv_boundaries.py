@@ -216,6 +216,7 @@ def test_table_classifier_tensor_keeps_channel_calculation_order() -> None:
     _assert_model_reference(classifier.batch_preprocess([image]), "table_classifier", 1)
 
 
+@pytest.mark.torch
 @pytest.mark.parametrize("channels", [None, 1, 3])
 def test_unimer_crop_and_zero_padding_keep_shape(channels: int | None) -> None:
     """单通道和 RGB 公式图沿用冻结裁边、缩放和零填充像素。"""
