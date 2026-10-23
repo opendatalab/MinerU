@@ -16,6 +16,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -174,6 +175,16 @@ class Upstream:
         return httpx.Response(200, content=artifact_bytes(task["options"]["output_formats"]))
 
 
+def assert_no_upstream_cancellation(upstream: Upstream) -> None:
+    """超时、断连和关闭包装服务均不得发送新取消请求或旧 DELETE 请求。"""
+    cancellations = [
+        (method, url)
+        for method, url, _authorization in upstream.calls
+        if method == "DELETE" or (method == "POST" and urlsplit(url).path.endswith("/cancel"))
+    ]
+    assert not cancellations
+
+
 class InterruptedStream(httpx.AsyncByteStream):
     """模拟结果传输到一半时上游断开连接。"""
 
@@ -267,9 +278,10 @@ def test_expired_wait_does_not_cancel_upstream(tmp_path: Path) -> None:
         response = submit(client, wait_timeout=1)
         assert response.status_code == 202
         assert 0.9 <= time.monotonic() - started < 3
-        assert not any(method == "DELETE" for method, _, _ in upstream.calls)
+        assert_no_upstream_cancellation(upstream)
         upstream.complete = True
         assert client.get(response.json()["status_url"]).json()["status"] == "completed"
+    assert_no_upstream_cancellation(upstream)
 
 
 def test_wait_budget_excludes_storage_notification_delay(tmp_path: Path) -> None:
@@ -551,6 +563,7 @@ def test_disconnect_does_not_cancel_upload(tmp_path: Path) -> None:
             assert not list(app.state.service.store.sources.iterdir())
 
     asyncio.run(exercise())
+    assert_no_upstream_cancellation(upstream)
 
 
 def test_attachment_cleanup_after_send_disconnect(tmp_path: Path) -> None:

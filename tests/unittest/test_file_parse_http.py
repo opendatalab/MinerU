@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request, Response
 from PIL import Image, ImageDraw
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
-from test_file_parse import FORMATS, Upstream, artifact_bytes
+from test_file_parse import FORMATS, Upstream, artifact_bytes, assert_no_upstream_cancellation
 from test_http_api_example_script import _Server
 from test_task_http import HTML, _LiveService, live_service as tasks_live_service
 
@@ -145,7 +145,7 @@ def test_saas_storage_all_formats_and_recovery(tmp_path: Path) -> None:
             assert waiting.returncode == 124, waiting.stdout + waiting.stderr
             assert "status_url" in waiting.stdout and not (tmp_path / "pending.zip").exists()
         assert len(state.tasks) == 17
-        assert all(method != "DELETE" for method, _, _ in state.calls)
+        assert_no_upstream_cancellation(state)
     finally:
         storage.stop()
         api.stop()
@@ -225,6 +225,7 @@ def test_tcp_disconnect_keeps_accepted_request(tmp_path: Path) -> None:
             assert response.json()["status"] == "completed"
             assert client.get(response.json()["result_url"]).content == artifact_bytes(["default"])
             assert state.uploads == 1 and len(state.tasks) == 1
+        assert_no_upstream_cancellation(state)
     finally:
         storage.stop()
         api.stop()
