@@ -231,7 +231,11 @@ class V1ArtifactClient:
 
         try:
             result = await parser.parse_async(
-                path, page_range=page_range, status_callback=on_job_status, duration_callback=on_job_duration
+                path,
+                page_range=page_range,
+                status_callback=on_job_status,
+                duration_callback=on_job_duration,
+                cancel_on_cancel=True,
             )
         except Exception as exc:
             emit(f"Failed: {exc}")

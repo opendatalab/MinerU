@@ -40,6 +40,8 @@ from .page_range import normalize_page_range_input
 
 _POLL_INTERVAL_SECONDS = 1
 _POLL_MAX_ATTEMPTS = 3600
+_TASK_CREATE_TIMEOUT_SECONDS = 120.0
+_TASK_CANCEL_TIMEOUT_SECONDS = 5.0
 _TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
 _TRANSPORT_MAX_ATTEMPTS = 3
 _TRANSPORT_RETRY_BASE_DELAY_SECONDS = 0.25
@@ -405,13 +407,67 @@ class MinerUApiParser(DocumentParser):
         page_range: str = "",
         status_callback: Callable[[ApiTaskStatus], None] | None = None,
         duration_callback: Callable[[float], None] | None = None,
+        cancel_on_cancel: bool = False,
     ) -> ParseResult:
-        """创建单文件任务、按需上传并下载完整 ZIP，回调对应真实服务端阶段。"""
+        """创建单文件任务并下载结果；显式开启时将协程取消联动到服务端任务。"""
         file_path = Path(path)
         payload = await asyncio.to_thread(self._payload, file_path, normalize_page_range_input(page_range))
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env, follow_redirects=False
         ) as cli:
+            task: dict[str, Any] | None = None
+            creation: asyncio.Task[dict[str, Any]] | None = None
+            try:
+                if cancel_on_cancel:
+                    creation = asyncio.create_task(self._async_create_task(cli, payload, timeout=_TASK_CREATE_TIMEOUT_SECONDS))
+                    task = await asyncio.shield(creation)
+                else:
+                    task = await self._async_create_task(cli, payload)
+                _notify_job_status(task, status_callback)
+                created_status = task["status"]
+                task = await self._async_query(cli, task)
+                if task["status"] != created_status:
+                    _notify_job_status(task, status_callback)
+                upload_state = _UploadState()
+                task = await self._async_upload_input(
+                    cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+                )
+                for _ in range(_POLL_MAX_ATTEMPTS):
+                    if task["status"] in _TERMINAL_JOB_STATUSES:
+                        break
+                    await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+                    task = await self._async_query(cli, task)
+                    _notify_job_status(task, status_callback)
+                    task = await self._async_upload_input(
+                        cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+                    )
+                if task["status"] not in _TERMINAL_JOB_STATUSES:
+                    raise _V1APIError("timeout", f"Task {task['task_id']} did not complete within timeout")
+                _raise_for_terminal_job_error(task)
+                if task["files"][0].get("status") != "completed":
+                    raise _V1APIError("parse_failed", "Task did not complete its input file")
+                _notify_job_duration(task, duration_callback)
+                with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
+                    target = Path(directory) / "result.zip"
+                    await self._async_download_task(cli, task, target)
+                    return _parse_result_from_zip_bytes(target, include_images=self.include_images)
+            except asyncio.CancelledError:
+                if cancel_on_cancel:
+                    cleanup = asyncio.create_task(self._async_cancel_parse(cli, task, creation))
+                    # 清除、换文件和 unload 可能重复取消同一协程，不能中断唯一的远端清理。
+                    while not cleanup.done():
+                        try:
+                            await asyncio.shield(cleanup)
+                        except asyncio.CancelledError:
+                            continue
+                    cleanup.result()
+                raise
+
+    async def _async_create_task(
+        self, cli: httpx.AsyncClient, payload: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]:
+        """一次性提交并校验创建回执，可为受保护的提交设置整体截止时间。"""
+        async with asyncio.timeout(timeout):
             response = await _async_request_once(
                 cli,
                 "POST",
@@ -420,35 +476,47 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
                 json_body=payload,
             )
-            task = self._created_task(response, payload)
-            _notify_job_status(task, status_callback)
-            created_status = task["status"]
-            task = await self._async_query(cli, task)
-            if task["status"] != created_status:
-                _notify_job_status(task, status_callback)
-            upload_state = _UploadState()
-            task = await self._async_upload_input(
-                cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
-            )
-            for _ in range(_POLL_MAX_ATTEMPTS):
-                if task["status"] in _TERMINAL_JOB_STATUSES:
-                    break
-                await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-                task = await self._async_query(cli, task)
-                _notify_job_status(task, status_callback)
-                task = await self._async_upload_input(
-                    cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+            return self._created_task(response, payload)
+
+    async def _async_cancel_parse(
+        self,
+        cli: httpx.AsyncClient,
+        task: dict[str, Any] | None,
+        creation: asyncio.Task[dict[str, Any]] | None,
+    ) -> None:
+        """恢复被取消提交的身份并有界取消未终结任务，清理失败不覆盖调用方的取消。"""
+        try:
+            if task is None and creation is not None:
+                task = await creation
+            if task is None:
+                logger.warning("Task cancellation could not be confirmed: no task ID was received")
+                return
+            if task["status"] in _TERMINAL_JOB_STATUSES:
+                return
+            async with asyncio.timeout(_TASK_CANCEL_TIMEOUT_SECONDS):
+                response = await _async_request_once(
+                    cli,
+                    "POST",
+                    task_status_url(self._base_url, task["task_id"]) + "/cancel",
+                    stage="task cancellation",
+                    headers=self._headers(),
                 )
-            if task["status"] not in _TERMINAL_JOB_STATUSES:
-                raise _V1APIError("timeout", f"Task {task['task_id']} did not complete within timeout")
-            _raise_for_terminal_job_error(task)
-            if task["files"][0].get("status") != "completed":
-                raise _V1APIError("parse_failed", "Task did not complete its input file")
-            _notify_job_duration(task, duration_callback)
-            with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
-                target = Path(directory) / "result.zip"
-                await self._async_download_task(cli, task, target)
-                return _parse_result_from_zip_bytes(target, include_images=self.include_images)
+                if response.status_code == 404:
+                    return
+                if (
+                    response.status_code == 409
+                    and (_structured_error(response.json()) or {}).get("code") == "task_already_terminal"
+                ):
+                    return
+                canceled = self._check(response)
+                if canceled.get("task_id") != task["task_id"] or canceled.get("status") != "canceled":
+                    raise _V1APIError("invalid_response", "Inconsistent Tasks cancellation response")
+        except (Exception, asyncio.CancelledError) as exc:
+            logger.warning(
+                "Task cancellation could not be confirmed for %s (%s)",
+                task["task_id"] if task is not None else "unknown task",
+                type(exc).__name__,
+            )
 
     async def _async_query(self, cli: httpx.AsyncClient, task: dict[str, Any]) -> dict[str, Any]:
         """按配置的 API 基址和任务 ID 查询，保留元数据请求的有限重试。"""

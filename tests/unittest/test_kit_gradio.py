@@ -663,7 +663,13 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
             """忽略构造参数。"""
 
         async def parse_async(
-            self, _path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+            self,
+            _path: Path,
+            *,
+            page_range: str,
+            status_callback: Any = None,
+            duration_callback: Any = None,
+            cancel_on_cancel: bool = False,
         ) -> ParseResult:
             """抛出与正式 API client 一致的错误形态。"""
             error = RuntimeError(f"bad range: {page_range}")
@@ -696,11 +702,18 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
             calls.update(kwargs)
 
         async def parse_async(
-            self, path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+            self,
+            path: Path,
+            *,
+            page_range: str,
+            status_callback: Any = None,
+            duration_callback: Any = None,
+            cancel_on_cancel: bool = False,
         ) -> ParseResult:
             """返回最小解析结果。"""
             calls["path"] = path
             calls["page_range"] = page_range
+            assert cancel_on_cancel is True
             assert statuses == ["Preparing request...", "Submitting task..."]
             assert status_callback is not None
             status_callback("pending")

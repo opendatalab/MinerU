@@ -32,6 +32,8 @@ HTTP 输入只有上传和 URL；SDK 的路径参数始终代表客户端文件�
 状态回调在创建和查询后触发，回调异常只记录日志。服务端完成表示开始下载，不等于 SDK 已经返回。
 单文件成功后的 `parse` 包含实际 `tier`、`duration_ms` 和 `parser_version`。`duration_callback` 在开始下载前接收服务端单文件 `parse.duration_ms`，包含解析和导出；缺失或非法值不触发回调。
 
+`parse_async(..., cancel_on_cancel=True)` 将协程取消联动到 `POST /v1/tasks/{task_id}/cancel`，默认关闭，普通 SDK、Doclib 和 file-parse 的既有行为不变。Gradio 显式开启此选项。取消发生在创建期间时，会等待同一次创建回执以取得服务端 ID，创建整体最多等待 120 秒，不重复提交；拿到未终结任务后，最多用 5 秒发送一次取消。404 和 `409 task_already_terminal` 视为已无可取消任务，其他失败记录日志，最终仍传播原始 `CancelledError`。网络失败且没有取得 ID 时无法确认远端取消。已知任务终结后的下载或本地输出取消不会调用远端取消，也不删除产物。
+
 创建请求没有幂等保证，不自动重试。上传响应丢失后先查状态：进入 pending/running/completed 后不重传；waiting-file 且 未返回 upload 时仅轮询；出现上传目标后才在原重试预算内发送。PUT 成功后等待确认，不因状态仍是 waiting-file 而重复上传。查询、传输和下载有界重试；任务查询和用量查询对 408/429/500/502/503/504 最多请求 3 次，支持 `Retry-After` 秒数和 HTTP 日期。单次建议等待超过 60 秒时返回原错误，不提前重试；无有效建议时使用指数退避。下载签名失效后重新查询任务。密钥仅附加到 API 同源请求，每次重定向重新判断来源。
 
 结构化业务错误保留 code/message/param。传输失败保留 `_APITransportError` 阶段及超时信息，Doclib 继续区分 `remote_timeout`、`remote_unreachable` 与业务 `parse_failed`。
