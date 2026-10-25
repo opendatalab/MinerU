@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from mineru.doclib.services.parse_execution_svc import ParseExecutionService
+
 from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output, build_default_zip
 
@@ -23,7 +25,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.doclib.services.parse_svc import ParseService
+
 from mineru.errors import InvalidRequestError
 from mineru.parser import ParseResult, api_server, parse, parse_async
 from mineru.parser.api_server import FileStore
@@ -355,7 +357,7 @@ def test_html_doclib_local_bridge_uses_flash_parser(tmp_path: Path) -> None:
     """验证 Doclib 本地 Flash 桥接把 HTML 文件交给统一 MinerUParser。"""
     source = tmp_path / "doclib.html"
     source.write_text("<html><body><h1>Doclib HTML</h1><p>Body text.</p></body></html>", encoding="utf-8")
-    service = object.__new__(ParseService)
+    service = object.__new__(ParseExecutionService)
 
     result = asyncio.run(
         service._parse_via_local(  # type: ignore[arg-type]

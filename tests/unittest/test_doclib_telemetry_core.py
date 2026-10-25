@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from doclib_test_utils import create_parse_service
+from mineru.doclib.services.parse_execution_svc import ParseExecutionService
+
+from doclib_test_utils import create_parse_services
 
 import asyncio
 from types import SimpleNamespace
@@ -8,7 +10,7 @@ from types import SimpleNamespace
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseService
+
 from mineru.doclib.services.scan_svc import ScanService, _ScanCounters
 from mineru.doclib.telemetry import (
     TelemetryContext,
@@ -287,7 +289,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         store = TelemetryStore(db)
         telemetry = TelemetryService(store)
         await telemetry.initialize()
-        server = DoclibServer(SimpleNamespace(parse_svc=_ParseService(), telemetry_svc=telemetry))
+        server = DoclibServer(SimpleNamespace(parse_queue_svc=_ParseService(), telemetry_svc=telemetry))
 
         await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="standard"))
         body = await telemetry.preview_body()
@@ -363,7 +365,7 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
             """测试替身补齐 ParseResult 图片接口，保持成功路径契约完整。"""
             return {}
 
-    class _ParseService(ParseService):
+    class _ParseService(ParseExecutionService):
         async def _parse_via_local(self, file_row, tier, page_range):
             return _Result()
 
@@ -374,14 +376,14 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         telemetry = TelemetryService(store)
         await telemetry.initialize()
         config_svc = ConfigService(db)
-        parse_svc = create_parse_service(
+        parse_svc = create_parse_services(
             db,
             _Fts(),
             config_svc,
             str(tmp_path),
             parse_lock_timeout_sec=30,
             telemetry_svc=telemetry,
-            service_type=_ParseService,
+            execution_type=_ParseService,
         )
         now = 1_700_000_000_000
         (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4\n")
@@ -401,7 +403,7 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         )
         task = await db.fetchone("SELECT * FROM parses WHERE sha256=?", ("sha",))
 
-        assert await parse_svc.process_doc(task)
+        assert await parse_svc.execution.process_doc(task)
         body = await telemetry.preview_body()
         names = {metric["name"] for metric in body["metrics"]}
 

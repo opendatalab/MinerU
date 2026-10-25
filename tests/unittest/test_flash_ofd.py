@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from doclib_test_utils import create_parse_service
+from doclib_test_utils import create_parse_services
 
 from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output
@@ -110,7 +110,7 @@ def test_doclib_ingests_ofd_as_local_full_document_flash(tmp_path: Path) -> None
         """执行隔离 SQLite 入库并检查 OFD 文档与解析任务。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = create_parse_service(
+        service = create_parse_services(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
@@ -119,7 +119,7 @@ def test_doclib_ingests_ofd_as_local_full_document_flash(tmp_path: Path) -> None
         )
         source = tmp_path / "sample.ofd"
         source.write_bytes(_minimal_payload())
-        response = await service.request_parse(str(source), tier="flash")
+        response = await service.queue.request_parse(str(source), tier="flash")
         doc = await db.fetchone(
             "SELECT file_type, page_count, title FROM docs WHERE sha256=?",
             (response.sha256,),

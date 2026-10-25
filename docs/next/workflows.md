@@ -66,7 +66,7 @@
   │   -> 搜索索引 / 基础预览
   │
   ├─ mineru parse / Agent 主动读取
-  │   -> doclib ParseService
+  │   -> doclib ParseQueueService
   │   -> 查缓存
   │   -> 默认选择/flash/basic/standard/advanced 路由
   │   -> ParseWorker
@@ -285,7 +285,7 @@ client.parse("report.pdf")
 ### 6.3 步骤
 
 1. CLI 或 SDK 将请求发送给 doclib server。
-2. `ParseService` 查找文件路径。
+2. `ParseQueueService` 调用 `IngestService` 刷新文件路径。
 3. 如果文件尚未入库，先同步执行 ingest，得到 `sha256`。
 4. 确定页码范围、输出格式、等待策略和隐私偏好。
 5. 如果用户未指定 tier，使用默认选择策略。
@@ -295,7 +295,7 @@ client.parse("report.pdf")
 9. 缓存命中则直接 render 并返回。
 10. 缓存未命中则创建 `parses` 任务。
 11. `ParseWorker` 抢占任务。
-12. 按 tier 和 privacy 路由到本地 backend、Local Parse Server 或 Remote Parse Server。
+12. `ParseExecutionService` 按 tier 和 privacy 路由到本地 backend、Local Parse Server 或 Remote Parse Server。
 13. 生成本批次 Middle JSON pages。
 14. 将本批次 pages 写入 JSON 文件。
 15. 根据请求输出格式，从已保存的 JSON 转换得到 Markdown / Content List / HTML 等输出。

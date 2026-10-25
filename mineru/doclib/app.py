@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
 
     from .services.ingest_svc import IngestService
+    from .services.parse_queue_svc import ParseQueueService
+    from .services.parse_execution_svc import ParseExecutionService
 else:
     LoguruMessage = Any
 
@@ -68,7 +70,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
         from .services.ingest_svc import IngestService
-        from .services.parse_svc import ParseService
+        from .services.parse_queue_svc import ParseQueueService
+        from .services.parse_execution_svc import ParseExecutionService
         from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
         from .telemetry import TelemetryService, TelemetryStore
@@ -89,14 +92,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
         await state.telemetry_svc.initialize()
         state.ingest_svc = IngestService(state.db, state.fts, state.config_svc, telemetry_svc=state.telemetry_svc)
-        state.parse_svc = ParseService(
+        state.parse_queue_svc = ParseQueueService(
             state.db,
             state.fts,
-            state.config_svc,
             data_dir,
             ingest_svc=state.ingest_svc,
             parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
+        )
+        state.parse_execution_svc = ParseExecutionService(
+            state.db, state.fts, state.config_svc, data_dir, telemetry_svc=state.telemetry_svc
         )
         state.scan_svc = ScanService(
             state.db,
@@ -164,7 +169,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             num_workers=cfg.doclib.ingest_workers,
             lock_timeout_sec=cfg.doclib.ingest_lock_timeout_sec,
         )
-        state.parse_workers = ParseWorkerPool(state.parse_svc, num_workers=cfg.doclib.parse_workers)
+        state.parse_workers = ParseWorkerPool(
+            state.parse_queue_svc, state.parse_execution_svc, num_workers=cfg.doclib.parse_workers
+        )
         state.device_monitor = DeviceMonitor(
             state.db,
             state.config_svc,
@@ -301,7 +308,8 @@ class AppState:
         self.fts: Any = None
         self.config_svc: Any = None
         self.ingest_svc: IngestService | None = None
-        self.parse_svc: Any = None
+        self.parse_queue_svc: ParseQueueService | None = None
+        self.parse_execution_svc: ParseExecutionService | None = None
         self.scan_svc: Any = None
         self.search_svc: Any = None
         self.cleanup_svc: Any = None

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from doclib_test_utils import create_parse_service
+from doclib_test_utils import create_parse_services
 from mineru.doclib.services.ingest_svc import ensure_doc_record
 
 import asyncio
@@ -80,7 +80,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
         db = DatabaseManager(str(tmp_path / "db.sqlite"))
         await db.initialize()
         fts = FTSManager(db)
-        service = create_parse_service(db, fts, ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
+        service = create_parse_services(db, fts, ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
         sha = "a" * 64
         await ensure_doc_record(
             db,
@@ -107,7 +107,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
             ),
         )
         result = ParseResult(MiddleJson(pages=[PageInfo(page_idx=0)], is_full_document=False, metadata=metadata))
-        await service._update_source_metadata(sha, result)
+        await service.execution._update_source_metadata(sha, result)
         row = await db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha,))
         assert (row["title"], row["author"], row["language"], row["page_count"]) == ("New title", "Alice; Bob", "zh-CN", 9)
         assert row["subject"] == "Keep subject" and row["keywords"] == "Keep keywords"
@@ -115,7 +115,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
         assert index["tier"] == "advanced" and index["title"] == "New title" and index["author"] == "Alice; Bob"
         assert "Preserved" in index["text"]
         result.middle_json.metadata.document = None
-        await service._update_source_metadata(sha, result)
+        await service.execution._update_source_metadata(sha, result)
         assert (await db.fetchone("SELECT title FROM docs WHERE sha256=?", (sha,)))["title"] == "New title"
 
     asyncio.run(scenario())
@@ -128,12 +128,12 @@ def test_doclib_ingest_gets_html_metadata_without_parsing(tmp_path: Path) -> Non
         """使用临时数据库与源 HTML 走入库服务。"""
         db = DatabaseManager(str(tmp_path / "db.sqlite"))
         await db.initialize()
-        service = create_parse_service(db, FTSManager(db), ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
+        service = create_parse_services(db, FTSManager(db), ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
         source = tmp_path / "source.html"
         source.write_text(
             '<html lang="zh-CN"><head><title>入库标题</title><meta name="author" content="作者"></head><body>正文</body></html>'
         )
-        refresh = await service.ingest_svc.refresh_file(str(source), ensure_ingested=True)
+        refresh = await service.ingest.refresh_file(str(source), ensure_ingested=True)
         assert refresh.file is not None
         row = await db.fetchone("SELECT * FROM docs WHERE sha256=?", (refresh.file.sha256,))
         assert (row["title"], row["author"], row["language"]) == ("入库标题", "作者", "zh-CN")

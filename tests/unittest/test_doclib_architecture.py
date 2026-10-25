@@ -35,7 +35,14 @@ def test_doclib_core_does_not_depend_on_application_services() -> None:
 
 def test_content_read_service_is_independent_of_http_and_parse_scheduling() -> None:
     """内容读取使用显式数据库和目录，不导入路由、应用状态或解析调度服务。"""
-    forbidden = ("fastapi", "starlette", "mineru.doclib.server", "mineru.doclib.app", "mineru.doclib.services.parse_svc")
+    forbidden = (
+        "fastapi",
+        "starlette",
+        "mineru.doclib.server",
+        "mineru.doclib.app",
+        "mineru.doclib.services.parse_queue_svc",
+        "mineru.doclib.services.parse_execution_svc",
+    )
     imports = _imports(_ROOT / "mineru/doclib/services/content_read_svc.py")
     assert not sorted(module for module in imports if module.startswith(forbidden))
 
@@ -53,7 +60,14 @@ def test_legacy_protocol_conversion_stays_at_cached_middle_json_boundary() -> No
 
 def test_ingest_service_does_not_depend_on_parse_execution_or_http() -> None:
     """文件入库拥有独立实现，不反向导入解析服务、HTTP 层或宿主应用。"""
-    forbidden = ("fastapi", "starlette", "mineru.doclib.server", "mineru.doclib.app", "mineru.doclib.services.parse_svc")
+    forbidden = (
+        "fastapi",
+        "starlette",
+        "mineru.doclib.server",
+        "mineru.doclib.app",
+        "mineru.doclib.services.parse_queue_svc",
+        "mineru.doclib.services.parse_execution_svc",
+    )
     imports = _imports(_ROOT / "mineru/doclib/services/ingest_svc.py")
     assert not sorted(module for module in imports if module.startswith(forbidden))
 
@@ -63,4 +77,29 @@ def test_file_discovery_workers_depend_on_ingest_service() -> None:
     for name in ("services/scan_svc.py", "background/watch.py", "background/ingest.py"):
         imports = _imports(_ROOT / "mineru/doclib" / name)
         assert "mineru.doclib.services.ingest_svc.IngestService" in imports, name
-        assert not any(module.startswith("mineru.doclib.services.parse_svc") for module in imports), name
+        assert not any(
+            module.startswith(("mineru.doclib.services.parse_queue_svc", "mineru.doclib.services.parse_execution_svc"))
+            for module in imports
+        ), name
+
+
+def test_parse_queue_does_not_import_execution_or_http_clients() -> None:
+    """队列和缓存状态处理不反向导入执行器、解析客户端或宿主 HTTP 层。"""
+    forbidden = (
+        "mineru.doclib.services.parse_execution_svc",
+        "mineru.parser.api_client",
+        "mineru.parser.base",
+        "mineru.doclib.server",
+        "mineru.doclib.app",
+        "fastapi",
+        "httpx",
+    )
+    imports = _imports(_ROOT / "mineru/doclib/services/parse_queue_svc.py")
+    assert not sorted(module for module in imports if module.startswith(forbidden))
+
+
+def test_parse_execution_is_independent_of_ingestion_and_queue_requests() -> None:
+    """执行器只消费已抢占的数据库行，不回调入库或请求排队服务。"""
+    forbidden = ("mineru.doclib.services.parse_queue_svc", "mineru.doclib.services.ingest_svc")
+    imports = _imports(_ROOT / "mineru/doclib/services/parse_execution_svc.py")
+    assert not sorted(module for module in imports if module.startswith(forbidden))

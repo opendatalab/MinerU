@@ -88,7 +88,9 @@ Routes
 
 | Service | 职责 |
 |---------|------|
-| `ParseService` | 接收解析请求、同步入库、查缓存、创建解析任务 |
+| `IngestService` | 文件刷新、去重入库、元数据和初始解析入队 |
+| `ParseQueueService` | 解析请求、缓存覆盖、队列抢占、状态查询和缓存失效 |
+| `ParseExecutionService` | 本地/API 执行、产物写出、元数据和索引更新 |
 | `ContentReadService` | 解析内容定位、读取计划、渐进 Markdown、图片读取与文件导出 |
 | `SearchService` | 文件名和内容搜索 |
 | `ConfigService` | KV 配置、watch 目录、parsing-rules、exclude 规则 |
@@ -338,13 +340,13 @@ watch 流程也调用同一发现/刷新步骤:
 显式解析请求流程：
 
 1. CLI 或 SDK 调用 doclib `POST /parses`。
-2. `ParseService` 先执行文件发现/刷新，确认 path 当前状态。
+2. `ParseQueueService` 调用共享 `IngestService` 刷新文件，确认 path 当前状态。
 3. 如文件需要重新入库，则等待或同步完成入库，获得当前 `sha256`。
 4. 查询 `(sha256, tier)` 下已完成批次；PDF 判断 page_range 覆盖，非 PDF 只接受完整整文件 batch。
 5. 缓存命中则返回 `cache_hit=true` 和空 `wait_parse_ids`。
 6. 已有 active parse 覆盖的页复用并提升 `priority`。
 7. 未覆盖页插入新的 `parses` 记录，Agent 请求使用更高 `priority`。
-8. `ParseWorker` 抢占任务并执行。
+8. `ParseWorkerPool` 通过队列服务抢占任务，再交给独立执行服务处理。
 
 `--force` 对本次请求不复用 done 缓存，但可以复用已存在的 active parse。它不删除、不作废旧的 done 记录。增量页码解析和 force 重解析都通过多行 `parses` 表示。读取时只合并有效 done 批次；同一页出现多次时，按 `done_at` 选择最新有效页面。
 

@@ -11,10 +11,10 @@
 
 文档内容默认全本地处理；只有显式 `--remote`（CLI）或 `privacy="remote"` 才把 PDF/图片发往远端 parse-server。
 
-- `privacy` 二值赋值：`mineru/doclib/services/parse_svc.py:754`
-- 门控集合：remote 仅支持 PDF/图片（`remote_unsupported_for_file_type` `parse_svc.py:772`）、remote 禁 flash（`tier_unsupported_for_remote` `:778`）、质量 tier 仅限 PDF/图片（`tier_unsupported_for_file_type` `:784`）
+- `privacy` 二值赋值：`mineru/doclib/services/parse_queue_svc.py:request_parse`
+- 门控集合：remote 仅支持 PDF/图片（`remote_unsupported_for_file_type` `parse_queue_svc.py:request_parse`）、remote 禁 flash（`tier_unsupported_for_remote` `parse_queue_svc.py:request_parse`）、质量 tier 仅限 PDF/图片（`tier_unsupported_for_file_type` `parse_queue_svc.py:request_parse`）
 
-红线：解析失败、引擎不可用、超时等任何情况下，都不得把用户文档自动发往远端。失败路径必须原样报错（如 `no_engine`，`parse_svc.py:1239`），由用户显式改用 `--remote`。
+红线：解析失败、引擎不可用、超时等任何情况下，都不得把用户文档自动发往远端。失败路径必须原样报错（如 `no_engine`，`parse_execution_svc.py:_resolve_api_target`），由用户显式改用 `--remote`。
 
 ## 2. 错误码语义稳定
 
@@ -46,4 +46,4 @@ Middle JSON 的对外 schema 固定为 `2.0`（`mineru/parser/base.py:20` `MIDDL
 红线：
 
 - 已发布格式的 locator（含持久化在缓存、续读标记 `<!-- Next: mineru read … -->` 中的）必须永久可解析；扩展语法只能以追加段的方式演进，不得改变既有段语义。
-- `short_id` 取 sha256 十六进制前缀、冲突时延长（`doclib/services/parse_svc.py:247-282`），不得改换派生方式。
+- `short_id` 取 sha256 十六进制前缀、冲突时延长（`doclib/services/ingest_svc.py:ensure_doc_record`），不得改换派生方式。

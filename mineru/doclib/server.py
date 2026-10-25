@@ -259,7 +259,7 @@ class DoclibServer(AsyncDoclibInterface):
             ),
             files_total=files_total["cnt"] if files_total else 0,
             docs_total=docs_total["cnt"] if docs_total else 0,
-            parse_queue_length=await self.state.parse_svc.get_queue_length(),
+            parse_queue_length=await self.state.parse_queue_svc.get_queue_length(),
             ingest_queue_length=ingest_q["cnt"] if ingest_q else 0,
             parse_server=_parse_server_status(
                 local_mode=local_mode,
@@ -297,7 +297,7 @@ class DoclibServer(AsyncDoclibInterface):
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "parse.request.count")
         try:
-            result = await self.state.parse_svc.request_parse(
+            result = await self.state.parse_queue_svc.request_parse(
                 request.path,
                 tier=request.tier,
                 page_range=request.page_range,
@@ -390,7 +390,7 @@ class DoclibServer(AsyncDoclibInterface):
             )
 
         short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
-        count = await self.state.parse_svc.invalidate(sha256, request.tier)
+        count = await self.state.parse_queue_svc.invalidate(sha256, request.tier)
         return InvalidateResponse(
             target=request.target, sha256=sha256, short_id=short_id, tier=request.tier, invalidated_count=count
         )

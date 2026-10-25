@@ -9,15 +9,11 @@ from .ingest_svc import (
     IngestService,
     ensure_doc_record,
 )
-from .parse_policy import default_parse_range
-from .parse_svc import (
-    ParseFailure,
-    ParseService,
-    expand_page_range,
-    page_range_covered,
-    page_range_uncovered,
-    parse_page_range_set,
-)
+from ...parser.page_range import expand_page_range, parse_page_range_set
+from .parse_errors import ParseFailure
+from .parse_policy import default_parse_range, page_range_covered, page_range_uncovered
+from .parse_queue_svc import ParseQueueService
+from .parse_execution_svc import ParseExecutionService
 from .scan_svc import ScanService
 from .search_svc import SearchService
 
@@ -29,7 +25,8 @@ __all__ = [
     "FileRefreshStatus",
     "IngestService",
     "ParseFailure",
-    "ParseService",
+    "ParseQueueService",
+    "ParseExecutionService",
     "ScanService",
     "SearchService",
     "default_parse_range",

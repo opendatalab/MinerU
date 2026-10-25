@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from doclib_test_utils import create_parse_service
+from doclib_test_utils import ParseServices
+from mineru.doclib.services.parse_queue_svc import _parse_record_response
+
+from doclib_test_utils import create_parse_services
 from mineru.doclib.services.content_read_svc import ContentReadService
 
 import asyncio
@@ -18,7 +21,7 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.server import DoclibServer, _parse_info, _tier_parse_info
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseService, _parse_record_response
+
 from mineru.doclib.core.parse_artifacts import load_pages_from_done_batches, parse_batch_json_path
 from mineru.parser.base import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.version import __version__
@@ -89,9 +92,9 @@ def test_historical_cache_rebuilds_fts_and_default_tier(tmp_path: Path, family: 
                 await ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(_SHA256)
                 == "standard"
             )
-            await service._rebuild_fts_after_invalidate(_SHA256)
-            assert await service.fts.search("old")
-            assert await service.fts.get_tier(_SHA256) == "standard"
+            await service.queue._rebuild_fts_after_invalidate(_SHA256)
+            assert await service.queue.fts.search("old")
+            assert await service.queue.fts.get_tier(_SHA256) == "standard"
             assert standard_path.read_bytes() == before
 
     asyncio.run(verify())
@@ -165,7 +168,7 @@ def test_old_protocol_cache_is_not_available_or_compacted(tmp_path: Path, old_ve
             listing = await server.list_parses(doc_ref="aaaaaaa", tier="flash", page_range="1-7")
             assert listing.coverage.done_page_range == "4-7"
             assert listing.coverage.missing_page_range == "1-3"
-            result = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-7")
+            result = await service.queue.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-7")
             assert not result.cache_hit and len(result.created_parse_ids) == 1
             queued = await db.fetchone("SELECT page_range FROM parses WHERE id=?", (result.created_parse_ids[0],))
             assert queued["page_range"] == "1-3"
@@ -250,7 +253,7 @@ async def _add_result(
 @asynccontextmanager
 async def _legacy_store(
     root: Path, *, family: str = "current"
-) -> AsyncIterator[tuple[DatabaseManager, ParseService, DoclibServer]]:
+) -> AsyncIterator[tuple[DatabaseManager, ParseServices, DoclibServer]]:
     """建立已入库的源文件元数据、旧名称缓存及真实 SQLite 服务，退出时关闭连接。"""
     source = root / "document.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -270,10 +273,12 @@ async def _legacy_store(
         )
         await _add_result(db, root, "1~5", 1000, range(1, 6), "old")
         _convert_fixture_family(_cache_path(root, "1~5", 1000), family)
-        service = create_parse_service(
+        service = create_parse_services(
             db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(root), parse_lock_timeout_sec=1800
         )
-        server = DoclibServer(SimpleNamespace(db=db, parse_svc=service, data_dir=str(root), ingest_svc=service.ingest_svc))
+        server = DoclibServer(
+            SimpleNamespace(db=db, parse_queue_svc=service.queue, data_dir=str(root), ingest_svc=service.ingest)
+        )
         yield db, service, server
     finally:
         await db.close()
@@ -290,7 +295,7 @@ def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path
             original_bytes = old_path.read_bytes()
             row = await db.fetchone("SELECT * FROM parses WHERE sha256=?", (_SHA256,))
             original_row = dict(row)
-            result = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-5")
+            result = await service.queue.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-5")
             assert result.cache_hit and result.status == "done"
             assert result.page_range == "1-5"
             assert result.created_parse_ids == []
@@ -299,8 +304,8 @@ def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path
             assert listing.coverage.done_page_range == "1-5"
             assert listing.coverage.missing_page_range == "6-10"
             assert (await server.get_parse(row["id"])).page_range == "1-5"
-            assert (await service.get_parse_record(row["id"]))["page_range"] == "1-5"
-            assert (await service.list_parse_records(sha256=_SHA256))["parses"][0]["page_range"] == "1-5"
+            assert (await service.queue.get_parse_record(row["id"]))["page_range"] == "1-5"
+            assert (await service.queue.list_parse_records(sha256=_SHA256))["parses"][0]["page_range"] == "1-5"
             public_row = dict(row, short_id="aaaaaaa")
             assert _parse_info(public_row).page_range == "1-5"
             assert _tier_parse_info(public_row).page_range == "1-5"
@@ -328,11 +333,11 @@ def test_old_cache_only_schedules_uncovered_pages(tmp_path: Path, family: str) -
     async def verify() -> None:
         """检查真实任务入队和原记录内容。"""
         async with _legacy_store(tmp_path, family=family) as (db, service, _server):
-            result = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-10")
+            result = await service.queue.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-10")
             assert not result.cache_hit and len(result.created_parse_ids) == 1
             rows = await db.fetchall("SELECT page_range, status FROM parses ORDER BY id")
             assert rows == [{"page_range": "1~5", "status": "done"}, {"page_range": "6-10", "status": "pending"}]
-            repeated = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-10")
+            repeated = await service.queue.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-10")
             assert repeated.reused_parse_ids == result.created_parse_ids
             assert repeated.created_parse_ids == []
             assert _cache_path(tmp_path, "1~5", 1000).is_file()

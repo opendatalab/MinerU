@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from doclib_test_utils import create_parse_service
+from doclib_test_utils import ParseServices
+from mineru.doclib.services.parse_errors import ParseFailure
+
+from doclib_test_utils import create_parse_services
 
 import asyncio
 from dataclasses import dataclass
@@ -16,7 +19,7 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.server import DoclibServer, _parse_server_status
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseFailure, ParseService
+
 from mineru.doclib.types import ConfigSetRequest
 from mineru.types import DeploymentTier
 
@@ -32,7 +35,7 @@ class _ManagedProcess:
 
 async def _services(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, mode: str = "managed"
-) -> tuple[ConfigService, DoclibServer, ParseService, ParseServerHealth, ParseServerHealthCheck]:
+) -> tuple[ConfigService, DoclibServer, ParseServices, ParseServerHealth, ParseServerHealthCheck]:
     """用真实 SQLite 配置和 API 路由搭建隔离环境，不触碰用户服务或加载模型。"""
     db = DatabaseManager(str(tmp_path / "doclib.db"))
     await db.initialize()
@@ -51,7 +54,7 @@ async def _services(
     monkeypatch.setattr("mineru.doclib.server._ensure_managed_parse_server_tier_available", lambda tier, param: None)
     checker = ParseServerHealthCheck(cfg, interval_sec=30, probe_timeout_sec=1, startup_grace_sec=30, stop_timeout_sec=10)
     server = DoclibServer(SimpleNamespace(config_svc=cfg, health_check=checker))
-    parse_svc = create_parse_service(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60)
+    parse_svc = create_parse_services(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60)
     return cfg, server, parse_svc, health, checker
 
 
@@ -109,7 +112,7 @@ def test_config_api_invalidates_old_tier_before_return(tmp_path: Path, monkeypat
         assert status.local.healthy is False
         assert status.local.supported_tiers == []
         with pytest.raises(ParseFailure) as exc:
-            await parse_svc._resolve_api_target("local", "standard")
+            await parse_svc.execution._resolve_api_target("local", "standard")
         assert exc.value.code == "engine_unavailable"
 
     asyncio.run(_run())
@@ -148,7 +151,7 @@ def test_enabling_managed_mode_invalidates_previous_local_probe(
         assert health.local.probe.tiers == []
         assert checker._wakeup_event.is_set()
         with pytest.raises(ParseFailure) as exc:
-            await parse_svc._resolve_api_target("local", "basic")
+            await parse_svc.execution._resolve_api_target("local", "basic")
         assert exc.value.code == "engine_unavailable"
 
     asyncio.run(_run())
@@ -237,9 +240,9 @@ def test_health_check_discards_stale_config_and_probe_results(
         assert health.local_starting is False
         assert health.local.probe.healthy is True
         assert health.local.probe.tiers == ["standard"]
-        target = await parse_svc._resolve_api_target("local", "standard")
+        target = await parse_svc.execution._resolve_api_target("local", "standard")
         assert target[0] == "http://127.0.0.1:16581"
-        assert parse_svc._resolve_tier("standard", target[2]) == "standard"
+        assert parse_svc.execution._resolve_tier("standard", target[2]) == "standard"
 
     asyncio.run(_run())
 
@@ -362,7 +365,7 @@ def test_transition_stays_unavailable_until_target_tier_is_ready(
         assert health.local.probe.healthy is False
         assert health.local.probe.tiers == []
         with pytest.raises(ParseFailure) as exc:
-            await parse_svc._resolve_api_target("local", "standard")
+            await parse_svc.execution._resolve_api_target("local", "standard")
         assert exc.value.code == "engine_unavailable"
 
     asyncio.run(_run())

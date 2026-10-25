@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from mineru.doclib.services.parse_queue_svc import ParseQueueService
+from mineru.doclib.services.parse_execution_svc import ParseExecutionService
+
 import asyncio
 from pathlib import Path
 
@@ -14,7 +17,6 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.services.ingest_svc import IngestService
-from mineru.doclib.services.parse_svc import ParseService
 
 
 def test_ingestion_queues_native_document_without_constructing_parse_service(
@@ -26,7 +28,8 @@ def test_ingestion_queues_native_document_without_constructing_parse_service(
         """任何隐式解析服务组装都使本用例失败。"""
         raise AssertionError("IngestService constructed a ParseService")
 
-    monkeypatch.setattr(ParseService, "__init__", forbidden_parse_service)
+    monkeypatch.setattr(ParseQueueService, "__init__", forbidden_parse_service)
+    monkeypatch.setattr(ParseExecutionService, "__init__", forbidden_parse_service)
 
     async def scenario() -> None:
         """真实 SQLite 和 FTS 覆盖文件刷新、纯文本索引以及初始原生任务登记。"""
@@ -70,7 +73,11 @@ def test_doclib_instances_share_ingest_only_with_their_own_components(tmp_path: 
         with TestClient(doclib_app.create_app(configurations[1])) as second:
             left, right = first.app.state.doclib_state, second.app.state.doclib_state
             for state in (left, right):
-                assert state.ingest_svc is state.parse_svc.ingest_svc
+                assert state.ingest_svc is state.parse_queue_svc.ingest_svc
+                assert state.parse_workers.queue_svc is state.parse_queue_svc
+                assert state.parse_workers.execution_svc is state.parse_execution_svc
+                assert state.parse_execution_svc.db is state.db
+                assert state.parse_execution_svc.fts is state.fts
                 assert state.ingest_svc is state.scan_svc.ingest_svc
                 assert state.ingest_svc is state.watch.ingest_svc
                 assert state.ingest_svc is state.ingest_workers.ingest_svc
