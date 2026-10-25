@@ -5,6 +5,12 @@
 范围: 将 `docs/next/` 中的设计文档拆成可落地、可验证、可并行领取的工程任务
 非目标: 替代专题设计文档；一次性重写现有实现；要求所有任务在同一个 PR 完成
 
+结构迁移说明：本文任务卡片保留早期实现位置，部分 `services/parse_svc.py` 引用已失效。
+当前文件刷新与入库归属 `services/ingest_svc.py`，解析请求/队列与缓存失效归属 `services/parse_queue_svc.py`，
+执行/产物与索引更新归属 `services/parse_execution_svc.py`，缓存读取和导出归属 `services/content_read_svc.py`。
+共享产物路径及覆盖计算位于 `core/parse_artifacts.py`；短标识登记由 `ingest_svc.ensure_doc_record()` 维护。
+领取任务前请对照 [当前架构](architecture.md) 和 [代码地图](code-map.md) 追踪实际调用，不创建旧模块转发或重建旧组合服务。
+
 ## 1. 使用方式
 
 本文件是给编程 Agent 使用的任务手册。Agent 领取任务时，应只做一个任务卡片内的内容，并以该任务的“完成边界”和“验证方式”为准。

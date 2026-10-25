@@ -21,20 +21,21 @@ from loguru import logger as loguru_logger
 
 from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, get_config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
+from ..utils.async_utils import drain_future
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
-from .server import DoclibServer
 from .parse_server_state import ParseServerHealth
+from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
 if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
 
     from .services.ingest_svc import IngestService
-    from .services.parse_queue_svc import ParseQueueService
     from .services.parse_execution_svc import ParseExecutionService
+    from .services.parse_queue_svc import ParseQueueService
 else:
     LoguruMessage = Any
 
@@ -70,8 +71,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
         from .services.ingest_svc import IngestService
-        from .services.parse_queue_svc import ParseQueueService
         from .services.parse_execution_svc import ParseExecutionService
+        from .services.parse_queue_svc import ParseQueueService
         from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
         from .telemetry import TelemetryService, TelemetryStore
@@ -221,47 +222,91 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.tcp_host = cfg.doclib.tcp.host
 
     async def shutdown() -> None:
+        """先结束后台编排，再清理全部已拥有资源，单项失败不截断后续清理。"""
         from .background.parse_server_health import stop_managed_parse_server
 
+        errors: list[Exception] = []
+        # 探测循环可能正在网络等待，必须先取消并等待它退出，禁止收尾时再次重启进程。
+        try:
+            await _cancel_background_tasks(state)
+        except Exception as exc:
+            errors.append(exc)
+            logger.exception("Failed to finish Doclib background tasks")
+
+        for name, component in (
+            ("watch", state.watch),
+            ("scan_workers", state.scan_workers),
+            ("ingest_workers", state.ingest_workers),
+            ("parse_workers", state.parse_workers),
+            ("device_monitor", state.device_monitor),
+            ("compaction", state.compaction),
+            ("telemetry_flush", state.telemetry_flush),
+            ("health_check", state.health_check),
+        ):
+            if component is None:
+                continue
+            try:
+                await component.stop()
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to stop Doclib component %s", name)
+
+        # 启动可能在创建健康检查器之前失败；停止失败也可能留下仍归属应用的进程。
         health = state.health
-        if health.managed_proc:
-            stop_managed_parse_server(
-                health.managed_proc,
-                control=health.managed_control,
-                timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
-                reason="doclib shutdown",
-                startup_in_progress=health.local_starting,
-            )
-            health.managed_proc = None
-            health.managed_control = None
+        if health.managed_proc is not None or health.managed_control is not None:
+            try:
+                stop_managed_parse_server(
+                    health.managed_proc,
+                    control=health.managed_control,
+                    timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
+                    reason="doclib shutdown",
+                    startup_in_progress=health.local_starting,
+                )
+                health.managed_proc = None
+                health.managed_control = None
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to stop Doclib managed parse-server")
 
-        for comp in [
-            "watch",
-            "scan_workers",
-            "ingest_workers",
-            "parse_workers",
-            "device_monitor",
-            "compaction",
-            "health_check",
-            "telemetry_flush",
-        ]:
-            c = getattr(state, comp, None)
-            if c and hasattr(c, "stop"):
-                await c.stop()
-
-        await _cancel_background_tasks(state)
-
-        if state.db:
-            await state.db.close()
+        if state.db is not None:
+            try:
+                await state.db.close()
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to close Doclib database")
+        try:
+            _run_discovery_cleanup(state)
+        except Exception as exc:
+            errors.append(exc)
+            logger.exception("Failed to clean Doclib discovery information")
+        if errors:
+            raise errors[0]
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        await startup()
+        """启动失败也清理已拥有资源，退出取消先排空清理且保留最初异常。"""
+        failed = False
         try:
+            await startup()
             yield
+        except BaseException:
+            failed = True
+            raise
         finally:
             try:
-                await shutdown()
+                cleanup = asyncio.create_task(shutdown(), name="doclib:shutdown")
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    try:
+                        await drain_future(cleanup)
+                    except Exception:
+                        logger.exception("Doclib cleanup failed while teardown was canceled")
+                    raise
+            except BaseException:
+                if not failed:
+                    raise
+                logger.exception("Doclib cleanup failed; preserving the original lifespan error")
             finally:
                 _run_discovery_cleanup(state)
 
