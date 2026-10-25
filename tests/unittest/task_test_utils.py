@@ -15,6 +15,30 @@ from mineru.types import Tier
 from mineru.parser.api_server import FileStore, _ExecutionRecord, _ExecutionRequest
 from mineru.parser.base import ParseResult
 from mineru.parser.task_outputs import build_task_output
+from mineru.kit.router.resources import ExecutionRoute, ResourceRegistry, utc_now_iso
+from mineru.kit.router.route_state import ExecutionRouteState
+from mineru.kit.router.workers import JobReservation
+from mineru.tasks.execution import TaskExecution, new_execution_id
+
+
+def router_execution(
+    registry: ResourceRegistry,
+    *,
+    worker_id: str,
+    upstream_id: str,
+    owner_scope: str = "anonymous",
+    file_id: str = "file-test",
+    file_name: str = "test.pdf",
+    reservation: JobReservation | None = None,
+) -> ExecutionRoute:
+    """为路由生命周期测试登记完整执行快照，不先创建缺少类型状态的空记录。"""
+    execution = TaskExecution(new_execution_id(), file_id, file_name, "pending", utc_now_iso())
+    return registry.register_execution(
+        owner_scope=owner_scope,
+        worker_id=worker_id,
+        upstream_id=upstream_id,
+        state=ExecutionRouteState(execution=execution, reservation=reservation),
+    )
 
 
 def task_url(client: TestClient | httpx.Client | httpx.AsyncClient, task: dict[str, Any]) -> str:

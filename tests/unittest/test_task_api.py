@@ -637,7 +637,7 @@ def test_files_metadata_and_attachment_keep_logical_names(service: tuple[TestCli
         assert source["file_name"] == "report.v2.html" and "filename" not in source
         assert client.get(f"/v1/files/{source_id}/content").status_code == 403
     else:
-        assert all(route.metadata["payload"]["purpose"] == "parse_output" for route in app.state.registry.list("file"))
+        assert all(route.payload["purpose"] == "parse_output" for route in app.state.registry.list("file"))
     assert result["file_name"] == "report.v2.zip" and "filename" not in result
     assert set(item.get("parse")) == {"tier", "duration_ms", "parser_version"}
     assert item.get("parse")["tier"] == "flash" and "tier" not in completed
@@ -1112,7 +1112,7 @@ def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path:
             """等待父任务清理，并把其子路由保留期限推进到过去。"""
             await record.operation
             for route in app.state.registry.list("job"):
-                route.metadata["task_result_retain_until"] = time.time() - 1
+                route.lease.retain_until = time.time() - 1
 
         client.portal.call(prepare)
         original = transport.handle_async_request
@@ -1125,9 +1125,9 @@ def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path:
 
         monkeypatch.setattr(transport, "handle_async_request", reject_release)
         client.portal.call(maintain_task_result_leases, app.state.registry, app.state.worker_pool)
-        assert all(not route.metadata.get("task_result_held") for route in app.state.registry.list("job", include_expired=True))
+        assert all(not route.lease.held for route in app.state.registry.list("job", include_expired=True))
         assert all(
-            not route.metadata.get("task_result_held") for route in app.state.registry.list("file", include_expired=True)
+            not route.lease.held for route in app.state.registry.list("file", include_expired=True)
         )
         assert result["files"][0].get("result_url")
 

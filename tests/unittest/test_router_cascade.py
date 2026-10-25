@@ -209,7 +209,7 @@ def test_cascade_renews_worker_results_while_outer_lease_is_active(tmp_path: Pat
             inner_route = inner.state.registry.list("job")[0]
             worker_record = next(iter(worker.state.task_store._records.values()))
             assert inner_record.lease_expires_at > time.time() + 100
-            assert "task_result_retain_until" not in inner_route.metadata
+            assert inner_route.lease.retain_until is None
             await _check_download(client, result)
             worker_record.lease_expires_at = time.time() + 0.1
             await maintain_task_result_leases(inner.state.registry, inner.state.worker_pool)
@@ -223,10 +223,10 @@ def test_cascade_renews_worker_results_while_outer_lease_is_active(tmp_path: Pat
             )
             assert response.status_code == 200, response.text
             await asyncio.wait_for(inner_record.operation, timeout=5)
-            assert inner_route.metadata["task_result_retain_until"] > time.time()
-            inner_route.metadata["task_result_retain_until"] = time.time() - 1
+            assert inner_route.lease.retain_until is not None and inner_route.lease.retain_until > time.time()
+            inner_route.lease.retain_until = time.time() - 1
             await maintain_task_result_leases(inner.state.registry, inner.state.worker_pool)
-            assert inner_route.metadata["task_result_held"] is False
+            assert inner_route.lease.held is False
             assert worker_record.lease_expires_at == 0
 
     asyncio.run(scenario())

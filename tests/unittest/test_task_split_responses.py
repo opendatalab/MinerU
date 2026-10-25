@@ -180,13 +180,13 @@ def test_router_rejects_rebinding_and_deleted_result_resurrection() -> None:
     """不同 worker 不能覆盖同一公共 ID，已删除映射不能被迟到完成响应复活。"""
     registry = ResourceRegistry()
     public_id = registry.reserve_file_id()
-    route = registry.register("file", owner_scope="owner", worker_id="a", upstream_id="file-worker-a", public_id=public_id)
+    route = registry.register_file(owner_scope="owner", worker_id="a", upstream_id="file-worker-a", public_id=public_id)
     with pytest.raises(ValueError, match="occupied"):
-        registry.register("file", owner_scope="owner", worker_id="b", upstream_id="file-worker-b", public_id=public_id)
+        registry.register_file(owner_scope="owner", worker_id="b", upstream_id="file-worker-b", public_id=public_id)
     assert registry.find("file", public_id) is route
     registry.remove("file", public_id)
     with pytest.raises(ValueError, match="consumed or discarded"):
-        registry.register("file", owner_scope="owner", worker_id="a", upstream_id="file-worker-a", public_id=public_id)
+        registry.register_file(owner_scope="owner", worker_id="a", upstream_id="file-worker-a", public_id=public_id)
     registry.forget_file_id(public_id)
     assert not registry._allocated_file_ids and not registry._task_file_ids
 

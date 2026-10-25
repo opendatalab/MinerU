@@ -13,13 +13,13 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from task_test_utils import execution_request
+from task_test_utils import execution_request, router_execution
 
 from mineru.parser import api_server
 from mineru.parser.api_server import FileStore, ExecutionStore
 from mineru.tasks.errors import ApiServerError
 from mineru.tasks import execution
-from mineru.tasks.execution import TaskExecution, execution_timestamp
+from mineru.tasks.execution import execution_timestamp
 from mineru.kit.router.resources import ResourceRegistry, SourceFileStore, StoredSourceFile
 from mineru.utils.retention import resolve_retention_seconds
 
@@ -185,19 +185,19 @@ def test_router_expiry_cache_pins_and_alias_cleanup(tmp_path: Path, clock: list[
     path = sources._root / "input"
     path.write_bytes(b"input")
     stored = StoredSourceFile(path, 5, hashlib.sha256(b"input").hexdigest(), "application/pdf")
-    file = registry.register("file", owner_scope="one", worker_id="worker", upstream_id="file-up")
+    file = registry.register_file(owner_scope="one", worker_id="worker", upstream_id="file-up")
     sources.bind_source(file.public_id, stored, owner_scope="one", expires_at=clock[0] + 10)
     registry.alias_upstream(file, worker_id="copy", upstream_id="copy-file")
-    job = registry.register("job", owner_scope="one", worker_id="worker", upstream_id="job-up")
-    job.metadata["payload"] = {"status": "running", "files": [{"file_id": file.public_id}]}
+    job = router_execution(registry, owner_scope="one", worker_id="worker", upstream_id="job-up", file_id=file.public_id)
+    job.payload = {"status": "running", "files": [{"file_id": file.public_id}]}
     with sources.pin(stored):
         clock[0] += 11
         registry.collect_expired(sources)
         assert registry.find("file", file.public_id) is None
         assert sources.find_hash("one", stored.sha256sum) is None
         assert path.exists() and registry.find("job", job.public_id) is job
-        job.metadata["payload"]["status"] = "failed"
-        job.metadata["payload"]["finished_at"] = execution_timestamp()
+        job.payload["status"] = "failed"
+        job.payload["finished_at"] = execution_timestamp()
         registry.collect_expired(sources)
         assert registry.find_upstream("file", "one", "copy", "copy-file") is None
         assert path.exists()
@@ -279,11 +279,12 @@ def test_gc_interleaves_with_blob_writes_and_downloads(tmp_path: Path, clock: li
 def test_router_task_result_lease_keeps_terminal_execution_visible(clock: list[int]) -> None:
     """父任务持有结果租约时，内部执行终态不会提前被回收。"""
     registry = ResourceRegistry(retention_seconds=10)
-    route = registry.register("job", owner_scope="one", worker_id="worker", upstream_id="child")
-    route.metadata.update(payload={"status": "completed"}, task_result_held=True)
+    route = router_execution(registry, owner_scope="one", worker_id="worker", upstream_id="child")
+    route.payload = {"status": "completed"}
+    route.lease.held = True
     clock[0] += 20
     assert registry.find("job", route.public_id) is route
-    route.metadata["task_result_retain_until"] = clock[0] + 10
+    route.lease.retain_until = clock[0] + 10
     clock[0] += 11
     assert registry.find("job", route.public_id) is None
 
@@ -294,17 +295,16 @@ def test_router_usage_survives_expiry_collection_and_worker_removal(clock: list[
     sources = SourceFileStore(retention_seconds=10)
     try:
         for index in range(2):
-            route = registry.register("job", owner_scope="owner", worker_id="worker", upstream_id=str(index))
-            route.metadata.update(
-                payload={"status": "completed", "files": [{"status": "completed"}]}, finalized_at=execution_timestamp()
-            )
+            route = router_execution(registry, owner_scope="owner", worker_id="worker", upstream_id=str(index))
+            route.payload = {"status": "completed", "files": [{"status": "completed"}]}
+            route.finalized_at = execution_timestamp()
         before = registry.usage("owner")
         assert before == {"jobs_created": 2, "files_processed": 2}
         clock[0] += 11
         registry.collect_expired(sources)
         assert registry.usage("owner") == before and not registry.list("job", include_expired=True)
-        route = registry.register("job", owner_scope="owner", worker_id="worker", upstream_id="new")
-        route.metadata["payload"] = {"status": "running", "files": [{"status": "running"}]}
+        route = router_execution(registry, owner_scope="owner", worker_id="worker", upstream_id="new")
+        route.payload = {"status": "running", "files": [{"status": "running"}]}
         registry.remove_worker("worker")
         assert registry.usage("owner") == {"jobs_created": 3, "files_processed": 2}
         assert registry.usage("anonymous") == {"jobs_created": 0, "files_processed": 0}
@@ -355,22 +355,16 @@ def test_external_worker_lost_task_releases_load_and_keeps_snapshot() -> None:
     with TestClient(app) as client:
         pool = app.state.worker_pool
         reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
-        route = app.state.registry.register(
-            "job", owner_scope="anonymous", worker_id=reservation.worker.worker_id, upstream_id="lost-task"
-        )
-        route.metadata.update(
-            active_counted=True,
+        route = router_execution(
+            app.state.registry,
+            worker_id=reservation.worker.worker_id,
+            upstream_id="lost-task",
+            file_id="file-lost",
+            file_name="lost.pdf",
             reservation=reservation,
-            payload={"status": "running", "files": [{"status": "pending"}]},
-            execution=TaskExecution(
-                execution_id=route.public_id,
-                file_id="file-lost",
-                file_name="lost.pdf",
-                status="pending",
-                created_at=route.created_at,
-            ),
         )
+        route.payload = {"status": "running", "files": [{"status": "pending"}]}
         client.portal.call(_reconcile_jobs_once, app.state.registry, pool)
         assert reservation.worker.active_jobs == 0
-        assert route.metadata["payload"]["status"] == "failed"
-        assert route.metadata["payload"]["files"][0].get("error")["code"] == "upstream_task_lost"
+        assert route.payload["status"] == "failed"
+        assert route.payload["files"][0].get("error")["code"] == "upstream_task_lost"

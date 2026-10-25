@@ -184,22 +184,17 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
         local.stop, local.start = stop, start
         state = workers.WorkerState("local-lost", "http://old", "local", local_worker=local, generation=1)
         pool._workers[state.worker_id] = state
-        route = registry.register("job", owner_scope="anonymous", worker_id=state.worker_id, upstream_id="job-old")
-        route.metadata["payload"] = {
+        from task_test_utils import router_execution
+
+        route = router_execution(
+            registry, worker_id=state.worker_id, upstream_id="job-old", file_id="file-old", file_name="old.pdf"
+        )
+        route.payload = {
             "task_id": "job-old",
             "status": "running",
             "files": [{"status": "pending"}],
             "progress": {"total": 1, "completed": 0},
         }
-        from mineru.tasks.execution import TaskExecution
-
-        route.metadata["execution"] = TaskExecution(
-            execution_id=route.public_id,
-            file_id="file-old",
-            file_name="old.pdf",
-            status="pending",
-            created_at=route.created_at,
-        )
         client.portal.call(pool.refresh, state)
         from mineru.kit.router.tasks import read_task_execution
 

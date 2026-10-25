@@ -36,15 +36,15 @@ from ...types import select_default_quality_tier
 from ...utils.async_utils import drain_future
 from .proxy import (
     RouterProxyError,
-    release_job_load,
     request_upstream,
     require_worker_generation,
     rewrite_file_payload,
 )
-from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, utc_now_iso
+from .resources import ExecutionRoute, ResourceRegistry, SourceFileStore, utc_now_iso
+from .route_state import ExecutionRouteState
 from .workers import WorkerPool, WorkerState
 
-FinalizeExecution = Callable[[ResourceRoute, TaskExecution, Request | None], Awaitable[None]]
+FinalizeExecution = Callable[[ExecutionRoute, TaskExecution, Request | None], Awaitable[None]]
 
 
 def _checked_json(response: httpx.Response) -> dict[str, Any]:
@@ -113,23 +113,25 @@ def _worker_path(worker: WorkerState, url: str) -> str:
     return target.path[len(prefix) :]
 
 
-def _lost_execution(route: ResourceRoute, pool: WorkerPool) -> TaskExecution:
+def _lost_execution(route: ExecutionRoute) -> TaskExecution:
     """worker 丢失时终结有类型快照，并保留既有资源计数与诊断缓存。"""
-    previous: TaskExecution = route.metadata["execution"]
+    previous = route.state.execution
     error = ErrorDetail(type="engine_error", code="upstream_task_lost", message="Upstream task no longer exists")
     execution = replace(previous, status="failed", finished_at=utc_now_iso(), result_file_id=None, error=error)
-    payload = copy.deepcopy(route.metadata.get("payload") or {})
+    payload = copy.deepcopy(route.payload or {})
     payload.update(status="failed", finished_at=execution.finished_at)
     for file in payload.get("files") or []:
         if file.get("status") != "completed":
             file.update(status="failed", error=error.model_dump())
-    route.metadata.update(payload=payload, execution=execution, upstream_lost=True)
-    release_job_load(route, pool)
+    route.payload = payload
+    route.state.execution = execution
+    route.state.upstream_lost = True
+    route.state.release_reservation()
     return execution
 
 
 async def read_task_execution(
-    route: ResourceRoute,
+    route: ExecutionRoute,
     pool: WorkerPool,
     registry: ResourceRegistry,
     *,
@@ -137,8 +139,8 @@ async def read_task_execution(
     headers: Mapping[str, str] | None = None,
 ) -> TaskExecution:
     """只在 HTTP 边界拆出 worker 的唯一文件，内部传递有类型的执行快照。"""
-    if route.metadata.get("upstream_lost"):
-        return _lost_execution(route, pool)
+    if route.state.upstream_lost:
+        return _lost_execution(route)
     worker = pool.get(route.worker_id)
     generation = worker.generation
     response = await _worker_request(
@@ -149,11 +151,11 @@ async def read_task_execution(
         request=request,
         headers={
             **(headers or {}),
-            **({"x-mineru-task-lease-seconds": "120"} if route.metadata.get("task_result_held") else {}),
+            **({"x-mineru-task-lease-seconds": "120"} if route.lease.held else {}),
         },
     )
-    if response.status_code == 404 or worker.generation != generation or route.metadata.get("upstream_lost"):
-        return _lost_execution(route, pool)
+    if response.status_code == 404 or worker.generation != generation or route.state.upstream_lost:
+        return _lost_execution(route)
     try:
         payload = TaskDetailResponse.model_validate(_checked_json(response))
     except ValidationError as exc:
@@ -167,10 +169,10 @@ async def read_task_execution(
             502, error_type="api_error", code="invalid_upstream_response", message="Invalid single-file task status"
         )
     (remote_file,) = payload.files
-    if remote_file.file_id != route.metadata["upstream_file_id"] or remote_file.file_name != route.metadata["file_name"]:
+    if remote_file.file_id != route.state.upstream_file_id or remote_file.file_name != route.state.execution.file_name:
         raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Worker file identity changed")
     upstream_file_id = remote_file.file_id
-    public_file_id: str = route.metadata["file_id"]
+    public_file_id = route.state.execution.file_id
     result_file_id: str | None = None
     if remote_file.status == "completed":
         result_url = remote_file.result_url
@@ -186,7 +188,7 @@ async def read_task_execution(
         if existing is None and not registry.is_file_reserved(public_file_id):
             # 取消、删除或过期的结果不因迟到响应重新登记；父 Task 保持已经发布的终态。
             result_file_id = public_file_id
-        elif existing is None or not isinstance(existing.metadata.get("payload"), dict):
+        elif existing is None or existing.payload is None:
             metadata = _checked_json(
                 await _worker_request(
                     pool,
@@ -209,8 +211,8 @@ async def read_task_execution(
             result_file_id = existing.public_id
         result_route = registry.find("file", result_file_id)
         if result_route is not None:
-            result_route.metadata["task_result_held"] = bool(route.metadata.get("task_result_held"))
-    previous: TaskExecution = route.metadata["execution"]
+            result_route.lease.held = route.lease.held
+    previous = route.state.execution
     execution = TaskExecution(
         execution_id=route.public_id,
         file_id=public_file_id,
@@ -228,9 +230,11 @@ async def read_task_execution(
         else None,
     )
     if execution.status in TERMINAL_TASK_STATUSES:
-        release_job_load(route, pool)
+        route.state.release_reservation()
     # 既有 Registry 仍消费 HTTP 状态缓存做回收和统计；执行协议不再经过 Job 字典转换。
-    route.metadata.update(payload=payload.model_dump(), execution=execution, task_result_file_id=result_file_id)
+    route.payload = payload.model_dump()
+    route.state.execution = execution
+    route.state.result_file_id = result_file_id
     return execution
 
 
@@ -274,15 +278,14 @@ class RouterTaskBackend:
         route = self.registry.find("job", task_id)
         if route is None:
             return
-        route.metadata["task_result_retain_until"] = (
-            finished + self.registry.retention_seconds if self.registry.retention_seconds else None
-        )
-        route.metadata["finalized_at"] = utc_now_iso()
-        result_id = route.metadata.get("task_result_file_id")
+        route.lease.retain_until = finished + self.registry.retention_seconds if self.registry.retention_seconds else None
+        route.finalized_at = utc_now_iso()
+        result_id = route.state.result_file_id
         result_route = self.registry.find("file", result_id) if result_id else None
         if result_route is not None:
-            result_route.metadata["payload"]["expires_at"] = route.metadata["task_result_retain_until"]
-            result_route.metadata["task_result_retain_until"] = route.metadata["task_result_retain_until"]
+            assert result_route.payload is not None
+            result_route.payload["expires_at"] = route.lease.retain_until
+            result_route.lease.retain_until = route.lease.retain_until
 
     async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileInput]) -> None:
         """能力预检不推进轮询游标，也不为尚未上传的任务预占 worker。"""
@@ -398,7 +401,7 @@ class RouterTaskBackend:
             )
         worker = reservation.worker
         upstream_id: str | None = None
-        route: ResourceRoute | None = None
+        route: ExecutionRoute | None = None
         transferred = False
         try:
             worker_input = item.model_dump(exclude_none=True, exclude={"file_id"})
@@ -423,33 +426,27 @@ class RouterTaskBackend:
             require_worker_generation(worker, reservation.generation)
             created = CreateTaskResponse.model_validate(_checked_json(response))
             upstream_id = created.task_id
-            route = self.registry.register(
-                "job",
-                owner_scope=self.owner_scope,
-                worker_id=worker.worker_id,
-                upstream_id=upstream_id,
-                public_id=execution_id,
-            )
             authorization = self.request.headers.get("authorization")
             initial = TaskExecution(
                 execution_id=execution_id,
                 file_id=item.file_id,
                 file_name=item.file_name,
                 status="pending",
-                created_at=route.created_at,
+                created_at=utc_now_iso(),
                 page_range=item.page_range or "",
             )
-            route.metadata.update(
-                file_id=item.file_id,
-                file_name=item.file_name,
-                upstream_file_id=None,
-                execution=initial,
-                task_result_held=True,
-                active_counted=True,
-                reservation=reservation,
-                upstream_headers={"authorization": authorization} if authorization else {},
+            route = self.registry.register_execution(
+                owner_scope=self.owner_scope,
+                worker_id=worker.worker_id,
+                upstream_id=upstream_id,
+                state=ExecutionRouteState(
+                    execution=initial,
+                    reservation=reservation,
+                    upstream_headers={"authorization": authorization} if authorization else {},
+                ),
                 payload={"task_id": upstream_id, "status": "pending", "files": []},
             )
+            route.lease.held = True
             if len(created.files) != 1:
                 raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
@@ -459,7 +456,7 @@ class RouterTaskBackend:
                 raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
                 )
-            route.metadata["upstream_file_id"] = remote_file.file_id
+            route.state.upstream_file_id = remote_file.file_id
             link = remote_file.upload
             if link is not None:
                 if upload is None:
@@ -508,14 +505,11 @@ class RouterTaskBackend:
                 if upstream_id is not None and worker.generation == reservation.generation and worker.base_url:
                     await drain_future(asyncio.create_task(self._cancel_remote(worker, upstream_id)))
                 if route is not None:
-                    release_job_load(route, self.pool)
-                    previous: TaskExecution = route.metadata["execution"]
-                    route.metadata.update(
-                        payload={"task_id": upstream_id, "status": "failed", "files": []},
-                        execution=replace(previous, status="failed", finished_at=utc_now_iso()),
-                        finalized_at=utc_now_iso(),
-                    )
-                    route.metadata["task_result_retain_until"] = time.time()
+                    route.state.release_reservation()
+                    route.payload = {"task_id": upstream_id, "status": "failed", "files": []}
+                    route.state.execution = replace(route.state.execution, status="failed", finished_at=utc_now_iso())
+                    route.finalized_at = utc_now_iso()
+                    route.lease.retain_until = time.time()
                 else:
                     reservation.release()
 
@@ -529,7 +523,7 @@ class RouterTaskBackend:
             # worker 已不可达或被替换时，原始错误及任务保留策略仍负责后续诊断。
             return
 
-    def _route(self, task_id: str) -> ResourceRoute:
+    def _route(self, task_id: str) -> ExecutionRoute:
         """检查本调用方的公共执行映射，不能用其他调用方的任务探测 worker。"""
         route = self.registry.find("job", task_id)
         if route is None or route.owner_scope != self.owner_scope:
@@ -548,8 +542,8 @@ class RouterTaskBackend:
         route = self.registry.find("job", task_id)
         if route is None:
             return
-        if route.metadata.get("upstream_lost"):
-            release_job_load(route, self.pool)
+        if route.state.upstream_lost:
+            route.state.release_reservation()
             return
         worker = self.pool.get(route.worker_id)
         response = await _worker_request(
@@ -565,16 +559,13 @@ class RouterTaskBackend:
                     502, error_type="api_error", code="invalid_upstream_response", message="Cancellation file identity changed"
                 )
             (remote_file,) = canceled.files
-            if (
-                remote_file.file_id != route.metadata["upstream_file_id"]
-                or remote_file.file_name != route.metadata["file_name"]
-            ):
+            if remote_file.file_id != route.state.upstream_file_id or remote_file.file_name != route.state.execution.file_name:
                 raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Cancellation file identity changed"
                 )
         execution = await self.get(task_id)
         if execution.status in TERMINAL_TASK_STATUSES:
-            release_job_load(route, self.pool)
+            route.state.release_reservation()
 
 
 def install_task_error_handlers(app: FastAPI) -> None:
@@ -599,27 +590,27 @@ _TASK_LEASE_REFRESH_TIMEOUT_SECONDS = 10.0
 
 async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPool, *, release: bool = False) -> None:
     """按 worker 隔离续租，并把整轮网络等待限制在远小于 120 秒租约的预算内。"""
-    groups: dict[str, list[ResourceRoute]] = {}
+    groups: dict[str, list[ExecutionRoute]] = {}
     for route in registry.list("job", include_expired=True):
         # 父任务运行或等待外部租约时尚无本地保留期限，但下游结果同样需要持续保护。
-        if route.metadata.get("task_result_held"):
+        if route.lease.held:
             groups.setdefault(route.worker_id, []).append(route)
 
-    async def maintain_worker(worker_id: str, routes: list[ResourceRoute]) -> None:
+    async def maintain_worker(worker_id: str, routes: list[ExecutionRoute]) -> None:
         """单个 worker 超时不拖延其他 worker；优先处理最久未续租的任务，避免队尾饥饿。"""
         worker = pool.get(worker_id)
-        routes.sort(key=lambda route: route.metadata.get("task_lease_refreshed_at", 0))
+        routes.sort(key=lambda route: route.lease.refreshed_at)
         try:
             async with asyncio.timeout(_TASK_LEASE_REFRESH_TIMEOUT_SECONDS):
                 for route in routes:
-                    until = route.metadata.get("task_result_retain_until")
+                    until = route.lease.retain_until
                     ended = release or (until is not None and until <= time.time())
-                    headers = dict(route.metadata.get("upstream_headers") or {})
+                    headers = dict(route.state.upstream_headers)
                     headers["x-mineru-task-lease-seconds"] = "0" if ended else "120"
                     try:
                         response = await _worker_request(pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers)
                         if response.status_code < 400:
-                            route.metadata["task_lease_refreshed_at"] = time.monotonic()
+                            route.lease.refreshed_at = time.monotonic()
                     except ApiServerError:
                         continue
         except TimeoutError:
@@ -627,16 +618,16 @@ async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPo
         finally:
             # 上游释放超时也必须结束已经到期的本地保留，避免路由永久占用资源。
             for route in routes:
-                until = route.metadata.get("task_result_retain_until")
+                until = route.lease.retain_until
                 if release or (until is not None and until <= time.time()):
-                    route.metadata["task_result_held"] = False
-                    route.metadata.pop("upstream_headers", None)
-                    result_id = route.metadata.get("task_result_file_id")
+                    route.lease.held = False
+                    route.state.upstream_headers.clear()
+                    result_id = route.state.result_file_id
                     result_route = next(
                         (item for item in registry.list("file", include_expired=True) if item.public_id == result_id), None
                     )
                     if result_route is not None:
-                        result_route.metadata["task_result_held"] = False
+                        result_route.lease.held = False
 
     await asyncio.gather(*(maintain_worker(worker_id, routes) for worker_id, routes in groups.items()))
 
