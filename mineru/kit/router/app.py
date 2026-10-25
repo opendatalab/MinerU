@@ -15,8 +15,10 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from ...parser.api_server import ApiServerError
-from ...parser.task_api import TaskStore, build_task_router
+from ...tasks.errors import ApiServerError
+from ...tasks.execution import TaskExecution
+from ...tasks.http import build_task_router
+from ...tasks.service import TaskStore
 from ...types import TIERS
 from ...version import __version__
 from .proxy import (
@@ -120,7 +122,7 @@ def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPoo
 
 async def _finalize_terminal_job(
     route: ResourceRoute,
-    payload: dict[str, Any],
+    execution: TaskExecution,
     *,
     request: Request | None,
     pool: WorkerPool,
@@ -128,7 +130,7 @@ async def _finalize_terminal_job(
     headers: dict[str, str] | None = None,
 ) -> None:
     """终态释放一次执行预占，结果映射和租约由 Tasks 专用路径管理。"""
-    if payload.get("status") in {"completed", "partial", "failed", "canceled"}:
+    if execution.status in {"completed", "failed", "canceled"}:
         release_job_load(route, pool)
         if not route.metadata.get("task_result_held"):
             route.metadata.pop("upstream_headers", None)
@@ -149,7 +151,7 @@ async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> 
                 registry,
                 headers=dict(route.metadata.get("upstream_headers") or {}),
             )
-            await _finalize_terminal_job(route, execution.job, request=None, pool=pool, registry=registry)
+            await _finalize_terminal_job(route, execution, request=None, pool=pool, registry=registry)
         except (RouterProxyError, ApiServerError):
             continue
 
@@ -384,9 +386,9 @@ def create_app(
 
     from .tasks import RouterTaskBackend, install_task_error_handlers
 
-    async def finalize_task_job(route: ResourceRoute, payload: dict[str, Any], request: Request | None) -> None:
+    async def finalize_task_job(route: ResourceRoute, execution: TaskExecution, request: Request | None) -> None:
         """新任务沿用既有产物元数据补齐及负载释放边界。"""
-        await _finalize_terminal_job(route, payload, request=request, pool=pool, registry=registry)
+        await _finalize_terminal_job(route, execution, request=request, pool=pool, registry=registry)
 
     def task_backend(request: Request) -> RouterTaskBackend:
         """显式组装 Router 适配器，便捷入口不通过 HTTP 请求自身。"""

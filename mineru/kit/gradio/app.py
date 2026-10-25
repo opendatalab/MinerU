@@ -6,50 +6,47 @@ import asyncio
 import html
 import json
 import os
-import time
 import uuid
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
-from loguru import logger
-
-from ...errors import MineruError
 from ...filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     HTML_EXTENSIONS,
-    MHTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
+    MHTML_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
     PDF_EXTENSIONS,
 )
-from ...types import TIERS, Tier
+from ...types import TIERS
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
-from .artifacts import RunArtifacts, persist_parse_result, render_download, render_html_preview
+from .artifacts import RunArtifacts, render_download
 from .client import (
     GradioArtifactClient,
     ManagedLocalApiServer,
     V1ArtifactClient,
     V1ServerCapabilities,
 )
+from .conversion import ConversionInput, SessionConversions, await_task_completion
+from .conversion_service import ConversionService
+from .conversion_ui import build_conversion_receipt, conversion_updates, download_updates
 from .epub_preview import register_epub_preview_resources
-from .conversion import ConversionRun, SessionConversions, await_task_completion, run_sync_output
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
-from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
 from .pdf_preview import pdf_preview_js, register_pdf_preview_resources
 from .source_preview import prepare_source_preview
 from .status import (
     DEFAULT_STATUS as _DEFAULT_STATUS,
-    STATUS_COMPLETED,
+)
+from .status import (
     STATUS_PREPARING_REQUEST,
-    STATUS_PROCESSING_OUTPUT,
-    STATUS_QUEUED_LOCALLY,
-    ParseStatusUpdate,
+)
+from .status import (
     status_html as _status_html,
 )
 
@@ -319,13 +316,6 @@ def _default_tier(capabilities: V1ServerCapabilities) -> str:
     return capabilities.tiers[0]
 
 
-def _tier_for_position(position: int | float, tier_choices: list[Tier]) -> Tier:
-    """把离散滑块位置映射为服务支持的 tier，并拒绝越界或非整数位置。"""
-    if isinstance(position, bool) or position not in range(len(tier_choices)):
-        raise ValueError("Invalid tier slider position")
-    return tier_choices[int(position)]
-
-
 def _file_suffix(path_value: str | Path | None) -> str:
     """读取上传文件的小写后缀，供预览、选页与 OCR 控件判断。"""
     if not path_value:
@@ -352,11 +342,6 @@ def _preview_update(gr: Any, value: object, *, visible: bool) -> Any:
 def _pdf_preview_update(gr: Any, value: str | None) -> Any:
     """保持文件输出的 FileData 契约，实际预览由独立 HTML 组件承载。"""
     return gr.update(value=value, visible=False)
-
-
-def _download_updates(gr: Any, *, interactive: bool, run_id: str = "") -> tuple[Any, ...]:
-    """同步当前结果标识，并恢复全部下载按钮的标签与交互状态。"""
-    return (run_id, *(gr.update(value=label, interactive=interactive) for _format_name, label in _DOWNLOAD_FORMATS))
 
 
 def build_gradio_app(
@@ -395,6 +380,13 @@ def build_gradio_app(
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversions = SessionConversions()
+    conversion_service = ConversionService(
+        client,
+        tier_choices=tier_choices,
+        output_root=output_root,
+        max_pages=max_pages,
+        slot=conversions.slot,
+    )
 
     with gr.Blocks() as demo:
         gr.HTML(
@@ -599,7 +591,13 @@ def build_gradio_app(
 
         def update_file_preview(file_path: str | None, request: object | None = None) -> tuple[Any, ...]:
             """切换源文件预览，并清除上一份文档的结果与下载状态。"""
-            reset_result = (_status_html(_DEFAULT_STATUS), "", None, *_download_updates(gr, interactive=False), "")
+            reset_result = (
+                _status_html(_DEFAULT_STATUS),
+                "",
+                None,
+                *download_updates(_DOWNLOAD_FORMATS, interactive=False),
+                "",
+            )
             if not file_path:
                 return (
                     _pdf_preview_update(gr, None),
@@ -801,139 +799,24 @@ def build_gradio_app(
             **private_event_kwargs,
         )
 
-        async def execute_conversion(
-            run: ConversionRun,
-            file_path: str | None,
-            tier_position: int | float,
-            raw_page_range: str,
-            force_ocr: bool,
-            request: object | None,
-        ) -> tuple[Any, ...]:
-            """执行一次转换，只返回完整终态；进度写入独立的会话快照。"""
-            reset_result = (
-                _status_html(_DEFAULT_STATUS),
-                "",
-                *(gr.skip() for _ in range(4)),
-                None,
-                *_download_updates(gr, interactive=False),
-                "",
-            )
-
-            def failure(message: str) -> tuple[Any, ...]:
-                """把输入或输出错误收敛成可轮询的失败终态。"""
-                run.publish(f"Failed: {message}", final_failure=True)
-                return (run.state.render(), *reset_result[1:])
-
-            if not file_path:
-                return failure("No input file")
-            source_path = Path(file_path).resolve()
-            if not source_path.is_file():
-                return failure("input file does not exist")
-            suffix = _file_suffix(source_path)
-            if suffix not in PARSEABLE_EXTENSIONS:
-                return failure(f"unsupported file type '.{suffix}'")
-            try:
-                selected_tier = _tier_for_position(tier_position, tier_choices)
-            except ValueError as exc:
-                return failure(str(exc))
-            if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
-                if "flash" not in tier_choices:
-                    return failure("tier_unavailable: 该格式仅支持 Flash，当前服务不可用")
-                selected_tier = "flash"
-            loop = asyncio.get_running_loop()
-
-            def emit(message: str | ParseStatusUpdate) -> None:
-                """在通知发生时记录时间，再由事件循环串行更新会话状态。"""
-                at = time.monotonic()
-                loop.call_soon_threadsafe(lambda: run.publish(message, at=at))
-
-            async def run_conversion() -> tuple[Any, ...]:
-                """实际同步工作退出前一直持有执行槽，避免取消后与新任务重叠。"""
-                if conversions.slot.locked():
-                    run.publish(STATUS_QUEUED_LOCALLY)
-                async with conversions.slot:
-                    run.publish(STATUS_PREPARING_REQUEST)
-                    page_text = await run_sync_output(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
-                    result = await client.parse_file(
-                        source_path,
-                        tier=selected_tier,
-                        page_range=page_text,
-                        ocr_mode="ocr" if suffix in PDF_EXTENSIONS and force_ocr else "auto",
-                        status_callback=emit,
-                    )
-                    # 先消费同一轮已发出的解析通知，保持阶段和解析耗时的顺序。
-                    await asyncio.sleep(0)
-                    run.publish(STATUS_PROCESSING_OUTPUT)
-                    output_started = time.monotonic()
-                    artifacts = await run_sync_output(
-                        persist_parse_result, result, source_path, output_root=output_root, page_range=page_text
-                    )
-                    rendered_html = await run_sync_output(
-                        render_html_preview, artifacts, public_base_url=_gradio_public_base_url(request)
-                    )
-                    structured_json = await run_sync_output(artifacts.structured_content_path.read_text, encoding="utf-8")
-                    preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
-                    generic_html = "" if preview_path else preview_placeholder("result_ready")
-                    show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
-                    result_preview_updates = (
-                        _pdf_preview_update(gr, str(preview_path) if preview_path else None),
-                        gr.update(value=str(artifacts.source_path) if show_image_preview else None, visible=show_image_preview),
-                        gr.update(value="", visible=False),
-                        gr.update(value=generic_html, visible=bool(generic_html)),
-                    )
-                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
-                        result_preview_updates = tuple(gr.skip() for _ in range(4))
-                    run.artifacts = artifacts.as_state()
-                    logger.debug(
-                        "WebUI output ready run_id={} artifacts={} elapsed={:.3f}s html_bytes={} json_bytes={} ready_at={:.3f}",
-                        run.run_id,
-                        artifacts.root.name,
-                        time.monotonic() - output_started,
-                        len(rendered_html.encode("utf-8")),
-                        len(structured_json.encode("utf-8")),
-                        time.time(),
-                    )
-                    return (
-                        rendered_html,
-                        *result_preview_updates,
-                        run.artifacts,
-                        *_download_updates(gr, interactive=True, run_id=artifacts.root.name),
-                        structured_json,
-                    )
-
-            task = asyncio.create_task(run_conversion())
-            run.task = task
-            try:
-                result_outputs = await asyncio.shield(task)
-                if run.cancelled:
-                    return tuple(gr.skip() for _ in reset_result)
-                run.publish(STATUS_COMPLETED)
-                return (run.state.render(), *result_outputs)
-            except asyncio.CancelledError:
-                run.cancel()
-                with suppress(asyncio.CancelledError, Exception):
-                    await await_task_completion(task)
-                return tuple(gr.skip() for _ in reset_result)
-            except Exception as exc:
-                logger.exception("WebUI conversion failed run_id={}", run.run_id)
-                message = f"{exc.code}: {exc}" if isinstance(exc, MineruError) else str(exc)
-                return failure(message)
-            finally:
-                run.task = None
-
         async def convert_handler(
             file_path: str | None,
             tier_position: int | float,
             raw_page_range: str,
             force_ocr: bool = False,
             request: object | None = None,
-        ) -> tuple[Any, ...]:
+        ) -> tuple[object, ...]:
             """保留公开转换 API 的四个输入和原生组件输出，普通响应一次返回结果。"""
             session = getattr(request, "session_hash", None) or uuid.uuid4().hex
             run = conversions.start(session, uuid.uuid4().hex)
             assert run is not None
             try:
-                return await execute_conversion(run, file_path, tier_position, raw_page_range, force_ocr, request)
+                outcome = await conversion_service.execute(
+                    run,
+                    ConversionInput(file_path, tier_position, raw_page_range, force_ocr),
+                    public_base_url=_gradio_public_base_url(request),
+                )
+                return conversion_updates(outcome, status_html=run.state.render(), download_formats=_DOWNLOAD_FORMATS)
             finally:
                 conversions.cancel(session, run.run_id)
 
@@ -1011,8 +894,6 @@ def build_gradio_app(
             request: object | None = None,
         ) -> str:
             """用完整回执传递浏览器结果，使迟到响应无法直接覆盖可见组件。"""
-            from gradio.data_classes import FileData
-
             try:
                 identity = json.loads(ticket)
                 run_id = uuid.UUID(identity["run_id"]).hex
@@ -1025,29 +906,22 @@ def build_gradio_app(
             run = conversions.start(session, run_id, revision=revision)
             if run is None:
                 return ""
-            result = await execute_conversion(run, file_path, tier_position, raw_page_range, force_ocr, request)
+            public_base_url = _gradio_public_base_url(request)
+            outcome = await conversion_service.execute(
+                run,
+                ConversionInput(file_path, tier_position, raw_page_range, force_ocr),
+                public_base_url=public_base_url,
+            )
             if conversions.current(session, run_id) is not run:
                 return ""
-            values = list(result)
-            # 文件来自输出根目录的不可变任务目录，使用现有 allowed_paths 文件路由。
-            for index in (2, 3):
-                update = values[index]
-                if isinstance(update, dict) and update.get("value"):
-                    path = Path(update["value"]).resolve()
-                    path.relative_to(output_root.resolve())
-                    file_url = f"{_gradio_public_base_url(request)}/gradio_api/file={quote(path.as_posix(), safe='/')}"
-                    values[index] = {
-                        **update,
-                        "value": FileData(path=str(path), url=file_url, orig_name=path.name).model_dump(mode="json"),
-                    }
-            return json.dumps(
-                {
-                    "run_id": run_id,
-                    "sequence": run.state.sequence,
-                    "ready_at": time.time(),
-                    "outputs": values[:6] + values[7:],
-                },
-                ensure_ascii=False,
+            return build_conversion_receipt(
+                outcome,
+                status_html=run.state.render(),
+                run_id=run_id,
+                sequence=run.state.sequence,
+                output_root=output_root,
+                public_base_url=public_base_url,
+                download_formats=_DOWNLOAD_FORMATS,
             )
 
         for callback in (read_conversion_status, cancel_ui_conversion, unload_session, convert_ui):
@@ -1169,7 +1043,7 @@ def build_gradio_app(
                 gr.update(value="", visible=False),
                 gr.update(value=preview_placeholder("empty_preview"), visible=True),
                 None,
-                *_download_updates(gr, interactive=False),
+                *download_updates(_DOWNLOAD_FORMATS, interactive=False),
                 "",
             )
 

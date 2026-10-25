@@ -11,7 +11,7 @@ from docvortex.render import RenderFormat as EngineFormat
 from docvortex.render.contracts import MarkdownRenderOptions as EngineMarkdownOptions
 from docvortex.schema import MiddleJson, PageInfo, TextBlock, TextSpan, EquationInlineSpan, ChartBlock, ChartBodyBlock
 
-from mineru.config import config
+from mineru.config import get_config
 from mineru.render import RenderFormat, MarkdownRenderOptions, render_content_list, render_content_list_v2
 from mineru.types import ContentType, ContentTypeV2
 
@@ -56,7 +56,7 @@ def test_migrated_inline_delimiter_cases(version: int, monkeypatch: pytest.Monke
     )
     before = middle.to_dict(skip_defaults=False)
     delimiters = LatexDelimitersConfig(inline=LatexDelimiterConfig(left="\\(", right="\\)"))
-    monkeypatch.setattr(config.render, "latex_delimiters", delimiters)
+    monkeypatch.setattr(get_config().render, "latex_delimiters", delimiters)
     value = render_content_list(middle) if version == 1 else render_content_list_v2(middle)
 
     def strings(item: Any) -> list[str]:

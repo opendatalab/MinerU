@@ -63,9 +63,9 @@ def module_available(name: str) -> bool:
 
 def resolve_small_model_backend(backend: str | None = None) -> Literal["onnx", "torch"]:
     """独立解析小模型后端；显式选择可用于离线下载，依赖由运行入口预检。"""
-    from ...config import config
+    from ...config import get_config
 
-    selected = config.model.small_backend if backend is None else backend
+    selected = get_config().model.small_backend if backend is None else backend
     if selected == "onnx":
         return "onnx"
     if selected == "torch":

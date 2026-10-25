@@ -32,8 +32,10 @@ from urllib.parse import unquote, urlparse, urljoin
 
 import httpx
 from docvortex.assets import validate_image_sidecar_path
+from pydantic import ValidationError
 
 from ..task_types import TaskStatus, task_status_url
+from ..tasks.contracts import TaskFileIdentity
 from ..types import PageInfo, Tier, validate_tier
 from .base import DocumentParser, ParseResult
 from .page_range import normalize_page_range_input
@@ -200,15 +202,17 @@ class MinerUApiParser(DocumentParser):
             or not isinstance(files, list)
             or len(files) != 1
             or not isinstance(files[0], dict)
-            or not isinstance(files[0].get("file_id"), str)
-            or not files[0]["file_id"]
-            or not isinstance(files[0].get("file_name"), str)
             or (expected is not None and task["task_id"] != expected["task_id"])
         ):
             raise _V1APIError("invalid_response", "Inconsistent Tasks response")
         item = files[0]
-        if item.get("status") not in ("waiting-file", "pending", "running", "completed", "failed", "canceled"):
-            raise _V1APIError("invalid_response", "Invalid task file state")
+        try:
+            # 只校验共同身份字段，继续保留原始快照中的服务扩展和可选字段。
+            TaskFileIdentity.model_validate(item, strict=True)
+        except ValidationError as exc:
+            identity_invalid = any(error["loc"] != ("status",) for error in exc.errors())
+            message = "Inconsistent Tasks response" if identity_invalid else "Invalid task file state"
+            raise _V1APIError("invalid_response", message) from exc
         link = item.get("upload")
         if link is not None and (not isinstance(link, dict) or item["status"] != "waiting-file"):
             raise _V1APIError("invalid_response", "Invalid task upload descriptor")

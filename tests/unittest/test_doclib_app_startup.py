@@ -11,11 +11,12 @@ from fastapi.testclient import TestClient
 from loguru import logger as loguru_logger
 from packaging.requirements import Requirement
 
-from mineru.config import LogConfig, PatchedConfig, config as mineru_config
+from mineru.config import Config, LogConfig, PatchedConfig, get_config
 from mineru.doclib import app as doclib_app
 from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
-from mineru.doclib.server import _tail_log, _write_temp_asset
+from mineru.doclib.server import _tail_log
+from mineru.doclib.services.content_read_svc import _write_temp_asset
 from mineru.model import download as model_download
 from mineru.parser import tier as parser_tier
 from mineru.version import __version__
@@ -79,7 +80,7 @@ def test_torch_extra_includes_preflight_runtime_dependencies(monkeypatch: pytest
         "transformers": "transformers",
     }
 
-    monkeypatch.setattr(mineru_config.model, "small_backend", "torch")
+    monkeypatch.setattr(get_config().model, "small_backend", "torch")
 
     missing = [
         module_name
@@ -136,9 +137,9 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
     # 无 torch 环境会把小模型后端解析为 onnx，显式固定以保持仓库名断言确定。
-    monkeypatch.setattr(model_download.config.model, "small_backend", "torch")
+    monkeypatch.setattr(model_download.get_config().model, "small_backend", "torch")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -161,7 +162,7 @@ def test_config_set_managed_advanced_is_rejected(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -181,7 +182,7 @@ def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -294,12 +295,32 @@ def test_bind_tcp_socket_strict_port_does_not_probe(monkeypatch: pytest.MonkeyPa
     assert bind_calls == [("127.0.0.1", 15980)]
 
 
-def test_doclib_log_level_inherits_global_and_accepts_local_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Doclib 未设置级别时继承全局配置，显式设置时局部覆盖。"""
-    monkeypatch.setattr(doclib_app.config.log, "level", "debug")
+def test_doclib_log_level_inherits_global_and_accepts_local_override() -> None:
+    """验证 Doclib 未设置级别时继承当前应用的全局配置，显式设置时局部覆盖。"""
+    assert doclib_app._resolve_log_level(LogConfig(), global_level="debug") == logging.DEBUG
+    assert doclib_app._resolve_log_level(LogConfig(level="warning"), global_level="debug") == logging.WARNING
 
-    assert doclib_app._resolve_log_level(LogConfig()) == logging.DEBUG
-    assert doclib_app._resolve_log_level(LogConfig(level="warning")) == logging.WARNING
+
+def test_explicit_app_configuration_is_copied_without_loading_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """显式启动配置独立于默认配置，创建后修改调用方对象不会影响应用快照。"""
+    cfg = Config(doclib={"log": {"dir": str(tmp_path)}}, log={"level": "debug"})
+
+    def reject_default_configuration() -> Config:
+        """显式配置路径不得再次装载进程默认配置。"""
+        pytest.fail("explicit app configuration must not load defaults")
+
+    monkeypatch.setattr(doclib_app, "get_config", reject_default_configuration)
+    try:
+        app = doclib_app.create_app(cfg)
+        snapshot = app.state.doclib_state.config
+        assert snapshot is not cfg
+        assert logging.getLogger("mineru").level == logging.DEBUG
+        cfg.doclib.parse_workers = 7
+        cfg.log.level = "error"
+        assert snapshot.doclib.parse_workers == 2
+        assert snapshot.log.level == "debug"
+    finally:
+        _clear_test_loggers()
 
 
 def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_duplication(tmp_path: Path) -> None:
@@ -307,7 +328,7 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
     log_path = tmp_path / "doclib.log"
     access_log_path = tmp_path / "doclib.access.log"
     try:
-        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)))
+        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)), global_level="info")
 
         mineru_logger = logging.getLogger("mineru")
         uvicorn_error_logger = logging.getLogger("uvicorn.error")
@@ -351,7 +372,7 @@ def test_setup_logging_routes_loguru_records_to_application_log(tmp_path: Path) 
     log_path = tmp_path / "doclib.log"
     access_log_path = tmp_path / "doclib.access.log"
     try:
-        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)))
+        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)), global_level="info")
 
         patched_logger = loguru_logger.patch(lambda record: record.update(name="mineru.test_loguru"))
         patched_logger.error("loguru bridged message")
@@ -773,6 +794,6 @@ def test_write_temp_asset_uses_temp_read_assets_directory(tmp_path: Path) -> Non
 def test_tail_log_uses_current_config_default_when_data_dir_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     log_path = tmp_path / "doclib.log"
     log_path.write_text("line-1\nline-2\n", encoding="utf-8")
-    monkeypatch.setattr(mineru_config.doclib, "log", LogConfig(app_path=str(log_path)))
+    monkeypatch.setattr(get_config().doclib, "log", LogConfig(app_path=str(log_path)))
 
     assert _tail_log("") == ["line-1\n", "line-2\n"]

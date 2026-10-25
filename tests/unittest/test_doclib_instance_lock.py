@@ -80,7 +80,7 @@ def test_doclib_main_exits_before_startup_when_home_lock_is_held(monkeypatch: py
             "uds": {"path": str(socket_path)},
         }
     )
-    monkeypatch.setattr(doclib_app, "config", cfg)
+    monkeypatch.setattr(doclib_app, "get_config", lambda: cfg)
     monkeypatch.setattr(instance_lock, "default_endpoint_path", lambda: str(endpoint_path))
 
     with instance_lock.doclib_home_lock():

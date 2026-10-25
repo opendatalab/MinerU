@@ -1,7 +1,7 @@
 from _span_test_utils import inline as _inline
 import pytest
 
-from mineru.doclib.server import (
+from mineru.doclib.services.content_read_svc import (
     _next_content_request,
     _normalize_content_page_range,
     _page_markdown_blocks,

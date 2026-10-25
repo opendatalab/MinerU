@@ -40,7 +40,7 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
     whole_repo: bool,
 ) -> None:
     """用固定的单来源仓库验证拒绝不可用来源时，已有模型和完整标记均不受影响。"""
-    monkeypatch.setattr(download.config.model, "base_dir", str(tmp_path))
+    monkeypatch.setattr(download.get_config().model, "base_dir", str(tmp_path))
     # 不依赖生产仓库是否已发布到 ModelScope，避免新增来源使负向测试失效。
     repo = download.ModelRepo(
         name="test-huggingface-only",
@@ -71,7 +71,7 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
 
 def test_onnx_required_paths_cannot_be_satisfied_by_legacy_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """旧缓存与根标记均不能替代新 ONNX 仓库的实际文件。"""
-    monkeypatch.setattr(download.config.model, "base_dir", str(tmp_path))
+    monkeypatch.setattr(download.get_config().model, "base_dir", str(tmp_path))
     (tmp_path / "PDF-Extract-Kit-1.0").mkdir()
     repo = registry.MINERU_4_MODELS_ONNX
     repo.local_dir().mkdir()

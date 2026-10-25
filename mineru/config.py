@@ -9,6 +9,7 @@ import os
 import re
 import socket
 import tempfile
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, get_args, get_origin
@@ -257,16 +258,39 @@ def _load_effective_config() -> LoadedConfig:
     )
 
 
+def load_config() -> LoadedConfig:
+    """按当前文件和环境独立装载配置及来源，不替换进程默认配置。"""
+    return _load_effective_config()
+
+
+def _get_loaded_config() -> LoadedConfig:
+    """首次使用时在线程锁内装载进程默认配置，后续复用同一份来源记录。"""
+    global _loaded_config
+    if _loaded_config is None:
+        with _config_load_lock:
+            if _loaded_config is None:
+                _loaded_config = load_config()
+    return _loaded_config
+
+
+def get_config() -> Config:
+    """返回首次使用时装载并缓存的进程默认配置。"""
+    return _get_loaded_config().config
+
+
 def get_config_source(path: str | Sequence[str]) -> ConfigSource:
-    return _loaded_config.sources.get(_normalize_config_source_path(path), "default")
+    """从进程默认配置的同一份装载结果查询字段来源。"""
+    return _get_loaded_config().sources.get(_normalize_config_source_path(path), "default")
 
 
 def get_config_file_path() -> str:
-    return _loaded_config.config_file
+    """返回进程默认配置首次装载时确定的文件路径。"""
+    return _get_loaded_config().config_file
 
 
 def get_config_file_exists() -> bool:
-    return _loaded_config.config_file_exists
+    """返回进程默认配置首次装载时的文件存在状态。"""
+    return _get_loaded_config().config_file_exists
 
 
 def update_config_file(patch: dict[str, Any], *, only_if_onnx_auto: bool = False) -> bool:
@@ -311,7 +335,7 @@ def read_onnx_device_from_file() -> OnnxDevice:
 
 class UDSConfig(BaseModel):
     enabled: AutoBool = "auto"
-    path: str = _default_path("doclib.sock")
+    path: str = Field(default_factory=lambda: _default_path("doclib.sock"))
     permission: int = 0o600
 
 
@@ -338,7 +362,7 @@ class GlobalLogConfig(BaseModel):
 
 
 class LogConfig(BaseModel):
-    dir: str = _default_path("logs")
+    dir: str = Field(default_factory=lambda: _default_path("logs"))
     app_path: str | None = None
     access_path: str | None = None
     stdout_path: str | None = None
@@ -379,7 +403,7 @@ class LogConfig(BaseModel):
 
 
 class SQLiteConfig(BaseModel):
-    path: str = _default_path("doclib.db")
+    path: str = Field(default_factory=lambda: _default_path("doclib.db"))
     busy_timeout_ms: int = Field(default=5000, ge=0)
     lock_retry_attempts: int = Field(default=3, ge=0)
     lock_retry_base_delay_ms: int = Field(default=50, ge=0)
@@ -514,7 +538,7 @@ class VlmConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    base_dir: str = _default_path("models")
+    base_dir: str = Field(default_factory=lambda: _default_path("models"))
     source: str = "auto"
     small_backend: Literal["auto", "onnx", "torch"] = "auto"
     onnx_device: OnnxDevice = "auto"
@@ -541,8 +565,8 @@ class DoclibConfig(BaseModel):
     tcp: TCPConfig = Field(default_factory=TCPConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     sqlite: SQLiteConfig = Field(default_factory=SQLiteConfig)
-    endpoint_path: str = _default_path("doclib.endpoint.json")
-    data_dir: str = _default_path("doclib")
+    endpoint_path: str = Field(default_factory=lambda: _default_path("doclib.endpoint.json"))
+    data_dir: str = Field(default_factory=lambda: _default_path("doclib"))
     managed_parse_server: ManagedParseServerConfig = Field(default_factory=ManagedParseServerConfig)
     ingest_workers: int = 2
     parse_workers: int = 2
@@ -581,12 +605,13 @@ class Config(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
 
 
-_loaded_config = _load_effective_config()
-config = _loaded_config.config
+_loaded_config: LoadedConfig | None = None
+_config_load_lock = threading.Lock()
 
 
 def PatchedConfig(**kwargs: Any) -> Config:
-    merged = _deep_merge(to_jsonable_python(config), kwargs)
+    """在进程默认配置的独立副本上应用局部覆盖并重新校验。"""
+    merged = _deep_merge(to_jsonable_python(get_config()), kwargs)
     return Config(**merged)
 
 
@@ -601,7 +626,8 @@ __all__ = [
     "ModelConfig",
     "VlmConfig",
     "ModelSource",
-    "config",
+    "get_config",
+    "load_config",
     "Config",
     "DoclibConfig",
     "LLMAidedConfig",

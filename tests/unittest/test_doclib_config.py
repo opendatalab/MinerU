@@ -14,6 +14,7 @@ from mineru.config import (
     _interpolate_env,
     _load_config,
     _load_effective_config,
+    get_config,
     update_config_file,
 )
 from mineru.doclib.config_defaults import CONFIG_DEFAULTS
@@ -438,10 +439,15 @@ def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch
 
 
 def test_patched_config_returns_validated_deep_patch() -> None:
+    """验证局部覆盖经过类型校验，且不会修改默认配置中的嵌套对象。"""
+    default = get_config()
+    original = default.model_dump()
     cfg = PatchedConfig(doclib={"tcp": {"port": "16000"}, "sqlite": {"cache_size": "-1"}})
 
     assert cfg.doclib.tcp.port == 16000
     assert cfg.doclib.sqlite.cache_size == -1
+    assert cfg.doclib is not default.doclib
+    assert default.model_dump() == original
 
 
 def test_tcp_config_exposes_port_probe_count() -> None:
@@ -553,12 +559,10 @@ def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pyte
     assert Path(env_cfg.doclib.log.resolved_stdout_path).as_posix() == "/tmp/env-logs/doclib.stdout.log"
     assert Path(env_cfg.doclib.log.resolved_stderr_path).as_posix() == "/tmp/env-logs/doclib.stderr.log"
     assert (
-        Path(env_cfg.doclib.log.resolved_parse_server_stdout_path).as_posix()
-        == "/tmp/env-logs/doclib.parse-server.stdout.log"
+        Path(env_cfg.doclib.log.resolved_parse_server_stdout_path).as_posix() == "/tmp/env-logs/doclib.parse-server.stdout.log"
     )
     assert (
-        Path(env_cfg.doclib.log.resolved_parse_server_stderr_path).as_posix()
-        == "/tmp/env-logs/doclib.parse-server.stderr.log"
+        Path(env_cfg.doclib.log.resolved_parse_server_stderr_path).as_posix() == "/tmp/env-logs/doclib.parse-server.stderr.log"
     )
     assert patched_cfg.doclib.log.app_path is None
     assert patched_cfg.doclib.log.access_path is None

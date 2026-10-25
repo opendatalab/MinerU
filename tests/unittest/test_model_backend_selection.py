@@ -12,7 +12,7 @@ from packaging.requirements import Requirement
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from mineru.config import Config, VlmConfig, _load_effective_config, config
+from mineru.config import Config, VlmConfig, _load_effective_config, get_config
 from mineru.kit.commands.models import app
 from mineru.model import registry
 from mineru.model.runtime import device
@@ -106,8 +106,8 @@ def test_old_cli_stack_option_is_removed() -> None:
 @pytest.mark.parametrize("engine", ["llama-cpp", "vllm", "lmdeploy", "mlx"])
 def test_preflight_uses_supplied_vlm_config(monkeypatch: pytest.MonkeyPatch, engine: str) -> None:
     """显式 VLM 配置同时决定预检依赖与资源集合，不被全局设置覆盖。"""
-    monkeypatch.setattr(config.model, "small_backend", "torch")
-    monkeypatch.setattr(config.model.vlm, "engine", "auto")
+    monkeypatch.setattr(get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(get_config().model.vlm, "engine", "auto")
     settings = VlmConfig(engine=engine)
     modules = parser_tier.required_modules_for_tier("standard", vlm_config=settings)
     assert set(modules) == {"onnxruntime", *device.TORCH_REQUIRED_MODULES, *selector.VLM_REQUIRED_MODULES[engine]}
@@ -126,7 +126,7 @@ def test_preflight_uses_supplied_vlm_config(monkeypatch: pytest.MonkeyPatch, eng
 
 def test_remote_vlm_needs_no_local_engine_or_weights(monkeypatch: pytest.MonkeyPatch) -> None:
     """远程地址优先，不因未安装本地 MLX 而阻断服务或下载无用 VLM 权重。"""
-    monkeypatch.setattr(config.model, "small_backend", "onnx")
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
     settings = VlmConfig(server_url="http://localhost:9000", engine="mlx")
     assert parser_tier.required_modules_for_tier("standard", vlm_config=settings) == ["onnxruntime"]
     assert registry.model_repos_for_tier("standard", vlm_config=settings) == (registry.MINERU_4_MODELS_ONNX,)
@@ -136,7 +136,7 @@ def test_remote_vlm_needs_no_local_engine_or_weights(monkeypatch: pytest.MonkeyP
 
 def test_explicit_missing_engine_reports_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
     """显式引擎缺失时报错，不改用可用的 llama 掩盖配置问题。"""
-    monkeypatch.setattr(config.model, "small_backend", "onnx")
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
 
     def missing_engine(name: str) -> object:
         """只模拟选定引擎缺失，避免加载真实 GPU 模块。"""
@@ -170,8 +170,8 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     from mineru.parser import api_server
 
     settings = VlmConfig(engine=engine)
-    monkeypatch.setattr(config.model, "small_backend", small_backend)
-    monkeypatch.setattr(config.model, "vlm", settings)
+    monkeypatch.setattr(get_config().model, "small_backend", small_backend)
+    monkeypatch.setattr(get_config().model, "vlm", settings)
     monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
 
     def import_without_dependency(name: str) -> object:

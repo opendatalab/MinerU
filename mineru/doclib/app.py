@@ -12,14 +12,14 @@ import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
-from typing import TYPE_CHECKING, Any, AsyncIterator, cast
+from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, cast
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger as loguru_logger
 
-from ..config import Config, LogConfig, _mineru_home, config, get_config_source
+from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, get_config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
@@ -37,11 +37,11 @@ logger = logging.getLogger("mineru.doclib.app")
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
-    """Create the new interface-backed FastAPI app."""
-    if cfg is None:
-        cfg = config
-    _setup_logging(cfg.doclib.log)
+    """使用独立启动配置快照创建应用，显式配置不触发进程默认配置加载。"""
+    cfg = (get_config() if cfg is None else cfg).model_copy(deep=True)
+    _setup_logging(cfg.doclib.log, global_level=cfg.log.level)
     state = AppState()
+    state.config = cfg
     app = DoclibServer(state).app
     app.title = "MinerU DocLib"
     app.version = "1.0.0"
@@ -202,7 +202,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
         state.tcp_enabled = cfg.doclib.resolved_tcp_enabled
         state.tcp_host = cfg.doclib.tcp.host
-        state.config = cfg
 
     async def shutdown() -> None:
         from .background.parse_server_health import get_health, stop_managed_parse_server
@@ -446,13 +445,15 @@ def main() -> None:
     configure_global_log_level()
     try:
         with doclib_home_lock():
-            _run_server(config)
+            cfg = get_config()
+            log_source = get_config_source("doclib.log.level" if cfg.doclib.log.level is not None else "log.level")
+            _run_server(cfg, log_source=log_source)
     except DoclibLockUnavailable:
         raise SystemExit(build_doclib_home_owned_message()) from None
 
 
-def _run_server(cfg: Config) -> None:
-    """Run the doclib server while the caller holds the home ownership lock."""
+def _run_server(cfg: Config, *, log_source: ConfigSource | Literal["provided"] = "provided") -> None:
+    """在持有目录锁时按显式配置启动服务，配置来源由入口提供。"""
     uds_path = os.path.expanduser(cfg.doclib.uds.path)
     endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
     uds_enabled = cfg.doclib.resolved_uds_enabled
@@ -468,16 +469,9 @@ def _run_server(cfg: Config) -> None:
 
     app = create_app(cfg)
     server_id = app.state.doclib_state.server_id
-    log_source = (
-        get_config_source("doclib.log.level")
-        if cfg is config and cfg.doclib.log.level is not None
-        else get_config_source("log.level")
-        if cfg is config
-        else "provided"
-    )
     logger.info(
         "Doclib logging configured level=%s source=%s path=%s",
-        logging.getLevelName(_resolve_log_level(cfg.doclib.log)),
+        logging.getLevelName(_resolve_log_level(cfg.doclib.log, global_level=cfg.log.level)),
         log_source,
         os.path.expanduser(cfg.doclib.log.resolved_app_path),
     )
@@ -637,13 +631,15 @@ def _remove_owned_uds_path(uds_path: str, expected_identity: tuple[int, int]) ->
     logger.debug("Removed owned doclib UDS path=%s identity=%s", uds_path, expected_identity)
 
 
-def _resolve_log_level(log_cfg: LogConfig) -> int:
-    level = log_cfg.level or config.log.level
+def _resolve_log_level(log_cfg: LogConfig, *, global_level: LogLevel) -> int:
+    """以当前应用的全局级别补全未设置的服务日志级别。"""
+    level = log_cfg.level or global_level
     return getattr(logging, level.upper(), logging.INFO)
 
 
-def _setup_logging(log_cfg: LogConfig) -> None:
-    level = _resolve_log_level(log_cfg)
+def _setup_logging(log_cfg: LogConfig, *, global_level: LogLevel) -> None:
+    """按当前应用配置安装日志处理器，不读取默认配置。"""
+    level = _resolve_log_level(log_cfg, global_level=global_level)
     log_path = os.path.expanduser(log_cfg.resolved_app_path)
     access_log_path = os.path.expanduser(log_cfg.resolved_access_path)
     _ensure_log_dir(log_path)

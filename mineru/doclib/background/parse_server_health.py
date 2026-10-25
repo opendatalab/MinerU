@@ -16,7 +16,7 @@ from typing import IO, TYPE_CHECKING, Final, Iterator, cast
 
 import httpx
 
-from ...config import LogConfig, ManagedParseServerConfig, config
+from ...config import LogConfig, ManagedParseServerConfig, get_config
 from ...parser.api_client import should_trust_env_for_url
 from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
 from ...parser.process_control import ManagedProcessControl
@@ -159,11 +159,11 @@ def select_available_managed_port(host: str, port: int, *, strict_port: bool, po
 
 
 def get_parse_server_stdout_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.resolved_parse_server_stdout_path)
+    return os.path.expanduser(get_config().doclib.log.resolved_parse_server_stdout_path)
 
 
 def get_parse_server_stderr_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.resolved_parse_server_stderr_path)
+    return os.path.expanduser(get_config().doclib.log.resolved_parse_server_stderr_path)
 
 
 def _parse_server_stdout_log_path(log_cfg: LogConfig | None) -> str:
@@ -335,10 +335,10 @@ class ParseServerHealthCheck:
         self.probe_timeout_sec = probe_timeout_sec
         self.startup_grace_sec = startup_grace_sec
         self.startup_timeout_sec = (
-            startup_timeout_sec if startup_timeout_sec is not None else config.doclib.parse_server_startup_timeout_sec
+            startup_timeout_sec if startup_timeout_sec is not None else get_config().doclib.parse_server_startup_timeout_sec
         )
         self.stop_timeout_sec = stop_timeout_sec
-        self.managed_parse_server = managed_parse_server or config.doclib.managed_parse_server
+        self.managed_parse_server = managed_parse_server or get_config().doclib.managed_parse_server
         self.log_cfg = log_cfg
         self.running = False
         self._wakeup_event = asyncio.Event()

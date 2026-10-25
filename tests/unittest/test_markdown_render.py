@@ -43,7 +43,7 @@ def test_equation_uses_content_then_image_fallback(monkeypatch: pytest.MonkeyPat
             }
         }
     )
-    monkeypatch.setattr("mineru.config.config", configured)
+    monkeypatch.setattr("mineru.config.get_config", lambda: configured)
     middle = _middle(
         _page(
             0,

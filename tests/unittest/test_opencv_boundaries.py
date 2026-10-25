@@ -86,13 +86,13 @@ def test_real_flash_pdf_parse_and_all_renderers_without_opencv(tmp_path: Path, a
 import asyncio
 from pathlib import Path
 from typing import Any
-from mineru.config import config
+from mineru.config import get_config
 from mineru.parser import parse, parse_async
 from mineru.parser.writer import FileBasedDataWriter
 from mineru.render import RenderFormat, render
 
-config.llm_aided.features.title_leveling = False
-config.llm_aided.features.cross_page_table_cell_merge = False
+get_config().llm_aided.features.title_leveling = False
+get_config().llm_aided.features.cross_page_table_cell_merge = False
 options = dict(tier="flash", ocr_mode=sys.argv[2], page_range="1,3")
 result = asyncio.run(parse_async(sys.argv[1], **options)) if sys.argv[3] == "True" else parse(sys.argv[1], **options)
 assert len(result.pages) == 2

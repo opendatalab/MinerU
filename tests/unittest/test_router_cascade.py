@@ -157,7 +157,7 @@ def test_cascade_accepts_ready_upload_without_source_file_and_reuses_cache(tmp_p
             result = await _terminal(client, cached)
             assert result["status"] == "completed", result
             await _check_download(client, result)
-            assert len(worker.state.job_store._jobs) == 2
+            assert len(worker.state.execution_store._executions) == 2
             assert all(item.active_jobs == 0 for app in (outer, inner) for item in app.state.worker_pool.workers)
 
     asyncio.run(scenario())
@@ -181,7 +181,7 @@ def test_cascade_can_cancel_while_downstream_submission_is_blocked(tmp_path: Pat
                 for record in inner.state.task_store._records.values():
                     # 下游仍有结果租约，取消清理只需等待实际子文件退出。
                     await asyncio.gather(*(file.operation for file in record.file_states if file.operation is not None))
-            assert not worker.state.job_store._jobs
+            assert not worker.state.execution_store._executions
             for app in (outer, inner):
                 assert all(item.active_jobs == 0 for item in app.state.worker_pool.workers)
                 assert not app.state.source_store._pins

@@ -6,15 +6,20 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from task_test_utils import execution_request
 
 from mineru.parser import api_server
-from mineru.parser.api_server import ApiServerError, _ParseRequest, FileStore, JobStore
+from mineru.parser.api_server import FileStore, ExecutionStore
+from mineru.tasks.errors import ApiServerError
+from mineru.tasks import execution
+from mineru.tasks.execution import TaskExecution, execution_timestamp
 from mineru.kit.router.resources import ResourceRegistry, SourceFileStore, StoredSourceFile
 from mineru.utils.retention import resolve_retention_seconds
 
@@ -24,9 +29,7 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """只替换墙上时间，不影响事件循环超时和任务调度。"""
     value = [2_000_000_000]
     monkeypatch.setattr(api_server.time, "time", lambda: value[0])
-    monkeypatch.setattr(
-        JobStore, "_now", staticmethod(lambda: datetime.fromtimestamp(value[0], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-    )
+    monkeypatch.setattr(execution, "datetime", SimpleNamespace(now=lambda zone: datetime.fromtimestamp(value[0], zone)))
     return value
 
 
@@ -82,10 +85,11 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
         """手动控制运行、排队、完成和回收的交错顺序。"""
         files = FileStore(tmp_path / "files", retention_seconds=10)
         source, sha = _source(files, tmp_path)
-        jobs = JobStore(concurrency=1, retention_seconds=10)
-        req = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+        jobs = ExecutionStore(concurrency=1, retention_seconds=10)
         gate = asyncio.Event()
-        records = [jobs.create(req, files) for _ in range(2)]
+        records = [
+            jobs.create(execution_request(files, {"type": "file_id", "file_id": source}, tier="flash"), files) for _ in range(2)
+        ]
         outputs: list[str] = []
 
         async def work(rec: Any) -> None:
@@ -94,7 +98,7 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
             output = files.create_file_for_output("out.md", b"result", job_id=rec.id)
             outputs.append(output)
             await gate.wait()
-            extracted = await api_server._extract_bytes(req.files[0].source, files, input_blobs=rec.input_blobs)
+            extracted = await api_server._extract_bytes(rec.request.source, files, input_blobs=rec.input_blobs)
             assert extracted.data == b"document"
             rec.status = "completed"
 
@@ -104,7 +108,7 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
         clock[0] += 100
         jobs.collect_expired()
         files.collect_expired()
-        assert len(jobs._jobs) == 2 and len(outputs) == 1 and files._blob_abs(sha).exists()
+        assert len(jobs._executions) == 2 and len(outputs) == 1 and files._blob_abs(sha).exists()
         assert files.get_file(outputs[0]).expires_at is None
         gate.set()
         for rec in records:
@@ -118,7 +122,7 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
             assert exc.value.status_code == 404
         jobs.collect_expired()
         files.collect_expired()
-        assert not jobs._jobs and not jobs._completion_events and not files._files
+        assert not jobs._executions and not jobs._completion_events and not files._files
         assert not any(files._blobs.glob("??/*"))
         await jobs.shutdown()
 
@@ -193,7 +197,7 @@ def test_router_expiry_cache_pins_and_alias_cleanup(tmp_path: Path, clock: list[
         assert sources.find_hash("one", stored.sha256sum) is None
         assert path.exists() and registry.find("job", job.public_id) is job
         job.metadata["payload"]["status"] = "failed"
-        job.metadata["payload"]["finished_at"] = JobStore._now()
+        job.metadata["payload"]["finished_at"] = execution_timestamp()
         registry.collect_expired(sources)
         assert registry.find_upstream("file", "one", "copy", "copy-file") is None
         assert path.exists()
@@ -211,8 +215,8 @@ def test_queued_cancel_releases_input_before_execution(tmp_path: Path, clock: li
         """取消早于 run_owned 的首次执行，覆盖没有 finally 执行机会的分支。"""
         files = FileStore(tmp_path / "files", retention_seconds=10)
         source, sha = _source(files, tmp_path)
-        jobs = JobStore(retention_seconds=10)
-        req = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+        jobs = ExecutionStore(retention_seconds=10)
+        req = execution_request(files, {"type": "file_id", "file_id": source}, tier="flash")
         rec = jobs.create(req, files)
 
         async def forbidden() -> None:
@@ -247,7 +251,7 @@ def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeyp
         )
         assert response.status_code == 400
         assert response.json().get("error")["code"] == "upload_size_mismatch"
-        assert not app.state.file_store._pins and not app.state.job_store._jobs
+        assert not app.state.file_store._pins and not app.state.execution_store._executions
 
 
 def test_gc_interleaves_with_blob_writes_and_downloads(tmp_path: Path, clock: list[int]) -> None:
@@ -292,7 +296,7 @@ def test_router_usage_survives_expiry_collection_and_worker_removal(clock: list[
         for index in range(2):
             route = registry.register("job", owner_scope="owner", worker_id="worker", upstream_id=str(index))
             route.metadata.update(
-                payload={"status": "completed", "files": [{"status": "completed"}]}, finalized_at=JobStore._now()
+                payload={"status": "completed", "files": [{"status": "completed"}]}, finalized_at=execution_timestamp()
             )
         before = registry.usage("owner")
         assert before == {"jobs_created": 2, "files_processed": 2}
@@ -312,12 +316,12 @@ def test_retention_keeps_cumulative_usage(tmp_path: Path, clock: list[int]) -> N
     """元数据回收后已完成的文件、页数与任务累计值不减少。"""
     files = FileStore(tmp_path / "files", retention_seconds=10)
     source, _ = _source(files, tmp_path)
-    jobs = JobStore(retention_seconds=10)
-    request = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+    jobs = ExecutionStore(retention_seconds=10)
+    request = execution_request(files, {"type": "file_id", "file_id": source}, tier="flash")
     rec = jobs.create(request, files)
-    rec.status = rec.files[0].status = "completed"
-    rec.files[0].page_range = "1-3"
-    rec.finished_at = JobStore._now()
+    rec.status = "completed"
+    rec.page_range = "1-3"
+    rec.finished_at = execution_timestamp()
     before = jobs.usage("anonymous").current
     files.release_inputs(rec.input_blobs)
     clock[0] += 11
@@ -355,7 +359,16 @@ def test_external_worker_lost_task_releases_load_and_keeps_snapshot() -> None:
             "job", owner_scope="anonymous", worker_id=reservation.worker.worker_id, upstream_id="lost-task"
         )
         route.metadata.update(
-            active_counted=True, reservation=reservation, payload={"status": "running", "files": [{"status": "pending"}]}
+            active_counted=True,
+            reservation=reservation,
+            payload={"status": "running", "files": [{"status": "pending"}]},
+            execution=TaskExecution(
+                execution_id=route.public_id,
+                file_id="file-lost",
+                file_name="lost.pdf",
+                status="pending",
+                created_at=route.created_at,
+            ),
         )
         client.portal.call(_reconcile_jobs_once, app.state.registry, pool)
         assert reservation.worker.active_jobs == 0

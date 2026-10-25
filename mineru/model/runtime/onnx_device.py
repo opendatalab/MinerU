@@ -128,9 +128,9 @@ def resolve_onnx_device(
     *, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0, allow_download: bool = True
 ) -> OnnxSelection:
     """Resolve at first model use; imports and diagnostic commands never call this function."""
-    from ...config import config, get_config_file_path, get_config_source
+    from ...config import get_config, get_config_file_path, get_config_source
 
-    requested = config.model.onnx_device
+    requested = get_config().model.onnx_device
     source = get_config_source("model.onnx_device")
     path = get_config_file_path()
     key = (os.getpid(), path, requested, source, allow_download)
@@ -170,9 +170,9 @@ def confirm_gpu_session(selection: OnnxSelection) -> None:
     """Persist a discrete-GPU auto choice only after an actual DML session succeeded."""
     if selection.reason != "discrete_gpu":
         return
-    from ...config import config, get_config_source, update_config_file
+    from ...config import get_config, get_config_source, update_config_file
 
-    if config.model.onnx_device == "auto" and get_config_source("model.onnx_device") != "env":
+    if get_config().model.onnx_device == "auto" and get_config_source("model.onnx_device") != "env":
         try:
             update_config_file({"model": {"onnx_device": "gpu"}}, only_if_onnx_auto=True)
         except OSError as error:

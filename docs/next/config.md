@@ -28,6 +28,22 @@ MinerU 有两类配置：
 - 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/doclib`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
 
+Python 模块导入不装载启动配置。默认调用路径使用 `get_config()`：第一次访问时读取
+文件和环境并校验，之后复用进程默认配置；配置文件路径、存在状态和字段来源查询也使用
+同一份首次装载结果。环境和文件变更不会自动刷新这份配置。
+
+```python
+from mineru.config import get_config, load_config
+
+settings = get_config()  # 读取并缓存进程默认配置
+loaded = load_config()  # 按当前环境独立装载，不替换进程默认配置
+```
+
+原来的模块级 `config` 实例已移除，内部调用统一使用显式访问函数。`load_config()`
+返回配置对象及其来源信息；`Config()` 只构造模型默认值，不读取 YAML 或应用环境覆盖。
+依赖 `MINERU_HOME` 的默认路径在每次构造对象时解析。Doclib 的
+`create_app(cfg)` 会保存传入配置的独立副本，并使用其中的全局日志级别补全服务日志设置。
+
 ### 远程 VLM
 
 `model.vlm` 是所有本地解析入口的 VLM 默认配置，适用于 API server、Python

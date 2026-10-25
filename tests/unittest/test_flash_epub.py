@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output
 
 import asyncio
@@ -23,7 +24,7 @@ from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import MinerUParser, api_server, parse, parse_async
-from mineru.parser.api_server import _ParseRequest, FileStore
+from mineru.parser.api_server import FileStore
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
@@ -161,23 +162,10 @@ def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) 
     source = tmp_path / "book.epub"
     source.write_bytes(build_epub_fixture())
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
-    parsed_file = record.files[0]
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
+    parsed_file = record
     assert parsed_file.status == "completed"
     middle_data = execution_output(file_store, record, "middle_json.json")
     payload = json.loads(middle_data)
@@ -193,25 +181,14 @@ def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) ->
     source = tmp_path / "book.epub"
     source.write_bytes(build_epub_fixture())
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source), "page_range": "2"}],
-            "tier": "flash",
-            "output_formats": ["default"],
-        }
+    request = execution_request(
+        file_store, stored_source(file_store, source), page_range="2", tier="flash", output_formats=["default"]
     )
-    record = api_server.JobStore().create(request, file_store)
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
-    assert record.files[0].status == "failed"
-    assert record.files[0].error is not None
-    assert record.files[0].error.code == "page_range_invalid"
+    record = api_server.ExecutionStore().create(request, file_store)
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
+    assert record.status == "failed"
+    assert record.error is not None
+    assert record.error.code == "page_range_invalid"
 
 
 def test_doclib_ingests_epub_as_local_flash_with_spine_page_count(tmp_path: Path) -> None:

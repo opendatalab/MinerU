@@ -5,14 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from ...task_types import TaskFileState, TaskOutputFormat, TaskStatus, task_status_url
+from ...task_types import TaskOutputFormat, TaskStatus, task_status_url
+from ...tasks.contracts import TaskFileIdentity, TaskUploadLink, UploadTaskOptions
 
 TERMINAL = frozenset({"completed", "failed", "canceled", "submission_unknown"})
-FileStatus = TaskFileState
 
 
 class GatewayError(Exception):
@@ -40,15 +40,8 @@ class GatewayError(Exception):
         return {"code": self.code, "message": self.message, "upstream_status": self.upstream_status}
 
 
-class ParseOptions(BaseModel):
+class ParseOptions(UploadTaskOptions):
     """保持与 Tasks 一致的解析参数，等待时间不属于解析身份。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    tier: Literal["flash", "basic", "standard", "advanced"] | None = None
-    ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
-    page_range: str = ""
-    output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
 
     @model_validator(mode="after")
     def normalize(self) -> ParseOptions:
@@ -60,22 +53,11 @@ class ParseOptions(BaseModel):
         return self
 
 
-class UploadLink(BaseModel):
-    """保留文件内嵌上传地址、请求头和固定截止时间。"""
-
-    url: str
-    headers: dict[str, str]
-    expires_at: int
-
-
-class RemoteFile(BaseModel):
+class RemoteFile(TaskFileIdentity):
     """仅消费共同 Tasks 契约，不依赖本地 Files 或 Job 实现。"""
 
-    file_id: str = Field(min_length=1)
-    file_name: str
     bytes: int
-    status: FileStatus
-    upload: UploadLink | None = None
+    upload: TaskUploadLink | None = None
     result_url: str | None = None
     error: dict[str, Any] | None = None
 
@@ -103,13 +85,10 @@ class RemoteTask(BaseModel):
         return self
 
 
-class RemoteCreatedFile(BaseModel):
+class RemoteCreatedFile(TaskFileIdentity):
     """只消费创建回执中的文件身份、状态与上传描述。"""
 
-    file_id: str = Field(min_length=1)
-    file_name: str
-    status: FileStatus
-    upload: UploadLink | None = None
+    upload: TaskUploadLink | None = None
 
 
 class RemoteCreatedTask(BaseModel):
@@ -158,4 +137,4 @@ def fingerprint(filename: str, size: int, sha256sum: str, options: ParseOptions)
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteCreatedTask", "RemoteTask", "TERMINAL", "UploadLink", "fingerprint"]
+__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteCreatedTask", "RemoteTask", "TERMINAL", "fingerprint"]

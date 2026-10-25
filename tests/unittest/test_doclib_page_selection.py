@@ -18,8 +18,9 @@ from mineru.cli.main import app
 from mineru.doclib.client import DoclibClient
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.locators import parse_content_cursor
-from mineru.doclib.server import DoclibServer, _ReadPlan
-from mineru.doclib.services.parse_svc import parse_batch_json_path
+from mineru.doclib.server import DoclibServer
+from mineru.doclib.services.content_read_svc import ContentReadService, _ReadPlan
+from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 from mineru.doclib.types import ContentAsset, ContentNextRequest, ContentRequestScope, DocContentResponse
 from mineru.errors import InvalidRequestError, NotFoundError
 from mineru.parser.page_range import format_page_range
@@ -207,13 +208,13 @@ def test_relative_page_image_uses_resolved_page(tmp_path: Path, monkeypatch: pyt
         db, server = await _cached_library(tmp_path)
         captured: list[int] = []
 
-        async def render_asset(plan: _ReadPlan, page: PageInfo) -> ContentAsset:
+        async def render_asset(self: ContentReadService, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
             """记录素材调用目标，不初始化 PDFium。"""
             assert plan.target is not None
             captured.append(plan.target.page_no)
             return ContentAsset(path=str(tmp_path / "page.png"), mime_type="image/png")
 
-        monkeypatch.setattr(server, "_render_source_image_asset", render_asset)
+        monkeypatch.setattr(ContentReadService, "_render_source_image_asset", render_asset)
         try:
             result = await server.read_content(f"{_DOC_REF}/page:r1", format="image")
             assert captured == [12]

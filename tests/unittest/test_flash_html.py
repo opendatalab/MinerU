@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output, build_default_zip
 
 import base64
@@ -25,7 +26,7 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import ParseResult, api_server, parse, parse_async
-from mineru.parser.api_server import _ParseRequest, FileStore
+from mineru.parser.api_server import FileStore
 from mineru.render.docx import render_docx
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
@@ -141,25 +142,12 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": {"type": "url", "url": url}}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, {"type": "url", "url": url}, tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
     middle_data = execution_output(file_store, record, "middle_json.json")
     middle_payload = json.loads(middle_data)
@@ -187,25 +175,12 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": {"type": "url", "url": url}}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, {"type": "url", "url": url}, tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
     middle_data = execution_output(file_store, record, "middle_json.json")
     middle_payload = json.loads(middle_data)
@@ -221,7 +196,7 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
     async def fake_run_job(*args: object, **kwargs: object) -> None:
         """跳过后台解析，仅验证 admission 已选择 Flash tier。"""
 
-    monkeypatch.setattr(api_server, "_run_job", fake_run_job)
+    monkeypatch.setattr(api_server, "_run_execution", fake_run_job)
     app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
 
     with TestClient(app) as client:
@@ -251,29 +226,14 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     monkeypatch.setattr(api_server, "parse_async", parse_async_mock)
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": {"type": "url", "url": url}}],
-            "tier": "standard",
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, {"type": "url", "url": url}, tier="standard")
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-            flash_enabled=False,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True, flash_enabled=False))
 
     assert record.status == "failed"
-    assert record.files[0].error is not None
-    assert record.files[0].error.message == (
-        "Flash parsing is disabled in this server, but this input requires the Flash backend"
-    )
+    assert record.error is not None
+    assert record.error.message == ("Flash parsing is disabled in this server, but this input requires the Flash backend")
     parse_async_mock.assert_not_awaited()
 
 
@@ -289,29 +249,15 @@ def test_url_source_aborts_when_exceeding_max_url_bytes(tmp_path: Path, monkeypa
     client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": {"type": "url", "url": url}}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, {"type": "url", "url": url}, tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-            max_url_bytes=64,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True, max_url_bytes=64))
 
     assert record.status == "failed"
-    assert record.files[0].status == "failed"
-    assert record.files[0].error is not None
-    assert record.files[0].error.message == "url source exceeds max_url_bytes (64)"
+    assert record.status == "failed"
+    assert record.error is not None
+    assert record.error.message == "url source exceeds max_url_bytes (64)"
 
 
 def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) -> None:
@@ -359,25 +305,12 @@ def test_html_parse_server_upload_keeps_embedded_assets(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
     middle_data = execution_output(file_store, record, "middle_json.json")
     middle_payload = json.loads(middle_data)
@@ -405,20 +338,14 @@ def test_html_remote_image_never_downloaded_and_zip_keeps_external_link(tmp_path
         assert not [name for name in names if name.startswith("images/") and not name.endswith("/")]
 
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(api_server._run_job(record, request, file_store, image_analysis=True))
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
-    zip_record = file_store.get_file(record.task_result_file_id)
+    zip_record = file_store.get_file(record.result_file_id)
     assert zip_record.sha256sum is not None
     with ZipFile(BytesIO(file_store.read_blob(zip_record.sha256sum))) as archive:
         assert url in archive.read("markdown.md").decode()

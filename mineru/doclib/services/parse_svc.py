@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -28,7 +26,6 @@ from ...filetypes import (
 )
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
-from ...backend.postprocess.legacy_middle_json import read_legacy_middle_json
 from ...parser.page_range import (
     expand_page_range,
     format_page_range as _page_numbers_to_range_str,
@@ -36,8 +33,17 @@ from ...parser.page_range import (
     normalize_result_page_range,
     parse_page_range_set,
 )
-from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
+from ...types import QUALITY_TIERS, TIER_ORDER, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
+from ..core.parse_artifacts import (
+    accessible_file_for_sha256,
+    load_pages_from_done_batches,
+    parse_artifact_directory,
+    parse_batch_is_readable,
+    parse_batch_json_path,
+    parse_coverage,
+    write_parse_payload,
+)
 from ..core.file_io import (
     FileStat,
     MetadataExtractionError,
@@ -48,7 +54,7 @@ from ..core.file_io import (
 )
 from ..core.fts import FTSManager
 from ..remote_api import resolve_remote_api_key
-from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
+from ..rows import DocRow, FileRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -85,26 +91,6 @@ MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
 
 
-async def accessible_file_for_sha256(db: DatabaseManager, sha256: str) -> FileRow | None:
-    """Find the newest active file row whose path still exists.
-
-    The same content (sha256) may be tracked at several paths; rows whose
-    source file was moved away stay active until a refresh marks them
-    deleted, so existence must be checked before trusting a path.
-    """
-    rows = cast(
-        list[FileRow],
-        await db.fetchall(
-            "SELECT * FROM files WHERE sha256=? AND status=? ORDER BY updated_at DESC",
-            (sha256, FILE_STATUS_ACTIVE),
-        ),
-    )
-    for row in rows:
-        if os.path.exists(row["path"]):
-            return row
-    return None
-
-
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
 
 
@@ -137,12 +123,6 @@ def _raise_refresh_error(refreshed: FileRefreshResult) -> None:
 
 
 # ── range helpers ──────────────────────────────────────────────────
-
-
-def filter_pages_by_user_range(pages: list[PageInfo], page_range: str) -> list[PageInfo]:
-    """Filter 0-based PageInfo objects by a user-facing 1-based page range."""
-    requested_page_numbers = parse_page_range_set(page_range)
-    return [page for page in pages if page.page_idx + 1 in requested_page_numbers]
 
 
 def page_range_covered(request_page_range: str, done_batches: list[ParseRow]) -> bool:
@@ -758,7 +738,7 @@ class ParseService:
                 ),
             )
             valid_done_batches = [
-                batch for batch in done_batches if _json_batch_is_readable(self.data_dir, sha256, requested_tier, batch)
+                batch for batch in done_batches if parse_batch_is_readable(self.data_dir, sha256, requested_tier, batch)
             ]
             if supports_page_range:
                 for batch in valid_done_batches:
@@ -915,7 +895,7 @@ class ParseService:
             return False
         file_ext = file_row.get("ext") or Path(file_row["path"]).suffix.lower().lstrip(".")
 
-        output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
+        output_dir = parse_artifact_directory(self.data_dir, sha256, tier)
 
         # route parse based on tier
         via = "local"
@@ -998,12 +978,11 @@ class ParseService:
 
         # save per-batch JSON (markdown is generated on read from /docs/{doc_ref}/content)
         done_at_ms = _now_ms()
-        json_path = os.path.join(output_dir, _safe_filename(persisted_page_range, done_at_ms))
+        json_path = parse_batch_json_path(self.data_dir, sha256, tier, persisted_page_range, done_at_ms)
         write_start_ms = _now_ms()
         try:
             os.makedirs(output_dir, exist_ok=True)
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(export_payload, f, ensure_ascii=False, indent=2)
+            write_parse_payload(json_path, export_payload)
         except Exception as exc:
             logger.error(
                 "Parse post-write finalization failed for task_id=%s path=%s tier=%s page_range=%s: %s",
@@ -1346,7 +1325,7 @@ class ParseService:
             doc = await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,))
             if doc is None:
                 raise InvalidRequestError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
-            result["coverage"] = _parse_coverage(expand_page_range(page_range, doc["page_count"] or 1), rows)
+            result["coverage"] = parse_coverage(expand_page_range(page_range, doc["page_count"] or 1), rows).model_dump()
         return result
 
     async def invalidate(self, sha256: str, tier: Tier | None = None) -> int:
@@ -1441,16 +1420,16 @@ class ParseService:
         tiers = sorted(tier_set, key=lambda item: TIER_ORDER.get(item, -1), reverse=True)
         for tier in tiers:
             tier_rows = [
-                row for row in rows if row["tier"] == tier and _json_batch_is_readable(self.data_dir, sha256, tier, row)
+                row for row in rows if row["tier"] == tier and parse_batch_is_readable(self.data_dir, sha256, tier, row)
             ]
             pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
             if not pages:
                 continue
 
-            from ...config import config
+            from ...config import get_config
             from docvortex.render.markdown import render_single_block
 
-            delimiters = config.render.latex_delimiters
+            delimiters = get_config().render.latex_delimiters
             parts: list[str] = []
             for page in pages:
                 for block in page.blocks:
@@ -1533,57 +1512,6 @@ def _probe_error_message(prefix: str, error_msg: str | None) -> str:
     return prefix
 
 
-def _json_batch_is_readable(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
-    """将可转换为当前协议且覆盖记录页范围的持久化批次视为有效缓存。"""
-    json_path = parse_batch_json_path(data_dir, sha256, tier, batch["page_range"], batch["done_at"])
-    try:
-        with open(json_path, encoding="utf-8") as stream:
-            result = read_legacy_middle_json(json.load(stream))
-        available = {page.page_idx + 1 for page in result.pages}
-        return bool(available) and parse_page_range_set(batch["page_range"]) <= available
-    except (OSError, ValueError, TypeError):
-        return False
-
-
-def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: str, done_at: int | None = 0) -> str:
-    """Return the persisted Middle JSON path for one parse batch."""
-    filename = _safe_filename(page_range, done_at or 0)
-    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, filename)
-
-
-def load_pages_from_done_batches(
-    data_dir: str,
-    sha256: str,
-    tier: Tier,
-    done_rows: Sequence[ParseBatchRow],
-    *,
-    requested_page_numbers: set[int] | None = None,
-) -> list[PageInfo]:
-    """读取当前或受支持的历史批次，保留最新重复页；损坏或未知缓存须重新解析。"""
-    pages_by_page_idx: dict[int, PageInfo] = {}
-    stale_page_numbers: set[int] = set()
-    for row in reversed(done_rows):
-        fpath = parse_batch_json_path(data_dir, sha256, tier, row["page_range"], row["done_at"])
-        if not os.path.isfile(fpath):
-            continue
-        try:
-            with open(fpath, encoding="utf-8") as f:
-                data = json.load(f)
-            parse_result = read_legacy_middle_json(data)
-            for page in parse_result.pages:
-                pages_by_page_idx[page.page_idx] = page
-        except (OSError, ValueError, TypeError):
-            stale_page_numbers.update(parse_page_range_set(row["page_range"]))
-    uncovered_stale = stale_page_numbers - {index + 1 for index in pages_by_page_idx}
-    if requested_page_numbers is not None:
-        uncovered_stale &= requested_page_numbers
-    if uncovered_stale:
-        raise MineruError(
-            "stale_cache", "Cached document protocol is outdated or invalid; reparse the source document.", "page_range"
-        )
-    return [pages_by_page_idx[page_idx] for page_idx in sorted(pages_by_page_idx)]
-
-
 def _done_response(sha256: str, short_id: str | None, tier: Tier, page_range: str) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
@@ -1653,25 +1581,6 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
         extensions[LAYOUT_EXTENSION] = geometry
 
 
-def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:
-    requested_page_numbers = parse_page_range_set(request_page_range)
-    done_page_numbers: set[int] = set()
-    active_page_numbers: set[int] = set()
-    for row in rows:
-        row_page_numbers = parse_page_range_set(row["page_range"]) & requested_page_numbers
-        if row["status"] == PARSE_STATUS_DONE:
-            done_page_numbers |= row_page_numbers
-        elif row["status"] in (PARSE_STATUS_PENDING, PARSE_STATUS_PARSING):
-            active_page_numbers |= row_page_numbers
-    active_page_numbers -= done_page_numbers
-    missing_page_numbers = requested_page_numbers - done_page_numbers - active_page_numbers
-    return {
-        "done_page_range": _page_numbers_to_range_str(done_page_numbers),
-        "active_page_range": _page_numbers_to_range_str(active_page_numbers),
-        "missing_page_range": _page_numbers_to_range_str(missing_page_numbers),
-    }
-
-
 def _local_parse_server_url(mode: str, health: object) -> str | None:
     """Resolve local parse-server URL from mode and health state."""
     if mode == "managed":
@@ -1694,11 +1603,6 @@ def _is_official_remote_url(url: str) -> bool:
 
 def _file_info(row: FileRow | None) -> FileInfo | None:
     return FileInfo.model_validate(row) if row is not None else None
-
-
-def _safe_filename(page_range: str, done_at: int) -> str:
-    """Convert a page_range string + done_at to a filename."""
-    return f"{page_range}_{done_at}.json" if done_at else page_range
 
 
 def _unsupported_file_type_message(ext_or_name: str) -> str:

@@ -11,7 +11,8 @@ from docvortex.document.pdf.layout import LAYOUT_EXTENSION
 from docvortex.schema import MiddleJson, PageInfo, TextBlock, TextSpan
 from pypdf import PdfReader
 
-from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range, parse_batch_json_path
+from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range
+from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 from mineru.integrations.docvortex import build_metadata
 from mineru.parser.base import ParseResult
 from mineru.render import PdfLayout, render_pdf

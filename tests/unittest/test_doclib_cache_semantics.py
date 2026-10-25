@@ -1,4 +1,5 @@
 from __future__ import annotations
+from mineru.doclib.services.content_read_svc import ContentReadService
 from docvortex.schema import Producer
 from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline, inline_text
@@ -38,8 +39,8 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import (
-    DoclibServer,
+from mineru.doclib.server import DoclibServer
+from mineru.doclib.services.content_read_svc import (
     _find_block_by_no,
     _LocatorParts,
     _make_doclib_image_renderer,
@@ -47,6 +48,7 @@ from mineru.doclib.server import (
     _locator_after,
 )
 from mineru.doclib.services import parse_svc as parse_svc_module
+from mineru.doclib.core import parse_artifacts as parse_artifacts_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.services.parse_svc import (
@@ -57,10 +59,8 @@ from mineru.doclib.services.parse_svc import (
     _resolve_default_tier,
     _resolve_parsing_rule_default_tier,
     expand_page_range,
-    filter_pages_by_user_range,
-    load_pages_from_done_batches,
-    parse_batch_json_path,
 )
+from mineru.doclib.core.parse_artifacts import filter_pages_by_user_range, load_pages_from_done_batches, parse_batch_json_path
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
@@ -475,10 +475,16 @@ def test_read_without_tier_uses_highest_cached_tier(tmp_path: Path) -> None:
         _write_batch(tmp_path, sha256, tier, "1", 1000, [_text_page(tier).to_dict()])
         rows.append({"sha256": sha256, "tier": tier, "page_range": "1", "done_at": 1000, "status": "done"})
     server = DoclibServer(SimpleNamespace(db=_FakeDB(parses=rows, file_row=None), data_dir=str(tmp_path)))
-    assert asyncio.run(server._default_read_tier(sha256)) == "advanced"
+    assert (
+        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
+        == "advanced"
+    )
     stale = Path(parse_batch_json_path(str(tmp_path), sha256, "advanced", "1", 1000))
     stale.write_text('{"schema_version":"1.0","pages":[]}')
-    assert asyncio.run(server._default_read_tier(sha256)) == "standard"
+    assert (
+        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
+        == "standard"
+    )
 
 
 def test_managed_local_parse_server_url_uses_health_managed_url() -> None:
@@ -1590,7 +1596,7 @@ def test_ingest_moved_file_retargets_to_new_path(tmp_path: Path, monkeypatch: py
         assert second_row["path"] == str(new_dir / "doc.pdf")
         stale = await db.fetchone("SELECT status FROM files WHERE id=?", (first_row["id"],))
         assert stale["status"] == "deleted"
-        accessible = await parse_svc_module.accessible_file_for_sha256(db, second_row["sha256"])
+        accessible = await parse_artifacts_module.accessible_file_for_sha256(db, second_row["sha256"])
         assert accessible is not None
         assert accessible["path"] == str(new_dir / "doc.pdf")
 
@@ -1617,12 +1623,12 @@ def test_accessible_file_for_sha256_skips_missing_paths(tmp_path: Path) -> None:
         await db.execute(insert_sql, (str(missing), "moved.pdf", "pdf", 10, 10, sha256, 2000, 2000))
         await db.execute(insert_sql, (str(existing), "kept.pdf", "pdf", 10, 10, sha256, 1000, 1000))
 
-        row = await parse_svc_module.accessible_file_for_sha256(db, sha256)
+        row = await parse_artifacts_module.accessible_file_for_sha256(db, sha256)
         assert row is not None
         assert row["path"] == str(existing)
 
         existing.unlink()
-        assert await parse_svc_module.accessible_file_for_sha256(db, sha256) is None
+        assert await parse_artifacts_module.accessible_file_for_sha256(db, sha256) is None
 
     asyncio.run(_run())
 
@@ -4977,7 +4983,7 @@ def test_progressive_markdown_uses_readable_pdf_block_locator(tmp_path: Path) ->
         no_marker=False,
     )
 
-    response = asyncio.run(server._execute_read_plan(plan))
+    response = asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan))
 
     assert "![Image block](doc:eeeeeee/tier:standard/page:1/block:1)" in response.content
     assert "figures/rendered.jpg" not in response.content
@@ -5005,7 +5011,7 @@ def test_doc_content_marker_uses_document_page_count_only(
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
 
     content = asyncio.run(
-        server._render_doc_content(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
             sha256,
             tier=tier,
             page_range="5",
@@ -5117,7 +5123,7 @@ def test_progressive_markdown_uses_base64_availability_for_bboxless_blocks(
         no_marker=False,
     )
 
-    response = asyncio.run(server._execute_read_plan(plan))
+    response = asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan))
 
     assert f"![Image block]({expected_target})" in response.content
 
@@ -5148,7 +5154,9 @@ def test_doclib_office_image_asset_reads_base64(tmp_path: Path) -> None:
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
 
     assert asset is not None
     assert asset.mime_type == "image/png"
@@ -5200,7 +5208,9 @@ def test_doclib_visual_block_asset_reads_base64(
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
 
     assert asset is not None
     assert asset.mime_type == "image/png"
@@ -5235,7 +5245,9 @@ def test_doclib_pdf_block_locator_crops_source_pdf(tmp_path: Path) -> None:
         target=ContentCursor(short_id="aaaaaaa", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
 
     assert asset is not None
     assert asset.mime_type == "image/png"
@@ -5274,7 +5286,9 @@ def test_doclib_image_block_locator_crops_source_image_at_original_resolution(tm
         target=ContentCursor(short_id="bbbbbbb", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
 
     assert asset is not None
     assert asset.mime_type == "image/png"
@@ -5308,7 +5322,9 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
 
     assert asset is not None
     assert asset.mime_type == "image/jpeg"
@@ -5340,7 +5356,7 @@ def test_doclib_office_image_asset_missing_payload_reports_asset_not_available(t
     )
 
     with pytest.raises(NotFoundError) as exc_info:
-        asyncio.run(server._render_image_response(plan, [page]))
+        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page]))
 
     assert exc_info.value.code == "asset_not_available"
     assert exc_info.value.param == "locator"
@@ -5385,10 +5401,14 @@ def test_doclib_bbox_precedes_embedded_image(
     )
     if not source_available:
         with pytest.raises(NotFoundError) as error:
-            asyncio.run(server._render_image_response(plan, [page]))
+            asyncio.run(
+                ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+            )
         assert error.value.code == "no_accessible_file"
         return
-    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    asset = asyncio.run(
+        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+    ).asset
     assert asset is not None
     assert asset.mime_type == f"image/{image_format}"
     with Image.open(BytesIO(Path(asset.path).read_bytes())) as actual:

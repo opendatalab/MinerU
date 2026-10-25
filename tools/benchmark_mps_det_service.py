@@ -288,13 +288,13 @@ def serve(args: argparse.Namespace) -> None:
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
     import uvicorn
     from loguru import logger
-    from mineru.config import config
+    from mineru.config import get_config
     from mineru.backend.analysis.pdf import pipeline
     from mineru.model.runtime.hybrid import AtomModelSingleton, HybridLocalModelContextSingleton
     from mineru.model.runtime.memory import clean_memory
     from mineru.parser.api_server import create_app
 
-    config.model.small_backend = "torch"
+    get_config().model.small_backend = "torch"
     output = args.output / args.policy
     output.mkdir(parents=True, exist_ok=True)
     observer = Observer(args.policy, output)

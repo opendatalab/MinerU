@@ -23,7 +23,8 @@ from fastapi.testclient import TestClient
 
 from mineru.kit.router import RouterSettings
 from mineru.kit.router import create_app as create_router
-from mineru.parser import api_server, task_api
+from mineru.parser import ParseResult, api_server
+from mineru.tasks.service import TERMINAL_TASK_STATUSES
 
 HTML = b"<!doctype html><html><body><h1>Shared tasks</h1><p>Preserved content.</p></body></html>"
 SECOND = b"<h1>Second document</h1><p>Second content.</p>"
@@ -105,7 +106,7 @@ class _WorkerTransport(httpx.AsyncBaseTransport):
         """等待任务与 Job 清理完成，再释放测试 worker 的解析运行时。"""
         for app in self.apps.values():
             await app.state.task_store.shutdown()
-            await app.state.job_store.shutdown()
+            await app.state.execution_store.shutdown()
 
 
 @pytest.fixture(params=["api", "router"])
@@ -175,7 +176,7 @@ def _terminal(client: TestClient, task: dict[str, Any], *, headers: dict[str, st
         response = client.get(task_url(client, task), headers=headers)
         assert response.status_code == 200, response.text
         payload = response.json()
-        if payload["status"] in task_api.TERMINAL_TASK_STATUSES:
+        if payload["status"] in TERMINAL_TASK_STATUSES:
             return payload
         assert all(file.get("result_url") is None for file in payload["files"] if file["status"] != "completed")
         time.sleep(0.01)
@@ -205,8 +206,8 @@ def _archive(client: TestClient, task: dict[str, Any], index: int = 0) -> dict[s
 
 def _job_count(app: FastAPI) -> int:
     """观察唯一执行队列，准备任务不应该产生 Job 或 worker 预占。"""
-    if hasattr(app.state, "job_store"):
-        return len(app.state.job_store._jobs)
+    if hasattr(app.state, "execution_store"):
+        return len(app.state.execution_store._executions)
     return len(app.state.registry.list("job"))
 
 
@@ -424,7 +425,7 @@ def test_cancel_running_task_releases_execution_slot(
     if hasattr(app.state, "worker_pool"):
         assert sum(worker.active_jobs for worker in app.state.worker_pool.workers) == 0
     else:
-        assert not app.state.job_store._tasks
+        assert not app.state.execution_store._tasks
 
 
 def test_status_never_reads_or_rebuilds_zip(service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -539,7 +540,7 @@ def test_input_validation_and_openapi(service: tuple[TestClient, FastAPI]) -> No
     assert "file_id" in id_schema["required"]
     assert id_schema["properties"]["file_id"]["type"] == "string"
     assert set(spec["components"]["schemas"]["TaskUploadLink"]["properties"]) == {"url", "headers", "expires_at"}
-    if hasattr(app.state, "job_store"):
+    if hasattr(app.state, "execution_store"):
         metadata_schema = spec["components"]["schemas"]["FileObjectModel"]
         assert "file_name" in metadata_schema["required"]
         assert "filename" not in metadata_schema["properties"]
@@ -563,6 +564,14 @@ def test_server_file_ids_survive_upload_and_router_forwarding(service: tuple[Tes
     completed = _terminal(client, task)
     assert [item["file_id"] for item in completed["files"]] == expected_ids
     assert all(item["result_url"].endswith(f"/{item['file_id']}/content") for item in completed["files"])
+    record = app.state.task_store._records[task["task_id"]]
+    for item, state in zip(completed["files"], record.file_states):
+        assert state.execution.file_id == item["file_id"]
+        assert state.execution.result_file_id == item["file_id"]
+        assert state.execution.execution_id == state.execution_id
+    if hasattr(app.state, "execution_store"):
+        for execution in app.state.execution_store._executions.values():
+            assert execution.request.source.file_id != execution.request.file_id
     if hasattr(app.state, "test_transport"):
         worker_ids = {
             item.file_id
@@ -571,6 +580,35 @@ def test_server_file_ids_survive_upload_and_router_forwarding(service: tuple[Tes
             for item in record.inputs
         }
         assert len(worker_ids) == count and worker_ids.isdisjoint(expected_ids)
+
+
+def test_parent_task_aggregates_single_file_executions_and_usage(
+    service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """父 Task 独占部分成功状态，用量仍按两个真实执行和一个成功文件累计。"""
+    client, app = service
+    original = api_server.parse_async
+
+    async def infer(path: str, **kwargs: Any) -> ParseResult:
+        """只让指定文件失败，其余文件经过真实 Flash 解析及产物保存。"""
+        if b"intentional-failure" in Path(path).read_bytes():
+            raise ValueError("intentional file failure")
+        return await original(path, **kwargs)
+
+    monkeypatch.setattr(api_server, "parse_async", infer)
+    before = client.get("/v1/usage").json()["current"]
+    inputs = [("good.html", HTML), ("bad.html", b"<html><body>intentional-failure</body></html>")]
+    created = _submit(client, inputs, hashes=False)
+    _upload(client, created, inputs)
+    completed = _terminal(client, created)
+    assert completed["status"] == "partial"
+    assert completed["progress"] == {"completed": 1, "failed": 1, "total": 2}
+    assert [item["status"] for item in completed["files"]] == ["completed", "failed"]
+    states = app.state.task_store._records[created["task_id"]].file_states
+    assert [state.execution.status for state in states] == ["completed", "failed"]
+    after = client.get("/v1/usage").json()["current"]
+    assert after["jobs_created"] - before["jobs_created"] == 2
+    assert after["files_processed"] - before["files_processed"] == 1
 
 
 @pytest.mark.parametrize("file_id", ["", "with space", "bad/id", "x" * 65, 123, False])
@@ -850,7 +888,7 @@ def test_cancel_url_download_closes_stream_and_releases_worker(
     assert time.monotonic() - before < 2
     assert closed.wait(5)
     deadline = time.monotonic() + 5
-    while any(worker.state.job_store._tasks for worker in _execution_apps(app)):
+    while any(worker.state.execution_store._tasks for worker in _execution_apps(app)):
         assert time.monotonic() < deadline, "Canceled URL job retained its execution slot"
         time.sleep(0.01)
     if hasattr(app.state, "worker_pool"):
@@ -971,7 +1009,7 @@ def test_completed_child_retention_starts_after_parent_finishes(service: tuple[T
         app.state.registry.retention_seconds = 1
     for worker in _execution_apps(app):
         worker.state.task_store.retention_seconds = 1
-        worker.state.job_store.retention_seconds = 1
+        worker.state.execution_store.retention_seconds = 1
         worker.state.file_store.retention_seconds = 1
     task = _submit(client, [("a.html", HTML), ("b.html", SECOND)], hashes=False)
     assert client.put(pending_files(task)[0].get("upload").get("url"), content=HTML).status_code == 200
@@ -979,7 +1017,7 @@ def test_completed_child_retention_starts_after_parent_finishes(service: tuple[T
     result_url = ready["files"][0].get("result_url")
     time.sleep(1.05)
     for worker in _execution_apps(app):
-        worker.state.job_store.collect_expired()
+        worker.state.execution_store.collect_expired()
         worker.state.file_store.collect_expired()
     assert client.get(task_url(client, task)).json()["files"][0]["status"] == "completed"
     assert client.get(result_url).status_code == 200

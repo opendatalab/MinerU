@@ -60,10 +60,10 @@ def save_result(result: Any, path: Path, directory: Path) -> None:
 
 async def measure(args: argparse.Namespace, concurrency: int) -> dict[str, Any]:
     """以固定并发解析同一组文件，同时采集延迟、内存、线程和事件循环响应。"""
-    from mineru.config import config
+    from mineru.config import get_config
     from mineru.parser import parse, parse_async
 
-    settings = config.model.vlm.model_copy(deep=True)
+    settings = get_config().model.vlm.model_copy(deep=True)
     if args.server_url:
         settings.server_url = args.server_url
     if args.engine:
@@ -71,8 +71,8 @@ async def measure(args: argparse.Namespace, concurrency: int) -> dict[str, Any]:
     settings.max_concurrency = args.request_limit
     settings = type(settings).model_validate(settings.model_dump())
     if not args.llm:
-        config.llm_aided.features.title_leveling = False
-        config.llm_aided.features.cross_page_table_cell_merge = False
+        get_config().llm_aided.features.title_leveling = False
+        get_config().llm_aided.features.cross_page_table_cell_merge = False
     gate = asyncio.Semaphore(concurrency)
     process = psutil.Process()
     lag_ms: list[float] = []
@@ -212,7 +212,7 @@ def main() -> None:
     args.files = [path.resolve(strict=True) for path in args.files]
     import mineru
     import mineru_vl_utils
-    from mineru.config import config
+    from mineru.config import get_config
 
     report = {
         "source": str(Path(mineru.__file__).resolve()),
@@ -221,10 +221,10 @@ def main() -> None:
         "tier": args.tier,
         "ocr_mode": args.ocr_mode,
         "request_limit": args.request_limit,
-        "remote_vlm": bool(args.server_url or config.model.vlm.server_url),
+        "remote_vlm": bool(args.server_url or get_config().model.vlm.server_url),
         "vl_utils_source_version": mineru_vl_utils.__version__,
         "vl_utils_source": str(Path(mineru_vl_utils.__file__).resolve()),
-        "small_backend": config.model.small_backend,
+        "small_backend": get_config().model.small_backend,
         "device_mode": os.getenv("MINERU_DEVICE_MODE", "auto"),
         "onnx_intra_threads": os.getenv("MINERU_INTRA_OP_NUM_THREADS"),
         "onnx_inter_threads": os.getenv("MINERU_INTER_OP_NUM_THREADS"),
