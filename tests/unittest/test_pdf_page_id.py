@@ -280,7 +280,8 @@ def test_async_job_resolves_relative_ranges_and_reports_file_errors(tmp_path: Pa
         for item in created["files"]:
             upload = item["upload"]
             assert client.put(upload["url"], content=data, headers=upload["headers"]).status_code == 200
-        ready = wait_task(client, created)
+        # 真实解析还包含产物打包，覆盖率插桩下沿用端到端用例的 20 秒等待预算。
+        ready = wait_task(client, created, timeout=20)
         assert ready["status"] == "partial"
         succeeded, failed = app.state.task_store._records[created["task_id"]].file_states
         assert succeeded.execution.page_range == "1,4-5"
