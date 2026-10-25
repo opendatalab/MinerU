@@ -37,6 +37,7 @@ from .conversion_service import ConversionService
 from .conversion_ui import build_conversion_receipt, conversion_updates, download_updates
 from .epub_preview import register_epub_preview_resources
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
+from .lifecycle import with_setup_loop
 from .page_range import pdf_page_metadata, validate_max_pages
 from .pdf_preview import pdf_preview_js, register_pdf_preview_resources
 from .source_preview import prepare_source_preview
@@ -344,6 +345,7 @@ def _pdf_preview_update(gr: Any, value: str | None) -> Any:
     return gr.update(value=value, visible=False)
 
 
+@with_setup_loop
 def build_gradio_app(
     client: V1ArtifactClient | GradioArtifactClient,
     capabilities: V1ServerCapabilities,
@@ -1097,6 +1099,17 @@ def build_gradio_app(
     return demo
 
 
+@with_setup_loop
+def _launch_gradio_app(demo: Any, *, server_name: str, server_port: int | None, output_root: Path) -> None:
+    """在受管理的组装循环中启动服务，覆盖 launch 再次创建 Gradio App 的路径。"""
+    demo.launch(
+        server_name=server_name,
+        server_port=server_port,
+        allowed_paths=[str(output_root)],
+        **demo._mineru_kit_launch_kwargs,
+    )
+
+
 def launch_gradio(
     *,
     api_url: str | None,
@@ -1153,11 +1166,11 @@ def launch_gradio(
             enable_api=enable_api,
             max_pages=max_pages,
         )
-        demo.launch(
+        _launch_gradio_app(
+            demo,
             server_name=server_name,
             server_port=server_port,
-            allowed_paths=[str(output_root)],
-            **demo._mineru_kit_launch_kwargs,
+            output_root=output_root,
         )
     finally:
         if managed_server is not None:
