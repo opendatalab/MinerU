@@ -30,6 +30,8 @@ from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED
 
 if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
+
+    from .services.ingest_svc import IngestService
 else:
     LoguruMessage = Any
 
@@ -65,6 +67,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .core.fts import FTSManager
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
+        from .services.ingest_svc import IngestService
         from .services.parse_svc import ParseService
         from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
@@ -85,18 +88,20 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.config_svc = ConfigService(state.db)
         state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
         await state.telemetry_svc.initialize()
+        state.ingest_svc = IngestService(state.db, state.fts, state.config_svc, telemetry_svc=state.telemetry_svc)
         state.parse_svc = ParseService(
             state.db,
             state.fts,
             state.config_svc,
             data_dir,
+            ingest_svc=state.ingest_svc,
             parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
         )
         state.scan_svc = ScanService(
             state.db,
             state.config_svc,
-            state.parse_svc,
+            state.ingest_svc,
             scan_lock_timeout_sec=cfg.doclib.scan_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
         )
@@ -149,13 +154,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.watch = WatchLoop(
             state.db,
             state.config_svc,
-            state.parse_svc,
+            state.ingest_svc,
             scan_interval_sec=cfg.doclib.scan_interval_sec,
             scan_svc=state.scan_svc,
         )
         state.scan_workers = ScanWorkerPool(state.scan_svc, num_workers=1)
         state.ingest_workers = IngestWorkerPool(
-            state.parse_svc,
+            state.ingest_svc,
             num_workers=cfg.doclib.ingest_workers,
             lock_timeout_sec=cfg.doclib.ingest_lock_timeout_sec,
         )
@@ -295,6 +300,7 @@ class AppState:
         self.db: Any = None
         self.fts: Any = None
         self.config_svc: Any = None
+        self.ingest_svc: IngestService | None = None
         self.parse_svc: Any = None
         self.scan_svc: Any = None
         self.search_svc: Any = None

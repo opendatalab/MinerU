@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 import asyncio
 from types import SimpleNamespace
 
@@ -372,13 +374,14 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         telemetry = TelemetryService(store)
         await telemetry.initialize()
         config_svc = ConfigService(db)
-        parse_svc = _ParseService(
+        parse_svc = create_parse_service(
             db,
             _Fts(),
             config_svc,
             str(tmp_path),
             parse_lock_timeout_sec=30,
             telemetry_svc=telemetry,
+            service_type=_ParseService,
         )
         now = 1_700_000_000_000
         (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4\n")
@@ -437,8 +440,7 @@ def test_scan_service_process_scan_records_task_metrics(tmp_path) -> None:
         )
         now = 1_700_000_000_000
         await db.execute(
-            "INSERT INTO scans (path, kind, source, status, started_at, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO scans (path, kind, source, status, started_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path), "manual", "cli", "running", now, now, now),
         )
         task = await db.fetchone("SELECT * FROM scans LIMIT 1")

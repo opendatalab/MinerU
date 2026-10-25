@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output
 
@@ -203,7 +205,7 @@ def test_doclib_ingests_epub_as_local_flash_with_spine_page_count(tmp_path: Path
         """执行隔离 SQLite 入库并检查 EPUB 文档与解析任务。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_service(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output
 
@@ -18,7 +20,6 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import MinerUParser, api_server
 from mineru.parser.api_server import FileStore
@@ -109,7 +110,7 @@ def test_doclib_ingests_ofd_as_local_full_document_flash(tmp_path: Path) -> None
         """执行隔离 SQLite 入库并检查 OFD 文档与解析任务。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_service(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 import asyncio
 import json
 import re
@@ -24,7 +26,6 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseService
 from mineru.doclib.types import (
     ContentRequestScope,
     DocContentExportRequest,
@@ -59,14 +60,16 @@ class _DoclibHarness:
         self.loop = asyncio.new_event_loop()
         self.db = DatabaseManager(str(root / "doclib.db"))
         self.run(self.db.initialize())
-        self.service = ParseService(
+        self.service = create_parse_service(
             self.db,
             FTSManager(self.db),
             ConfigService(self.db),
             str(root / "data"),
             parse_lock_timeout_sec=1800,
         )
-        self.server = DoclibServer(SimpleNamespace(db=self.db, data_dir=str(root / "data"), parse_svc=self.service))
+        self.server = DoclibServer(
+            SimpleNamespace(db=self.db, data_dir=str(root / "data"), parse_svc=self.service, ingest_svc=self.service.ingest_svc)
+        )
         self.output_ranges: list[str | None] = []
 
     def run(self, operation: Coroutine[Any, Any, _T]) -> _T:

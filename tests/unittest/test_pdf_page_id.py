@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from mineru.doclib.services.parse_policy import default_parse_range
 from mineru.doclib.services.content_read_svc import ContentReadService
 
 from task_test_utils import wait_task
@@ -19,7 +21,7 @@ from mineru.cli.commands.parse import _validate_page_range_input
 from mineru.cli.main import app as cli_app
 from mineru.doclib.services.content_read_svc import _normalize_content_page_range
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import default_parse_range
+
 from mineru.errors import InvalidRequestError, MineruError
 from mineru.kit.gradio.page_range import effective_page_range as _effective_page_range
 from mineru.kit.gradio.artifacts import persist_parse_result

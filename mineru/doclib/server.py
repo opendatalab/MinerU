@@ -17,8 +17,12 @@ from pydantic import ValidationError
 from ..config import get_config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import TEXT_EXTENSIONS, TEXT_FILE_TYPES
+from ..model.download import verify_model_repo
+from ..model.registry import ModelRepo, model_repos_for_tier
 from ..parser.page_range import (
     expand_page_range as _expand_page_range,
+)
+from ..parser.page_range import (
     normalize_page_range_input,
     normalize_result_page_range,
     parse_page_range_set,
@@ -29,13 +33,12 @@ from ..types import (
     DeploymentTier,
     Tier,
 )
-from ..model.download import verify_model_repo
-from ..model.registry import ModelRepo, model_repos_for_tier
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
+from .core.parse_artifacts import parse_batch_is_readable, parse_coverage
 from .remote_api import REMOTE_API_KEY_CONFIG, resolve_remote_api_key
 from .rows import (
     ContentSearchResultRow,
@@ -53,7 +56,6 @@ from .rows import (
     WatchStatsFileRow,
     WatchTargetRow,
 )
-from .core.parse_artifacts import parse_batch_is_readable, parse_coverage
 from .services.content_read_svc import ContentReadService
 from .telemetry.buckets import pages_bucket, results_bucket
 from .types import (
@@ -145,7 +147,6 @@ from .types import (
     WorkerStatus,
 )
 from .utils.route_utils import get_route_info, has_route_info, route
-
 
 _NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
 
@@ -377,7 +378,7 @@ class DoclibServer(AsyncDoclibInterface):
         file_row: FileRow | None = None
         sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
-            file_row = await self.state.parse_svc.ensure_ingested(request.path)
+            file_row = await self.state.ingest_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
@@ -502,7 +503,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/docs/by-path", tags=("docs",))
     async def get_doc_by_path(self, path: str) -> DocInfo:
-        await self.state.parse_svc.ensure_ingested(path)
+        await self.state.ingest_svc.ensure_ingested(path)
         row = await self.state.db.fetchone(
             "SELECT d.* FROM docs d JOIN files f ON f.sha256=d.sha256 WHERE f.path=? AND f.status=?",
             (path, FILE_STATUS_ACTIVE),
@@ -652,7 +653,7 @@ class DoclibServer(AsyncDoclibInterface):
                 ext=ext,
                 limit=limit,
                 offset=offset,
-                refresh_file=self.state.parse_svc.refresh_file,
+                refresh_file=self.state.ingest_svc.refresh_file,
             )
             response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
@@ -668,7 +669,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/files/by-path", tags=("files",))
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
-        await self.state.parse_svc.ensure_ingested(path)
+        await self.state.ingest_svc.ensure_ingested(path)
         file_row = await self.state.db.fetchone(
             """
             SELECT f.*, d.short_id AS short_id

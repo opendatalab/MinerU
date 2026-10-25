@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 import asyncio
 from io import BytesIO
 from pathlib import Path
@@ -12,7 +14,6 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core import file_io
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
@@ -104,7 +105,7 @@ def test_doclib_ingests_rtf_as_one_page_flash_document(tmp_path: Path) -> None:
         """执行真实 SQLite doclib 入库并检查稳定行数据。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_service(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
@@ -156,7 +157,7 @@ def test_doclib_rejects_rtf_quality_tier_and_remote(
         """创建隔离 doclib 并断言稳定错误契约。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_service(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]

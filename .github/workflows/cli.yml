@@ -117,7 +117,9 @@ jobs:
             tests/unittest/test_docvortex_routing.py \
             tests/unittest/test_parser_api_contract.py \
             tests/unittest/test_gradio_lifecycle.py \
-            tests/unittest/test_router_route_state.py
+            tests/unittest/test_router_route_state.py \
+            tests/unittest/test_doclib_ingest_service.py \
+            tests/unittest/test_doclib_architecture.py
       - name: Retain test reports
         if: ${{ always() }}
         uses: actions/upload-artifact@v6

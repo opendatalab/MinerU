@@ -9,10 +9,10 @@ from pathlib import Path
 
 from watchfiles import awatch
 
-from ..core.db import DatabaseManager
 from ...filetypes import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
+from ..core.db import DatabaseManager
 from ..services.config_svc import ConfigService
-from ..services.parse_svc import ParseService
+from ..services.ingest_svc import IngestService
 from ..services.scan_svc import ScanService
 from ..types import FILE_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
 from ..utils.path_utils import normalize_doclib_path, rebase_watch_event_path
@@ -25,14 +25,15 @@ class WatchLoop:
         self,
         db: DatabaseManager,
         config_svc: ConfigService,
-        parse_svc: ParseService,
+        ingest_svc: IngestService,
         *,
         scan_interval_sec: int,
         scan_svc: ScanService | None = None,
     ) -> None:
+        """保存目录监控和入库依赖，文件事件交给同一刷新入口。"""
         self.db = db
         self.config_svc = config_svc
-        self.parse_svc = parse_svc
+        self.ingest_svc = ingest_svc
         self.scan_svc = scan_svc
         self.scan_interval_sec = scan_interval_sec
         self.running = False
@@ -131,11 +132,7 @@ class WatchLoop:
             )
 
     async def _handle_event(self, filepath: str, watch_id: int, *, watch_root: str | None = None) -> None:
-        filepath = (
-            rebase_watch_event_path(filepath, watch_root)
-            if watch_root is not None
-            else normalize_doclib_path(filepath)
-        )
+        filepath = rebase_watch_event_path(filepath, watch_root) if watch_root is not None else normalize_doclib_path(filepath)
         ext = Path(filepath).suffix.lstrip(".").lower()
         if ext not in DISCOVERABLE_EXTENSIONS or is_office_temp_lock_file(filepath):
             return
@@ -144,7 +141,7 @@ class WatchLoop:
         await self._refresh_file(filepath, watch_id)
 
     async def _refresh_file(self, filepath: str, watch_id: int) -> None:
-        await self.parse_svc.refresh_file(filepath, watch_id=watch_id)
+        await self.ingest_svc.refresh_file(filepath, watch_id=watch_id)
 
     async def stop(self) -> None:
         self.running = False

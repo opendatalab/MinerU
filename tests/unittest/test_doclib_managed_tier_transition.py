@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_service
+
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,7 +51,7 @@ async def _services(
     monkeypatch.setattr("mineru.doclib.server._ensure_managed_parse_server_tier_available", lambda tier, param: None)
     checker = ParseServerHealthCheck(cfg, interval_sec=30, probe_timeout_sec=1, startup_grace_sec=30, stop_timeout_sec=10)
     server = DoclibServer(SimpleNamespace(config_svc=cfg, health_check=checker))
-    parse_svc = ParseService(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60)
+    parse_svc = create_parse_service(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60)
     return cfg, server, parse_svc, health, checker
 
 

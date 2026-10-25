@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from doclib_test_utils import create_parse_service
 from mineru.doclib.services.content_read_svc import ContentReadService
 
 import asyncio
@@ -268,10 +270,10 @@ async def _legacy_store(
         )
         await _add_result(db, root, "1~5", 1000, range(1, 6), "old")
         _convert_fixture_family(_cache_path(root, "1~5", 1000), family)
-        service = ParseService(
+        service = create_parse_service(
             db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(root), parse_lock_timeout_sec=1800
         )
-        server = DoclibServer(SimpleNamespace(db=db, parse_svc=service, data_dir=str(root)))
+        server = DoclibServer(SimpleNamespace(db=db, parse_svc=service, data_dir=str(root), ingest_svc=service.ingest_svc))
         yield db, service, server
     finally:
         await db.close()

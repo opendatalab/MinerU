@@ -73,16 +73,18 @@ startup 初始化顺序:
 DatabaseManager.initialize()
   -> TelemetryStore(db)
   -> TelemetryService(store, context collector)
-  -> ParseService(..., telemetry_svc=state.telemetry_svc)
+  -> IngestService(..., telemetry_svc=state.telemetry_svc)
+  -> ParseService(..., ingest_svc=state.ingest_svc, telemetry_svc=state.telemetry_svc)
   -> ScanService(..., telemetry_svc=state.telemetry_svc)
-  -> SearchService(..., telemetry_svc=state.telemetry_svc)
+  -> SearchService(db, fts)
   -> background workers
   -> TelemetryFlushWorker(...)
 ```
 
 传递规则:
 
-- `ParseService`、`ScanService`、`SearchService` 构造函数显式接收 `telemetry_svc`。
+- `IngestService`、`ParseService`、`ScanService` 构造函数显式接收 `telemetry_svc`。
+- 文件入库及初始解析任务创建指标由 `IngestService` 记录；扫描、watch 和入库工作池共享应用的同一入库服务。
 - `DoclibServer` route 通过 `self.state.telemetry_svc` 记录 route-level metric。
 - background worker 不创建 telemetry service，只使用已注入到 service 的 telemetry。
 - telemetry service 所有 record 方法内部吞掉异常，最多记录 debug / warning log，不影响主流程。

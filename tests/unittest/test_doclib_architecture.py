@@ -49,3 +49,18 @@ def test_legacy_protocol_conversion_stays_at_cached_middle_json_boundary() -> No
         if any(module.startswith("mineru.backend.postprocess.legacy_") for module in _imports(path))
     }
     assert consumers == {boundary}
+
+
+def test_ingest_service_does_not_depend_on_parse_execution_or_http() -> None:
+    """文件入库拥有独立实现，不反向导入解析服务、HTTP 层或宿主应用。"""
+    forbidden = ("fastapi", "starlette", "mineru.doclib.server", "mineru.doclib.app", "mineru.doclib.services.parse_svc")
+    imports = _imports(_ROOT / "mineru/doclib/services/ingest_svc.py")
+    assert not sorted(module for module in imports if module.startswith(forbidden))
+
+
+def test_file_discovery_workers_depend_on_ingest_service() -> None:
+    """扫描和文件事件处理依赖入库边界，解析工作池独立保留解析服务依赖。"""
+    for name in ("services/scan_svc.py", "background/watch.py", "background/ingest.py"):
+        imports = _imports(_ROOT / "mineru/doclib" / name)
+        assert "mineru.doclib.services.ingest_svc.IngestService" in imports, name
+        assert not any(module.startswith("mineru.doclib.services.parse_svc") for module in imports), name
