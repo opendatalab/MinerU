@@ -14,7 +14,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from ..config import get_config
+from ..config import Config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..model.download import verify_model_repo
@@ -34,7 +34,8 @@ from ..types import (
     Tier,
 )
 from ..version import __version__
-from .background.parse_server_health import get_health, get_managed_parse_server_tier
+from .background.parse_server_health import get_managed_parse_server_tier
+from .parse_server_state import ParseServerHealth
 from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
@@ -154,7 +155,10 @@ _NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
 class DoclibServer(AsyncDoclibInterface):
     """Async doclib server whose routes are declared on interface methods."""
 
-    def __init__(self, state: Any, *, title: str = "MinerU Doclib API") -> None:
+    def __init__(self, state: Any, *, config: Config, health: ParseServerHealth, title: str = "MinerU Doclib API") -> None:
+        """绑定宿主的配置快照和健康状态，不读取进程默认实例。"""
+        self.config = config
+        self.health = health
         self.state = state
         self.app = FastAPI(
             title=title,
@@ -168,7 +172,11 @@ class DoclibServer(AsyncDoclibInterface):
 
     def _content_read_service(self) -> ContentReadService:
         """将当前应用已初始化的数据库与产物目录传给内容服务。"""
-        return ContentReadService(self.state.db, data_dir=_effective_data_dir(self.state))
+        return ContentReadService(
+            self.state.db,
+            data_dir=_effective_data_dir(self.state, self.config),
+            latex_delimiters=self.config.render.latex_delimiters,
+        )
 
     def _build_router(self) -> APIRouter:
         endpoints = []
@@ -211,14 +219,18 @@ class DoclibServer(AsyncDoclibInterface):
         watches = await self.state.config_svc.list_watches()
         uptime = time.time() - self.state.start_time if hasattr(self.state, "start_time") else 0
         sqlite_path = getattr(self.state, "sqlite_path", "")
-        log_path = getattr(self.state, "log_path", "")
-        access_log_path = getattr(self.state, "access_log_path", "")
-        stdout_log_path = getattr(self.state, "stdout_log_path", "")
-        stderr_log_path = getattr(self.state, "stderr_log_path", "")
-        parse_server_stdout_log_path = getattr(self.state, "parse_server_stdout_log_path", "")
-        parse_server_stderr_log_path = getattr(self.state, "parse_server_stderr_log_path", "")
+        log_path = getattr(self.state, "log_path", "") or self.config.doclib.log.resolved_app_path
+        access_log_path = getattr(self.state, "access_log_path", "") or self.config.doclib.log.resolved_access_path
+        stdout_log_path = getattr(self.state, "stdout_log_path", "") or self.config.doclib.log.resolved_stdout_path
+        stderr_log_path = getattr(self.state, "stderr_log_path", "") or self.config.doclib.log.resolved_stderr_path
+        parse_server_stdout_log_path = (
+            getattr(self.state, "parse_server_stdout_log_path", "") or self.config.doclib.log.resolved_parse_server_stdout_path
+        )
+        parse_server_stderr_log_path = (
+            getattr(self.state, "parse_server_stderr_log_path", "") or self.config.doclib.log.resolved_parse_server_stderr_path
+        )
         sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
-        health = get_health()
+        health = self.health
 
         return ServerStatusResponse(
             running=True,
@@ -349,7 +361,7 @@ class DoclibServer(AsyncDoclibInterface):
             row
             for row in rows
             if row["status"] != PARSE_STATUS_DONE
-            or parse_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            or parse_batch_is_readable(_effective_data_dir(self.state, self.config), row["sha256"], row["tier"], row)
         ]
         coverage = parse_coverage(page_range, coverage_rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
@@ -701,7 +713,7 @@ class DoclibServer(AsyncDoclibInterface):
             _tier_parse_info(row)
             for row in parse_rows
             if row["status"] == PARSE_STATUS_DONE
-            and parse_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            and parse_batch_is_readable(_effective_data_dir(self.state, self.config), row["sha256"], row["tier"], row)
         ]
         active_parses = [
             _parse_info(row) for row in parse_rows if row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}
@@ -764,7 +776,7 @@ class DoclibServer(AsyncDoclibInterface):
         if mode != "managed":
             return
         tier = await get_managed_parse_server_tier(self.state.config_svc)
-        health = get_health()
+        health = self.health
         if health.local_mode == "managed" and health.managed_tier == tier and health.running_managed_tier == tier:
             return
         health.begin_managed_tier_transition(tier)
@@ -1256,15 +1268,15 @@ async def _sqlite_journal_mode(db: DatabaseManager) -> str | None:
     return cast(str | None, row.get("journal_mode"))
 
 
-def _effective_data_dir(state: Any) -> str:
+def _effective_data_dir(state: Any, config: Config) -> str:
     data_dir = getattr(state, "data_dir", "")
     if data_dir:
         return os.path.expanduser(data_dir)
-    return os.path.expanduser(get_config().doclib.data_dir)
+    return os.path.expanduser(config.doclib.data_dir)
 
 
 def _tail_log(log_path: str, lines: int = 100) -> list[str]:
-    log_path = os.path.expanduser(log_path) if log_path else os.path.expanduser(get_config().doclib.log.resolved_app_path)
+    log_path = os.path.expanduser(log_path)
     if not os.path.isfile(log_path):
         return []
     with open(log_path, encoding="utf-8", errors="replace") as fh:

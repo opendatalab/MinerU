@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from docvortex.options import LatexDelimitersConfig
+from mineru.doclib.parse_server_state import ParseServerHealth
+
 import asyncio
 import time
 from pathlib import Path
@@ -33,8 +36,16 @@ def test_queue_request_and_claim_do_not_construct_execution(tmp_path: Path, monk
         await db.initialize()
         try:
             fts = FTSManager(db)
-            ingest = IngestService(db, fts, ConfigService(db))
-            queue = ParseQueueService(db, fts, str(tmp_path), ingest_svc=ingest, parse_lock_timeout_sec=60)
+            ingest = IngestService(db, fts, ConfigService(db), health=ParseServerHealth())
+            queue = ParseQueueService(
+                db,
+                fts,
+                str(tmp_path),
+                ingest_svc=ingest,
+                parse_lock_timeout_sec=60,
+                health=ingest.health,
+                latex_delimiters=LatexDelimitersConfig(),
+            )
             source = tmp_path / "document.html"
             source.write_text("<html><body>Independent queue</body></html>")
             response = await queue.request_parse(str(source), tier="flash")
@@ -60,7 +71,7 @@ def test_two_queues_claim_unique_batches_in_priority_order(tmp_path: Path) -> No
         await db.initialize()
         try:
             fts = FTSManager(db)
-            ingest = IngestService(db, fts, ConfigService(db))
+            ingest = IngestService(db, fts, ConfigService(db), health=ParseServerHealth())
             for index in range(3):
                 path = tmp_path / f"source-{index}.html"
                 path.write_text(f"<html><body>Source {index}</body></html>")
@@ -70,7 +81,18 @@ def test_two_queues_claim_unique_batches_in_priority_order(tmp_path: Path) -> No
             now = int(time.time() * 1000)
             await db.execute("UPDATE parses SET priority=2, locked_at=? WHERE id=?", (now, first))
             await db.execute("UPDATE parses SET priority=1, locked_at=? WHERE id=?", (now - 61_000, third))
-            queues = [ParseQueueService(db, fts, str(tmp_path), ingest_svc=ingest, parse_lock_timeout_sec=60) for _ in range(2)]
+            queues = [
+                ParseQueueService(
+                    db,
+                    fts,
+                    str(tmp_path),
+                    ingest_svc=ingest,
+                    parse_lock_timeout_sec=60,
+                    health=ingest.health,
+                    latex_delimiters=LatexDelimitersConfig(),
+                )
+                for _ in range(2)
+            ]
             assert await queues[0].get_queue_length() == 2
             highest = await queues[0].acquire_task()
             assert highest is not None and highest["id"] == third
@@ -96,12 +118,20 @@ def test_worker_unexpected_execution_error_records_failure_and_unlocks(tmp_path:
         try:
             fts = FTSManager(db)
             config = ConfigService(db)
-            ingest = IngestService(db, fts, config)
+            ingest = IngestService(db, fts, config, health=ParseServerHealth())
             source = tmp_path / "source.html"
             source.write_text("<html><body>Worker failure</body></html>")
             await ingest.ensure_ingested(str(source))
-            queue = ParseQueueService(db, fts, str(tmp_path), ingest_svc=ingest, parse_lock_timeout_sec=60)
-            execution = ParseExecutionService(db, fts, config, str(tmp_path))
+            queue = ParseQueueService(
+                db,
+                fts,
+                str(tmp_path),
+                ingest_svc=ingest,
+                parse_lock_timeout_sec=60,
+                health=ingest.health,
+                latex_delimiters=LatexDelimitersConfig(),
+            )
+            execution = ParseExecutionService(db, fts, config, str(tmp_path), health=ingest.health)
             pool = ParseWorkerPool(queue, execution, num_workers=1)
             acquire = queue.acquire_task
 

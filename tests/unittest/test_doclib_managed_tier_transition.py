@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+from doclib_test_utils import create_health_check
+from mineru.doclib.parse_server_state import ParseServerHealth, ProbeResult, ProbeState
+
 from doclib_test_utils import ParseServices
 from mineru.doclib.services.parse_errors import ParseFailure
 
@@ -14,7 +18,7 @@ import httpx
 import pytest
 
 from mineru.config import LogConfig, ManagedParseServerConfig
-from mineru.doclib.background.parse_server_health import ParseServerHealth, ParseServerHealthCheck, ProbeResult, ProbeState
+from mineru.doclib.background.parse_server_health import ParseServerHealthCheck
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.server import DoclibServer, _parse_server_status
@@ -50,11 +54,13 @@ async def _services(
         running_managed_tier="basic",
         managed_proc=_ManagedProcess(),
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health._parse_server_health", health)
+
     monkeypatch.setattr("mineru.doclib.server._ensure_managed_parse_server_tier_available", lambda tier, param: None)
-    checker = ParseServerHealthCheck(cfg, interval_sec=30, probe_timeout_sec=1, startup_grace_sec=30, stop_timeout_sec=10)
-    server = DoclibServer(SimpleNamespace(config_svc=cfg, health_check=checker))
-    parse_svc = create_parse_services(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60)
+    checker = create_health_check(
+        cfg, interval_sec=30, probe_timeout_sec=1, startup_grace_sec=30, stop_timeout_sec=10, health=health
+    )
+    server = create_doclib_server(SimpleNamespace(config_svc=cfg, health_check=checker), health=health)
+    parse_svc = create_parse_services(db, FTSManager(db), cfg, str(tmp_path), parse_lock_timeout_sec=60, health=health)
     return cfg, server, parse_svc, health, checker
 
 

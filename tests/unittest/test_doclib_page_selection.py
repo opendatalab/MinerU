@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
 import asyncio
 import json
 import re
@@ -74,7 +76,7 @@ async def _cached_library(
     cache_path = Path(parse_batch_json_path(str(tmp_path), _SHA256, "flash", page_range, 1))
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(middle.to_dict(), ensure_ascii=False), encoding="utf-8")
-    return db, DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+    return db, create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
 
 
 @pytest.mark.parametrize(

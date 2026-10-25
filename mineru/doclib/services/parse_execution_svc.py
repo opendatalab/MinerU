@@ -27,6 +27,7 @@ from ...parser.page_range import (
 from ...types import TIER_ORDER, Tier
 from ..core import fts as fts_utils
 from ..core.db import DatabaseManager
+from ..parse_server_state import ParseServerHealth
 from ..core.file_io import (
     metadata_to_doclib,
 )
@@ -70,9 +71,11 @@ class ParseExecutionService:
         config_svc: ConfigService,
         data_dir: str,
         *,
+        health: ParseServerHealth,
         telemetry_svc: TelemetryService | None = None,
     ) -> None:
         """保存此服务所需的显式依赖，不隐式组装另一侧服务。"""
+        self.health = health
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
@@ -336,12 +339,9 @@ class ParseExecutionService:
             _remap_api_result_pages_to_page_range(result, page_range)
         return result, via
 
-    @staticmethod
-    def _resolve_tier(tier: Tier, via: str) -> Tier:
+    def _resolve_tier(self, tier: Tier, via: str) -> Tier:
         """校验目标服务已公布的档位能力，不静默切换用户请求。"""
-        from ..background.parse_server_health import get_health
-
-        health = get_health()
+        health = self.health
         if via == "remote":
             supported = health.remote.probe.tiers
         else:
@@ -356,9 +356,7 @@ class ParseExecutionService:
 
     async def _resolve_api_target(self, privacy: str, tier: Tier) -> tuple[str, str | None, str]:
         """根据显式隐私设置和健康状态选择目标，保持远端转本地的既有回退。"""
-        from ..background.parse_server_health import get_health
-
-        health = get_health()
+        health = self.health
 
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))

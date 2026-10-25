@@ -3,11 +3,10 @@
 from .compaction import Compaction
 from .device_monitor import DeviceMonitor
 from .ingest import IngestWorkerPool
+from ..parse_server_state import ParseServerHealth
 from .parse_server_health import (
-    ParseServerHealth,
     ParseServerHealthCheck,
     api_server_args_for_tier,
-    get_health,
     get_parse_server_stderr_log_path,
     get_parse_server_stdout_log_path,
     managed_parse_server_url,
@@ -30,7 +29,6 @@ __all__ = [
     "ScanWorkerPool",
     "WatchLoop",
     "api_server_args_for_tier",
-    "get_health",
     "get_parse_server_stderr_log_path",
     "get_parse_server_stdout_log_path",
     "managed_parse_server_url",

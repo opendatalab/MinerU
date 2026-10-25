@@ -26,6 +26,7 @@ from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from .server import DoclibServer
+from .parse_server_state import ParseServerHealth
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
 if TYPE_CHECKING:
@@ -46,7 +47,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     _setup_logging(cfg.doclib.log, global_level=cfg.log.level)
     state = AppState()
     state.config = cfg
-    app = DoclibServer(state).app
+    app = DoclibServer(state, config=cfg, health=state.health).app
     app.title = "MinerU DocLib"
     app.version = "1.0.0"
     app.state.doclib_state = state
@@ -57,7 +58,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.ingest import IngestWorkerPool
         from .background.parse_server_health import (
             ParseServerHealthCheck,
-            get_health,
             get_managed_parse_server_tier,
             start_managed_parse_server,
         )
@@ -91,17 +91,21 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.config_svc = ConfigService(state.db)
         state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
         await state.telemetry_svc.initialize()
-        state.ingest_svc = IngestService(state.db, state.fts, state.config_svc, telemetry_svc=state.telemetry_svc)
+        state.ingest_svc = IngestService(
+            state.db, state.fts, state.config_svc, health=state.health, telemetry_svc=state.telemetry_svc
+        )
         state.parse_queue_svc = ParseQueueService(
             state.db,
             state.fts,
             data_dir,
             ingest_svc=state.ingest_svc,
+            health=state.health,
+            latex_delimiters=cfg.render.latex_delimiters,
             parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
         )
         state.parse_execution_svc = ParseExecutionService(
-            state.db, state.fts, state.config_svc, data_dir, telemetry_svc=state.telemetry_svc
+            state.db, state.fts, state.config_svc, data_dir, health=state.health, telemetry_svc=state.telemetry_svc
         )
         state.scan_svc = ScanService(
             state.db,
@@ -134,7 +138,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         )
 
         local_mode = (await state.config_svc.get("parse_server.local.mode")) or "disabled"
-        health = get_health()
+        health = state.health
         health.local_mode = local_mode
         if local_mode == "managed":
             managed_tier = await get_managed_parse_server_tier(state.config_svc)
@@ -181,6 +185,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.compaction = Compaction(state.db, interval_sec=cfg.doclib.compaction_interval_sec, data_dir=data_dir)
         state.health_check = ParseServerHealthCheck(
             state.config_svc,
+            health=state.health,
             interval_sec=cfg.doclib.parse_server_health_check_interval_sec,
             probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
@@ -216,9 +221,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.tcp_host = cfg.doclib.tcp.host
 
     async def shutdown() -> None:
-        from .background.parse_server_health import get_health, stop_managed_parse_server
+        from .background.parse_server_health import stop_managed_parse_server
 
-        health = get_health()
+        health = state.health
         if health.managed_proc:
             stop_managed_parse_server(
                 health.managed_proc,
@@ -304,6 +309,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
 class AppState:
     def __init__(self) -> None:
+        self.health = ParseServerHealth()
         self.db: Any = None
         self.fts: Any = None
         self.config_svc: Any = None

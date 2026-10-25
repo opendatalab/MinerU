@@ -103,3 +103,19 @@ def test_parse_execution_is_independent_of_ingestion_and_queue_requests() -> Non
     forbidden = ("mineru.doclib.services.parse_queue_svc", "mineru.doclib.services.ingest_svc")
     imports = _imports(_ROOT / "mineru/doclib/services/parse_execution_svc.py")
     assert not sorted(module for module in imports if module.startswith(forbidden))
+
+
+def test_hosted_services_do_not_import_process_defaults() -> None:
+    """宿主业务服务使用注入的配置与健康状态，避免再次引入进程默认读取。"""
+    forbidden = {"mineru.config.get_config", "mineru.doclib.background.parse_server_health.get_health"}
+    for name in ("ingest_svc.py", "parse_queue_svc.py", "parse_execution_svc.py", "parse_policy.py", "content_read_svc.py"):
+        imports = _imports(_ROOT / "mineru/doclib/services" / name)
+        assert not imports & forbidden, name
+
+
+def test_health_checker_has_no_implicit_state_or_config_read() -> None:
+    """独立日志工具可保留 CLI 默认值，宿主健康检查类不能依赖全局对象。"""
+    tree = ast.parse((_ROOT / "mineru/doclib/background/parse_server_health.py").read_text())
+    checker = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ParseServerHealthCheck")
+    calls = {node.func.id for node in ast.walk(checker) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert not calls & {"get_config", "get_health"}

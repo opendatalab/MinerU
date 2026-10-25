@@ -23,6 +23,7 @@ from ...filetypes import (
 from ...parser.page_range import expand_page_range
 from ...types import Tier
 from ..core.db import DatabaseManager
+from ..parse_server_state import ParseServerHealth
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager, truncate_head_tail
 from ..rows import FileRow, Sha256Row, ShortIdRow, WatchTargetRow
@@ -145,9 +146,16 @@ class IngestService:
     """独立管理源文件与文档入库，解析执行通过单独服务处理。"""
 
     def __init__(
-        self, db: DatabaseManager, fts: FTSManager, config_svc: ConfigService, *, telemetry_svc: TelemetryService | None = None
+        self,
+        db: DatabaseManager,
+        fts: FTSManager,
+        config_svc: ConfigService,
+        *,
+        health: ParseServerHealth,
+        telemetry_svc: TelemetryService | None = None,
     ) -> None:
         """保存显式数据库、索引、规则配置和可选指标记录依赖。"""
+        self.health = health
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
@@ -535,7 +543,7 @@ class IngestService:
             rule_tier = cast(Tier | None, rule.get("tier"))
             rule_remote = bool(rule.get("remote", False))
             if ext in TIERED_PARSE_EXTENSIONS:
-                tier = rule_tier or parse_policy.resolve_parsing_rule_default_tier(remote=rule_remote)
+                tier = rule_tier or parse_policy.resolve_parsing_rule_default_tier(health=self.health, remote=rule_remote)
                 privacy = "remote" if rule_remote and tier != "flash" else "local"
             else:
                 tier = "flash"

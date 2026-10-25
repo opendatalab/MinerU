@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_content_read_service
+from doclib_test_utils import create_doclib_server
+from doclib_test_utils import create_health_check
+from mineru.doclib.parse_server_state import ParseServerHealth, ProbeResult, ProbeState
+
 from mineru.doclib.services.parse_errors import ParseFailure
 from mineru.doclib.services.parse_execution_svc import _local_parse_server_url
 from mineru.doclib.services.parse_execution_svc import _remap_api_result_pages_to_page_range
@@ -10,7 +15,6 @@ from doclib_test_utils import create_parse_services
 from mineru.doclib.services import ingest_svc as ingest_svc_module
 from mineru.doclib.services.ingest_svc import FileRefreshResult
 from mineru.doclib.services.parse_policy import resolve_parsing_rule_default_tier
-from mineru.doclib.services.content_read_svc import ContentReadService
 from docvortex.schema import Producer
 from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline, inline_text
@@ -34,10 +38,6 @@ from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import (
     MAX_RESTART_ATTEMPTS,
-    ParseServerHealth,
-    ParseServerHealthCheck,
-    ProbeResult,
-    ProbeState,
     _managed_parse_server_needs_restart,
     api_server_args_for_tier,
     select_available_managed_port,
@@ -50,7 +50,6 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.content_read_svc import (
     _find_block_by_no,
     _LocatorParts,
@@ -400,10 +399,9 @@ def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: 
         local=ProbeState(probe=ProbeResult(tiers=["flash"])),
         remote=ProbeState(probe=ProbeResult(healthy=True, tiers=["standard", "advanced"])),
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
     with pytest.raises(ParseFailure) as exc_info:
-        resolve_default_tier(remote=False)
+        resolve_default_tier(remote=False, health=health)
 
     assert exc_info.value.code == "quality_tier_unavailable"
     assert "--remote" in exc_info.value.message
@@ -416,10 +414,9 @@ def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: p
         local=ProbeState(probe=ProbeResult(tiers=["flash"])),
         remote=ProbeState(probe=ProbeResult()),
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
     with pytest.raises(ParseFailure) as exc_info:
-        resolve_default_tier(remote=False)
+        resolve_default_tier(remote=False, health=health)
 
     assert exc_info.value.code == "quality_tier_unavailable"
     assert "--remote" not in exc_info.value.message
@@ -431,10 +428,9 @@ def test_remote_default_tier_preserves_probe_invalid_api_key(monkeypatch: pytest
     health = ParseServerHealth(
         remote=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")),
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
     with pytest.raises(ParseFailure) as exc_info:
-        resolve_default_tier(remote=True)
+        resolve_default_tier(remote=True, health=health)
 
     assert exc_info.value.code == "invalid_api_key"
     assert exc_info.value.message == "Remote parse-server authentication failed: Invalid or missing API key"
@@ -446,10 +442,9 @@ def test_self_hosted_default_tier_preserves_probe_invalid_api_key(monkeypatch: p
         local=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")),
         local_mode="self_hosted",
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
     with pytest.raises(ParseFailure) as exc_info:
-        resolve_default_tier(remote=False)
+        resolve_default_tier(remote=False, health=health)
 
     assert exc_info.value.code == "invalid_api_key"
     assert exc_info.value.message == "Local self-hosted parse-server authentication failed: Invalid or missing API key"
@@ -458,15 +453,14 @@ def test_self_hosted_default_tier_preserves_probe_invalid_api_key(monkeypatch: p
 
 def test_parsing_rule_default_tier_allows_flash_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     health = ParseServerHealth(local=ProbeState(probe=ProbeResult(tiers=["basic", "advanced"])))
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
-    assert resolve_parsing_rule_default_tier() == "basic"
+    assert resolve_parsing_rule_default_tier(health=health) == "basic"
 
     health.local.probe = ProbeResult(tiers=["basic", "standard", "advanced"])
-    assert resolve_parsing_rule_default_tier() == "standard"
+    assert resolve_parsing_rule_default_tier(health=health) == "standard"
 
     health.local.probe = ProbeResult(tiers=["flash"])
-    assert resolve_parsing_rule_default_tier() == "flash"
+    assert resolve_parsing_rule_default_tier(health=health) == "flash"
 
 
 def test_read_without_tier_uses_highest_cached_tier(tmp_path: Path) -> None:
@@ -476,15 +470,15 @@ def test_read_without_tier_uses_highest_cached_tier(tmp_path: Path) -> None:
     for tier in ["flash", "basic", "standard", "advanced"]:
         _write_batch(tmp_path, sha256, tier, "1", 1000, [_text_page(tier).to_dict()])
         rows.append({"sha256": sha256, "tier": tier, "page_range": "1", "done_at": 1000, "status": "done"})
-    server = DoclibServer(SimpleNamespace(db=_FakeDB(parses=rows, file_row=None), data_dir=str(tmp_path)))
+    server = create_doclib_server(SimpleNamespace(db=_FakeDB(parses=rows, file_row=None), data_dir=str(tmp_path)))
     assert (
-        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
+        asyncio.run(create_content_read_service(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
         == "advanced"
     )
     stale = Path(parse_batch_json_path(str(tmp_path), sha256, "advanced", "1", 1000))
     stale.write_text('{"schema_version":"1.0","pages":[]}')
     assert (
-        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
+        asyncio.run(create_content_read_service(server.state.db, data_dir=server.state.data_dir)._default_read_tier(sha256))
         == "standard"
     )
 
@@ -518,7 +512,7 @@ def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch
             return _Response()
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
-    checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
+    checker = create_health_check(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
     assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == ProbeResult(healthy=True, tiers=["standard"])
     assert asyncio.run(checker._probe("https://mineru.net/api")) == ProbeResult(healthy=True, tiers=["standard"])
@@ -550,7 +544,7 @@ def test_parse_server_health_probe_maps_auth_error_and_passes_api_key(monkeypatc
             return _Response()
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
-    checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
+    checker = create_health_check(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
     result = asyncio.run(checker._probe("https://mineru.net/api", api_key="bad-key"))
 
@@ -770,18 +764,15 @@ def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch:
         return _Proc()
 
     monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_parse_server_stdout_log_path", lambda: str(parse_stdout_log_path)
-    )
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_parse_server_stderr_log_path", lambda: str(parse_stderr_log_path)
-    )
-    monkeypatch.setattr(
         "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         _ConfigSvc(),
+        log_cfg=LogConfig(
+            parse_server_stdout_path=str(parse_stdout_log_path), parse_server_stderr_path=str(parse_stderr_log_path)
+        ),
         interval_sec=1,
         probe_timeout_sec=2,
         startup_grace_sec=3,
@@ -829,7 +820,7 @@ def test_managed_parse_server_restart_ignores_invalid_tier_override(monkeypatch:
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         config_svc,
         interval_sec=1,
         probe_timeout_sec=2,
@@ -881,7 +872,7 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         _ConfigSvc(),
         interval_sec=1,
         probe_timeout_sec=2,
@@ -905,7 +896,7 @@ def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch
         async def get(self, key: str) -> str:
             raise AssertionError(f"unexpected config read: {key}")
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         _ConfigSvc(),
         interval_sec=1,
         probe_timeout_sec=2,
@@ -960,7 +951,7 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     ) -> tuple[_Proc, str, None]:
         assert tier == "basic"
         assert managed_cfg.host == "127.0.0.2"
-        assert log_cfg is None
+        assert isinstance(log_cfg, LogConfig)
         assert marker == "tier change standard->basic"
         events.append("start")
         return _Proc(), "http://127.0.0.2:16582", None
@@ -968,7 +959,7 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.start_managed_parse_server", _start)
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         _ConfigSvc(),
         interval_sec=1,
         probe_timeout_sec=2,
@@ -1018,13 +1009,14 @@ def test_healthy_probe_resets_managed_restart_budget(monkeypatch: pytest.MonkeyP
     async def _resolve_remote_key(_svc: object) -> _RemoteApiKey:
         return _RemoteApiKey()
 
-    checker = ParseServerHealthCheck(
+    checker = create_health_check(
         _ConfigSvc(),
         interval_sec=0,
         probe_timeout_sec=2,
         startup_grace_sec=3,
         stop_timeout_sec=4,
         startup_timeout_sec=30,
+        health=health,
     )
 
     async def _probe(_url: str, *, api_key: str | None = None) -> ProbeResult:
@@ -1032,7 +1024,7 @@ def test_healthy_probe_resets_managed_restart_budget(monkeypatch: pytest.MonkeyP
         return ProbeResult(healthy=True, tiers=["standard"])
 
     monkeypatch.setattr(checker, "_probe", _probe)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.resolve_remote_api_key", _resolve_remote_key)
 
     asyncio.run(checker.run())
@@ -1143,6 +1135,7 @@ def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.M
             config_svc=_ConfigService(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
+            health=injected_health,
         )
 
         base_url, api_key, via = await service.execution._resolve_api_target("remote", "standard")
@@ -1152,10 +1145,7 @@ def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.M
         assert via == "remote"
 
     monkeypatch.setenv("MINERU_API_KEY", "env-key")
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_health",
-        lambda: ParseServerHealth(remote=ProbeState(probe=ProbeResult(healthy=True))),
-    )
+    injected_health = ParseServerHealth(remote=ProbeState(probe=ProbeResult(healthy=True)))
 
     asyncio.run(_run())
 
@@ -1182,6 +1172,7 @@ def test_remote_api_target_fallback_uses_local_self_hosted_api_key(monkeypatch: 
             config_svc=_ConfigService(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
+            health=injected_health,
         )
 
         base_url, api_key, via = await service.execution._resolve_api_target("remote", "standard")
@@ -1190,14 +1181,11 @@ def test_remote_api_target_fallback_uses_local_self_hosted_api_key(monkeypatch: 
         assert api_key == "local-key"
         assert via == "local"
 
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_health",
-        lambda: ParseServerHealth(
-            remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
-            local=ProbeState(url="http://127.0.0.1:16580", probe=ProbeResult(healthy=True)),
-            local_mode="self_hosted",
-            self_hosted_url="http://127.0.0.1:16580",
-        ),
+    injected_health = ParseServerHealth(
+        remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+        local=ProbeState(url="http://127.0.0.1:16580", probe=ProbeResult(healthy=True)),
+        local_mode="self_hosted",
+        self_hosted_url="http://127.0.0.1:16580",
     )
 
     asyncio.run(_run())
@@ -1224,6 +1212,7 @@ def test_remote_api_target_fallback_managed_mode_sends_no_api_key(monkeypatch: p
             config_svc=_ConfigService(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
+            health=injected_health,
         )
 
         base_url, api_key, via = await service.execution._resolve_api_target("remote", "standard")
@@ -1232,14 +1221,11 @@ def test_remote_api_target_fallback_managed_mode_sends_no_api_key(monkeypatch: p
         assert api_key is None
         assert via == "local"
 
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_health",
-        lambda: ParseServerHealth(
-            remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
-            local=ProbeState(url="http://127.0.0.1:16582", probe=ProbeResult(healthy=True)),
-            local_mode="managed",
-            managed_url="http://127.0.0.1:16582",
-        ),
+    injected_health = ParseServerHealth(
+        remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+        local=ProbeState(url="http://127.0.0.1:16582", probe=ProbeResult(healthy=True)),
+        local_mode="managed",
+        managed_url="http://127.0.0.1:16582",
     )
 
     asyncio.run(_run())
@@ -1263,6 +1249,7 @@ def test_remote_api_target_preserves_probe_invalid_api_key(monkeypatch: pytest.M
             config_svc=_ConfigService(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
+            health=injected_health,
         )
 
         with pytest.raises(ParseFailure) as exc_info:
@@ -1272,11 +1259,8 @@ def test_remote_api_target_preserves_probe_invalid_api_key(monkeypatch: pytest.M
         assert exc_info.value.message == "Remote parse-server authentication failed: Invalid or missing API key"
         assert exc_info.value.param == "parse_server.remote.api_key"
 
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_health",
-        lambda: ParseServerHealth(
-            remote=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"))
-        ),
+    injected_health = ParseServerHealth(
+        remote=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"))
     )
 
     asyncio.run(_run())
@@ -1300,6 +1284,7 @@ def test_self_hosted_api_target_preserves_probe_invalid_api_key(monkeypatch: pyt
             config_svc=_ConfigService(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
+            health=injected_health,
         )
 
         with pytest.raises(ParseFailure) as exc_info:
@@ -1309,16 +1294,13 @@ def test_self_hosted_api_target_preserves_probe_invalid_api_key(monkeypatch: pyt
         assert exc_info.value.message == "Local self-hosted parse-server authentication failed: Invalid or missing API key"
         assert exc_info.value.param == "parse_server.local.self_hosted_api_key"
 
-    monkeypatch.setattr(
-        "mineru.doclib.background.parse_server_health.get_health",
-        lambda: ParseServerHealth(
-            local=ProbeState(
-                url="http://127.0.0.1:16580",
-                probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"),
-            ),
-            local_mode="self_hosted",
-            self_hosted_url="http://127.0.0.1:16580",
+    injected_health = ParseServerHealth(
+        local=ProbeState(
+            url="http://127.0.0.1:16580",
+            probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"),
         ),
+        local_mode="self_hosted",
+        self_hosted_url="http://127.0.0.1:16580",
     )
 
     asyncio.run(_run())
@@ -2956,7 +2938,7 @@ def test_find_probes_and_filters_deleted_paths_without_rescan(tmp_path: Path) ->
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
         )
-        server = DoclibServer(
+        server = create_doclib_server(
             SimpleNamespace(
                 db=db,
                 fts=fts,
@@ -2996,7 +2978,7 @@ def test_find_reactivates_restored_deleted_path_without_rescan(tmp_path: Path) -
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
         )
-        server = DoclibServer(
+        server = create_doclib_server(
             SimpleNamespace(
                 db=db,
                 fts=fts,
@@ -3599,7 +3581,7 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
             db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
         )
         scan_svc = ScanService(db=db, config_svc=config_svc, ingest_svc=parse_svc.ingest, scan_lock_timeout_sec=1800)
-        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc, ingest_svc=_NoopParseService()))
+        server = create_doclib_server(SimpleNamespace(db=db, scan_svc=scan_svc, ingest_svc=_NoopParseService()))
 
         for index in range(3):
             sha256 = str(index + 1) * 64
@@ -3670,7 +3652,7 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
             data_dir=str(tmp_path),
             parse_lock_timeout_sec=1800,
         )
-        server = DoclibServer(
+        server = create_doclib_server(
             SimpleNamespace(db=db, data_dir=str(tmp_path), parse_queue_svc=parse_svc.queue, ingest_svc=parse_svc.ingest)
         )
         now = 1000
@@ -3758,7 +3740,7 @@ def test_doclib_server_reports_text_invalidation_not_required(
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
         )
-        server = DoclibServer(
+        server = create_doclib_server(
             SimpleNamespace(db=db, data_dir=str(tmp_path), parse_queue_svc=parse_svc.queue, ingest_svc=parse_svc.ingest)
         )
         source = tmp_path / f"note.{ext}"
@@ -3803,7 +3785,7 @@ def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
         await db.initialize()
-        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        server = create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
         now = 1000
         sha256 = "a" * 64
         short_id = "aaaaaaa"
@@ -3830,7 +3812,7 @@ def test_read_text_locator_reports_parse_not_required(tmp_path: Path, ext: str) 
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
         await db.initialize()
-        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        server = create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
         now = 1000
         sha256 = "a" * 64
         short_id = "aaaaaaa"
@@ -3857,7 +3839,7 @@ def test_read_locator_out_of_range_page_returns_page_range_invalid(tmp_path: Pat
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
         await db.initialize()
-        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        server = create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
         now = 1000
         sha256 = "a" * 64
         short_id = "aaaaaaa"
@@ -3886,7 +3868,7 @@ def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_fou
 
     async def _run() -> None:
         db = _FakeDB(parses=[], file_row=None)
-        server = DoclibServer(SimpleNamespace(db=db, ingest_svc=_ParseSvc()))
+        server = create_doclib_server(SimpleNamespace(db=db, ingest_svc=_ParseSvc()))
 
         with pytest.raises(NotFoundError) as exc_info:
             await server.get_file_by_path(str(tmp_path / "sample.png"))
@@ -3908,7 +3890,7 @@ def test_get_file_by_path_maps_stat_permission_error_without_existing_file_row(
         parse_svc = create_parse_services(
             db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
         )
-        server = DoclibServer(SimpleNamespace(db=db, parse_queue_svc=parse_svc.queue, ingest_svc=parse_svc.ingest))
+        server = create_doclib_server(SimpleNamespace(db=db, parse_queue_svc=parse_svc.queue, ingest_svc=parse_svc.ingest))
         source = tmp_path / "no_exec_dir" / "inside.pdf"
 
         async def _permission_denied(path: str) -> dict[str, Any]:
@@ -4159,7 +4141,7 @@ def test_add_watch_wakes_background_watch_loop() -> None:
 
         watch = _WatchLoop()
         state = SimpleNamespace(config_svc=_ConfigService(), telemetry_svc=None, watch=watch)
-        server = DoclibServer(state)
+        server = create_doclib_server(state)
 
         info = await server.add_watch(WatchRequest(path="/watched", removable=True, label="Docs"))
 
@@ -4193,7 +4175,7 @@ def test_add_watch_queues_initial_watch_scan() -> None:
 
         scan_svc = _ScanService()
         state = SimpleNamespace(config_svc=_ConfigService(), telemetry_svc=None, watch=None, scan_svc=scan_svc)
-        server = DoclibServer(state)
+        server = create_doclib_server(state)
 
         await server.add_watch(WatchRequest(path="/watched", removable=True, label="Docs"))
 
@@ -4225,7 +4207,7 @@ def test_remove_watch_wakes_background_watch_loop() -> None:
         config_svc = _ConfigService()
         watch = _WatchLoop()
         state = SimpleNamespace(db=_DB(), config_svc=config_svc, telemetry_svc=None, watch=watch)
-        server = DoclibServer(state)
+        server = create_doclib_server(state)
 
         response = await server.remove_watch(42)
 
@@ -4350,7 +4332,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             compaction=SimpleNamespace(running=False),
             health_check=SimpleNamespace(running=False),
         )
-        status = await DoclibServer(state).get_server_status()
+        status = await create_doclib_server(state).get_server_status()
 
         assert status.watch_count == 1
         assert status.ingest_queue_length == 1
@@ -4973,7 +4955,7 @@ def test_progressive_markdown_uses_readable_pdf_block_locator(tmp_path: Path) ->
         file_row=None,
         doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "pdf", "page_count": 1},
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="eeeeeee",
@@ -4987,7 +4969,9 @@ def test_progressive_markdown_uses_readable_pdf_block_locator(tmp_path: Path) ->
         no_marker=False,
     )
 
-    response = asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan))
+    response = asyncio.run(
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan)
+    )
 
     assert "![Image block](doc:eeeeeee/tier:standard/page:1/block:1)" in response.content
     assert "figures/rendered.jpg" not in response.content
@@ -5012,10 +4996,10 @@ def test_doc_content_marker_uses_document_page_count_only(
         file_row=None,
         doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "pdf", "page_count": page_count},
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
 
     content = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
             sha256,
             tier=tier,
             page_range="5",
@@ -5113,7 +5097,7 @@ def test_progressive_markdown_uses_base64_availability_for_bboxless_blocks(
         file_row=None,
         doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "docx", "page_count": 1},
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="eeeeeee",
@@ -5127,7 +5111,9 @@ def test_progressive_markdown_uses_base64_availability_for_bboxless_blocks(
         no_marker=False,
     )
 
-    response = asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan))
+    response = asyncio.run(
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._execute_read_plan(plan)
+    )
 
     assert f"![Image block]({expected_target})" in response.content
 
@@ -5142,7 +5128,7 @@ def test_doclib_office_image_asset_reads_base64(tmp_path: Path) -> None:
     body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="", image_base64=data_uri)
     image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
     page = PageInfo(page_idx=0, blocks=[image_block])
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="fffffff",
@@ -5159,7 +5145,7 @@ def test_doclib_office_image_asset_reads_base64(tmp_path: Path) -> None:
     )
 
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
 
     assert asset is not None
@@ -5196,7 +5182,7 @@ def test_doclib_visual_block_asset_reads_base64(
         body = ChartBodyBlock(type=BlockType.CHART_BODY, index=0, bbox=None, content="", image_base64=data_uri)
         visual_block = ChartBlock(type=BlockType.CHART, index=0, bbox=None, content=[body])
     page = PageInfo(page_idx=0, blocks=[visual_block])
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="fffffff",
@@ -5213,7 +5199,7 @@ def test_doclib_visual_block_asset_reads_base64(
     )
 
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
 
     assert asset is not None
@@ -5233,7 +5219,7 @@ def test_doclib_pdf_block_locator_crops_source_pdf(tmp_path: Path) -> None:
         file_row={"path": str(source_path), "ext": "pdf", "sha256": sha256, "status": "active"},
         doc_row={"sha256": sha256, "short_id": "aaaaaaa", "file_type": "pdf", "page_count": 1},
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="aaaaaaa",
@@ -5250,7 +5236,7 @@ def test_doclib_pdf_block_locator_crops_source_pdf(tmp_path: Path) -> None:
     )
 
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
 
     assert asset is not None
@@ -5274,7 +5260,7 @@ def test_doclib_image_block_locator_crops_source_image_at_original_resolution(tm
         file_row={"path": str(source_path), "ext": "png", "sha256": sha256, "status": "active"},
         doc_row={"sha256": sha256, "short_id": "bbbbbbb", "file_type": "image", "page_count": 1},
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="bbbbbbb",
@@ -5291,7 +5277,7 @@ def test_doclib_image_block_locator_crops_source_image_at_original_resolution(tm
     )
 
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
 
     assert asset is not None
@@ -5310,7 +5296,7 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
     body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="", image_base64=data_uri)
     image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
     page = PageInfo(page_idx=0, blocks=[image_block])
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="fffffff",
@@ -5327,7 +5313,7 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
     )
 
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
 
     assert asset is not None
@@ -5343,7 +5329,7 @@ def test_doclib_office_image_asset_missing_payload_reports_asset_not_available(t
     body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="")
     image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
     page = PageInfo(page_idx=0, blocks=[image_block])
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
         short_id="fffffff",
@@ -5360,7 +5346,9 @@ def test_doclib_office_image_asset_missing_payload_reports_asset_not_available(t
     )
 
     with pytest.raises(NotFoundError) as exc_info:
-        asyncio.run(ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page]))
+        asyncio.run(
+            create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        )
 
     assert exc_info.value.code == "asset_not_available"
     assert exc_info.value.param == "locator"
@@ -5388,7 +5376,7 @@ def test_doclib_bbox_precedes_embedded_image(
         parses=[],
         file_row={"path": str(source_path), "ext": "pdf", "sha256": "a" * 64, "status": "active"} if source_available else None,
     )
-    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    server = create_doclib_server(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
         sha256="a" * 64,
         short_id="aaaaaaa",
@@ -5406,12 +5394,14 @@ def test_doclib_bbox_precedes_embedded_image(
     if not source_available:
         with pytest.raises(NotFoundError) as error:
             asyncio.run(
-                ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+                create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(
+                    plan, [page]
+                )
             )
         assert error.value.code == "no_accessible_file"
         return
     asset = asyncio.run(
-        ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
+        create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_image_response(plan, [page])
     ).asset
     assert asset is not None
     assert asset.mime_type == f"image/{image_format}"

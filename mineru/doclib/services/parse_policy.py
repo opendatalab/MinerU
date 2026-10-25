@@ -6,6 +6,7 @@ from ...parser.page_range import expand_page_range, parse_page_range_set
 from ...types import Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..rows import ParseRow
 from .parse_errors import ParseFailure
+from ..parse_server_state import ParseServerHealth
 
 
 def default_parse_range(page_count: int | None) -> str:
@@ -15,11 +16,8 @@ def default_parse_range(page_count: int | None) -> str:
     return "1"
 
 
-def resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
+def resolve_parsing_rule_default_tier(*, health: ParseServerHealth, remote: bool = False) -> Tier:
     """后台规则沿用可用质量档位降级到 Flash 的既有策略。"""
-    from ..background.parse_server_health import get_health
-
-    health = get_health()
     supported = health.remote.probe.tiers if remote else health.local.probe.tiers
     return select_parsing_rule_tier(supported)
 
@@ -44,11 +42,8 @@ def page_range_uncovered(request_page_range: str, done_batches: list[ParseRow]) 
     return needed_page_numbers - covered_page_numbers
 
 
-def resolve_default_tier(remote: bool = False) -> Tier:
+def resolve_default_tier(*, health: ParseServerHealth, remote: bool = False) -> Tier:
     """按健康信息选择默认质量档位，并保留认证及无引擎错误。"""
-    from ..background.parse_server_health import get_health
-
-    health = get_health()
     probe = health.remote.probe if remote else health.local.probe
     supported = probe.tiers
     selected = select_default_quality_tier(supported)

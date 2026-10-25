@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
 from mineru.doclib.services.parse_execution_svc import ParseExecutionService
 
 from doclib_test_utils import create_parse_services
@@ -8,7 +10,6 @@ import asyncio
 from types import SimpleNamespace
 
 from mineru.doclib.core.db import DatabaseManager
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.config_svc import ConfigService
 
 from mineru.doclib.services.scan_svc import ScanService, _ScanCounters
@@ -289,7 +290,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         store = TelemetryStore(db)
         telemetry = TelemetryService(store)
         await telemetry.initialize()
-        server = DoclibServer(SimpleNamespace(parse_queue_svc=_ParseService(), telemetry_svc=telemetry))
+        server = create_doclib_server(SimpleNamespace(parse_queue_svc=_ParseService(), telemetry_svc=telemetry))
 
         await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="standard"))
         body = await telemetry.preview_body()
@@ -320,7 +321,7 @@ def test_search_route_records_result_bucket_metrics(tmp_path) -> None:
         store = TelemetryStore(db)
         telemetry = TelemetryService(store)
         await telemetry.initialize()
-        server = DoclibServer(SimpleNamespace(search_svc=_SearchService(), telemetry_svc=telemetry))
+        server = create_doclib_server(SimpleNamespace(search_svc=_SearchService(), telemetry_svc=telemetry))
 
         await server.search("needle")
         body = await telemetry.preview_body()
@@ -464,7 +465,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
         store = TelemetryStore(db)
         telemetry = TelemetryService(store)
         await telemetry.initialize()
-        server = DoclibServer(SimpleNamespace(db=db, telemetry_svc=telemetry))
+        server = create_doclib_server(SimpleNamespace(db=db, telemetry_svc=telemetry))
         now = 1_700_000_000_000
         await db.execute(
             "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "

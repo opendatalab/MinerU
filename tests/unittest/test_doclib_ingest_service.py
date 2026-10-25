@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mineru.doclib.parse_server_state import ParseServerHealth
+
 from mineru.doclib.services.parse_queue_svc import ParseQueueService
 from mineru.doclib.services.parse_execution_svc import ParseExecutionService
 
@@ -37,7 +39,7 @@ def test_ingestion_queues_native_document_without_constructing_parse_service(
         await db.initialize()
         try:
             fts = FTSManager(db)
-            ingest = IngestService(db, fts, ConfigService(db))
+            ingest = IngestService(db, fts, ConfigService(db), health=ParseServerHealth())
             html = tmp_path / "source.html"
             html.write_text("<html><head><title>Independent ingest</title></head><body>Native source</body></html>")
             plain = tmp_path / "note.txt"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
 from doclib_test_utils import create_parse_services
 
 import asyncio
@@ -24,7 +26,6 @@ from mineru.cli.commands import parse as parse_cmd
 from mineru.cli.main import app
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.types import (
     ContentRequestScope,
@@ -67,7 +68,7 @@ class _DoclibHarness:
             str(root / "data"),
             parse_lock_timeout_sec=1800,
         )
-        self.server = DoclibServer(
+        self.server = create_doclib_server(
             SimpleNamespace(
                 db=self.db, data_dir=str(root / "data"), parse_queue_svc=self.service.queue, ingest_svc=self.service.ingest
             )

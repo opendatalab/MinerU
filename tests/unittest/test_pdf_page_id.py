@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_content_read_service
+from doclib_test_utils import create_doclib_server
+
 from mineru.doclib.services.parse_policy import default_parse_range
-from mineru.doclib.services.content_read_svc import ContentReadService
 
 from task_test_utils import wait_task
 
@@ -350,7 +352,6 @@ def test_doclib_relative_selection_coverage_and_export(tmp_path: Path) -> None:
     import json
 
     from mineru.doclib.core.db import DatabaseManager
-    from mineru.doclib.server import DoclibServer
     from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 
     source = tmp_path / "numbered.pdf"
@@ -376,15 +377,15 @@ def test_doclib_relative_selection_coverage_and_export(tmp_path: Path) -> None:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (sha256, "flash", "1-3,5", "done", "local", 1000, 1000, 1000),
             )
-            server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+            server = create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
             listing = await server.list_parses(doc_ref="aaaaaaa", tier="flash", page_range="r3-r1")
             assert listing.coverage.done_page_range == "3,5"
             assert listing.coverage.missing_page_range == "4"
-            text = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            text = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 sha256, tier="flash", page_range="r1", format="markdown", no_marker=True
             )
             assert "Source page 5" in text and "Source page 3" not in text
-            text = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            text = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 sha256, tier="flash", page_range="all", format="markdown", no_marker=True
             )
             assert "Source page 1" in text and "Source page 5" in text

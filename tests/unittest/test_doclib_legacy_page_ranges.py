@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_content_read_service
+from doclib_test_utils import create_doclib_server
+
 from doclib_test_utils import ParseServices
 from mineru.doclib.services.parse_queue_svc import _parse_record_response
 
 from doclib_test_utils import create_parse_services
-from mineru.doclib.services.content_read_svc import ContentReadService
 
 import asyncio
 import json
@@ -89,7 +91,7 @@ def test_historical_cache_rebuilds_fts_and_default_tier(tmp_path: Path, family: 
             await db.execute("UPDATE parses SET tier='standard'")
             before = standard_path.read_bytes()
             assert (
-                await ContentReadService(server.state.db, data_dir=server.state.data_dir)._default_read_tier(_SHA256)
+                await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._default_read_tier(_SHA256)
                 == "standard"
             )
             await service.queue._rebuild_fts_after_invalidate(_SHA256)
@@ -125,7 +127,7 @@ def test_all_supported_formats_compact_to_current_protocol(tmp_path: Path, legac
             assert "file_suffix" not in payload and "effort" not in payload
             assert payload["metadata"]["producer"]["version"] == __version__
             assert [page["page_idx"] for page in payload["pages"]] == [2, 3, 4, 5]
-            content = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            content = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 _SHA256, tier="flash", page_range="3-6", format="markdown", no_marker=True
             )
             assert "old page 3" in content and "intermediate page 4" in content and "latest page 5" in content
@@ -157,12 +159,12 @@ def test_old_protocol_cache_is_not_available_or_compacted(tmp_path: Path, old_ve
             assert {path.name: path.read_bytes() for path in old_path.parent.iterdir()} == before_files
             with pytest.raises(MineruError, match="reparse"):
                 load_pages_from_done_batches(str(tmp_path), _SHA256, "flash", rows)
-            current = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            current = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 _SHA256, tier="flash", page_range="4-7", format="markdown", no_marker=True
             )
             assert "new page 4" in current and "old page" not in current
             with pytest.raises(MineruError, match="reparse"):
-                await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+                await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                     _SHA256, tier="flash", page_range="1-3", format="markdown", no_marker=True
                 )
             listing = await server.list_parses(doc_ref="aaaaaaa", tier="flash", page_range="1-7")
@@ -276,7 +278,7 @@ async def _legacy_store(
         service = create_parse_services(
             db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(root), parse_lock_timeout_sec=1800
         )
-        server = DoclibServer(
+        server = create_doclib_server(
             SimpleNamespace(db=db, parse_queue_svc=service.queue, data_dir=str(root), ingest_svc=service.ingest)
         )
         yield db, service, server
@@ -311,7 +313,7 @@ def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path
             assert _tier_parse_info(public_row).page_range == "1-5"
             assert _parse_record_response(public_row)["page_range"] == "1-5"
             assert public_row["page_range"] == "1~5"
-            exported = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            exported = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 _SHA256, tier="flash", page_range="1-5", format="markdown", no_marker=True
             )
             assert "old page 1" in exported and "old page 5" in exported
@@ -363,7 +365,7 @@ def test_mixed_cache_compaction_keeps_latest_pages_and_writes_new_ranges(tmp_pat
             assert await db.fetchall("SELECT page_range, done_at FROM parses") == [{"page_range": "1-7", "done_at": 2000}]
             path = _cache_path(tmp_path, "1-7", 2000)
             assert sorted(p.name for p in path.parent.glob("*.json")) == [path.name]
-            exported = await ContentReadService(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+            exported = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
                 _SHA256, tier="flash", page_range="1-7", format="markdown", no_marker=True
             )
             assert "old page 3" in exported and "new page 4" in exported

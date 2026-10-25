@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from docvortex.options import LatexDelimitersConfig
+
 from ...errors import InvalidRequestError, MineruError
 from ...filetypes import (
     PAGE_RANGE_PARSE_EXTENSIONS,
@@ -25,6 +27,7 @@ from ...parser.page_range import (
 from ...types import QUALITY_TIERS, TIER_ORDER, Tier
 from ..core import fts as fts_utils
 from ..core.db import DatabaseManager
+from ..parse_server_state import ParseServerHealth
 from ..core.fts import FTSManager
 from ..core.parse_artifacts import (
     load_pages_from_done_batches,
@@ -62,14 +65,18 @@ class ParseQueueService:
         data_dir: str,
         *,
         ingest_svc: IngestService,
+        health: ParseServerHealth,
+        latex_delimiters: LatexDelimitersConfig,
         parse_lock_timeout_sec: int,
         telemetry_svc: TelemetryService | None = None,
     ) -> None:
         """保存此服务所需的显式依赖，不隐式组装另一侧服务。"""
+        self.health = health
         self.db = db
         self.fts = fts
         self.data_dir = os.path.expanduser(data_dir)
         self.ingest_svc = ingest_svc
+        self.latex_delimiters = latex_delimiters.model_copy(deep=True)
         self.parse_lock_timeout_ms = parse_lock_timeout_sec * 1000
         self.telemetry_svc = telemetry_svc
 
@@ -144,7 +151,7 @@ class ParseQueueService:
                 "tier",
             )
         if ext in TIERED_PARSE_EXTENSIONS:
-            requested_tier = tier or parse_policy.resolve_default_tier(remote)
+            requested_tier = tier or parse_policy.resolve_default_tier(health=self.health, remote=remote)
         else:
             requested_tier = "flash"
 
@@ -375,9 +382,7 @@ class ParseQueueService:
 
             from docvortex.render.markdown import render_single_block
 
-            from ...config import get_config
-
-            delimiters = get_config().render.latex_delimiters
+            delimiters = self.latex_delimiters
             parts: list[str] = []
             for page in pages:
                 for block in page.blocks:

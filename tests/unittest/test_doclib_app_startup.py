@@ -791,9 +791,8 @@ def test_write_temp_asset_uses_temp_read_assets_directory(tmp_path: Path) -> Non
     assert asset_path.parent == tmp_path / "temp" / "read-assets"
 
 
-def test_tail_log_uses_current_config_default_when_data_dir_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_tail_log_uses_explicit_path_without_process_default(tmp_path: Path) -> None:
     log_path = tmp_path / "doclib.log"
     log_path.write_text("line-1\nline-2\n", encoding="utf-8")
-    monkeypatch.setattr(get_config().doclib, "log", LogConfig(app_path=str(log_path)))
-
-    assert _tail_log("") == ["line-1\n", "line-2\n"]
+    assert _tail_log(str(log_path)) == ["line-1\n", "line-2\n"]
+    assert _tail_log("") == []

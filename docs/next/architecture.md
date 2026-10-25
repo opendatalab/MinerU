@@ -113,8 +113,11 @@ Routes
 
 所有后台组件都是 asyncio task，随 server 启停。
 
-内容读取由 `DoclibServer` 委托给 `ContentReadService`。读取服务只接收数据库与产物目录，
+内容读取由 `DoclibServer` 委托给 `ContentReadService`。读取服务接收数据库、产物目录与公式配置快照，
 不持有 HTTP 请求、应用全局状态或解析调度器；接口层保留参数绑定、响应和遥测。
+每个 `AppState` 单独持有 `ParseServerHealth`，入库、队列、执行、HTTP 状态查询与健康检查显式共享该实例。
+缓存读取、导出和失效后的 FTS 重建使用宿主传入的公式定界符，不读取进程默认配置。
+只有应用/CLI 的默认入口、endpoint 解析和独立日志工具保留默认配置选择；宿主健康检查接收完整启动配置。
 `doclib/core/parse_artifacts.py` 统一维护批次路径、缓存读写、有效性检查、页选择和覆盖计算，
 供解析服务、内容读取及后台 compaction 共用。历史协议适配仅从
 `doclib/core/middle_json.py:read_cached_middle_json()` 进入。

@@ -16,7 +16,7 @@ from docvortex.content.tree import iter_image_payloads
 from docvortex.document.pdf import PDFDocument
 from docvortex.render.markdown import build_markdown_image, render_single_block
 
-from ...config import get_config
+from docvortex.options import LatexDelimitersConfig
 from ...errors import InvalidRequestError, NotFoundError
 from ...filetypes import IMAGE_EXTENSIONS, TEXT_FILE_TYPES, is_page_range_parse_extension
 from ...parser.page_range import (
@@ -105,8 +105,9 @@ _VISUAL_BLOCK_LABELS = {
 class ContentReadService:
     """协调缓存内容读取，不持有 HTTP 状态或后台任务生命周期。"""
 
-    def __init__(self, db: DatabaseManager, *, data_dir: str) -> None:
-        """显式接收数据库和产物目录，便于不同应用实例独立读取。"""
+    def __init__(self, db: DatabaseManager, *, data_dir: str, latex_delimiters: LatexDelimitersConfig) -> None:
+        """绑定数据库、产物目录和公式配置快照，支持不同应用独立读取。"""
+        self.latex_delimiters = latex_delimiters.model_copy(deep=True)
         self.db = db
         self.data_dir = os.path.expanduser(data_dir)
 
@@ -349,6 +350,7 @@ class ContentReadService:
                 text
                 for _, text in _page_markdown_blocks(
                     page,
+                    latex_delimiters=self.latex_delimiters,
                     short_id=doc["short_id"],
                     tier=tier,
                 )
@@ -381,6 +383,7 @@ class ContentReadService:
         pages_for_render = _select_context_pages(loaded_pages, plan.target, plan.context)
         rendered = _render_progressive_markdown(
             pages_for_render,
+            latex_delimiters=self.latex_delimiters,
             short_id=plan.short_id,
             tier=plan.tier,
             after=_parse_after_cursor(plan.after),
@@ -788,6 +791,7 @@ def _write_temp_asset(
 def _render_progressive_markdown(
     pages: list[PageInfo],
     *,
+    latex_delimiters: LatexDelimitersConfig,
     short_id: str,
     tier: Tier,
     after: ContentCursor | None,
@@ -811,6 +815,7 @@ def _render_progressive_markdown(
             continue
         page_blocks = _page_markdown_blocks(
             page,
+            latex_delimiters=latex_delimiters,
             short_id=short_id,
             tier=tier,
         )
@@ -939,6 +944,7 @@ def _page_marker(page_no: int, page_count: int | None) -> str:
 def _page_markdown_blocks(
     page: PageInfo,
     *,
+    latex_delimiters: LatexDelimitersConfig,
     short_id: str = "",
     tier: Tier = "standard",
 ) -> list[tuple[int, str]]:
@@ -949,7 +955,7 @@ def _page_markdown_blocks(
         tier=tier,
         page_no=page.page_idx + 1,
     )
-    delimiters = get_config().render.latex_delimiters
+    delimiters = latex_delimiters
     for block in page.blocks:
         rendered = render_single_block(
             block,
