@@ -148,3 +148,14 @@ def _sanitize_query_tokens(tokenized: str) -> list[str]:
         if t and t.upper() not in ("AND", "OR", "NOT", "NEAR"):
             safe.append(t)
     return safe
+
+
+MAX_FTS_CHARS = 30_000
+FTS_HEAD_HALF = 15_000
+
+
+def truncate_head_tail(text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF) -> str:
+    """超长正文仅保留首尾内容，沿用原有 FTS 长度与省略标记。"""
+    if len(text) <= max_chars:
+        return text
+    return text[:half] + "\n...\n" + text[-half:]

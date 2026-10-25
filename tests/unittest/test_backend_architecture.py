@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -131,7 +132,9 @@ def test_target_python_files_have_copyright_header() -> None:
         if "_internal/pytorchocr" not in path.as_posix() and path.name != "cli_parser.py"
     ]
     offenders = [
-        str(path.relative_to(_PROJECT_ROOT)) for path in paths if path.read_text(encoding="utf-8").splitlines()[0] != _COPYRIGHT_HEADER
+        str(path.relative_to(_PROJECT_ROOT))
+        for path in paths
+        if path.read_text(encoding="utf-8").splitlines()[0] != _COPYRIGHT_HEADER
     ]
     assert not offenders
 
@@ -285,6 +288,41 @@ assert before_env == dict(os.environ)
         cwd=_PROJECT_ROOT,
         capture_output=True,
         text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_public_facades_import_without_loading_runtime_configuration(tmp_path: Path) -> None:
+    """配置路径无效时仍能导入 SDK 和服务入口，配置校验延后到实际使用。"""
+    script = """
+import importlib
+
+settings = importlib.import_module("mineru.config")
+for name in (
+    "mineru.parser",
+    "mineru.render",
+    "mineru.backend.analyze",
+    "mineru.model.download",
+    "mineru.model.vlm.client",
+    "mineru.doclib.app",
+    "mineru.cli.main",
+    "mineru.kit.main",
+    "mineru.parser.api_server",
+    "mineru.kit.router.app",
+    "mineru.kit.file_parse.app",
+    "mineru.kit.gradio.app",
+):
+    importlib.import_module(name)
+    assert settings._loaded_config is None, name
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=_PROJECT_ROOT,
+        env={**os.environ, "MINERU_CONFIG": str(tmp_path / "missing.yaml"), "MINERU_MODEL_STACK": "removed"},
+        capture_output=True,
+        text=True,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, result.stderr

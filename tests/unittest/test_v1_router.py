@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from task_test_utils import router_execution
 
 import mineru.parser.api_server as api_server
 from mineru.kit.router import RouterSettings, create_app
@@ -350,14 +351,13 @@ def test_local_worker_replacement_invalidates_previous_generation_routes() -> No
             tier_metadata={"standard": {"id": "standard", "current_model": "old-model"}},
         )
         pool._workers[state.worker_id] = state
-        file_route = registry.register(
-            "file",
+        file_route = registry.register_file(
             owner_scope="anonymous",
             worker_id=state.worker_id,
             upstream_id="file-old",
         )
-        job_route = registry.register(
-            "job",
+        job_route = router_execution(
+            registry,
             owner_scope="anonymous",
             worker_id=state.worker_id,
             upstream_id="job-old",

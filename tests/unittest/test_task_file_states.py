@@ -87,7 +87,7 @@ def test_url_preparation_does_not_block_ready_files_or_use_upload_expiry(
                 assert completed["status"] == "completed"
                 assert completed["files"][0].get("bytes") == len(HTML)
                 assert b"Preserved content" in _archive(client, completed)["markdown.md"]
-            assert all(not job.prepared_sources for job in app.state.job_store._jobs.values())
+            assert all(not job.prepared_input for job in app.state.execution_store._executions.values())
     finally:
         release.set()
 
@@ -129,8 +129,8 @@ def test_ready_url_inputs_wait_in_pending_with_bounded_preparation(
                 assert time.monotonic() < deadline
                 time.sleep(0.01)
             record = app.state.task_store._records[second["task_id"]]
-            job = app.state.job_store._jobs[record.file_states[0].execution_id]
-            assert job.prepared_sources and job.files[0].parse is None
+            job = app.state.execution_store._executions[record.file_states[0].execution_id]
+            assert job.prepared_input and job.parse is None
             third = _url_task(client, "third")
             assert client.get(task_url(client, third)).json()["status"] == "waiting-file"
             assert downloads == ["/second"]
@@ -140,12 +140,12 @@ def test_ready_url_inputs_wait_in_pending_with_bounded_preparation(
                 while "/third" not in downloads:
                     assert time.monotonic() < deadline
                     time.sleep(0.01)
-                assert not job.prepared_sources
+                assert not job.prepared_input
             release.set()
             assert _terminal(client, first)["status"] == "completed"
             assert _terminal(client, second)["status"] == ("canceled" if cancel_ready else "completed")
             assert _terminal(client, third)["status"] == "completed"
-            assert all(not item.prepared_sources for item in app.state.job_store._jobs.values())
+            assert all(not item.prepared_input for item in app.state.execution_store._executions.values())
     finally:
         release.set()
 
@@ -169,13 +169,13 @@ def test_file_duration_includes_preparation_but_excludes_queue_wait(tmp_path: Pa
     monkeypatch.setattr(api_server, "parse_async", infer)
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", concurrency=1)
     with TestClient(app) as client:
-        client.portal.call(app.state.job_store._semaphore.acquire)
+        client.portal.call(app.state.execution_store._semaphore.acquire)
         task = _url_task(client)
         deadline = time.monotonic() + 3
         while client.get(task_url(client, task)).json()["status"] != "pending":
             assert time.monotonic() < deadline
             time.sleep(0.01)
         clock[0] += 1000
-        client.portal.call(app.state.job_store._semaphore.release)
+        client.portal.call(app.state.execution_store._semaphore.release)
         result = _terminal(client, task)
         assert result["files"][0].get("parse")["duration_ms"] == 5000

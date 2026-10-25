@@ -2,25 +2,26 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
-import logging
 from pathlib import Path
 from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
 from ...filetypes import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
+from ..core.db import DatabaseManager
 from ..core.file_io import get_file_stat
 from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (
+    FILE_STATUS_ACTIVE,
     SCAN_KIND_MANUAL,
     SCAN_KIND_WATCH,
-    FILE_STATUS_ACTIVE,
+    SCAN_SOURCE_UNKNOWN,
     SCAN_STATUS_DONE,
     SCAN_STATUS_FAILED,
     SCAN_STATUS_PENDING,
     SCAN_STATUS_RUNNING,
-    SCAN_SOURCE_UNKNOWN,
     WATCH_STATUS_ACTIVE,
     WATCH_STATUS_UNREACHABLE,
     ScanInfo,
@@ -28,10 +29,9 @@ from ..types import (
     ScanSource,
     ScanStatus,
 )
-from ..core.db import DatabaseManager
 from ..utils.path_utils import normalize_doclib_path
 from .config_svc import ConfigService
-from .parse_svc import FileRefreshResult, ParseService
+from .ingest_svc import FileRefreshResult, IngestService
 
 logger = logging.getLogger("mineru.scan")
 
@@ -69,14 +69,15 @@ class ScanService:
         self,
         db: DatabaseManager,
         config_svc: ConfigService,
-        parse_svc: ParseService,
+        ingest_svc: IngestService,
         *,
         scan_lock_timeout_sec: int,
         telemetry_svc: object | None = None,
     ) -> None:
+        """扫描只依赖文件刷新入库能力，不接管解析执行。"""
         self.db = db
         self.config_svc = config_svc
-        self.parse_svc = parse_svc
+        self.ingest_svc = ingest_svc
         self.scan_lock_timeout_ms = scan_lock_timeout_sec * 1000
         self.telemetry_svc = telemetry_svc
 
@@ -356,7 +357,7 @@ class ScanService:
             await self._refresh_file(row["path"], watch_id=watch_id, counters=counters)
 
     async def _refresh_file(self, path: str, *, watch_id: int | None, counters: "_ScanCounters") -> FileRefreshResult:
-        result = await self.parse_svc.refresh_file(path, watch_id=watch_id)
+        result = await self.ingest_svc.refresh_file(path, watch_id=watch_id)
         counters.add_refresh(result.status)
         return result
 

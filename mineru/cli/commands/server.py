@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ...config import config
+from ...config import get_config
 from ...doclib.endpoint import read_endpoint_file
 from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
@@ -39,23 +39,23 @@ class _ServerStartingStatus:
 
 
 def _socket_path() -> str:
-    return config.doclib.uds.path
+    return get_config().doclib.uds.path
 
 
 def _endpoint_path() -> str:
-    return config.doclib.endpoint_path
+    return get_config().doclib.endpoint_path
 
 
 def _server_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.resolved_app_path)
+    return os.path.expanduser(get_config().doclib.log.resolved_app_path)
 
 
 def _server_stdout_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.resolved_stdout_path)
+    return os.path.expanduser(get_config().doclib.log.resolved_stdout_path)
 
 
 def _server_stderr_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.resolved_stderr_path)
+    return os.path.expanduser(get_config().doclib.log.resolved_stderr_path)
 
 
 def _server_start_lock_path() -> str:
@@ -567,12 +567,12 @@ def _not_running_status() -> ServerStatusResponse:
         version=__version__,
         python_version=sys.version.split()[0],
         socket_path=_socket_path(),
-        data_dir=os.path.expanduser(config.doclib.data_dir),
-        sqlite_path=os.path.expanduser(config.doclib.sqlite.path),
-        log_path=os.path.expanduser(config.doclib.log.resolved_app_path),
-        access_log_path=os.path.expanduser(config.doclib.log.resolved_access_path),
-        stdout_log_path=os.path.expanduser(config.doclib.log.resolved_stdout_path),
-        stderr_log_path=os.path.expanduser(config.doclib.log.resolved_stderr_path),
+        data_dir=os.path.expanduser(get_config().doclib.data_dir),
+        sqlite_path=os.path.expanduser(get_config().doclib.sqlite.path),
+        log_path=os.path.expanduser(get_config().doclib.log.resolved_app_path),
+        access_log_path=os.path.expanduser(get_config().doclib.log.resolved_access_path),
+        stdout_log_path=os.path.expanduser(get_config().doclib.log.resolved_stdout_path),
+        stderr_log_path=os.path.expanduser(get_config().doclib.log.resolved_stderr_path),
         tcp=TCPServerStatus(enabled=False, host=None, port=None),
     )
 

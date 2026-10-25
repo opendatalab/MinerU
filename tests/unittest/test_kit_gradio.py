@@ -26,6 +26,8 @@ from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARS
 from mineru.integrations.docvortex import build_metadata
 from mineru.kit.commands import webui as webui_command
 from mineru.kit.gradio import app as gradio_app
+from mineru.kit.gradio import conversion_service
+from mineru.kit.gradio.page_range import effective_page_range
 from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
 from mineru.kit.gradio.artifacts import create_run_artifacts, persist_parse_result, render_download
@@ -663,7 +665,13 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
             """忽略构造参数。"""
 
         async def parse_async(
-            self, _path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+            self,
+            _path: Path,
+            *,
+            page_range: str,
+            status_callback: Any = None,
+            duration_callback: Any = None,
+            cancel_on_cancel: bool = False,
         ) -> ParseResult:
             """抛出与正式 API client 一致的错误形态。"""
             error = RuntimeError(f"bad range: {page_range}")
@@ -696,11 +704,18 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
             calls.update(kwargs)
 
         async def parse_async(
-            self, path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+            self,
+            path: Path,
+            *,
+            page_range: str,
+            status_callback: Any = None,
+            duration_callback: Any = None,
+            cancel_on_cancel: bool = False,
         ) -> ParseResult:
             """返回最小解析结果。"""
             calls["path"] = path
             calls["page_range"] = page_range
+            assert cancel_on_cancel is True
             assert statuses == ["Preparing request...", "Submitting task..."]
             assert status_callback is not None
             status_callback("pending")
@@ -1030,8 +1045,8 @@ def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: P
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
     source = tmp_path / "report.PDF"
     source.write_bytes(_pdf_bytes(5))
-    assert gradio_app._effective_page_range(source, " 1-3,r1 ") == "1-3,r1"
-    assert gradio_app._effective_page_range("report.docx", "1-3") == ""
+    assert effective_page_range(source, " 1-3,r1 ") == "1-3,r1"
+    assert effective_page_range("report.docx", "1-3") == ""
     header = gradio_app._render_header()
     assert "mineru-demo-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
@@ -1531,7 +1546,7 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
         """模拟产物磁盘写入失败。"""
         raise OSError("output disk unavailable")
 
-    monkeypatch.setattr(gradio_app, "persist_parse_result", fail_persistence)
+    monkeypatch.setattr(conversion_service, "persist_parse_result", fail_persistence)
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(CompletedClient(), capabilities, output_root=tmp_path, enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
@@ -1645,7 +1660,7 @@ def test_gradio_slow_precheck_keeps_polling_available_and_queues_other_sessions(
         assert release.wait(10)
         return "1"
 
-    monkeypatch.setattr(gradio_app, "_effective_page_range", precheck)
+    monkeypatch.setattr(conversion_service, "effective_page_range", precheck)
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)

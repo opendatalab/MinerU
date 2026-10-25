@@ -19,8 +19,8 @@ import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Annotated, Any, AsyncIterator, Awaitable, Callable, Literal, NoReturn, TypedDict
+from datetime import datetime
+from typing import Annotated, Any, AsyncIterator, Awaitable, Callable, Literal, TypedDict
 from urllib.parse import urlparse
 
 import click
@@ -40,7 +40,7 @@ from starlette.datastructures import State
 from starlette.types import Receive, Scope, Send
 
 from ..config import VlmConfig
-from ..config import config as mineru_config
+from ..config import get_config
 from ..errors import MineruError
 from ..integrations.docvortex import MinerUMetadata
 from ..filetypes import (
@@ -51,7 +51,7 @@ from ..filetypes import (
 )
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.async_utils import drain_future, run_sync
-from ..model.vlm.async_runtime import RuntimeOwner, runtime_owner
+from ..model.runtime.ownership import RuntimeOwner, runtime_owner
 from ..model.vlm.errors import is_fatal_engine_error
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
@@ -75,10 +75,14 @@ from .tier import (
     ensure_tier_runtime_dependencies,
     runtime_options_for_tier,
 )
-from ..task_types import TASK_OUTPUT_FORMATS, TaskFileState, TaskOutputFormat, TaskStatus
+from ..task_types import TASK_OUTPUT_FORMATS, TaskFileState, TaskOutputFormat
+from ..tasks.contracts import MAX_TASK_FILES, ErrorDetail, ErrorResponse, FileParseInfo
+from ..tasks.errors import ApiServerError, raise_api_error
+from ..tasks.execution import TaskExecution, TaskInputMetadata, execution_timestamp, new_execution_id
+from ..tasks.http import build_task_router
+from ..tasks.service import TaskStore
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
-_MAX_FILES_PER_JOB_DEFAULT = 100
 _MAX_URL_BYTES_DEFAULT = 209715200
 
 logger = logging.getLogger("mineru.parser.api_server")
@@ -89,12 +93,6 @@ class ParseServerStartupError(RuntimeError):
 
 
 # ── literal type aliases ────────────────────────────────────────────
-
-JobStatus = TaskStatus
-"""Job lifecycle states."""
-
-FileStatus = TaskFileState
-"""Per-file status within a job."""
 
 AccessLevel = Literal["anonymous", "registered"]
 """Account access level determined by API Key."""
@@ -120,47 +118,6 @@ _PYDANTIC_CONFIG = ConfigDict(extra="forbid")
 
 
 # ── Error ────────────────────────────────────────────────────────────
-
-
-class ErrorDetail(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    type: str
-    code: str | None = None
-    message: str
-    param: str | None = None
-
-
-class ErrorResponse(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    error: ErrorDetail
-
-
-class ApiServerError(Exception):
-    """Structured API error raised by parser API business logic."""
-
-    def __init__(self, status_code: int, error: ErrorDetail) -> None:
-        super().__init__(error.message)
-        self.status_code = status_code
-        self.error = error
-
-
-def _raise_api_error(
-    status_code: int,
-    *,
-    error_type: str,
-    code: str | None,
-    message: str,
-    param: str | None = None,
-) -> NoReturn:
-    raise ApiServerError(
-        status_code,
-        ErrorDetail(
-            type=error_type,
-            code=code,
-            message=message,
-            param=param,
-        ),
-    )
 
 
 def _error_response(status_code: int, error: ErrorDetail) -> JSONResponse:
@@ -334,49 +291,22 @@ _ExecutionSource = Annotated[
 ]
 
 
-class _ParseInput(BaseModel):
+class _ExecutionRequest(BaseModel):
+    """本地单文件执行请求，公开结果身份与内部源文件引用分别保存。"""
+
     model_config = _PYDANTIC_CONFIG
     source: _ExecutionSource
+    file_id: str
+    file_name: str
+    bytes: int | None = None
+    sha256sum: str | None = None
     page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION, examples=["1-5,8,r3-r1", "all"])
-
-
-class _ParseRequest(BaseModel):
-    """Tasks 构造的私有执行请求，不属于公开 HTTP 协议。"""
-
-    model_config = _PYDANTIC_CONFIG
-    files: list[_ParseInput] = Field(min_length=1, max_length=_MAX_FILES_PER_JOB_DEFAULT)
     tier: Tier | None = None
-    ocr_mode: Literal["auto", "txt", "ocr"] = Field(
-        default="auto", description="OCR mode for this parse job: auto-detect, native text, or forced OCR."
-    )
+    ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"])
 
 
 # ── Job responses ────────────────────────────────────────────────────
-
-
-class TaskProgress(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    completed: int = 0
-    failed: int = 0
-    total: int = 0
-
-
-class FileParseInfo(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    tier: Tier
-    duration_ms: int | None = None
-    parser_version: str | None = None
-
-
-class _ExecutionFile(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    file_id: str | None = None
-    name: str
-    page_range: str
-    status: FileStatus
-    parse: FileParseInfo | None = None
-    error: ErrorDetail | None = None
 
 
 # ── Usage ────────────────────────────────────────────────────────────
@@ -399,7 +329,7 @@ class UsageLimits(BaseModel):
     model_config = _PYDANTIC_CONFIG
     max_pages_per_file: int | None = None
     max_file_size_bytes: int | None = None
-    max_files_per_job: int = _MAX_FILES_PER_JOB_DEFAULT
+    max_files_per_job: int = MAX_TASK_FILES
     max_concurrent_jobs: int = 1
     max_file_retention_days: int | None = None
 
@@ -689,14 +619,14 @@ class FileStore:
         with self._lock:
             rec = self.get_file(file_id)
             if rec.purpose != "parse_output":
-                _raise_api_error(
+                raise_api_error(
                     403,
                     error_type="permission_error",
                     code="feature_requires_api_key",
                     message="Source files cannot be downloaded",
                 )
             if rec.sha256sum is None or not self._blob_abs(rec.sha256sum).is_file():
-                _raise_api_error(404, error_type="invalid_request_error", code="file_not_found", message="Output expired")
+                raise_api_error(404, error_type="invalid_request_error", code="file_not_found", message="Output expired")
             self._pins[rec.sha256sum] = self._pins.get(rec.sha256sum, 0) + 1
             return self._blob_abs(rec.sha256sum), rec.filename, rec.sha256sum
 
@@ -737,7 +667,7 @@ class FileStore:
         with self._lock:
             rec = self._files.get(file_id)
             if rec is None or (rec.expires_at is not None and rec.expires_at <= int(time.time())):
-                _raise_api_error(
+                raise_api_error(
                     404,
                     error_type="invalid_request_error",
                     code="file_not_found",
@@ -761,14 +691,14 @@ class FileStore:
         with self._lock:
             rec = self.get_file(file_id)
             if rec.purpose != "parse_output":
-                _raise_api_error(
+                raise_api_error(
                     403,
                     error_type="permission_error",
                     code="feature_requires_api_key",
                     message="Source files cannot be downloaded",
                 )
             if rec.sha256sum is None:
-                _raise_api_error(
+                raise_api_error(
                     500,
                     error_type="api_error",
                     code="internal_error",
@@ -779,7 +709,7 @@ class FileStore:
     def delete_file(self, file_id: str) -> None:
         with self._lock:
             if file_id not in self._files:
-                _raise_api_error(
+                raise_api_error(
                     404,
                     error_type="invalid_request_error",
                     code="file_not_found",
@@ -804,8 +734,9 @@ def _get_store(request: Request) -> FileStore:
     return request.app.state.file_store
 
 
-def _get_job_store(request: Request) -> JobStore:
-    return request.app.state.job_store
+def _get_execution_store(request: Request) -> ExecutionStore:
+    """读取当前应用持有的单文件执行存储。"""
+    return request.app.state.execution_store
 
 
 def _resolve_access_level(request: Request) -> AccessLevel:
@@ -829,115 +760,76 @@ def _validate_source_policy(source: _ExecutionSource, *, allow_http_source: bool
     raise ValueError("url source must use https unless --allow-http-source is enabled")
 
 
-def _validate_job_source_policy(
-    req: _ParseRequest,
-    *,
-    allow_http_source: bool,
-) -> None:
-    for index, entry in enumerate(req.files):
-        try:
-            _validate_source_policy(
-                entry.source,
-                allow_http_source=allow_http_source,
-            )
-        except ValueError as exc:
-            message = str(exc)
-            code = "unsupported_source" if "source" in message else "invalid_request"
-            _raise_api_error(
-                400,
-                error_type="invalid_request_error",
-                code=code,
-                message=message,
-                param=f"files.{index}.source",
-            )
-
-
-@dataclass(frozen=True)
-class _JobInputSpec:
-    """仅在服务内部传递 tasks 的逻辑文件名及可选完整性声明。"""
-
-    filename: str
-    bytes: int | None = None
-    sha256sum: str | None = None
-    result_file_id: str | None = None
-
-
-@dataclass(frozen=True)
-class _JobInputMetadata:
-    """记录完整下载且校验通过的实际输入信息，不扩展公开 Jobs 协议。"""
-
-    bytes: int
+def _validate_execution_source_policy(req: _ExecutionRequest, *, allow_http_source: bool) -> None:
+    """校验单个来源并保留 Tasks 对外错误参数的位置约定。"""
+    try:
+        _validate_source_policy(req.source, allow_http_source=allow_http_source)
+    except ValueError as exc:
+        message = str(exc)
+        code = "unsupported_source" if "source" in message else "invalid_request"
+        raise_api_error(400, error_type="invalid_request_error", code=code, message=message, param="files.0.source")
 
 
 @dataclass
-class _JobRecord:
+class _ExecutionRecord:
+    """保存一次单文件执行的状态和资源租约，批次进度只由父 Task 聚合。"""
+
     id: str
-    status: JobStatus = "pending"
+    request: _ExecutionRequest
+    status: TaskFileState = "pending"
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
-    tier: Tier = _DEFAULT_API_SERVER_TIER
-    progress: TaskProgress | None = None
-    files: list[_ExecutionFile] = None  # type: ignore[assignment]
+    page_range: str = ""
+    parse: FileParseInfo | None = None
+    error: ErrorDetail | None = None
     input_blobs: dict[str, str] = field(default_factory=dict)
-    input_specs: dict[int, _JobInputSpec] = field(default_factory=dict)
-    input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
-    prepared_sources: dict[int, _PreparedInput] = field(default_factory=dict)
+    input_metadata: TaskInputMetadata | None = None
+    prepared_input: _PreparedInput | None = None
     file_store: FileStore | None = None
     usage_counted: bool = False
-    task_result_file_id: str | None = None
-    task_output_formats: list[TaskOutputFormat] = field(default_factory=lambda: ["default"])
+    result_file_id: str | None = None
     retention_held: bool = False
     retention_epoch: float | None = None
 
-    def __post_init__(self) -> None:
-        if self.files is None:
-            self.files = []
-        if self.progress is None:
-            self.progress = TaskProgress()
+
+def _discard_unfinished_output(rec: _ExecutionRecord) -> None:
+    """失败或取消时撤销预留结果，阻止尚在排空的后台线程发布迟到产物。"""
+    if rec.file_store is not None and rec.status != "completed":
+        rec.file_store.discard_file_id(rec.request.file_id)
 
 
-def _discard_unfinished_outputs(rec: _JobRecord) -> None:
-    """执行取消或失败时立即撤销未完成产物，防止后台线程晚于终态发布文件。"""
-    if rec.file_store is None:
-        return
-    for index, spec in rec.input_specs.items():
-        if spec.result_file_id is not None and rec.files[index].status != "completed":
-            rec.file_store.discard_file_id(spec.result_file_id)
+class ExecutionStore:
+    """管理本地单文件执行、并发名额及结果保留期。"""
 
-
-class JobStore:
     def __init__(self, concurrency: int = 1, retention_seconds: int = 86400) -> None:
+        """初始化本应用执行状态、准备限流与解析信号量。"""
         self.retention_seconds = retention_seconds
         self._jobs_created = 0
         self._files_processed = 0
         self._pages_processed = 0
-        self._jobs: dict[str, _JobRecord] = {}
+        self._executions: dict[str, _ExecutionRecord] = {}
         self._concurrency = max(1, concurrency)
         self._semaphore = asyncio.Semaphore(self._concurrency)
         self._preparation_semaphore = asyncio.Semaphore(self._concurrency)
-        self._started_at = JobStore._now()
+        self._started_at = execution_timestamp()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._completion_events: dict[str, asyncio.Event] = {}
         self._closing = False
         self.runtime_owner = RuntimeOwner()
 
     def fail_engine(self, message: str) -> None:
-        """锁定失败状态并取消未结束任务，用户取消的任务保持原终态。"""
+        """标记本应用未结束执行的引擎错误，并沿原边界取消和排空任务。"""
         if self.runtime_owner.engine_error is None:
             self.runtime_owner.engine_error = message
         current = asyncio.current_task()
-        for job_id, task in tuple(self._tasks.items()):
-            rec = self._jobs[job_id]
+        for execution_id, task in tuple(self._tasks.items()):
+            rec = self._executions[execution_id]
             if task.done() or rec.status == "canceled":
                 continue
             rec.status = "failed"
-            for file in rec.files:
-                if file.status != "completed":
-                    file.status = "failed"
-                    file.error = ErrorDetail(type="engine_error", code="engine_dead", message=message)
-            rec.progress.failed = rec.progress.total - rec.progress.completed
-            _discard_unfinished_outputs(rec)
+            rec.error = ErrorDetail(type="engine_error", code="engine_dead", message=message)
+            _discard_unfinished_output(rec)
             if task is not current and not task.cancelling():
                 task.cancel()
 
@@ -946,11 +838,11 @@ class JobStore:
         message = self.runtime_owner.engine_error
         if message is not None:
             self.fail_engine(message)
-            _raise_api_error(503, error_type="engine_error", code="engine_dead", message=message)
+            raise_api_error(503, error_type="engine_error", code="engine_dead", message=message)
 
     def start_task(
         self,
-        rec: _JobRecord,
+        rec: _ExecutionRecord,
         operation: Callable[[], Awaitable[None]],
         *,
         prepare: Callable[[], Awaitable[None]] | None = None,
@@ -958,7 +850,7 @@ class JobStore:
         """保存真实后台任务及所属应用租约，排队取消也不会开始解析。"""
         self.require_ready()
         if self._closing:
-            _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
+            raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
         self._completion_events[rec.id] = asyncio.Event()
 
         async def run_owned() -> None:
@@ -985,7 +877,7 @@ class JobStore:
                     rec.status = "canceled"
                 raise
             finally:
-                rec.prepared_sources.clear()
+                rec.prepared_input = None
                 if acquired:
                     self._semaphore.release()
                 runtime_owner.reset(token)
@@ -993,7 +885,7 @@ class JobStore:
         def finished(task: asyncio.Task[None]) -> None:
             """回收句柄并读取异常，覆盖任务首次执行前就被取消的路径。"""
             self._tasks.pop(rec.id, None)
-            rec.finished_at = self._now()
+            rec.finished_at = execution_timestamp()
             if rec.file_store is not None:
                 if not rec.retention_held:
                     rec.file_store.finalize_outputs(rec.id, int(rec.retention_epoch or time.time()))
@@ -1004,7 +896,7 @@ class JobStore:
                     logger.error("Parse job task failed: %s", rec.id, exc_info=(type(error), error, error.__traceback__))
                     if rec.status != "canceled":
                         rec.status = "failed"
-            _discard_unfinished_outputs(rec)
+            _discard_unfinished_output(rec)
             self._record_usage(rec)
             self._completion_events[rec.id].set()
 
@@ -1012,7 +904,7 @@ class JobStore:
         self._tasks[rec.id] = task
         task.add_done_callback(finished)
 
-    async def wait_for_terminal(self, job_id: str, timeout: float) -> _JobRecord:
+    async def wait_for_terminal(self, job_id: str, timeout: float) -> _ExecutionRecord:
         """只等待完成通知，超时或等待方取消不会传播到后台解析任务。"""
         rec = self.get(job_id)
         event = self._completion_events.get(job_id)
@@ -1029,7 +921,7 @@ class JobStore:
         tasks = list(self._tasks.items())
         for job_id, task in tasks:
             if not task.done():
-                rec = self._jobs[job_id]
+                rec = self._executions[job_id]
                 if rec.status not in {"canceled", "failed"}:
                     rec.status = "canceled"
                 if not task.cancelling():
@@ -1037,57 +929,27 @@ class JobStore:
         try:
             await drain_future(asyncio.gather(*(task for _, task in tasks), return_exceptions=True))
         finally:
-            from ..model.vlm.runtime import ModelSingleton
+            from ..model.runtime.ownership import release_runtime_owner
 
-            await run_sync(ModelSingleton().release_owner, self.runtime_owner)
+            await run_sync(release_runtime_owner, self.runtime_owner)
 
-    @staticmethod
-    def _new_job_id() -> str:
-        return "job_" + secrets.token_hex(12)
-
-    @staticmethod
-    def _now() -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    def create(
-        self,
-        req: _ParseRequest,
-        file_store: FileStore,
-        *,
-        job_id: str | None = None,
-        input_specs: dict[int, _JobInputSpec] | None = None,
-    ) -> _JobRecord:
-        """创建唯一执行记录，允许 tasks 使用上传准备阶段预先分配的 ID。"""
+    def create(self, req: _ExecutionRequest, file_store: FileStore, *, execution_id: str | None = None) -> _ExecutionRecord:
+        """登记一个已确定档位的文件执行，持有源字节引用而不创建内部批次。"""
         if req.tier is None:
-            raise ValueError("_ParseRequest.tier must be resolved before job creation")
-        job_id = job_id or self._new_job_id()
-        if job_id in self._jobs:
-            _raise_api_error(409, error_type="invalid_request_error", code="job_already_exists", message="Job already exists")
-        now = self._now()
-        rec = _JobRecord(
-            id=job_id,
-            status="waiting-file" if any(isinstance(entry.source, _UrlSource) for entry in req.files) else "pending",
-            created_at=now,
-            tier=req.tier,
-            task_output_formats=req.output_formats,
-            input_specs=dict(input_specs or {}),
+            raise ValueError("_ExecutionRequest.tier must be resolved before execution creation")
+        execution_id = execution_id or new_execution_id()
+        if execution_id in self._executions:
+            raise_api_error(409, error_type="invalid_request_error", code="job_already_exists", message="Job already exists")
+        rec = _ExecutionRecord(
+            id=execution_id,
+            request=req,
+            status="waiting-file" if isinstance(req.source, _UrlSource) else "pending",
+            created_at=execution_timestamp(),
+            page_range=req.page_range or "",
+            file_store=file_store,
+            input_blobs=file_store.acquire_inputs([req.source.file_id] if isinstance(req.source, _StoredSource) else []),
         )
-        for index, entry in enumerate(req.files):
-            name = _source_name(entry.source, file_store, input_spec=rec.input_specs.get(index))
-            rec.files.append(
-                _ExecutionFile(
-                    file_id=entry.source.file_id if isinstance(entry.source, _StoredSource) else None,
-                    name=name,
-                    page_range=entry.page_range or "",
-                    status="waiting-file" if isinstance(entry.source, _UrlSource) else "pending",
-                )
-            )
-        rec.progress.total = len(rec.files)
-        rec.input_blobs = file_store.acquire_inputs(
-            [entry.source.file_id for entry in req.files if isinstance(entry.source, _StoredSource)]
-        )
-        rec.file_store = file_store
-        self._jobs[job_id] = rec
+        self._executions[execution_id] = rec
         self._jobs_created += 1
         return rec
 
@@ -1096,18 +958,18 @@ class JobStore:
         if not self.retention_seconds:
             return
         now = time.time()
-        for job_id, rec in tuple(self._jobs.items()):
+        for job_id, rec in tuple(self._executions.items()):
             if job_id in self._tasks or rec.finished_at is None or rec.retention_held:
                 continue
             finished = rec.retention_epoch or datetime.fromisoformat(rec.finished_at.replace("Z", "+00:00")).timestamp()
             if finished + self.retention_seconds <= now:
                 self._record_usage(rec)
-                self._jobs.pop(job_id)
+                self._executions.pop(job_id)
                 self._completion_events.pop(job_id, None)
 
     def release_task_result(self, job_id: str, finished: float) -> None:
         """父 Task 收尾后才开始子作业与产物的保留期，不更改真实完成时间。"""
-        rec = self._jobs.get(job_id)
+        rec = self._executions.get(job_id)
         if rec is None:
             return
         rec.retention_held = False
@@ -1115,11 +977,12 @@ class JobStore:
         if rec.file_store is not None:
             rec.file_store.finalize_outputs(job_id, int(finished))
 
-    def get(self, job_id: str) -> _JobRecord:
+    def get(self, job_id: str) -> _ExecutionRecord:
+        """读取仍在保留期内的执行，未知标识沿用已有错误合同。"""
         self.collect_expired()
-        rec = self._jobs.get(job_id)
+        rec = self._executions.get(job_id)
         if rec is None:
-            _raise_api_error(
+            raise_api_error(
                 404,
                 error_type="invalid_request_error",
                 code="job_not_found",
@@ -1127,56 +990,57 @@ class JobStore:
             )
         return rec
 
-    def cancel(self, job_id: str) -> _JobRecord:
+    def cancel(self, job_id: str) -> _ExecutionRecord:
+        """取消尚未完成的执行并撤销结果预留，不强制中断同步工作。"""
         rec = self.get(job_id)
-        if rec.status in ("completed", "partial", "failed", "canceled"):
-            _raise_api_error(
+        if rec.status in ("completed", "failed", "canceled"):
+            raise_api_error(
                 409,
                 error_type="invalid_request_error",
                 code="job_already_terminal",
                 message=f"Job is {rec.status}",
             )
         rec.status = "canceled"
-        _discard_unfinished_outputs(rec)
+        _discard_unfinished_output(rec)
         task = self._tasks.get(job_id)
         if task is not None and not task.done():
             task.cancel()
         return rec
 
-    def snapshot(self, rec: _JobRecord) -> dict[str, Any]:
-        """返回私有执行快照，不包含公开 Jobs 链接或产物协议。"""
-        return {
-            "job_id": rec.id,
-            "status": rec.status,
-            "created_at": rec.created_at,
-            "started_at": rec.started_at,
-            "finished_at": rec.finished_at,
-            "tier": rec.tier,
-            "progress": rec.progress.model_dump(),
-            "files": [item.model_dump() for item in rec.files],
-        }
+    def snapshot(self, rec: _ExecutionRecord) -> TaskExecution:
+        """返回独立的有类型快照，公开文件身份始终取预留结果 ID。"""
+        return TaskExecution(
+            execution_id=rec.id,
+            file_id=rec.request.file_id,
+            file_name=rec.request.file_name,
+            status=rec.status,
+            created_at=rec.created_at,
+            started_at=rec.started_at,
+            finished_at=rec.finished_at,
+            page_range=rec.page_range,
+            parse=rec.parse.model_copy(deep=True) if rec.parse is not None else None,
+            result_file_id=rec.result_file_id,
+            error=rec.error.model_copy(deep=True) if rec.error is not None else None,
+            input_metadata=rec.input_metadata,
+        )
 
-    def _record_usage(self, rec: _JobRecord) -> None:
-        """完成计数只累计一次，元数据过期后服务总用量不倒退。"""
+    def _record_usage(self, rec: _ExecutionRecord) -> None:
+        """每个执行只计入一次成功文件和实际页面，用量不随记录到期倒退。"""
         if not rec.usage_counted:
-            self._files_processed += sum(file.status == "completed" for file in rec.files)
-            self._pages_processed += sum(
-                _count_pages_in_range(file.page_range) for file in rec.files if file.status == "completed"
-            )
+            if rec.status == "completed":
+                self._files_processed += 1
+                self._pages_processed += _count_pages_in_range(rec.page_range)
             rec.usage_counted = True
 
     def usage(self, access_level: AccessLevel) -> UsageResponse:
-        pending = [rec for rec in self._jobs.values() if not rec.usage_counted]
-        files_processed = self._files_processed + sum(1 for rec in pending for file in rec.files if file.status == "completed")
-        processed_page_count = self._pages_processed + sum(
-            _count_pages_in_range(file.page_range) for rec in pending for file in rec.files if file.status == "completed"
-        )
+        """保留公开 jobs_created 与并发上限字段，按真实单文件执行累计用量。"""
+        pending = [rec for rec in self._executions.values() if not rec.usage_counted and rec.status == "completed"]
         return UsageResponse(
             access_level=access_level,
             billing_period=UsageBillingPeriod(start=self._started_at),
             current=UsageCurrent(
-                pages_processed=processed_page_count,
-                files_processed=files_processed,
+                pages_processed=self._pages_processed + sum(_count_pages_in_range(rec.page_range) for rec in pending),
+                files_processed=self._files_processed + len(pending),
                 jobs_created=self._jobs_created,
             ),
             limits=UsageLimits(
@@ -1186,48 +1050,23 @@ class JobStore:
         )
 
     def install(self, app_state: State) -> None:
-        app_state.job_store = self
+        """把执行存储显式安装到当前应用实例。"""
+        app_state.execution_store = self
 
 
 # ── source helpers ───────────────────────────────────────────────────
 
 
-def _source_name(
-    source: _ExecutionSource, file_store: FileStore | None = None, *, input_spec: _JobInputSpec | None = None
-) -> str:
-    """使用 Tasks 的逻辑文件名识别类型，源存储不改变业务文件名。"""
-    if input_spec is not None:
-        return input_spec.filename
-    if isinstance(source, _StoredSource) and file_store is not None:
-        try:
-            return file_store.get_file(source.file_id).filename
-        except Exception:
-            pass
-        return source.file_id
-    if isinstance(source, _UrlSource):
-        return source.url.rsplit("/", 1)[-1].split("?")[0] or "unknown"
-    return "unknown"
-
-
-def _job_can_default_to_flash(
-    req: _ParseRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
-) -> bool:
-    """判断整批输入是否已知为 Flash-only，或需下载后识别类型的无扩展名 URL。"""
-    return all(
-        is_flash_only_parse_extension(name) or (isinstance(entry.source, _UrlSource) and not pathlib.Path(name).suffix)
-        for index, entry in enumerate(req.files)
-        for name in [_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index))]
+def _execution_can_default_to_flash(req: _ExecutionRequest) -> bool:
+    """原生格式或等待下载后识别类型的无扩展名 URL 可使用 Flash 回退。"""
+    return is_flash_only_parse_extension(req.file_name) or (
+        isinstance(req.source, _UrlSource) and not pathlib.Path(req.file_name).suffix
     )
 
 
-def _job_has_any_flash_only_inputs(
-    req: _ParseRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
-) -> bool:
-    """使用与执行一致的逻辑文件名检查批次中是否包含 Flash-only 格式。"""
-    return any(
-        is_flash_only_parse_extension(_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index)))
-        for index, entry in enumerate(req.files)
-    )
+def _execution_requires_flash(req: _ExecutionRequest) -> bool:
+    """按清单声明的逻辑文件名判断单文件是否必须使用原生解析。"""
+    return is_flash_only_parse_extension(req.file_name)
 
 
 def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
@@ -1258,64 +1097,54 @@ class _PreparedInput:
     duration_seconds: float
 
 
-def _validate_url_input(rec: _JobRecord, index: int, extracted: _ExtractedSource) -> None:
-    """下载完成后验证大小和 hash，只有有效输入才能进入解析队列。"""
+def _validate_url_input(rec: _ExecutionRecord, extracted: _ExtractedSource) -> None:
+    """下载完成后核对声明大小与哈希，实际输入元数据直接归属于本次执行。"""
     data = extracted.data
     if not data:
         raise MineruError("invalid_request", "Empty files are not supported")
-    spec = rec.input_specs.get(index)
-    if spec is not None:
-        if spec.bytes is not None and len(data) != spec.bytes:
-            raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
-        if spec.sha256sum is not None and hashlib.sha256(data).hexdigest() != spec.sha256sum:
-            raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
-    rec.input_metadata[index] = _JobInputMetadata(bytes=len(data))
+    if rec.request.bytes is not None and len(data) != rec.request.bytes:
+        raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
+    if rec.request.sha256sum is not None and hashlib.sha256(data).hexdigest() != rec.request.sha256sum:
+        raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
+    rec.input_metadata = TaskInputMetadata(bytes=len(data))
 
 
-async def _prepare_job_inputs(
-    rec: _JobRecord,
-    req: _ParseRequest,
+async def _prepare_execution_input(
+    rec: _ExecutionRecord,
     file_store: FileStore,
     *,
     url_timeout: int,
     allow_http_source: bool,
     max_url_bytes: int,
 ) -> None:
-    """在独立受控阶段下载 URL，保留 HTML 来源信息并逐文件收敛准备失败。"""
-    if rec.status in {"canceled", "failed"}:
+    """在准备限流内下载一个 URL，保留来源及耗时，完成后再等待解析名额。"""
+    if rec.status in {"canceled", "failed"} or not isinstance(rec.request.source, _UrlSource):
         return
     rec.status = "waiting-file"
-    rec.started_at = rec.started_at or JobStore._now()
-    for index, entry in enumerate(req.files):
+    rec.started_at = rec.started_at or execution_timestamp()
+    started = time.monotonic()
+    try:
+        extracted = await _extract_bytes(
+            rec.request.source,
+            file_store,
+            url_timeout=url_timeout,
+            allow_http_source=allow_http_source,
+            max_url_bytes=max_url_bytes,
+        )
+        _validate_url_input(rec, extracted)
+        rec.prepared_input = _PreparedInput(extracted, time.monotonic() - started)
+        if rec.status not in {"canceled", "failed"}:
+            rec.status = "pending"
+    except Exception as exc:
+        logger.exception("Parse-server input preparation failed: job_id=%s file=%r", rec.id, rec.request.file_name)
         if rec.status in {"canceled", "failed"}:
             return
-        if not isinstance(entry.source, _UrlSource):
-            continue
-        file = rec.files[index]
-        file.status = "waiting-file"
-        started = time.monotonic()
-        try:
-            extracted = await _extract_bytes(
-                entry.source,
-                file_store,
-                url_timeout=url_timeout,
-                allow_http_source=allow_http_source,
-                max_url_bytes=max_url_bytes,
-            )
-            _validate_url_input(rec, index, extracted)
-            rec.prepared_sources[index] = _PreparedInput(extracted, time.monotonic() - started)
-            file.status = "pending"
-        except Exception as exc:
-            logger.exception("Parse-server input preparation failed: job_id=%s file=%r", rec.id, file.name)
-            file.status = "failed"
-            file.error = (
-                ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
-                if isinstance(exc, MineruError)
-                else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
-            )
-            rec.progress.failed += 1
-    if rec.status not in {"canceled", "failed"}:
-        rec.status = "failed" if rec.progress.failed == rec.progress.total else "pending"
+        rec.status = "failed"
+        rec.error = (
+            ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+            if isinstance(exc, MineruError)
+            else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+        )
 
 
 async def _extract_bytes(
@@ -1368,9 +1197,8 @@ def _suffix_type(filename: str) -> str:
     return "" if file_type == "unknown" else file_type
 
 
-async def _run_job(
-    rec: _JobRecord,
-    req: _ParseRequest,
+async def _run_execution(
+    rec: _ExecutionRecord,
     file_store: FileStore,
     *,
     image_analysis: bool,
@@ -1379,142 +1207,117 @@ async def _run_job(
     max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     flash_enabled: bool = True,
     vlm_config: VlmConfig | None = None,
-    job_store: JobStore | None = None,
+    execution_store: ExecutionStore | None = None,
 ) -> None:
-    """执行解析任务，使用所属服务的 VLM 配置并记录每个文件的成功或失败。"""
-    if rec.status == "canceled":
+    """执行唯一输入并发布同一公开文件身份的产物，取消时排空已有同步阶段。"""
+    if rec.status in {"canceled", "failed"}:
         return
     rec.status = "running"
-    rec.started_at = rec.started_at or JobStore._now()
+    rec.started_at = rec.started_at or execution_timestamp()
+    req = rec.request
+    prepared = rec.prepared_input
+    rec.prepared_input = None
 
     with tempfile.TemporaryDirectory(prefix="mineru_job_") as tmpdir:
-        for i, entry in enumerate(req.files):
+        try:
+            file_started = time.monotonic() - (prepared.duration_seconds if prepared is not None else 0)
+            extracted = (
+                prepared.source
+                if prepared is not None
+                else await _extract_bytes(
+                    req.source,
+                    file_store,
+                    url_timeout=url_timeout,
+                    allow_http_source=allow_http_source,
+                    max_url_bytes=max_url_bytes,
+                    input_blobs=rec.input_blobs,
+                )
+            )
+            data = extracted.data
+            if prepared is None and isinstance(req.source, _UrlSource):
+                _validate_url_input(rec, extracted)
+            suffix = pathlib.Path(req.file_name).suffix
+            stype = _suffix_type(req.file_name)
+            if not stype and not suffix and isinstance(req.source, _UrlSource) and extracted.media_type == "text/html":
+                stype = "html"
+                suffix = ".html"
+            if not stype:
+                raise ValueError(f"Unsupported file type: {req.file_name}")
+            if not flash_enabled and is_flash_only_parse_extension(stype):
+                raise ValueError("Flash parsing is disabled in this server, but this input requires the Flash backend")
+
+            suffix = suffix or ".pdf"
+            tmp_path = pathlib.Path(tmpdir) / f"input_0{suffix}"
+            tmp_path.write_bytes(data)
+            effective_tier = batch_effective_parse_tier(req.tier, suffix)
+            source_context = None
+            if stype == "html":
+                from docvortex.document.contracts import HtmlSourceContext
+
+                source_context = HtmlSourceContext(
+                    source_uri=extracted.source_uri,
+                    local_resource_root=extracted.local_resource_root,
+                    transport_encoding=extracted.transport_encoding,
+                )
+            result = await parse_async(
+                str(tmp_path),
+                tier=effective_tier,
+                ocr_mode=req.ocr_mode,
+                image_analysis=image_analysis,
+                page_range=req.page_range or "",
+                source_context=source_context,
+                vlm_config=vlm_config,
+            )
             if rec.status in {"canceled", "failed"}:
-                break
-            fr = rec.files[i]
-            if fr.status in {"failed", "canceled"}:
-                continue
-            prepared = rec.prepared_sources.pop(i, None)
+                return
+            actual_metadata = MinerUMetadata.model_validate(result.middle_json.extensions.get("mineru"))
+            from .task_outputs import build_task_output
+
             try:
-                file_started = time.monotonic() - (prepared.duration_seconds if prepared is not None else 0)
-                fr.status = "running"
-                extracted = (
-                    prepared.source
-                    if prepared is not None
-                    else await _extract_bytes(
-                        entry.source,
-                        file_store,
-                        url_timeout=url_timeout,
-                        allow_http_source=allow_http_source,
-                        max_url_bytes=max_url_bytes,
-                        input_blobs=rec.input_blobs,
-                    )
-                )
-                data = extracted.data
-                if prepared is None and isinstance(entry.source, _UrlSource):
-                    _validate_url_input(rec, i, extracted)
-                suffix = pathlib.Path(fr.name).suffix
-                stype = _suffix_type(fr.name)
-                if not stype and not suffix and isinstance(entry.source, _UrlSource) and extracted.media_type == "text/html":
-                    stype = "html"
-                    suffix = ".html"
-                if not stype:
-                    raise ValueError(f"Unsupported file type: {fr.name}")
-                if not flash_enabled and is_flash_only_parse_extension(stype):
-                    raise ValueError("Flash parsing is disabled in this server, but this input requires the Flash backend")
-
-                # write to temp file for parsers that require a path
-                suffix = suffix or ".pdf"
-                tmp_path = pathlib.Path(tmpdir) / f"input_{i}{suffix}"
-                tmp_path.write_bytes(data)
-
-                page_range = entry.page_range or ""
-                effective_tier = batch_effective_parse_tier(rec.tier, suffix)
-
-                source_context = None
-                if stype == "html":
-                    from docvortex.document.contracts import HtmlSourceContext
-
-                    source_context = HtmlSourceContext(
-                        source_uri=extracted.source_uri,
-                        local_resource_root=extracted.local_resource_root,
-                        transport_encoding=extracted.transport_encoding,
-                    )
-                result = await parse_async(
-                    str(tmp_path),
-                    tier=effective_tier,
-                    ocr_mode=req.ocr_mode,
-                    image_analysis=image_analysis,
-                    page_range=page_range,
-                    source_context=source_context,
-                    vlm_config=vlm_config,
-                )
-
+                artifact = await run_sync(build_task_output, result, req.output_formats, pathlib.Path(tmpdir) / "outputs_0")
                 if rec.status in {"canceled", "failed"}:
-                    break
-                actual_metadata = MinerUMetadata.model_validate(result.middle_json.extensions.get("mineru"))
-                from .task_outputs import build_task_output
-
-                try:
-                    artifact = await run_sync(
-                        build_task_output,
-                        result,
-                        rec.task_output_formats,
-                        pathlib.Path(tmpdir) / f"outputs_{i}",
-                    )
-                    if rec.status in {"canceled", "failed"}:
-                        break
-                    rec.task_result_file_id = await run_sync(
-                        file_store.create_file_for_output_path,
-                        pathlib.Path(fr.name).stem + artifact.suffix,
-                        artifact,
-                        job_id=rec.id,
-                        file_id=rec.input_specs[i].result_file_id if i in rec.input_specs else None,
-                    )
-                    if rec.status in {"canceled", "failed"}:
-                        file_store.discard_file_id(rec.task_result_file_id)
-                        break
-                except Exception as exc:
-                    raise MineruError("result_packaging_failed", str(exc)) from exc
-
-                fr.status = "completed"
-                fr.page_range = _page_range_from_result_pages(result.pages)
-
-                fr.parse = FileParseInfo(
-                    tier=actual_metadata.tier,
-                    duration_ms=int((time.monotonic() - file_started) * 1000),
-                    parser_version=__version__,
+                    return
+                rec.result_file_id = await run_sync(
+                    file_store.create_file_for_output_path,
+                    pathlib.Path(req.file_name).stem + artifact.suffix,
+                    artifact,
+                    job_id=rec.id,
+                    file_id=req.file_id,
                 )
-                rec.progress.completed += 1
-
+                if rec.status in {"canceled", "failed"}:
+                    file_store.discard_file_id(rec.result_file_id)
+                    return
             except Exception as exc:
-                if job_store is not None and is_fatal_engine_error(exc):
-                    job_store.fail_engine(str(exc))
-                    raise
-                if rec.status in {"canceled", "failed"}:
-                    break
-                logger.exception(
-                    "Parse-server job file failed: job_id=%s file=%r tier=%s page_range=%r",
-                    rec.id,
-                    fr.name,
-                    rec.tier,
-                    fr.page_range,
-                )
-                fr.status = "failed"
-                if isinstance(exc, MineruError):
-                    fr.error = ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
-                else:
-                    fr.error = ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
-                rec.progress.failed += 1
+                raise MineruError("result_packaging_failed", str(exc)) from exc
 
-    if rec.status not in {"canceled", "failed"}:
-        if rec.progress.failed == rec.progress.total:
-            rec.status = "failed"
-        elif rec.progress.failed > 0:
-            rec.status = "partial"
-        else:
+            rec.page_range = _page_range_from_result_pages(result.pages)
+            rec.parse = FileParseInfo(
+                tier=actual_metadata.tier,
+                duration_ms=int((time.monotonic() - file_started) * 1000),
+                parser_version=__version__,
+            )
             rec.status = "completed"
-    rec.finished_at = JobStore._now()
+        except Exception as exc:
+            if execution_store is not None and is_fatal_engine_error(exc):
+                execution_store.fail_engine(str(exc))
+                raise
+            if rec.status in {"canceled", "failed"}:
+                return
+            logger.exception(
+                "Parse-server job file failed: job_id=%s file=%r tier=%s page_range=%r",
+                rec.id,
+                req.file_name,
+                req.tier,
+                rec.page_range,
+            )
+            rec.status = "failed"
+            rec.error = (
+                ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+                if isinstance(exc, MineruError)
+                else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+            )
+        finally:
+            rec.finished_at = execution_timestamp()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1564,11 +1367,11 @@ _ERR_503: _ErrorResponseMap = {503: {"model": ErrorResponse}}
 
 
 def _require_model_preload_ready(request: Request) -> None:
-    request.app.state.job_store.require_ready()
+    request.app.state.execution_store.require_ready()
     preload_error: _ModelPreloadError | None = request.app.state.model_preload_error
     if preload_error is None:
         return
-    _raise_api_error(
+    raise_api_error(
         503,
         error_type="engine_error",
         code=preload_error.code,
@@ -1627,7 +1430,7 @@ async def get_model(
     _require_model_preload_ready(request)
     model_ids: list[str] = request.app.state.model_ids
     if model not in model_ids:
-        _raise_api_error(
+        raise_api_error(
             404,
             error_type="invalid_request_error",
             code="model_not_found",
@@ -1727,26 +1530,23 @@ async def get_file_content(
 
 
 async def submit_execution(
-    body: _ParseRequest,
+    body: _ExecutionRequest,
     request: Request,
     file_store: FileStore,
-    job_store: JobStore,
+    execution_store: ExecutionStore,
     *,
-    job_id: str | None = None,
-    input_specs: dict[int, _JobInputSpec] | None = None,
-) -> _JobRecord:
-    """校验并提交 Tasks 的私有执行单元，复用唯一并发和生命周期管理。"""
-    for index, entry in enumerate(body.files):
-        try:
-            entry.page_range = normalize_page_range_input(entry.page_range) or None
-        except MineruError as exc:
-            _raise_api_error(400, error_type=exc.type, code=exc.code, message=str(exc), param=f"files.{index}.page_range")
+    execution_id: str | None = None,
+) -> _ExecutionRecord:
+    """校验单文件执行请求并接入唯一并发队列，不再创建内部批次或按序号映射。"""
+    try:
+        body.page_range = normalize_page_range_input(body.page_range) or None
+    except MineruError as exc:
+        raise_api_error(400, error_type=exc.type, code=exc.code, message=str(exc), param="files.0.page_range")
     _require_model_preload_ready(request)
-    # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
     default_tier: Tier | None = request.app.state.default_tier
-    can_default_to_flash = _job_can_default_to_flash(body, file_store, input_specs)
-    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store, input_specs):
-        _raise_api_error(
+    can_default_to_flash = _execution_can_default_to_flash(body)
+    if not request.app.state.flash_enabled and _execution_requires_flash(body):
+        raise_api_error(
             400,
             error_type="invalid_request_error",
             code="invalid_request",
@@ -1757,7 +1557,7 @@ async def submit_execution(
         if can_default_to_flash:
             body.tier = "flash"
         else:
-            _raise_api_error(
+            raise_api_error(
                 503,
                 error_type="engine_error",
                 code="quality_tier_unavailable",
@@ -1773,21 +1573,16 @@ async def submit_execution(
     if runtime is None and can_default_to_flash:
         runtime = runtime_options.get("flash") or runtime_options_for_tier("flash")
     if runtime is None:
-        _raise_api_error(
+        raise_api_error(
             400,
             error_type="invalid_request_error",
             code="invalid_request",
             message=f"Tier '{body.tier}' not available in this server",
         )
-
-    _validate_job_source_policy(
-        body,
-        allow_http_source=request.app.state.allow_http_source,
-    )
-
-    if job_store._closing:
-        _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
-    rec = job_store.create(body, file_store, job_id=job_id, input_specs=input_specs)
+    _validate_execution_source_policy(body, allow_http_source=request.app.state.allow_http_source)
+    if execution_store._closing:
+        raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
+    rec = execution_store.create(body, file_store, execution_id=execution_id)
     rec.retention_held = True
     url_timeout_val: int = request.app.state.url_timeout
     allow_http_source_val: bool = request.app.state.allow_http_source
@@ -1797,10 +1592,9 @@ async def submit_execution(
     vlm_config_val: VlmConfig = request.app.state.vlm_config
 
     async def _bg_run() -> None:
-        """运行任务内容，排队和租约由 JobStore 统一管理。"""
-        await _run_job(
+        """运行单文件内容，排队、资源租约和取消排空仍由执行存储管理。"""
+        await _run_execution(
             rec,
-            body,
             file_store,
             image_analysis=image_analysis_val,
             url_timeout=url_timeout_val,
@@ -1808,14 +1602,13 @@ async def submit_execution(
             max_url_bytes=max_url_bytes_val,
             flash_enabled=flash_enabled_val,
             vlm_config=vlm_config_val,
-            job_store=job_store,
+            execution_store=execution_store,
         )
 
     async def _bg_prepare() -> None:
-        """复用本次来源配置准备 URL 输入，只有准备成功的文件进入解析队列。"""
-        await _prepare_job_inputs(
+        """沿用来源配置准备 URL 输入，完整下载并校验后才进入解析队列。"""
+        await _prepare_execution_input(
             rec,
-            body,
             file_store,
             url_timeout=url_timeout_val,
             allow_http_source=allow_http_source_val,
@@ -1823,13 +1616,11 @@ async def submit_execution(
         )
 
     try:
-        job_store.start_task(
-            rec, _bg_run, prepare=_bg_prepare if any(isinstance(entry.source, _UrlSource) for entry in body.files) else None
-        )
+        execution_store.start_task(rec, _bg_run, prepare=_bg_prepare if isinstance(body.source, _UrlSource) else None)
     except BaseException:
         file_store.release_inputs(rec.input_blobs)
-        job_store._jobs.pop(rec.id, None)
-        job_store._jobs_created -= 1
+        execution_store._executions.pop(rec.id, None)
+        execution_store._jobs_created -= 1
         raise
     return rec
 
@@ -1845,11 +1636,11 @@ async def submit_execution(
 )
 async def get_usage(
     request: Request,
-    job_store: JobStore = Depends(_get_job_store),
+    execution_store: ExecutionStore = Depends(_get_execution_store),
     access_level: AccessLevel = Depends(_resolve_access_level),
 ) -> UsageResponse:
     """Query current usage and limits."""
-    return job_store.usage(access_level)
+    return execution_store.usage(access_level)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1934,7 +1725,7 @@ def _preflight_tier_dependencies(tier: ServerTier, vlm_config: VlmConfig | None 
     """远程 VLM 仅预检本地 Hybrid 依赖，避免要求安装本地 VLM serving 引擎。"""
     if tier == "flash":
         return
-    settings = vlm_config if vlm_config is not None else mineru_config.model.vlm
+    settings = vlm_config if vlm_config is not None else get_config().model.vlm
     if tier == "standard":
         settings.validate_environment()
     try:
@@ -2084,7 +1875,7 @@ def create_app(
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     default_tier = select_default_quality_tier(tier_runtime_options)
     effort = effort_for_tier(tier)
-    vlm_config = (vlm_config if vlm_config is not None else mineru_config.model.vlm).model_copy(deep=True)
+    vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
     _preflight_tier_dependencies(tier, vlm_config)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
@@ -2118,7 +1909,7 @@ def create_app(
         application.state.preload_models = preload_models
         application.state.vlm_config = vlm_config
         application.state.model_preload_error = None
-        job_store: JobStore = application.state.job_store
+        execution_store: ExecutionStore = application.state.execution_store
         file_store: FileStore = application.state.file_store
         file_store.claim_directory()
         application.state.task_store.start()
@@ -2128,12 +1919,12 @@ def create_app(
             """每五分钟扫描，先清理终态元数据，再释放无引用文件。"""
             while True:
                 await asyncio.sleep(RETENTION_SCAN_INTERVAL_SECONDS)
-                job_store.collect_expired()
+                execution_store.collect_expired()
                 await run_sync(file_store.collect_expired)
 
         if retention_seconds:
             collection_task = asyncio.create_task(collect_loop(), name="mineru-api-retention")
-        token = runtime_owner.set(job_store.runtime_owner)
+        token = runtime_owner.set(execution_store.runtime_owner)
         try:
             file_store.collect_expired()
             if _preload_tier is not None:
@@ -2147,7 +1938,7 @@ def create_app(
                 except Exception as exc:
                     error_code, error_msg = _classify_model_preload_error(exc)
                     if error_code == "engine_dead":
-                        job_store.fail_engine(error_msg)
+                        execution_store.fail_engine(error_msg)
                     application.state.model_preload_error = _ModelPreloadError(
                         code=error_code,
                         message=error_msg,
@@ -2167,7 +1958,7 @@ def create_app(
                 await asyncio.gather(collection_task, return_exceptions=True)
             try:
                 await application.state.task_store.shutdown()
-                await job_store.shutdown()
+                await execution_store.shutdown()
             finally:
                 file_store.release_directory()
                 if not upload_dir and _upload_dir.exists():
@@ -2248,7 +2039,7 @@ def create_app(
     application.state.vlm_config = vlm_config
     application.state.model_preload_error = None
     FileStore(_upload_dir, retention_seconds=retention_seconds).install(application.state)
-    JobStore(concurrency=concurrency, retention_seconds=retention_seconds).install(application.state)
+    ExecutionStore(concurrency=concurrency, retention_seconds=retention_seconds).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @application.exception_handler(ApiServerError)
@@ -2310,7 +2101,7 @@ def create_app(
 
     application.middleware("http")(_auth_middleware)
     application.include_router(_build_v1_router())
-    from .task_api import ApiTaskBackend, TaskStore, build_task_router
+    from .task_backend import ApiTaskBackend
 
     application.state.task_store = TaskStore(retention_seconds)
     application.include_router(build_task_router(ApiTaskBackend))
@@ -2480,7 +2271,7 @@ def main(
         }
         vlm_settings = VlmConfig.model_validate(
             {
-                **mineru_config.model.vlm.model_dump(),
+                **get_config().model.vlm.model_dump(),
                 **{key: value for key, value in vlm_overrides.items() if value is not None},
             }
         )

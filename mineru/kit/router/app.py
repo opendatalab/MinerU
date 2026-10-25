@@ -15,21 +15,23 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from ...parser.api_server import ApiServerError
-from ...parser.task_api import TaskStore, build_task_router
+from ...tasks.errors import ApiServerError
+from ...tasks.execution import TaskExecution
+from ...tasks.http import build_task_router
+from ...tasks.service import TaskStore
 from ...types import TIERS
 from ...version import __version__
 from .proxy import (
     RouterProxyError,
     json_or_error,
     passthrough_response,
-    release_job_load,
     request_upstream,
     rewrite_file_payload,
     router_error_response,
     stream_upstream,
 )
 from .resources import (
+    ExecutionRoute,
     ResourceKind,
     ResourceRegistry,
     ResourceRoute,
@@ -119,20 +121,16 @@ def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPoo
 
 
 async def _finalize_terminal_job(
-    route: ResourceRoute,
-    payload: dict[str, Any],
-    *,
-    request: Request | None,
-    pool: WorkerPool,
-    registry: ResourceRegistry,
-    headers: dict[str, str] | None = None,
+    route: ExecutionRoute,
+    execution: TaskExecution,
 ) -> None:
     """终态释放一次执行预占，结果映射和租约由 Tasks 专用路径管理。"""
-    if payload.get("status") in {"completed", "partial", "failed", "canceled"}:
-        release_job_load(route, pool)
-        if not route.metadata.get("task_result_held"):
-            route.metadata.pop("upstream_headers", None)
-        route.metadata.setdefault("finalized_at", utc_now_iso())
+    if execution.status in {"completed", "failed", "canceled"}:
+        route.state.release_reservation()
+        if not route.lease.held:
+            route.state.upstream_headers.clear()
+        if route.finalized_at is None:
+            route.finalized_at = utc_now_iso()
 
 
 async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> None:
@@ -140,16 +138,16 @@ async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> 
     from .tasks import read_task_execution
 
     for route in registry.list("job", include_expired=True):
-        if not route.metadata.get("active_counted"):
+        if route.state.reservation is None:
             continue
         try:
             execution = await read_task_execution(
                 route,
                 pool,
                 registry,
-                headers=dict(route.metadata.get("upstream_headers") or {}),
+                headers=dict(route.state.upstream_headers),
             )
-            await _finalize_terminal_job(route, execution.job, request=None, pool=pool, registry=registry)
+            await _finalize_terminal_job(route, execution)
         except (RouterProxyError, ApiServerError):
             continue
 
@@ -181,11 +179,11 @@ def create_app(
         for route in registry.list("job"):
             if route.worker_id != worker.worker_id:
                 continue
-            payload = route.metadata.get("payload")
+            payload = route.payload
             if not isinstance(payload, dict) or payload.get("status") in {"completed", "partial", "failed", "canceled"}:
                 continue
-            release_job_load(route, pool)
-            route.metadata["upstream_lost"] = True
+            route.state.release_reservation()
+            route.state.upstream_lost = True
             payload["status"] = "failed"
             payload["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             for file in payload.get("files") or []:
@@ -384,9 +382,9 @@ def create_app(
 
     from .tasks import RouterTaskBackend, install_task_error_handlers
 
-    async def finalize_task_job(route: ResourceRoute, payload: dict[str, Any], request: Request | None) -> None:
+    async def finalize_task_job(route: ExecutionRoute, execution: TaskExecution, request: Request | None) -> None:
         """新任务沿用既有产物元数据补齐及负载释放边界。"""
-        await _finalize_terminal_job(route, payload, request=request, pool=pool, registry=registry)
+        await _finalize_terminal_job(route, execution)
 
     def task_backend(request: Request) -> RouterTaskBackend:
         """显式组装 Router 适配器，便捷入口不通过 HTTP 请求自身。"""

@@ -587,15 +587,6 @@ class WorkerPool:
         worker.active_jobs += 1
         return JobReservation(worker, worker.generation)
 
-    def mark_job_started(self, worker_id: str) -> None:
-        """增加指定 worker 的活动任务计数。"""
-        self.get(worker_id).active_jobs += 1
-
-    def mark_job_finished(self, worker_id: str) -> None:
-        """安全减少指定 worker 的活动任务计数。"""
-        worker = self.get(worker_id)
-        worker.active_jobs = max(0, worker.active_jobs - 1)
-
 
 __all__ = [
     "JobReservation",

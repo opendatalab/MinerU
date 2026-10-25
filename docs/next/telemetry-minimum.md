@@ -73,16 +73,19 @@ startup 初始化顺序:
 DatabaseManager.initialize()
   -> TelemetryStore(db)
   -> TelemetryService(store, context collector)
-  -> ParseService(..., telemetry_svc=state.telemetry_svc)
+  -> IngestService(..., telemetry_svc=state.telemetry_svc)
+  -> ParseQueueService(..., ingest_svc=state.ingest_svc, telemetry_svc=state.telemetry_svc)
+  -> ParseExecutionService(..., telemetry_svc=state.telemetry_svc)
   -> ScanService(..., telemetry_svc=state.telemetry_svc)
-  -> SearchService(..., telemetry_svc=state.telemetry_svc)
+  -> SearchService(db, fts)
   -> background workers
   -> TelemetryFlushWorker(...)
 ```
 
 传递规则:
 
-- `ParseService`、`ScanService`、`SearchService` 构造函数显式接收 `telemetry_svc`。
+- `IngestService`、`ParseQueueService`、`ParseExecutionService`、`ScanService` 构造函数显式接收 `telemetry_svc`。
+- 文件入库及初始解析任务创建指标由 `IngestService` 记录；扫描、watch 和入库工作池共享应用的同一入库服务。
 - `DoclibServer` route 通过 `self.state.telemetry_svc` 记录 route-level metric。
 - background worker 不创建 telemetry service，只使用已注入到 service 的 telemetry。
 - telemetry service 所有 record 方法内部吞掉异常，最多记录 debug / warning log，不影响主流程。
@@ -1235,16 +1238,16 @@ parse_task.execute_duration_bucket.count {server=local(self-hosted)}
 
 采集点位:
 
-- `ParseService.request_parse` 新建 `parses` row 后记录 `parse_task.created.count {tier}`。
-- `ParseService.ingest_file` 自动创建初始 parse row 后记录 `parse_task.created.count {tier}`。
-- `ParseService.acquire_task` 成功返回 task 后记录 `parse_task.started.count {tier}`。
-- `ParseService.process_doc` 从开始执行到 task 成功或失败，记录 `parse_task.finished.count {status, tier, error_code}`。
+- `ParseQueueService.request_parse` 新建 `parses` row 后记录 `parse_task.created.count {tier}`。
+- `IngestService.ingest_file` 自动创建初始 parse row 后记录 `parse_task.created.count {tier}`。
+- `ParseQueueService.acquire_task` 成功返回 task 后记录 `parse_task.started.count {tier}`。
+- `ParseExecutionService.process_doc` 从开始执行到 task 成功或失败，记录 `parse_task.finished.count {status, tier, error_code}`。
 - `parse_task.finished.count {status=failed}` 的 `error_code` 来源优先级:
   1. 如果 execute 步骤失败，使用 execute 步骤的失败码。
   2. 否则如果 write 步骤失败，使用 write 步骤的失败码。
   3. 否则如果 worker fallback 或其它未归类异常导致 task failed，使用 `parse_failed`；若没有稳定失败码可用，再降级为 `internal_error`。
-- `ParseService.process_doc` 从开始执行到 task 成功或失败，记录 `parse_task.duration_bucket.count {status, tier}`。
-- `ParseService.process_doc` 能拿到 task 页数时记录 `parse_task.files.count` 和 `parse_task.pages.count`。
+- `ParseExecutionService.process_doc` 从开始执行到 task 成功或失败，记录 `parse_task.duration_bucket.count {status, tier}`。
+- `ParseExecutionService.process_doc` 能拿到 task 页数时记录 `parse_task.files.count` 和 `parse_task.pages.count`。
 - `_parse_via_local` / `_parse_via_api` 周围记录 `parse_task.execute.count {status, tier, server, error_code}`。
 - `_parse_via_local` / `_parse_via_api` 周围记录 `parse_task.execute_duration_bucket.count {status, tier, server}`。
 - JSON 写入、FTS 更新、docs metadata 更新作为一个 write 步骤，记录 `parse_task.write.count {status, tier, error_code}`。
@@ -1288,7 +1291,7 @@ status = succeeded | failed | skipped
 
 采集点位:
 
-- `ParseService.refresh_file`、`ensure_ingested`、`ingest_file` 增加 keyword-only `trigger` 参数，默认 `unknown`。
+- `IngestService.refresh_file`、`ensure_ingested`、`ingest_file` 增加 keyword-only `trigger` 参数，默认 `unknown`。
 - `POST /parses` 路径调用 ingest 时传 `trigger=parse`。
 - scan service 刷新文件时传 `trigger=scan`。
 - `get_doc_by_path`、`get_file_by_path` 等状态查询触发 ingest 时传 `trigger=show`。

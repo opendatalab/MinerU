@@ -23,7 +23,9 @@ MinerU OCR/VLM/Hybrid ─────────────────→ Mod
 
 PDF 只有 `auto` 模式调用共享 classify；显式 `txt` 不分类，显式 `ocr` 保留已有推理路线。原生分析只由 Flash 分支调用。DocVortex 不反向依赖 MinerU。
 
-DocVortex 内存对象和 JSON 使用中性 producer/extensions；MinerU 对外继续输出 schema 2.0，由兼容 codec 恢复产品元数据。所有持久化边界应使用 ParseResult 或明确的 MinerU codec，而不是直接写出 DocVortex 对象的原生封装。
+MinerU 直接消费 DocVortex 的共享 schema 2.0，`ParseResult` 持有 `MiddleJson`，产品档位和解析模式通过 `extensions["mineru"]` 保存并校验。旧协议适配仅保留在 Doclib 的历史缓存读取边界，不扩展到通用 SDK/API。
+
+启动配置类型可直接导入，不读取配置文件或校验运行环境。CLI 和默认调用路径通过 `get_config()` 在首次使用时装载并缓存进程默认配置；配置来源和文件路径查询共享同一份装载结果。需要独立配置时使用 `load_config()`，其返回值包含配置对象、来源和文件路径，且不替换进程默认配置。依赖 `MINERU_HOME` 的默认路径在构造配置对象时解析。Doclib 应用工厂复制传入的启动配置，日志默认级别也取自该应用配置。
 
 ## 1. 系统上下文
 
@@ -86,7 +88,10 @@ Routes
 
 | Service | 职责 |
 |---------|------|
-| `ParseService` | 接收解析请求、同步入库、查缓存、创建解析任务 |
+| `IngestService` | 文件刷新、去重入库、元数据和初始解析入队 |
+| `ParseQueueService` | 解析请求、缓存覆盖、队列抢占、状态查询和缓存失效 |
+| `ParseExecutionService` | 本地/API 执行、产物写出、元数据和索引更新 |
+| `ContentReadService` | 解析内容定位、读取计划、渐进 Markdown、图片读取与文件导出 |
 | `SearchService` | 文件名和内容搜索 |
 | `ConfigService` | KV 配置、watch 目录、parsing-rules、exclude 规则 |
 | `CleanupService` | 孤儿文档、删除文件和解析缓存清理 |
@@ -107,6 +112,69 @@ Routes
 | `TelemetryFlushLoop` | 1 | 按固定间隔批量上报 telemetry |
 
 所有后台组件都是 asyncio task，随 server 启停。
+启动阶段也处于生命周期清理保护内：中途失败会清理已经创建的组件和托管进程。
+退出时先取消并等待后台编排循环，防止在途健康探测于收尾阶段重启进程，再停止工作池和各组件，最后清理剩余托管资源、数据库与发现信息。
+单个停止错误不会跳过后续资源；退出取消会等待既有清理完成，启动或请求的原始异常优先保留。
+
+内容读取由 `DoclibServer` 委托给 `ContentReadService`。读取服务接收数据库、产物目录与公式配置快照，
+不持有 HTTP 请求、应用全局状态或解析调度器；接口层保留参数绑定、响应和遥测。
+每个 `AppState` 单独持有 `ParseServerHealth`，入库、队列、执行、HTTP 状态查询与健康检查显式共享该实例。
+缓存读取、导出和失效后的 FTS 重建使用宿主传入的公式定界符，不读取进程默认配置。
+只有应用/CLI 的默认入口、endpoint 解析和独立日志工具保留默认配置选择；宿主健康检查接收完整启动配置。
+`doclib/core/parse_artifacts.py` 统一维护批次路径、缓存读写、有效性检查、页选择和覆盖计算，
+供解析服务、内容读取及后台 compaction 共用。历史协议适配仅从
+`doclib/core/middle_json.py:read_cached_middle_json()` 进入。
+
+### Tasks 服务边界
+
+本地解析服务和 Router 共用 Tasks 协议与生命周期，通过显式执行协议接入各自部署：
+
+| 模块 | 职责 |
+|------|------|
+| `tasks/contracts.py` | 请求、响应和公共字段校验；不依赖 HTTP 框架或解析实现 |
+| `tasks/execution.py` | 上传信息、具名单文件执行快照与 `TaskBackend` 协议 |
+| `tasks/service.py` | 上传校验、逐文件状态、任务聚合、取消与保留期 |
+| `tasks/http.py` | HTTP 输入、错误映射、响应序列化和路由 |
+| `parser/task_backend.py` | 将 Tasks 接入本地 `FileStore`、`ExecutionStore` 和解析执行 |
+| `kit/router/tasks.py` | 将 Tasks 接入 worker 选择、上游请求和资源租约 |
+
+共享 Tasks 模块不导入本地 API server。Router 使用共同协议和执行接口，不依赖本地
+`ApiTaskBackend`；本地作业并发、模型预热和执行清理仍由解析服务负责。
+SDK 与 `file_parse` 复用文件身份、上传描述及解析选项。SDK 保留原始响应中的扩展字段；
+`file_parse` 的单文件限制、创建回执恢复上下文和持久化状态仍由包装服务维护。
+
+每个执行只接收一个文件和可选上传引用，返回 `TaskExecution`，不再传递包含 `files[]`
+的内部 Job 字典。公开 `file_id` 与源文件存储引用分别保存；成功产物继续使用预留的公开身份。
+父 Task 负责多文件进度和 `partial` 聚合，本地执行负责单文件准备、推理、打包及清理。
+准备限流与解析信号量保持独立，取消后仍先排空同步工作，再释放名额和输入引用。
+公开用量字段 `jobs_created`、`max_concurrent_jobs` 保留原名称和按文件执行统计的含义。
+
+### 模型资源生命周期
+
+`model/runtime/ownership.py` 定义应用持有者及文档使用范围。每个解析服务应用拥有一个
+`RuntimeOwner`；PDF 分析的准备、推理、回填与清理都处于同一个文档范围内。
+应用关闭先停止接单并排空任务，然后拒绝新文档、等待已接纳文档退出，再释放各模型池。
+已接纳文档在退出前仍可完成惰性模型加载，不强制中断正在执行的同步推理。
+模型初始化也持有应用租约；关闭等待构造及失败清理结束，失效应用的迟到结果不会发布到缓存。
+
+小模型缓存显式记录应用、Hybrid 上下文和原子模型的依赖关系。共享上下文的
+`cached_property` 不需要为每次属性访问重新登记应用；最后一个持有者退出才撤销相应缓存引用。
+初始化失败会回滚未被其它调用方持有的依赖。独立 Python/CLI 调用继续固定进程级缓存。
+
+VLM 的 `RuntimeHandle` 在创建时绑定客户端、必要的串行锁和确定的后端关闭动作。
+关闭时不再遍历第三方对象猜测方法，也不向客户端动态附加资源字段；外部关闭动作在缓存锁外执行，
+同一缓存键的重新创建等待前一次关闭完成。同步执行开始后等待其退出，异步排队取消不会启动迟到推理。
+关闭回调不能阻塞等待正在初始化或关闭的运行时，重入时明确报错；异步关闭被取消后仍完成连接及引擎清理。
+
+### Gradio 转换编排
+
+`kit/gradio/conversion_service.py` 接收解析客户端、档位、输出目录、页数限制和执行槽，
+负责输入校验、排队、解析、素材持久化及预览准备，返回具名成功、失败或取消结果。
+`conversion_ui.py` 将这些结果转换为现有 Gradio 组件更新与浏览器回执，文件 URL 校验也位于该适配层。
+应用工厂负责控件和事件组装，服务层不接收 Gradio 请求对象或生成组件更新。
+
+公开转换 API 的四个输入、十六项输出及浏览器十五项回执保持不变。会话只缓存状态与素材路径，
+不持有 `ParseResult`；同步输出工作完成清理之后才归还执行槽，迟到响应继续由会话和任务身份过滤。
 
 ## 3. 数据模型
 
@@ -197,7 +265,7 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 | `config` | SQLite KV 配置 |
 | `_migrations` | schema 版本追踪 |
 
-SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作打开独立 `aiosqlite` 连接，提交后关闭，避免跨 worker 游标冲突。WAL mode 只在初始化时设置；运行期连接配置显式 busy timeout。单 doclib 进程内的写操作通过共享写锁串行化，普通读取保持并发；`SQLITE_BUSY` / `SQLITE_LOCKED` 使用有上限的指数退避重试，耗尽后对外返回可重试的 `server_busy`。
+SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作打开独立 `aiosqlite` 连接，提交后关闭，避免跨 worker 游标冲突。WAL mode 只在初始化时设置；每个新连接均应用 busy timeout、外键约束，以及 synchronous、mmap、cache、temp store、自动 checkpoint 和 journal 大小限制。单 doclib 进程内的写操作通过共享写锁串行化，普通读取保持并发；`SQLITE_BUSY` / `SQLITE_LOCKED` 使用有上限的指数退避重试，耗尽后对外返回可重试的 `server_busy`。
 
 ## 4. 数据流
 
@@ -278,13 +346,13 @@ watch 流程也调用同一发现/刷新步骤:
 显式解析请求流程：
 
 1. CLI 或 SDK 调用 doclib `POST /parses`。
-2. `ParseService` 先执行文件发现/刷新，确认 path 当前状态。
+2. `ParseQueueService` 调用共享 `IngestService` 刷新文件，确认 path 当前状态。
 3. 如文件需要重新入库，则等待或同步完成入库，获得当前 `sha256`。
 4. 查询 `(sha256, tier)` 下已完成批次；PDF 判断 page_range 覆盖，非 PDF 只接受完整整文件 batch。
 5. 缓存命中则返回 `cache_hit=true` 和空 `wait_parse_ids`。
 6. 已有 active parse 覆盖的页复用并提升 `priority`。
 7. 未覆盖页插入新的 `parses` 记录，Agent 请求使用更高 `priority`。
-8. `ParseWorker` 抢占任务并执行。
+8. `ParseWorkerPool` 通过队列服务抢占任务，再交给独立执行服务处理。
 
 `--force` 对本次请求不复用 done 缓存，但可以复用已存在的 active parse。它不删除、不作废旧的 done 记录。增量页码解析和 force 重解析都通过多行 `parses` 表示。读取时只合并有效 done 批次；同一页出现多次时，按 `done_at` 选择最新有效页面。
 

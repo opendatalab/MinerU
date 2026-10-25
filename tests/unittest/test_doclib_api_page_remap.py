@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from mineru.doclib.services.parse_errors import ParseFailure
+from mineru.doclib.services.parse_execution_svc import _remap_api_result_pages_to_page_range
+
 from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +14,8 @@ from docvortex.document.pdf.layout import LAYOUT_EXTENSION
 from docvortex.schema import MiddleJson, PageInfo, TextBlock, TextSpan
 from pypdf import PdfReader
 
-from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range, parse_batch_json_path
+
+from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 from mineru.integrations.docvortex import build_metadata
 from mineru.parser.base import ParseResult
 from mineru.render import PdfLayout, render_pdf

@@ -6,24 +6,25 @@ import asyncio
 import logging
 import time
 
-from ..services.parse_svc import ParseService
+from ..services.parse_queue_svc import ParseQueueService
+from ..services.parse_execution_svc import ParseExecutionService
 from ..types import PARSE_STATUS_FAILED
 
 logger = logging.getLogger("mineru.parse_worker")
 
 
 class ParseWorkerPool:
-    def __init__(self, parse_svc: ParseService, num_workers: int = 2) -> None:
-        self.parse_svc = parse_svc
+    def __init__(self, queue_svc: ParseQueueService, execution_svc: ParseExecutionService, num_workers: int = 2) -> None:
+        """显式接收队列与执行服务，保持原有工作池数量和轮询行为。"""
+        self.queue_svc = queue_svc
+        self.execution_svc = execution_svc
         self.num_workers = num_workers
         self.running = False
         self._tasks: list[asyncio.Task] = []
 
     async def run(self) -> None:
         self.running = True
-        self._tasks = [
-            asyncio.create_task(self._worker(i)) for i in range(self.num_workers)
-        ]
+        self._tasks = [asyncio.create_task(self._worker(i)) for i in range(self.num_workers)]
         for index, task in enumerate(self._tasks):
             task.add_done_callback(lambda completed, worker_id=index: self._log_task_result(worker_id, completed))
 
@@ -34,11 +35,11 @@ class ParseWorkerPool:
 
         while self.running:
             try:
-                task = await self.parse_svc.acquire_task()
+                task = await self.queue_svc.acquire_task()
                 if task is None:
                     no_task_count += 1
                     if no_task_count == 1 or no_task_count % 20 == 0:
-                        q = await self.parse_svc.get_queue_length()
+                        q = await self.queue_svc.get_queue_length()
                         logger.debug(f"Parse worker {worker_id}: queue={q}")
                     await asyncio.sleep(0.5)
                     continue
@@ -55,13 +56,11 @@ class ParseWorkerPool:
 
             no_task_count = 0
             try:
-                success = await self.parse_svc.process_doc(task)
+                success = await self.execution_svc.process_doc(task)
                 if success:
                     processed += 1
                     if processed % 50 == 0:
-                        logger.info(
-                            f"Parse worker {worker_id} processed {processed} batches"
-                        )
+                        logger.info(f"Parse worker {worker_id} processed {processed} batches")
             except Exception as exc:
                 logger.error(
                     "Parse worker %s error on %s: %s",
@@ -72,9 +71,8 @@ class ParseWorkerPool:
                 )
                 try:
                     now = int(time.time() * 1000)
-                    await self.parse_svc.db.execute(
-                        "UPDATE parses SET status=?, error_code=?, error_msg=?, "
-                        "locked_at=NULL, updated_at=? WHERE id=?",
+                    await self.execution_svc.db.execute(
+                        "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL, updated_at=? WHERE id=?",
                         (PARSE_STATUS_FAILED, "parse_failed", str(exc)[:500], now, task["id"]),
                     )
                 except Exception:

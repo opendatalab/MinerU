@@ -15,7 +15,7 @@ from huggingface_hub import snapshot_download as hf_snapshot_download
 from huggingface_hub.utils import filter_repo_objects
 from loguru import logger
 
-from ..config import config, get_config_source, update_config_file
+from ..config import get_config, get_config_source, update_config_file
 
 if TYPE_CHECKING:
     from ..config import ModelSource
@@ -98,12 +98,12 @@ class ModelRepo:
 
     def local_dir(self) -> Path:
         """返回仓库在 MinerU 模型目录中的本地根路径。"""
-        return Path(config.model.base_dir).expanduser() / self.local_name
+        return Path(get_config().model.base_dir).expanduser() / self.local_name
 
     def lock_path(self) -> Path:
         """返回仓库下载互斥锁的稳定路径。"""
         safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.local_name).strip("._") or "model"
-        return Path(config.model.base_dir).expanduser() / ".locks" / f"{safe_name}.lock"
+        return Path(get_config().model.base_dir).expanduser() / ".locks" / f"{safe_name}.lock"
 
     def ensure(self, *, source: "ModelSource | None" = None) -> Path:
         """确保完整仓库可用并返回本地根路径。"""
@@ -184,11 +184,11 @@ def resolve_model_source(
     """Resolve the effective model source.
 
     Explicit ``model_source`` is CLI input and is validated strictly. When no
-    explicit source is supplied, ``config.model.source`` may come from config
+    explicit source is supplied, ``get_config().model.source`` may come from config
     file, environment, or defaults; invalid values are treated as auto.
     """
     explicit_source = model_source is not None
-    raw_source = model_source if explicit_source else config.model.source
+    raw_source = model_source if explicit_source else get_config().model.source
     normalized_source = _normalize_source(raw_source, strict=explicit_source)
 
     if explicit_source and normalized_source == "local":

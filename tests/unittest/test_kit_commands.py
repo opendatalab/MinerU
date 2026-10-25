@@ -497,8 +497,8 @@ def test_router_startup_with_no_servers_fails_health_check() -> None:
 
 
 def test_models_download_tier_basic(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -515,8 +515,8 @@ def test_models_download_tier_basic(monkeypatch: Any) -> None:
 
 
 def test_models_download_tier_standard(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -571,9 +571,9 @@ def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
 
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
     for repo in models.MODEL_REPOS:
         if repo.download_mode == "full":
             repo.local_dir().mkdir(parents=True, exist_ok=True)
@@ -1203,9 +1203,9 @@ def test_models_download_repo_ignores_backend_options(monkeypatch: Any) -> None:
 
 def test_models_show_displays_backend_fields(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
 
     result = runner.invoke(app, ["models", "show"])
 
@@ -1219,9 +1219,9 @@ def test_models_show_displays_backend_fields(tmp_path: Path, monkeypatch: Any) -
 def test_models_show_with_onnx_backend_filter(tmp_path: Path, monkeypatch: Any) -> None:
     """显式 ONNX 覆盖当前命令的小模型选择，不修改全局配置。"""
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
 
     result = runner.invoke(app, ["models", "show", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"])
 
@@ -1241,9 +1241,9 @@ def test_models_show_rejects_invalid_small_backend() -> None:
 def test_models_verify_filters_by_effective_backends(tmp_path: Path, monkeypatch: Any) -> None:
     """默认校验只检查当前 Torch 与 VLM 引擎实际需要的仓库。"""
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "small_backend", "torch")
-    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
 
     # 仅准备当前后端所需仓库，其余仓库保持缺失。
     for repo in models.MODEL_REPOS:
@@ -1272,7 +1272,7 @@ def test_models_verify_filters_by_effective_backends(tmp_path: Path, monkeypatch
 def test_models_verify_with_onnx_backend(tmp_path: Path, monkeypatch: Any) -> None:
     """显式 ONNX 只校验 ONNX 与所选 VLM 权重。"""
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
 
     result = runner.invoke(app, ["models", "verify", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"])
 
@@ -1284,7 +1284,7 @@ def test_models_verify_with_onnx_backend(tmp_path: Path, monkeypatch: Any) -> No
 def test_models_verify_repo_ignores_backend_options(tmp_path: Path, monkeypatch: Any) -> None:
     """传具体 repo 名时后端选项被忽略。"""
     base_dir = tmp_path / "models"
-    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(base_dir))
 
     # 聚合 ONNX 仓库必须具有每个必需文件，根目录标记不能替代文件检查。
     repo = next(r for r in models.MODEL_REPOS if r.name == "MinerU-4_models_onnx")

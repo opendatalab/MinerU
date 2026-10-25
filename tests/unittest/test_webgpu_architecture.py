@@ -101,7 +101,7 @@ def test_blocked_policy_never_downloads_measures_or_saves(
     path = tmp_path / "config.yaml"
     path.write_text(f"model:\n  onnx_device: {requested}\n  source: local\n")
     before = path.read_bytes()
-    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", requested)
     monkeypatch.setattr(settings, "get_config_file_path", lambda: str(path))
     monkeypatch.setattr(settings, "get_config_source", lambda _: "file")
     monkeypatch.setattr(onnx_device, "_selections", {})

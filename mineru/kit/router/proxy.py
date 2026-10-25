@@ -11,8 +11,8 @@ import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .resources import ResourceRegistry, ResourceRoute
-from .workers import JobReservation, WorkerPool, WorkerState
+from .resources import ResourceRegistry
+from .workers import WorkerPool, WorkerState
 
 _HOP_BY_HOP_HEADERS = frozenset(
     {
@@ -195,8 +195,7 @@ def rewrite_file_payload(
     upstream_id = str(rewritten.get("id") or rewritten.get("file_id") or "")
     if not upstream_id:
         return rewritten
-    route = registry.register(
-        "file",
+    route = registry.register_file(
         owner_scope=owner_scope,
         worker_id=worker.worker_id,
         upstream_id=upstream_id,
@@ -206,18 +205,8 @@ def rewrite_file_payload(
         rewritten["id"] = route.public_id
     if "file_id" in rewritten:
         rewritten["file_id"] = route.public_id
-    route.metadata["payload"] = copy.deepcopy(rewritten)
+    route.payload = copy.deepcopy(rewritten)
     return rewritten
-
-
-def release_job_load(route: ResourceRoute, pool: WorkerPool) -> None:
-    """所有终态入口共用一次性释放，预占对象校验 worker generation。"""
-    if route.metadata.pop("active_counted", False):
-        reservation = route.metadata.pop("reservation", None)
-        if isinstance(reservation, JobReservation):
-            reservation.release()
-        else:
-            pool.mark_job_finished(route.worker_id)
 
 
 def require_worker_generation(worker: WorkerState, generation: int) -> None:
@@ -233,7 +222,6 @@ __all__ = [
     "passthrough_response",
     "request_upstream",
     "require_worker_generation",
-    "release_job_load",
     "rewrite_file_payload",
     "router_error_response",
     "stream_upstream",

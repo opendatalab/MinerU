@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
+from mineru.doclib.services.ingest_svc import FileRefreshResult
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,8 +20,7 @@ from mineru.cli.main import app
 from mineru.doclib.client import DoclibClient
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager, tokenize_for_index
-from mineru.doclib.server import DoclibServer
-from mineru.doclib.services.parse_svc import FileRefreshResult
+
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import FindResponse
 from mineru.errors import InvalidRequestError
@@ -166,7 +169,9 @@ def test_find_http_exposes_offset_and_validates_pagination(tmp_path: Path) -> No
             """保留已有有效记录，让接口走正常刷新边界。"""
             return FileRefreshResult(file=None, status="known")
 
-        server = DoclibServer(SimpleNamespace(db=db, search_svc=service, parse_svc=SimpleNamespace(refresh_file=refresh)))
+        server = create_doclib_server(
+            SimpleNamespace(db=db, search_svc=service, ingest_svc=SimpleNamespace(refresh_file=refresh))
+        )
         try:
             parameters = server.app.openapi()["paths"]["/api/v1/find"]["get"]["parameters"]
             assert next(item for item in parameters if item["name"] == "offset")["schema"]["default"] == 0

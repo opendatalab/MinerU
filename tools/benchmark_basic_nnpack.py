@@ -98,14 +98,14 @@ def worker(args: argparse.Namespace) -> None:
     import torch
     from loguru import logger
 
-    from mineru.config import config
+    from mineru.config import get_config
     from mineru.model.runtime.cpu_threads import initialize_torch_threads
     from mineru.parser import parse
     from mineru.parser.writer import FileBasedDataWriter
 
-    config.model.small_backend = "torch"
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().model.small_backend = "torch"
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
     initialize_torch_threads()
     source_before = det_source_fingerprint()
     torch.backends.nnpack.set_flags(args.policy == "on")
@@ -182,7 +182,7 @@ def worker(args: argparse.Namespace) -> None:
             "nnpack_enabled": torch._C._get_nnpack_enabled(),
             "device": os.environ["MINERU_DEVICE_MODE"],
             "table_device": os.environ["MINERU_TABLE_DEVICE"],
-            "small_backend": config.model.small_backend,
+            "small_backend": get_config().model.small_backend,
             "torch": torch.__version__,
             "torch_commit": torch.version.git_version,
             "python": platform.python_version(),

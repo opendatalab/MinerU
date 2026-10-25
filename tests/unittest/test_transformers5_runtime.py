@@ -71,42 +71,11 @@ def test_runtime_constructs_caches_and_closes_pipeline(monkeypatch: pytest.Monke
     assert calls[0]["backend_config"].device_type == "cuda"
     assert calls[0]["backend_config"].cache_max_entry_count == 0.2
     assert calls[0]["log_level"] == "ERROR"
-    handle = client._mineru_runtime_handles["lmdeploy_engine"]
-    runtime._shutdown_runtime_handle(handle)
-    assert handle.closed == 1
-
-
-def test_cancelled_mlx_guard_does_not_leave_a_background_lock_owner() -> None:
-    """等待模型锁时取消请求，不得有后台线程随后取得锁并永远阻塞后续请求。"""
-    import asyncio
-    import threading
-
-    from mineru.model.vlm.runtime import aio_predictor_execution_guard
-
-    lock = threading.Lock()
-    predictor = SimpleNamespace(_mineru_execution_lock=lock)
-
-    async def guarded() -> None:
-        """模拟进入共享 MLX 模型的推理范围。"""
-        async with aio_predictor_execution_guard(predictor):
-            await asyncio.sleep(0)
-
-    async def run() -> None:
-        """先占用锁，取消等待者，再验证下一请求仍可正常进入。"""
-        lock.acquire()
-        task = asyncio.create_task(guarded())
-        await asyncio.sleep(0.03)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        finally:
-            lock.release()
-        await asyncio.wait_for(guarded(), timeout=1)
-        assert not lock.locked()
-
-    asyncio.run(run())
+    engine = client.predictor.lmdeploy_engine
+    singleton.shutdown()
+    assert engine.closed == 1
+    assert client.is_closed
+    assert not singleton._models
 
 
 def test_cancelled_model_initialization_waits_before_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from test_tasks_sdk import task_snapshot, zip_output
-from mineru.parser.task_api import CreateTaskRequest
+from mineru.tasks.contracts import CreateTaskRequest
 
 import asyncio
 import json
@@ -101,7 +101,7 @@ def test_api_server_rejects_invalid_request_ocr_mode(tmp_path: Path, value: obje
     assert response.status_code == 400
     assert response.json().get("error")["code"] == "invalid_request"
     assert response.json().get("error")["param"] == "ocr_mode"
-    assert app.state.job_store._jobs == {}
+    assert app.state.execution_store._executions == {}
 
 
 def test_api_server_ocr_defaults_to_request_auto_without_startup_configuration(tmp_path: Path) -> None:

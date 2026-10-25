@@ -19,17 +19,18 @@ import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.tier as parser_tier
 from mineru.config import VlmConfig
+from mineru.tasks.contracts import FileParseInfo
+from mineru.tasks.execution import TaskExecution
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, should_trust_env_for_url
 from mineru.parser.api_server import (
-    _ParseRequest,
-    FileParseInfo,
     FileStore,
     HealthResponse,
     create_app,
     main,
 )
 from mineru.parser.base import ParseResult
+from task_test_utils import execution_request
 from task_test_utils import stored_source
 from mineru.types import (
     ModelJson,
@@ -45,6 +46,7 @@ from mineru.types import (
     MiddleJson,
     PageInfo,
     ServerTier,
+    Tier,
     select_default_quality_tier,
     select_parsing_rule_tier,
     validate_tier,
@@ -264,15 +266,17 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
             """初始化原子模型请求列表。"""
             self.calls: list[dict[str, Any]] = []
 
-        def get_atom_model(self, **kwargs: Any) -> dict[str, Any]:
+        def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> dict[str, Any]:
             """记录原子模型请求并原样返回。"""
-            self.calls.append(dict(kwargs))
-            return dict(kwargs)
+            arguments = {"atom_model_name": atom_model_name, **kwargs}
+            self.calls.append(arguments)
+            return dict(arguments)
 
     context = object.__new__(HybridLocalModelContext)
     manager = _RecordingAtomManager()
     context.device = "cpu"
     context.small_backend = "onnx"
+    context._resource = None
     context.atom_model_manager = manager  # type: ignore[assignment]
 
     with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):
@@ -638,37 +642,25 @@ def test_api_server_cli_no_longer_exposes_reload() -> None:
 
 
 def test_usage_counts_completed_files_and_reports_configured_concurrency(tmp_path: Path) -> None:
-    """files_processed 按完成的文件计数，max_concurrent_jobs 报告配置上限而非剩余信号量。"""
+    """每个真实文件执行计入 jobs_created，成功文件与并发上限保持已有公开语义。"""
     file_store = FileStore(tmp_path / "api-files")
-    store = api_server.JobStore(concurrency=2)
-
-    def _request(*names: str) -> _ParseRequest:
-        """登记源内容以构造内部执行统计样本。"""
-        for name in names:
-            (tmp_path / name).write_bytes(b"source")
-        return _ParseRequest.model_validate(
-            {
-                "files": [{"source": stored_source(file_store, tmp_path / name)} for name in names],
-                "tier": "flash",
-                "output_formats": ["default"],
-            }
-        )
-
-    rec_a = store.create(_request("a1.html", "a2.html"), file_store)
-    rec_a.files[0].status = "completed"
-    rec_a.files[1].status = "failed"
-    rec_a.status = "partial"
-    rec_b = store.create(_request("b1.html"), file_store)
-    rec_b.files[0].status = "completed"
-    rec_b.status = "completed"
+    store = api_server.ExecutionStore(concurrency=2)
+    records = []
+    for name in ("a1.html", "a2.html", "b1.html"):
+        source = tmp_path / name
+        source.write_bytes(b"source")
+        records.append(store.create(execution_request(file_store, stored_source(file_store, source), tier="flash"), file_store))
+    completed, failed, other = records
+    completed.status = other.status = "completed"
+    failed.status = "failed"
 
     async def _report_while_busy() -> "api_server.UsageResponse":
+        """占用一个名额后确认公开限制仍报告配置上限。"""
         await store._semaphore.acquire()
         return store.usage("anonymous")
 
     usage = asyncio.run(_report_while_busy())
-
-    assert usage.current.jobs_created == 2
+    assert usage.current.jobs_created == 3
     assert usage.current.files_processed == 2
     assert usage.limits.max_concurrent_jobs == 2
 
@@ -685,15 +677,9 @@ def test_api_server_logs_traceback_when_job_file_fails(
     file_store = FileStore(tmp_path / "api-files")
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    job_store = api_server.JobStore()
-    rec = job_store.create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    execution_store = api_server.ExecutionStore()
+    rec = execution_store.create(request, file_store)
     mineru_logger = logging.getLogger("mineru")
     api_logger = logging.getLogger("mineru.parser.api_server")
     monkeypatch.setattr(mineru_logger, "disabled", False)
@@ -702,18 +688,11 @@ def test_api_server_logs_traceback_when_job_file_fails(
     monkeypatch.setattr(api_logger, "propagate", True)
 
     with caplog.at_level(logging.ERROR, logger="mineru.parser.api_server"):
-        asyncio.run(
-            api_server._run_job(
-                rec,
-                request,
-                file_store,
-                image_analysis=True,
-            )
-        )
+        asyncio.run(api_server._run_execution(rec, file_store, image_analysis=True))
 
     assert rec.status == "failed"
-    assert rec.files[0].error is not None
-    assert rec.files[0].error.message == "boom"
+    assert rec.error is not None
+    assert rec.error.message == "boom"
     assert "Parse-server job file failed" in caplog.text
     assert f"job_id={rec.id}" in caplog.text
     assert "RuntimeError: boom" in caplog.text
@@ -937,65 +916,42 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
 
 
 def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验 Standard server 把每个 job 请求的 tier 传给统一 parser。"""
+    """Standard 服务按每个文件请求选择档位，并从实际解析结果记录执行信息。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[dict[str, object]] = []
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
-        """记录 API server 传给 parser 的 runtime 参数，并返回最小解析结果。"""
+        """记录生产解析调用，并返回相应档位的最小有效协议。"""
         calls.append(dict(kwargs))
-        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
+        middle_json = _full_middle_json(PageInfo(page_idx=0))
+        middle_json.extensions["mineru"] = {"tier": kwargs["tier"], "parse_mode": "txt"}
+        return ParseResult(middle_json=middle_json)
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(upload_dir=str(tmp_path / "api"), tier="standard")
     file_store = FileStore(tmp_path / "api-files")
-    job_store = api_server.JobStore()
+    execution_store = api_server.ExecutionStore()
 
-    async def run_request(payload: dict[str, object]) -> dict[str, object]:
-        request = _ParseRequest.model_validate(payload)
-        request.tier = request.tier or app.state.default_tier
-        rec = job_store.create(request, file_store)
-        await api_server._run_job(
+    async def run_request(tier: Tier | None = None) -> TaskExecution:
+        """构造并运行一个真实内部执行请求，返回有类型快照。"""
+        request = execution_request(file_store, stored_source(file_store, source), tier=tier or app.state.default_tier)
+        rec = execution_store.create(request, file_store)
+        await api_server._run_execution(
             rec,
-            request,
             file_store,
             image_analysis=app.state.image_analysis,
             allow_http_source=app.state.allow_http_source,
         )
-        return job_store.snapshot(rec)
+        return execution_store.snapshot(rec)
 
-    default_response = asyncio.run(
-        run_request(
-            {
-                "files": [{"source": stored_source(file_store, source)}],
-                "output_formats": ["default"],
-            }
-        )
-    )
-    basic_response = asyncio.run(
-        run_request(
-            {
-                "files": [{"source": stored_source(file_store, source)}],
-                "tier": "basic",
-                "output_formats": ["default"],
-            }
-        )
-    )
-    advanced_response = asyncio.run(
-        run_request(
-            {
-                "files": [{"source": stored_source(file_store, source)}],
-                "tier": "advanced",
-                "output_formats": ["default"],
-            }
-        )
-    )
-
-    assert default_response["tier"] == "standard"
-    assert basic_response["tier"] == "basic"
-    assert advanced_response["tier"] == "advanced"
+    default_response = asyncio.run(run_request())
+    basic_response = asyncio.run(run_request("basic"))
+    advanced_response = asyncio.run(run_request("advanced"))
+    assert default_response.parse is not None and default_response.parse.tier == "standard"
+    assert basic_response.parse is not None and basic_response.parse.tier == "basic"
+    assert advanced_response.parse is not None and advanced_response.parse.tier == "advanced"
     assert [call["tier"] for call in calls] == ["standard", "basic", "advanced"]
 
 
@@ -1093,8 +1049,8 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
-    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="basic")
 
@@ -1116,8 +1072,8 @@ def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypat
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
-    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
@@ -1142,8 +1098,8 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
-    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
@@ -1165,7 +1121,7 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
     with pytest.raises(api_server.ParseServerStartupError, match="tier 'basic'.*torch.*mineru\\[torch\\]"):

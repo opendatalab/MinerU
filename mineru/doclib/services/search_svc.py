@@ -13,7 +13,7 @@ from ..rows import ContentSearchResultRow, DocRow, FilenameSearchFileRow, Filena
 from ..types import FILE_STATUS_ACTIVE
 
 if TYPE_CHECKING:
-    from .parse_svc import FileRefreshResult
+    from .ingest_svc import FileRefreshResult
 
 FilenamePathProbe = Callable[[str], Awaitable["FileRefreshResult"]]
 _FILENAME_METADATA_BATCH_SIZE = 256

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
+from doclib_test_utils import create_parse_services
+
 import asyncio
 import json
 import re
@@ -22,9 +26,7 @@ from mineru.cli.commands import parse as parse_cmd
 from mineru.cli.main import app
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseService
 from mineru.doclib.types import (
     ContentRequestScope,
     DocContentExportRequest,
@@ -59,14 +61,18 @@ class _DoclibHarness:
         self.loop = asyncio.new_event_loop()
         self.db = DatabaseManager(str(root / "doclib.db"))
         self.run(self.db.initialize())
-        self.service = ParseService(
+        self.service = create_parse_services(
             self.db,
             FTSManager(self.db),
             ConfigService(self.db),
             str(root / "data"),
             parse_lock_timeout_sec=1800,
         )
-        self.server = DoclibServer(SimpleNamespace(db=self.db, data_dir=str(root / "data"), parse_svc=self.service))
+        self.server = create_doclib_server(
+            SimpleNamespace(
+                db=self.db, data_dir=str(root / "data"), parse_queue_svc=self.service.queue, ingest_svc=self.service.ingest
+            )
+        )
         self.output_ranges: list[str | None] = []
 
     def run(self, operation: Coroutine[Any, Any, _T]) -> _T:
@@ -75,8 +81,8 @@ class _DoclibHarness:
 
     async def process_pending(self) -> None:
         """执行隔离队列中的任务，保留真实 DOCX 解析与结果持久化。"""
-        while (task := await self.service.acquire_task()) is not None:
-            assert await self.service.process_doc(task)
+        while (task := await self.service.queue.acquire_task()) is not None:
+            assert await self.service.execution.process_doc(task)
 
     def close(self) -> None:
         """关闭解析使用的线程池和事件循环。"""
@@ -105,7 +111,7 @@ def doclib_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyt
         def ensure_parse(self, request: ParseRequest) -> ParseResponse:
             """使用真实入库、缓存查找和任务调度。"""
             return harness.run(
-                harness.service.request_parse(
+                harness.service.queue.request_parse(
                     request.path,
                     tier=request.tier,
                     page_range=request.page_range,
@@ -177,7 +183,7 @@ def test_multisection_docx_cli_keeps_full_document(
     runner = CliRunner()
     args = ["parse", str(harness.source), "--tier", "flash", "--no-marker"]
     if scenario in {"cache", "force"}:
-        harness.run(harness.service.request_parse(str(harness.source), tier="flash"))
+        harness.run(harness.service.queue.request_parse(str(harness.source), tier="flash"))
         harness.run(harness.process_pending())
     elif scenario == "reenter":
         pending = runner.invoke(app, [*args, "--no-wait", "--json"])
@@ -301,7 +307,7 @@ def test_docx_cli_next_commands_read_all_sections(doclib_harness: _DoclibHarness
 def test_docx_explicit_logical_page_read_stays_scoped(doclib_harness: _DoclibHarness, locator_read: bool) -> None:
     """整本默认读取不改变内容接口显式范围及定位器的逻辑页选择。"""
     harness = doclib_harness
-    submitted = harness.run(harness.service.request_parse(str(harness.source), tier="flash"))
+    submitted = harness.run(harness.service.queue.request_parse(str(harness.source), tier="flash"))
     harness.run(harness.process_pending())
     if locator_read:
         response = harness.run(harness.server.read_content(f"doc:{submitted.short_id}/tier:flash/page:2", no_marker=True))

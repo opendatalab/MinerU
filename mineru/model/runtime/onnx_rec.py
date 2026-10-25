@@ -99,9 +99,9 @@ def _reduce_graph(source: bytes) -> tuple[bytes, int]:
 def prepare_rec_model(model_path: str, *, cache_dir: Path | None = None) -> CompactRecModel:
     """Keep the source immutable and atomically cache a checked, compact-output graph."""
     if cache_dir is None:
-        from ...config import config
+        from ...config import get_config
 
-        cache_dir = Path(config.model.base_dir).expanduser() / ".derived" / "ocr-rec"
+        cache_dir = Path(get_config().model.base_dir).expanduser() / ".derived" / "ocr-rec"
     source = Path(model_path).read_bytes()
     source_sha = hashlib.sha256(source).hexdigest()
     target = cache_dir / f"{REC_OUTPUT_FORMAT}-{source_sha}.onnx"

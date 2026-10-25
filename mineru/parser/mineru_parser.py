@@ -13,7 +13,7 @@ from docvortex.document.contracts import HtmlSourceContext
 from docvortex.schema import DocumentProperties
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
-from ..config import VlmConfig, config
+from ..config import VlmConfig, get_config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..integrations.docvortex import read_source_properties
@@ -62,7 +62,7 @@ class MinerUParser(DocumentParser):
         self.effort: _Effort = effort_for_tier(tier)  # type: ignore[assignment]
         self.parse_mode: _ParseMode = parse_mode
         self.image_analysis: bool = image_analysis
-        self.vlm_config = (vlm_config if vlm_config is not None else config.model.vlm).model_copy(deep=True)
+        self.vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
 
     def parse(
         self,

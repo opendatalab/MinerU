@@ -220,7 +220,7 @@ def integration(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> None:
     """显式选择组件对照或真实 PDF 集成验证，并保存配置与内存指标。"""
-    from mineru.config import config
+    from mineru.config import get_config
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=["components", "parse"])
@@ -233,9 +233,13 @@ def main() -> None:
     args = parser.parse_args()
     args.small_backend, args.tier, args.rounds = "light", "basic", 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    config.model.base_dir, config.model.source, config.model.small_backend = str(args.models_dir.resolve()), "local", "onnx"
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().model.base_dir, get_config().model.source, get_config().model.small_backend = (
+        str(args.models_dir.resolve()),
+        "local",
+        "onnx",
+    )
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
     report = components(args) if args.kind == "components" else integration(args)
     report["peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)
     report["environment"] = {"python": sys.version.split()[0], "onnxruntime": version("onnxruntime")}

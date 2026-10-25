@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -12,7 +14,6 @@ from mineru.cli import guidance
 from mineru.cli.commands import usage
 from mineru.cli.main import app
 from mineru.doclib.remote_api import ResolvedRemoteApiKey, resolve_remote_api_key
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.types import ConfigResponse, ConfigValueResponse, RemoteUsageResponse
 from mineru.errors import MineruError
 from mineru.parser.api_client import MinerUApiParser
@@ -172,7 +173,7 @@ def test_doclib_remote_usage_maps_remote_error(monkeypatch: pytest.MonkeyPatch) 
         raise _V1APIError("invalid_api_key", "Invalid API Key.", "parse_server.remote.api_key")
 
     monkeypatch.setattr(MinerUApiParser, "get_usage_async", fail_usage)
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     with pytest.raises(MineruError) as exc_info:
         asyncio.run(server.get_remote_usage())
@@ -197,7 +198,7 @@ def test_doclib_remote_usage_uses_resolved_environment_api_key(monkeypatch: pyte
 
     monkeypatch.setenv("MINERU_API_KEY", "environment-key")
     monkeypatch.setattr(MinerUApiParser, "get_usage_async", get_usage)
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     response = asyncio.run(server.get_remote_usage())
 
@@ -216,7 +217,7 @@ def test_doclib_config_key_reports_environment_api_key_without_exposing_it(monke
             return "default"
 
     monkeypatch.setenv("MINERU_API_KEY", "environment-secret")
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     response = asyncio.run(server.get_config_key("parse_server.remote.api_key"))
 

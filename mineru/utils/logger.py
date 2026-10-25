@@ -26,7 +26,7 @@ def _active_managed_sink_ids() -> set[int]:
 def configure_global_log_level(level: LogLevel | str | None = None) -> LogLevel:
     """配置当前进程的 Loguru 默认 stderr sink，并返回归一化后的级别。
 
-    ``level`` 为 ``None`` 时使用 ``config.log.level``；显式传入后作为进程级
+    ``level`` 为 ``None`` 时使用 ``get_config().log.level``；显式传入后作为进程级
     局部覆盖，后续默认调用不会把它改回全局配置。函数只移除 Loguru 初始
     sink 和 MinerU 自己创建的 sink，不会影响宿主程序显式添加的自定义 sink。
     级别同时写入 ``LOGURU_LEVEL`` 环境变量（覆盖外部预设），使之后 spawn 的
@@ -35,13 +35,13 @@ def configure_global_log_level(level: LogLevel | str | None = None) -> LogLevel:
     """
     from loguru import logger
 
-    from ..config import GlobalLogConfig, config
+    from ..config import GlobalLogConfig, get_config
 
     global _configured_level, _explicit_level
 
     with _lock:
         if level is None:
-            normalized = _explicit_level or config.log.level
+            normalized = _explicit_level or get_config().log.level
         else:
             normalized = GlobalLogConfig(level=level).level
             _explicit_level = normalized

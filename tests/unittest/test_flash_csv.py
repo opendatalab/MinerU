@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from task_test_utils import execution_request
 from task_test_utils import stored_source, execution_output
 
 import asyncio
@@ -11,7 +12,7 @@ from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.parser import api_server, parse, parse_async
-from mineru.parser.api_server import _ParseRequest, FileStore
+from mineru.parser.api_server import FileStore
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
 from mineru.types import TableBlock, TableBodyBlock
@@ -93,25 +94,12 @@ def test_tsv_parse_server_job_emits_structured_outputs_with_independent_suffix(t
     source = tmp_path / "sample.tsv"
     source.write_text("name\tage\nAlice\t30\n", encoding="utf-8")
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
 
     markdown_data = execution_output(file_store, record, "markdown.md")
@@ -130,25 +118,12 @@ def test_csv_parse_server_job_emits_structured_outputs_with_flash_metadata(tmp_p
     source = tmp_path / "sample.csv"
     source.write_text("name,age\nAlice,30\n", encoding="utf-8")
     file_store = FileStore(tmp_path / "api-files")
-    request = _ParseRequest.model_validate(
-        {
-            "files": [{"source": stored_source(file_store, source)}],
-            "tier": "standard",
-            "output_formats": ["default"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
 
     markdown_data = execution_output(file_store, record, "markdown.md")

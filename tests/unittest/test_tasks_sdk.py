@@ -16,7 +16,7 @@ import pytest
 
 from mineru.parser import ApiJobStatus, ApiTaskStatus, MinerUApiParser
 from mineru.parser import api_client
-from mineru.parser.task_api import CreateTaskRequest
+from mineru.tasks.contracts import CreateTaskRequest
 from mineru.parser.task_outputs import build_task_output
 from mineru.parser.base import ParseResult
 from mineru.types import MiddleJson, PageInfo

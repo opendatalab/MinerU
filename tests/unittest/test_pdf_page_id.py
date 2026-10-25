@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from task_test_utils import stored_source
+from doclib_test_utils import create_content_read_service
+from doclib_test_utils import create_doclib_server
+
+from mineru.doclib.services.parse_policy import default_parse_range
+
+from task_test_utils import wait_task
 
 import asyncio
 import io
@@ -16,11 +21,11 @@ from typer.testing import CliRunner
 
 from mineru.cli.commands.parse import _validate_page_range_input
 from mineru.cli.main import app as cli_app
-from mineru.doclib.server import _normalize_content_page_range
+from mineru.doclib.services.content_read_svc import _normalize_content_page_range
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import default_parse_range
+
 from mineru.errors import InvalidRequestError, MineruError
-from mineru.kit.gradio.app import _effective_page_range
+from mineru.kit.gradio.page_range import effective_page_range as _effective_page_range
 from mineru.kit.gradio.artifacts import persist_parse_result
 from mineru.kit.gradio.client import V1ArtifactClient
 from mineru.kit.main import app as kit_app
@@ -253,27 +258,37 @@ def test_real_pdf_selection_preserves_original_indices_and_artifact_order(tmp_pa
 
 
 def test_async_job_resolves_relative_ranges_and_reports_file_errors(tmp_path: Path) -> None:
-    """后台任务完成后返回规范实际范围，依赖总页数的错误保留文件级错误码。"""
+    """父 Task 聚合独立成功和失败执行，实际范围与文件错误均保留到对应快照。"""
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
-    store = api_server.FileStore(tmp_path / "files")
-    request = api_server._ParseRequest.model_validate(
-        {
-            "tier": "flash",
-            "output_formats": ["default"],
-            "files": [
-                {"source": stored_source(store, source), "page_range": "1,r2-r1"},
-                {"source": stored_source(store, source), "page_range": "20"},
-            ],
-        }
-    )
-    record = api_server.JobStore().create(request, store)
-    asyncio.run(api_server._run_job(record, request, store, image_analysis=True))
-    assert record.status == "partial"
-    assert record.files[0].page_range == "1,4-5"
-    assert record.files[0].status == "completed"
-    assert record.files[1].error.code == "page_range_invalid"
-    assert record.files[1].error.param == "page_range"
+    data = source.read_bytes()
+    app = api_server.create_app(upload_dir=str(tmp_path / "api-files"), tier="flash")
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/tasks",
+            json={
+                "tier": "flash",
+                "output_formats": ["default"],
+                "files": [
+                    {"file_name": source.name, "bytes": len(data), "page_range": "1,r2-r1"},
+                    {"file_name": source.name, "bytes": len(data), "page_range": "20"},
+                ],
+            },
+        )
+        assert response.status_code == 202
+        created = response.json()
+        for item in created["files"]:
+            upload = item["upload"]
+            assert client.put(upload["url"], content=data, headers=upload["headers"]).status_code == 200
+        # 真实解析还包含产物打包，覆盖率插桩下沿用端到端用例的 20 秒等待预算。
+        ready = wait_task(client, created, timeout=20)
+        assert ready["status"] == "partial"
+        succeeded, failed = app.state.task_store._records[created["task_id"]].file_states
+        assert succeeded.execution.page_range == "1,4-5"
+        assert succeeded.execution.status == "completed"
+        assert failed.execution.status == "failed"
+        assert failed.execution.error.code == "page_range_invalid"
+        assert failed.execution.error.param == "page_range"
 
 
 def test_doclib_client_validates_requests_before_transport(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -338,8 +353,7 @@ def test_doclib_relative_selection_coverage_and_export(tmp_path: Path) -> None:
     import json
 
     from mineru.doclib.core.db import DatabaseManager
-    from mineru.doclib.server import DoclibServer
-    from mineru.doclib.services.parse_svc import parse_batch_json_path
+    from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
@@ -364,13 +378,17 @@ def test_doclib_relative_selection_coverage_and_export(tmp_path: Path) -> None:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (sha256, "flash", "1-3,5", "done", "local", 1000, 1000, 1000),
             )
-            server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+            server = create_doclib_server(SimpleNamespace(db=db, data_dir=str(tmp_path)))
             listing = await server.list_parses(doc_ref="aaaaaaa", tier="flash", page_range="r3-r1")
             assert listing.coverage.done_page_range == "3,5"
             assert listing.coverage.missing_page_range == "4"
-            text = await server._render_doc_content(sha256, tier="flash", page_range="r1", format="markdown", no_marker=True)
+            text = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+                sha256, tier="flash", page_range="r1", format="markdown", no_marker=True
+            )
             assert "Source page 5" in text and "Source page 3" not in text
-            text = await server._render_doc_content(sha256, tier="flash", page_range="all", format="markdown", no_marker=True)
+            text = await create_content_read_service(server.state.db, data_dir=server.state.data_dir)._render_doc_content(
+                sha256, tier="flash", page_range="all", format="markdown", no_marker=True
+            )
             assert "Source page 1" in text and "Source page 5" in text
         finally:
             await db.close()

@@ -18,7 +18,7 @@ from PIL import Image
 from reportlab.pdfgen import canvas
 from typer.testing import CliRunner
 
-from mineru.config import VlmConfig, config
+from mineru.config import VlmConfig, get_config
 from mineru.model.vlm.client import get_vlm_predictor
 from mineru.parser import api_server, parse, parse_async
 
@@ -44,9 +44,9 @@ def openai_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_OpenAIServer]:
 
     monkeypatch.delenv("MINERU_VL_API_KEY", raising=False)
     monkeypatch.delenv("MINERU_VL_MODEL_NAME", raising=False)
-    monkeypatch.setattr(config.model, "vlm", VlmConfig())
-    monkeypatch.setattr(config.llm_aided.features, "title_leveling", False)
-    monkeypatch.setattr(config.llm_aided.features, "cross_page_table_cell_merge", False)
+    monkeypatch.setattr(get_config().model, "vlm", VlmConfig())
+    monkeypatch.setattr(get_config().llm_aided.features, "title_leveling", False)
+    monkeypatch.setattr(get_config().llm_aided.features, "cross_page_table_cell_merge", False)
     monkeypatch.setattr(ModelSingleton, "_models", {})
     state = _OpenAIServer()
 
@@ -289,7 +289,7 @@ def test_python_parse_uses_global_remote_vlm(
     image_input: bool,
 ) -> None:
     """同步及异步入口读取全局 VLM 配置，PDF 和图片转 PDF 均产生真实 Middle JSON。"""
-    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    monkeypatch.setattr(get_config().model, "vlm", _settings(openai_server))
     source = _pdf_input(tmp_path)
     if image_input:
         source = tmp_path / "input.png"
@@ -308,7 +308,7 @@ def test_kit_parse_uses_global_remote_vlm(
     """实际执行 mineru-kit parse 命令，验证全局 VLM 配置进入解析并生成 Markdown 文件。"""
     from mineru.kit.main import app
 
-    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    monkeypatch.setattr(get_config().model, "vlm", _settings(openai_server))
     output = tmp_path / "result.md"
     result = CliRunner().invoke(app, ["parse", str(_pdf_input(tmp_path)), "-o", str(output), "--ocr-mode", "ocr"])
     assert result.exit_code == 0, result.output
@@ -396,7 +396,7 @@ def test_remote_parse_inference_progress(
     from mineru.model.vlm import runtime
 
     monkeypatch.setattr(runtime, "MinerUClient", partial(MinerUClient, use_tqdm=enabled))
-    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    monkeypatch.setattr(get_config().model, "vlm", _settings(openai_server))
     source = _pdf_input(tmp_path)
     result = (
         asyncio.run(parse_async(source, tier=tier, ocr_mode="ocr")) if async_mode else parse(source, tier=tier, ocr_mode="ocr")
@@ -458,7 +458,7 @@ def test_standard_progress_label_survives_pdf_mode_routing(
     """TXT/OCR 及 auto 的两个分类分支均保留同名推理进度，并走真实 PDF 和 HTTP 流程。"""
     from mineru.backend.analysis.pdf import pipeline
 
-    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    monkeypatch.setattr(get_config().model, "vlm", _settings(openai_server))
     monkeypatch.setattr(pipeline.PDFDocument, "classify", lambda self: resolved_mode)
     context = hybrid_runtime.HybridLocalModelContextSingleton().get_model()
     # 公式块在 TXT 下仍需 VLM 抽取，避免测试被原生正文跳过逻辑短路。

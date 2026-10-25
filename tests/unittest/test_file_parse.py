@@ -38,7 +38,9 @@ def artifact_bytes(formats: list[str]) -> bytes:
         return b"<!doctype html><html><body>file parse result</body></html>"
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("word/document.xml" if formats == ["docx"] else "markdown.md", "file parse result")
+        name = "word/document.xml" if formats == ["docx"] else "markdown.md"
+        # 固定 ZIP 时间戳，避免上游响应和预期附件跨两秒时间边界后产生不同字节。
+        archive.writestr(zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0)), "file parse result")
     return output.getvalue()
 
 

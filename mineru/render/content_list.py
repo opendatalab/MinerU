@@ -14,10 +14,12 @@ def render_content_list(
     asset_base_url: str = "",
 ) -> list[dict[str, Any]]:
     """惰性加载 Content List V1 实现并渲染严格 MiddleJson。"""
-    from ..config import config
+    from ..config import get_config
     from ._internal.content_list.v1 import render_content_list as _render_content_list
 
-    return _render_content_list(middle_json, asset_base_url=asset_base_url, latex_delimiters=config.render.latex_delimiters)
+    return _render_content_list(
+        middle_json, asset_base_url=asset_base_url, latex_delimiters=get_config().render.latex_delimiters
+    )
 
 
 __all__ = ["render_content_list"]

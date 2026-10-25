@@ -17,7 +17,7 @@ from docvortex.document.pdf import PDFDocument, images
 from mineru.backend.analysis.pdf import window
 from mineru.backend.postprocess import document as postprocess_document
 from mineru.backend.postprocess import llm_aided
-from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig, config
+from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig, get_config
 from mineru.parser import parse, parse_async
 from mineru.types import MiddleJson, ModelJson
 
@@ -107,7 +107,7 @@ def test_flash_sparse_render_keeps_page_mapping_and_title_gate(
     monkeypatch.setattr(llm_aided, "LLMAidedClient", MagicMock(return_value=client))
     monkeypatch.setattr(llm_aided, "apply_llm_title_leveling", title)
     monkeypatch.setattr(
-        config,
+        get_config(),
         "llm_aided",
         LLMAidedConfig(
             api_key="isolated-test",

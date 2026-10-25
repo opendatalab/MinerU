@@ -2810,12 +2810,12 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     monkeypatch.setattr(server, "_server_running", lambda: False)
     monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
     monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/doclib.sock")
-    monkeypatch.setattr(server.config.doclib, "data_dir", "~/.mineru")
-    monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/doclib.db")
-    monkeypatch.setattr(server.config.doclib.log, "app_path", "~/.mineru/logs/doclib.log")
-    monkeypatch.setattr(server.config.doclib.log, "access_path", "~/.mineru/logs/doclib.access.log")
-    monkeypatch.setattr(server.config.doclib.log, "stdout_path", "~/.mineru/logs/doclib.stdout.log")
-    monkeypatch.setattr(server.config.doclib.log, "stderr_path", "~/.mineru/logs/doclib.stderr.log")
+    monkeypatch.setattr(server.get_config().doclib, "data_dir", "~/.mineru")
+    monkeypatch.setattr(server.get_config().doclib.sqlite, "path", "~/.mineru/doclib.db")
+    monkeypatch.setattr(server.get_config().doclib.log, "app_path", "~/.mineru/logs/doclib.log")
+    monkeypatch.setattr(server.get_config().doclib.log, "access_path", "~/.mineru/logs/doclib.access.log")
+    monkeypatch.setattr(server.get_config().doclib.log, "stdout_path", "~/.mineru/logs/doclib.stdout.log")
+    monkeypatch.setattr(server.get_config().doclib.log, "stderr_path", "~/.mineru/logs/doclib.stderr.log")
 
     result = runner.invoke(app, ["server", "status", "--json"])
 

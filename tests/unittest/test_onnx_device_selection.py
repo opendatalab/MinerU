@@ -29,7 +29,7 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     target.write_text("model:\n  onnx_device: auto\n  source: local\n", encoding="utf-8")
     monkeypatch.setattr(settings, "get_config_file_path", lambda: str(target))
     monkeypatch.setattr(settings, "get_config_source", lambda key: "file")
-    monkeypatch.setattr(settings.config.model, "onnx_device", "auto")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", "auto")
     monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(policy, "_selections", {})
     monkeypatch.setattr(policy, "ONNX_GPU_TIME_RATIO_THRESHOLDS", {"dml": 0.75, "webgpu": 0.8})
@@ -84,7 +84,7 @@ def test_gpu_mode_uses_performance_order_without_creating_devices() -> None:
 
 
 def test_gpu_mode_requests_fast_probe(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings.config.model, "onnx_device", "gpu")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", "gpu")
     discover = Mock(return_value=(adapter(uma=None),))
     monkeypatch.setattr(policy, "discover_gpus", discover)
     assert policy.resolve_onnx_device().device == "gpu"
@@ -103,7 +103,7 @@ def test_invalid_timings(values: tuple[float, float, float]) -> None:
 
 
 def test_cpu_never_discovers_or_benchmarks(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings.config.model, "onnx_device", "cpu")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", "cpu")
     discover = Mock(side_effect=AssertionError("discovery"))
     monkeypatch.setattr(policy, "discover_gpus", discover)
     assert policy.resolve_onnx_device().device == "cpu"
@@ -203,7 +203,7 @@ def test_discovery_and_unavailable_states(config_file: Path, monkeypatch: pytest
 
 
 def test_manual_gpu_retained_without_gpu(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings.config.model, "onnx_device", "gpu")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", "gpu")
     config_file.write_text("model:\n  onnx_device: gpu\n", encoding="utf-8")
     monkeypatch.setattr(policy, "discover_gpus", lambda **_: ())
     assert policy.resolve_onnx_device().device == "cpu"
@@ -266,7 +266,7 @@ def test_unet_first_model_shares_selection_and_persistence(
     from mineru.model.runtime import onnx, onnx_calibration
     from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet
 
-    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", requested)
     config_file.write_text(f"model:\n  onnx_device: {requested}\n  source: local\n", encoding="utf-8")
     monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu" if expected == "gpu" else "cuda")
     discover = Mock(return_value=(adapter(index=7, uma=uma),))
@@ -323,7 +323,7 @@ def test_linux_calibrates_both_gpu_types_and_uses_own_threshold(
 def test_linux_explicit_modes_do_not_calibrate(linux_config: Path, monkeypatch: pytest.MonkeyPatch, requested: str) -> None:
     from mineru.model.runtime import onnx_calibration
 
-    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", requested)
     assert policy.resolve_onnx_device().device == requested
     onnx_calibration.run_calibration.assert_not_called()
     assert policy.discover_webgpu_devices.call_count == (0 if requested == "cpu" else 1)

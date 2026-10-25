@@ -6,12 +6,68 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, ParamSpec, TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from .status import STATUS_COMPLETED, STATUS_PREPARING_REQUEST, ParseStatusUpdate, StatusPanelState
 
+if TYPE_CHECKING:
+    from .artifacts import RunArtifacts
+
 P = ParamSpec("P")
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class ConversionInput:
+    """描述一次转换输入，不依赖 Gradio 请求或组件。"""
+
+    file_path: str | None
+    tier_position: int | float
+    page_range: str
+    force_ocr: bool = False
+
+
+@dataclass(frozen=True)
+class PreviewPlan:
+    """描述结果预览所需路径与占位状态，由界面层决定组件更新方式。"""
+
+    preserve_source: bool
+    pdf_path: Path | None = None
+    image_path: Path | None = None
+    show_ready_placeholder: bool = False
+
+
+@dataclass(frozen=True)
+class ConversionOutput:
+    """保存已物化的转换输出，不保留解析语义树。"""
+
+    artifacts: RunArtifacts
+    html: str
+    structured_json: str
+    preview: PreviewPlan
+
+
+@dataclass(frozen=True)
+class ConversionSuccess:
+    """表示解析及所有输出准备均已完成。"""
+
+    output: ConversionOutput
+
+
+@dataclass(frozen=True)
+class ConversionFailure:
+    """记录最终错误，由界面层保持既有失败响应格式。"""
+
+    message: str
+
+
+@dataclass(frozen=True)
+class ConversionCancelled:
+    """表示任务已失效且同步工作已退出，不再应用界面结果。"""
+
+
+ConversionOutcome = ConversionSuccess | ConversionFailure | ConversionCancelled
 
 
 @dataclass
@@ -23,7 +79,7 @@ class ConversionRun:
     snapshot: str = ""
     cancelled: bool = False
     terminal: bool = False
-    task: asyncio.Task[tuple[Any, ...]] | None = None
+    task: asyncio.Task[ConversionOutput] | None = None
     artifacts: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -48,7 +104,7 @@ class ConversionRun:
             ensure_ascii=False,
         )
 
-    def cancel(self) -> asyncio.Task[tuple[Any, ...]] | None:
+    def cancel(self) -> asyncio.Task[ConversionOutput] | None:
         """立即失效界面回执，实际任务在同步工作退出后释放执行槽。"""
         self.cancelled = True
         self.artifacts = None
@@ -84,7 +140,7 @@ class SessionConversions:
         run = self.runs.get(session)
         return run if run is not None and run.run_id == run_id and not run.cancelled else None
 
-    def cancel(self, session: str, run_id: str | None = None) -> asyncio.Task[tuple[Any, ...]] | None:
+    def cancel(self, session: str, run_id: str | None = None) -> asyncio.Task[ConversionOutput] | None:
         """按回执身份取消任务，迟到的文件切换请求不能取消新任务。"""
         run = self.runs.get(session)
         if run is None or (run_id is not None and run.run_id != run_id):
@@ -115,4 +171,16 @@ async def run_sync_output(function: Callable[P, T], *args: P.args, **kwargs: P.k
     return await await_task_completion(asyncio.create_task(asyncio.to_thread(function, *args, **kwargs)))
 
 
-__all__ = ["ConversionRun", "SessionConversions", "await_task_completion", "run_sync_output"]
+__all__ = [
+    "ConversionCancelled",
+    "ConversionFailure",
+    "ConversionInput",
+    "ConversionOutcome",
+    "ConversionOutput",
+    "ConversionRun",
+    "ConversionSuccess",
+    "PreviewPlan",
+    "SessionConversions",
+    "await_task_completion",
+    "run_sync_output",
+]

@@ -8,8 +8,8 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolate_onnx_device_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     """Individual policy tests explicitly override this CPU default with isolated files."""
-    from mineru.config import config
+    from mineru.config import get_config
     from mineru.model.runtime import onnx_device
 
-    monkeypatch.setattr(config.model, "onnx_device", "cpu")
+    monkeypatch.setattr(get_config().model, "onnx_device", "cpu")
     monkeypatch.setattr(onnx_device, "_selections", {})

@@ -75,7 +75,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
             """等待公开父任务完成资源清理后检查内部执行槽。"""
             await asyncio.gather(
                 *(
-                    app.state.job_store.wait_for_terminal(file.execution_id, 2)
+                    app.state.execution_store.wait_for_terminal(file.execution_id, 2)
                     for record in app.state.task_store._records.values()
                     for file in record.file_states
                 )
@@ -97,8 +97,8 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
                 **({"json": {"tier": "flash", "files": [{"file_name": "new.pdf", "bytes": 3}]}} if method == "post" else {}),
             )
             assert response.status_code == 503 and response.json().get("error")["code"] == "engine_dead"
-        assert app.state.job_store._semaphore._value == 2
-        assert not app.state.job_store._tasks
+        assert app.state.execution_store._semaphore._value == 2
+        assert not app.state.execution_store._tasks
         assert not app.state.file_store._reserved_output_ids
         for job in jobs:
             file_id = job["files"][0]["file_id"]
@@ -184,9 +184,13 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
         local.stop, local.start = stop, start
         state = workers.WorkerState("local-lost", "http://old", "local", local_worker=local, generation=1)
         pool._workers[state.worker_id] = state
-        route = registry.register("job", owner_scope="anonymous", worker_id=state.worker_id, upstream_id="job-old")
-        route.metadata["payload"] = {
-            "job_id": route.public_id,
+        from task_test_utils import router_execution
+
+        route = router_execution(
+            registry, worker_id=state.worker_id, upstream_id="job-old", file_id="file-old", file_name="old.pdf"
+        )
+        route.payload = {
+            "task_id": "job-old",
             "status": "running",
             "files": [{"status": "pending"}],
             "progress": {"total": 1, "completed": 0},
@@ -199,8 +203,8 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
             return await read_task_execution(route, pool, registry)
 
         execution = client.portal.call(snapshot)
-        assert execution.job["status"] == "failed"
-        assert execution.job["files"][0].get("error")["code"] == "upstream_task_lost"
+        assert execution.status == "failed"
+        assert execution.error is not None and execution.error.code == "upstream_task_lost"
         pool._workers = {state.worker_id: state}
         reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
         assert reservation is not None and reservation.worker is state

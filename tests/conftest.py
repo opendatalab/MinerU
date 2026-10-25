@@ -31,7 +31,7 @@ def isolate_optional_llm_configuration(request: pytest.FixtureRequest, monkeypat
     if request.node.get_closest_marker("remote") or request.node.get_closest_marker("full_stack"):
         return
     module = importlib.import_module("mineru.config")
-    configuration = module.config.llm_aided.model_copy(deep=True)
+    configuration = module.get_config().llm_aided.model_copy(deep=True)
     configuration.features.title_leveling = False
     configuration.features.cross_page_table_cell_merge = False
-    monkeypatch.setattr(module.config, "llm_aided", configuration)
+    monkeypatch.setattr(module.get_config(), "llm_aided", configuration)
