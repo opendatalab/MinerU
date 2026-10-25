@@ -26,7 +26,7 @@ from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARS
 from mineru.integrations.docvortex import build_metadata
 from mineru.kit.commands import webui as webui_command
 from mineru.kit.gradio import app as gradio_app
-from mineru.kit.gradio import conversion_service
+from mineru.kit.gradio import document_io
 from mineru.kit.gradio.page_range import effective_page_range
 from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
@@ -1546,7 +1546,7 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
         """模拟产物磁盘写入失败。"""
         raise OSError("output disk unavailable")
 
-    monkeypatch.setattr(conversion_service, "persist_parse_result", fail_persistence)
+    monkeypatch.setattr(document_io.artifacts, "persist_parse_result", fail_persistence)
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(CompletedClient(), capabilities, output_root=tmp_path, enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
@@ -1660,7 +1660,7 @@ def test_gradio_slow_precheck_keeps_polling_available_and_queues_other_sessions(
         assert release.wait(10)
         return "1"
 
-    monkeypatch.setattr(conversion_service, "effective_page_range", precheck)
+    monkeypatch.setattr(document_io.page_range, "effective_page_range", precheck)
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)

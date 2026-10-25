@@ -24,7 +24,7 @@ from ...filetypes import (
 )
 from ...parser.base import ParseResult
 from ...types import Tier
-from .artifacts import RunArtifacts, persist_parse_result, render_html_preview
+from .artifacts import RunArtifacts, render_html_preview
 from .conversion import (
     ConversionCancelled,
     ConversionFailure,
@@ -37,7 +37,8 @@ from .conversion import (
     await_task_completion,
     run_sync_output,
 )
-from .page_range import effective_page_range, validate_max_pages
+from .document_io import GradioDocumentIO, LocalGradioDocumentIO
+from .page_range import validate_max_pages
 from .status import (
     STATUS_COMPLETED,
     STATUS_PREPARING_REQUEST,
@@ -83,6 +84,7 @@ class ConversionService:
         output_root: Path,
         max_pages: int | None,
         slot: asyncio.Semaphore,
+        document_io: GradioDocumentIO | None = None,
     ) -> None:
         """显式接收解析能力、产物目录、页数限制和共享执行槽。"""
         validate_max_pages(max_pages)
@@ -91,6 +93,7 @@ class ConversionService:
         self.output_root = output_root
         self.max_pages = max_pages
         self.slot = slot
+        self.document_io = document_io if document_io is not None else LocalGradioDocumentIO()
 
     async def execute(
         self,
@@ -166,7 +169,7 @@ class ConversionService:
         async with self.slot:
             run.publish(STATUS_PREPARING_REQUEST)
             page_text = await run_sync_output(
-                effective_page_range, validated.source_path, inputs.page_range, max_pages=self.max_pages
+                self.document_io.effective_page_range, validated.source_path, inputs.page_range, max_pages=self.max_pages
             )
             result = await self.client.parse_file(
                 validated.source_path,
@@ -180,7 +183,7 @@ class ConversionService:
             run.publish(STATUS_PROCESSING_OUTPUT)
             output_started = time.monotonic()
             artifacts = await run_sync_output(
-                persist_parse_result,
+                self.document_io.persist_parse_result,
                 result,
                 validated.source_path,
                 output_root=self.output_root,
