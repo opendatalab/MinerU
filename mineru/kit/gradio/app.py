@@ -33,12 +33,13 @@ from .client import (
     V1ServerCapabilities,
 )
 from .conversion import ConversionInput, SessionConversions, await_task_completion
-from .conversion_service import ConversionService
+from .conversion_service import ConversionService, ParseClient
 from .conversion_ui import build_conversion_receipt, conversion_updates, download_updates
+from .document_io import GradioDocumentIO, LocalGradioDocumentIO
 from .epub_preview import register_epub_preview_resources
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
 from .lifecycle import with_setup_loop
-from .page_range import pdf_page_metadata, validate_max_pages
+from .page_range import validate_max_pages
 from .pdf_preview import pdf_preview_js, register_pdf_preview_resources
 from .source_preview import prepare_source_preview
 from .status import (
@@ -347,13 +348,14 @@ def _pdf_preview_update(gr: Any, value: str | None) -> Any:
 
 @with_setup_loop
 def build_gradio_app(
-    client: V1ArtifactClient | GradioArtifactClient,
+    client: ParseClient,
     capabilities: V1ServerCapabilities,
     *,
     output_root: Path,
     enable_example: bool = True,
     enable_api: bool = True,
     max_pages: int | None = None,
+    document_io: GradioDocumentIO | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
     import gradio as gr
@@ -361,6 +363,7 @@ def build_gradio_app(
     viewer_entry = register_pdf_preview_resources()
     epub_viewer_entry = register_epub_preview_resources()
     validate_max_pages(max_pages)
+    document_io = document_io if document_io is not None else LocalGradioDocumentIO()
     tier_choices = [tier for tier in TIERS if tier in capabilities.tiers]
     if not tier_choices:
         raise ValueError("V1 API server did not advertise any parsing tier")
@@ -388,6 +391,7 @@ def build_gradio_app(
         output_root=output_root,
         max_pages=max_pages,
         slot=conversions.slot,
+        document_io=document_io,
     )
 
     with gr.Blocks() as demo:
@@ -790,7 +794,7 @@ def build_gradio_app(
 
         def read_page_metadata(file_path: str | None) -> str:
             """把页数元数据编码为 JSON 文本，保持前端状态输入契约稳定。"""
-            return json.dumps(pdf_page_metadata(file_path), ensure_ascii=False)
+            return json.dumps(document_io.pdf_page_metadata(file_path), ensure_ascii=False)
 
         input_file.change(
             fn=read_page_metadata,

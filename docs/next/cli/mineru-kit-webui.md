@@ -148,3 +148,15 @@ PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用
 `mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
 
 Gradio 使用 Tasks 能力发现和逐文件 `upload` 描述，固定使用 PUT 上传；仅保存 Middle JSON 和素材，下载菜单从保存的 Middle JSON 按需导出。
+
+## 嵌入宿主的文档操作
+
+`mineru.kit.gradio` 公开导出 `GradioDocumentIO` 协议。调用 `build_gradio_app()` 时可通过关键字参数
+`document_io` 注入宿主实现，统一接管 `pdf_page_metadata()`、`effective_page_range()` 和
+`persist_parse_result()`。不传时沿用进程内的页数读取、选页校验和产物保存。
+
+界面页数回调与转换服务共享同一实例，各应用之间互不影响。选页与持久化仍在工作线程中执行，
+取消必须等待同步工作结束后再释放转换槽。实现的构造过程应只定义行为，不启动进程、打开 PDF 或加载模型。
+
+HF Demo 使用该接口将三类操作委托 CPU sidecar，生产与预检共用界面构建入口，不再替换 Gradio 模块函数。
+HF 适配代码要求支持此协议与 `document_io` 参数的 MinerU；跨越该接口升级边界时，应成对更新或回滚宿主与 MinerU。

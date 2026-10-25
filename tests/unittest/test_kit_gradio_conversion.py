@@ -16,7 +16,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from mineru.kit.gradio import conversion_service
+from mineru.kit.gradio import document_io
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
 from mineru.kit.gradio.conversion import ConversionRun, SessionConversions
@@ -281,7 +281,7 @@ def test_cancelled_sync_output_keeps_slot_until_thread_exits(tmp_path: Path, mon
     source = tmp_path / "source.pdf"
     source.write_bytes(_pdf_bytes())
     started, release = threading.Event(), threading.Event()
-    persist = conversion_service.persist_parse_result
+    persist = document_io.artifacts.persist_parse_result
     client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
     calls = 0
 
@@ -294,7 +294,7 @@ def test_cancelled_sync_output_keeps_slot_until_thread_exits(tmp_path: Path, mon
             assert release.wait(10)
         return persist(*args, **kwargs)
 
-    monkeypatch.setattr(conversion_service, "persist_parse_result", slow_output)
+    monkeypatch.setattr(document_io.artifacts, "persist_parse_result", slow_output)
     app = _application(tmp_path, client)
     convert, poll, cancel = (_callback(app, name) for name in ("convert_ui", "read_conversion_status", "cancel_ui_conversion"))
     request = SimpleNamespace(session_hash="same-session")
