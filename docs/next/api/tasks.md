@@ -5,9 +5,9 @@
 每个文件就绪后立即执行，完成后在 `files[].result_url` 返回独立下载链接。
 客户端不拼接存储路径，也不要求 SaaS 实现本地 Files API。
 
-快速定位：[响应字段](#响应模型) · [各接口成功响应](#各接口成功响应) · [错误响应](#各接口错误响应) · [输出格式与下载](#输出格式与下载)。
+快速定位：[创建请求](#创建任务请求) · [响应字段](#响应模型) · [共用响应对象](#共用响应对象) · [各接口成功响应](#各接口成功响应) · [错误响应](#各接口错误响应) · [输出格式与下载](#输出格式与下载)。
 
-## 路由与请求
+## 路由概览
 
 | 方法与路径 | 行为 |
 |---|---|
@@ -16,11 +16,17 @@
 | `GET /v1/tasks/{task_id}` | 返回 `200`，包含总状态、逐文件状态、尚有效的上传链接和已完成文件的下载链接。 |
 | `POST /v1/tasks/{task_id}/cancel` | 返回 `200 CancelTaskResponse`，包含所有文件的终态及已经完成文件的下载链接。 |
 
-创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
-业务参数必须放在 JSON 主体中，POST 查询参数、未知字段、非法值返回 `400 invalid_request`。
-上传文件的 PUT 仍发送原始字节，使用返回的 `files[].upload.headers`；签名 URL 必须原样使用。
 Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 不提供任务记录或产物的公开 DELETE 接口；旧 DELETE 取消入口不保留别名，认证通过后返回 405。
+
+未配置 API Key 的本地服务可省略 Authorization，四种输出格式均可用；启用服务认证后四种格式均需认证，没有额外的格式权限限制。
+
+## 创建任务请求
+
+以下字段仅用于 `POST /v1/tasks` 的 JSON 请求体。创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
+业务参数必须放在 JSON 主体中，创建接口的查询参数、未知字段、非法值返回 `400 invalid_request`。
+
+### 顶层请求字段
 
 | JSON 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -32,7 +38,9 @@ Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 
 ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。请求携带已删除的 `include_model_output` 字段（包括值为 `false`）返回 400。
 
-每个清单条目包含：
+### files[]：输入清单
+
+请求体的 `files` 数组中，每个条目包含以下字段：
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
@@ -42,10 +50,14 @@ ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。�
 | `sha256sum` | 否 | 64 位小写十六进制 SHA-256；用于完整性校验，上传项还用于源文件缓存预检。 |
 | `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
 
+### 文件 ID 与输入关联
+
 服务端为每个输入分配唯一的 `file_id`，请求不得包含 `client_file_id` 或 `file_id`，即使值为 `null` 也返回 `400 invalid_request`。
 创建响应的 `files` 顺序与输入一致，客户端先按原始顺序绑定 ID，随后使用 ID 关联上传、查询、取消和结果。同名输入或相同内容仍获得不同 ID。
 该 ID 从创建到结果下载保持不变；在本地和 Router 中，产物注册后的 Files ID 与它一致。产物生成前只预留 ID，对 Files 元数据和内容接口的访问返回 `404 file_not_found`。
 源缓存引用不属于公共 ID；跨任务可共享源字节，但每次任务独立生成产物。Router 内部映射各层生成的 ID，对客户端始终保留本层 ID。
+
+### 创建请求示例
 
 先从真实文件生成 JSON 请求（文件 ID 统一由服务端生成）：
 
@@ -78,7 +90,7 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
   --data-binary @task.json
 ```
 
-未配置 API Key 的本地服务可省略 Authorization，四种输出格式均可用；启用服务认证后四种格式均需认证，没有额外的格式权限限制。
+对应的完整 JSON 请求和创建回执见 [创建任务成功响应](#post-v1tasks创建任务)。
 
 ## 响应模型
 
@@ -86,10 +98,10 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 
 | 接口 | 模型 | 顶层字段 |
 |---|---|---|
-| POST 创建 | `CreateTaskResponse` | `task_id/status/files`。 |
-| GET | `TaskDetailResponse` | `task_id/status/created_at/output_formats/progress/files`，以及有值的 `started_at/finished_at/error`。 |
-| POST cancel | `CancelTaskResponse` | `task_id/status/finished_at/files`。 |
-| 本地 PUT | `UploadFileResponse` | `task_id/file_id/status`，其中 status 是本次上传文件的状态。 |
+| [POST 创建](#post-创建响应) | `CreateTaskResponse` | `task_id/status/files`。 |
+| [GET 查询](#get-查询响应) | `TaskDetailResponse` | `task_id/status/created_at/output_formats/progress/files`，以及有值的 `started_at/finished_at/error`。 |
+| [POST 取消](#post-取消响应) | `CancelTaskResponse` | `task_id/status/finished_at/files`。 |
+| [本地 PUT 上传确认](#put-上传确认响应) | `UploadFileResponse` | `task_id/file_id/status`，其中 status 是本次上传文件的状态。 |
 
 这些成功响应递归省略值为 `null` 的可选字段，保留 `0/false/[]/{}`，例如 `progress.failed=0` 和 `upload.headers={}`。OpenAPI 将可省略字段标为非必填。
 每次响应是该接口当前的完整快照；缺少可选字段表示当前没有该值，不能沿用上一次响应的上传地址或结果信息。客户端应忽略未来新增的字段。
@@ -97,13 +109,37 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 
 JSON 正文使用 UTF-8。时间字符串使用 ISO-8601 UTC；上传链接 `expires_at` 使用 Unix 秒级整数。
 请求中的 `tier/ocr_mode/page_range` 和逐文件 `sha256sum/page_range` 不作响应回显；实际档位位于成功文件的 `parse.tier`。
+
+### POST 创建响应
+
+`POST /v1/tasks` 返回 **202 Accepted** 和 `CreateTaskResponse`。202 表示接单，具体状态以响应为准。完整示例见 [创建任务成功响应](#post-v1tasks创建任务)。
+
+#### 创建回执的顶层字段
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `task_id` | string | 是 | 稳定的父任务 ID，用于后续查询、上传和取消。 |
+| `status` | string | 是 | 当前任务总状态：`waiting-file/pending/running/completed/partial/failed/canceled`。 |
+| `files` | array of object | 是 | 每个输入的文件 ID、当前状态和上传动作，顺序与创建请求一致。 |
+
+#### 创建回执的 files[]
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `file_id` | string | 是 | 服务端分配的公共文件 ID，创建后不变。 |
+| `file_name` | string | 是 | 输入逻辑文件名，同名文件通过 ID 区分。 |
+| `status` | string | 是 | 当前文件状态：`waiting-file/pending/running/completed/failed/canceled`，没有 `partial`。 |
+| `upload` | object | 否 | 仅在当前需要客户端上传时返回，见 [待上传描述](#filesupload待上传描述)。 |
+
+创建回执不返回文件大小、解析统计或结果链接，即使文件已经完成也通过 GET 获取详情。
+
+### GET 查询响应
+
+`GET /v1/tasks/{task_id}` 返回 **200 OK** 和 `TaskDetailResponse`，包括任务失败、取消等终态。完整示例见 [查询任务成功响应](#get-v1taskstask_id查询任务)。
+
 客户端保留配置 API 基址的代理前缀，并追加 `/v1/tasks/{URL 编码后的 task_id}` 查询；Tasks 不返回 `status_url`。
 
-### 创建回执的 files[]
-
-每项必带 `file_id/file_name/status`；只有当前需要客户端上传时才带 `upload`。POST 不返回文件大小、解析统计或结果链接，即使文件已经完成也通过 GET 获取详情。
-
-### 查询详情的顶层字段
+#### 查询详情的顶层字段
 
 | 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
@@ -113,13 +149,21 @@ JSON 正文使用 UTF-8。时间字符串使用 ISO-8601 UTC；上传链接 `exp
 | `started_at` | string | 否 | 已知最早的逐文件执行开始时间，无记录时省略。 |
 | `finished_at` | string | 否 | 父任务进入终态的时间，非终态时省略。 |
 | `output_formats` | array of string | 是 | 本次输出格式，按首次出现去重。 |
-| `progress` | object | 是 | 必带整数 `completed/failed/total`，零值保留。 |
+| `progress` | object | 是 | 逐文件进度计数，字段见本节下表。 |
 | `files` | array of object | 是 | 全部文件的当前详情，始终保持创建请求顺序。 |
-| `error` | object | 否 | 父任务级错误，逐文件失败见 files[].error。 |
+| `error` | object | 否 | 有父任务级错误时返回 [ErrorDetail](#errordetail父任务或逐文件错误)，逐文件失败见 `files[].error`。 |
 
-`completed` 计数表示解析及全部所选格式均成功的文件数；`failed` 包含上传过期、下载、解析和导出失败；`total` 固定为输入文件数。取消文件不计入 completed 或 failed。
+#### 查询详情的 progress
 
-### 查询详情的 files[]
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `completed` | integer | 是 | 解析及全部所选格式均成功的文件数。 |
+| `failed` | integer | 是 | 失败文件数，包含上传过期、下载、解析和导出失败。 |
+| `total` | integer | 是 | 固定为创建请求中的输入文件数。 |
+
+三个计数均保留零值。取消文件不计入 `completed` 或 `failed`。
+
+#### 查询详情的 files[]
 
 | 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
@@ -128,44 +172,96 @@ JSON 正文使用 UTF-8。时间字符串使用 ISO-8601 UTC；上传链接 `exp
 | `status` | string | 是 | `waiting-file/pending/running/completed/failed/canceled`，没有 partial。 |
 | `bytes` | integer | 否 | 输入大小，URL 下载前未知时省略，校验后补齐实际字节数。 |
 | `url` | string | 否 | URL 输入的原始下载地址，上传输入省略。 |
-| `upload` | object | 否 | 当前可执行的上传动作，服务端准备、输入就绪或终结时省略。 |
-| `parse` | object | 否 | 成功完成后的实际档位和解析统计。 |
-| `result_url` | string | 否 | completed 文件完整产物的下载地址。 |
-| `error` | object | 否 | 文件错误详情，无错误时省略。 |
+| `upload` | object | 否 | 当前可执行的 [上传动作](#filesupload待上传描述)，服务端准备、输入就绪或终结时省略。 |
+| `parse` | object | 否 | 文件成功完成后返回的实际档位和 [解析统计](#filesparse解析统计)。 |
+| `result_url` | string | 否 | 文件 `completed` 时返回其完整产物的下载地址。 |
+| `error` | object | 否 | 文件错误详情，结构为 [ErrorDetail](#errordetail父任务或逐文件错误)，无错误时省略。 |
 
 `waiting-file` 包括等待上传、接收、对象存储确认、URL 下载及完整性校验；`pending` 表示输入已就绪并等待解析资源；`running` 包含解析、导出和结果保存。
 只在 `waiting-file` 且存在 `upload` 时上传；没有 upload 时只轮询，不能据此认为输入已经就绪。成功 PUT 后即使仍为 waiting-file 也不重复传输。
 只有上传失败、查询确认仍需上传且链接有效时才有界重试。上传过期使用 `failed` 和 `error.code=upload_expired`。
 
-### 取消回执的 files[]
+### POST 取消响应
 
-每项必带 `file_id/file_name/status`，status 只会是 `completed/failed/canceled`。成功文件附带 `parse/result_url`，失败文件附带 `error`；不包含 upload、输入大小或来源 URL。
+`POST /v1/tasks/{task_id}/cancel` 无需请求体，返回 **200 OK** 和 `CancelTaskResponse`。已成功或失败的文件保留终态，其余文件转为 `canceled`；已终结的父任务再次取消返回 `409 task_already_terminal`。完整示例见 [取消任务成功响应](#post-v1taskstask_idcancel取消任务)。
+
+#### 取消回执的顶层字段
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `task_id` | string | 是 | 被取消的父任务 ID。 |
+| `status` | string | 是 | 固定为 `canceled`。 |
+| `finished_at` | string | 是 | 父任务进入取消终态的时间。 |
+| `files` | array of object | 是 | 全部文件的终态，顺序与创建请求一致。 |
+
+#### 取消回执的 files[]
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `file_id` | string | 是 | 服务端分配的公共文件 ID，与创建回执一致。 |
+| `file_name` | string | 是 | 输入逻辑文件名，同名文件通过 ID 区分。 |
+| `status` | string | 是 | 文件终态，只会是 `completed/failed/canceled`。 |
+| `parse` | object | 否 | 成功文件附带实际档位和 [解析统计](#filesparse解析统计)。 |
+| `result_url` | string | 否 | 成功文件附带完整产物的下载地址。 |
+| `error` | object | 否 | 失败文件附带 [ErrorDetail](#errordetail父任务或逐文件错误)，无错误时省略。 |
+
+取消回执不包含上传动作、输入大小或来源 URL。
 取消操作保留任务和已完成产物，返回后可直接使用成功文件的下载链接。底层不可中断计算和资源清理可能仍在收尾，迟到结果不会覆盖已公布的取消终态。
+
+### PUT 上传确认响应
+
+向返回的 `files[].upload.url` 发送原始字节，使用 `files[].upload.headers`，签名 URL 必须原样使用。
+本地 API Server 和 Router 的 `PUT /v1/tasks/{task_id}/uploads/{file_id}` 返回 **200 OK** 和 `UploadFileResponse`。完整示例见 [本地上传确认成功响应](#put-v1taskstask_iduploadsfile_id本地上传确认)。
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `task_id` | string | 是 | 本次上传所属的父任务 ID。 |
+| `file_id` | string | 是 | 本次上传文件的公共 ID，与创建回执一致。 |
+| `status` | string | 是 | 本次文件的当前状态：`waiting-file/pending/running/completed/failed/canceled`，不是父任务总状态。 |
+
+本次文件完成保存及校验后进入 `pending/running`；响应不包含 `files` 或其他任务详情，最新详情通过 GET 获取。
+有效期内重复 PUT 已确认文件仍返回当前文件回执，且不读取或覆盖源字节；上传窗口到期后返回 `410 upload_expired`。
+SaaS 的上传目标可能是独立对象存储：通用客户端接受成功的 2xx 响应，不要求其返回上述本地 PUT 回执，随后查询 Tasks 确认就绪。
+
+## 共用响应对象
+
+以下对象只在各接口字段表标注的位置出现，不代表每种响应都包含这些字段。
+
+### files[].upload：待上传描述
+
+适用于 **POST 创建、GET 查询** 的 `files[].upload`。
+固定使用 PUT 上传原始字节；对象不重复携带 file_id，也不返回 upload_method。查询仍提供当前有效的上传入口。
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `url` | string | 是 | 完整上传地址，签名 URL 原样使用。 |
+| `headers` | object | 是 | 字符串请求头映射，允许为空对象。 |
+| `expires_at` | integer | 是 | 固定的 Unix 秒级截止时间，查询不续期。 |
 
 ### files[].parse：解析统计
 
+适用于 **GET 查询、POST 取消** 的 `files[].parse`。
 成功后的实际 tier 来自结果元数据，不以请求 tier 代替。PDF 和图片沿用多档位规则，HTML、Office 等原生文档使用 flash，同一批次可出现不同档位。
 
 | 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
 | `tier` | string | 是 | 实际执行档位：flash/basic/standard/advanced。 |
-| `duration_ms` | integer | 否 | 已知的毫秒级耗时，包含源读取/下载、校验、解析和导出，不含等待上传、准备名额及解析队列时间。 |
-| `parser_version` | string | 否 | 已知的执行 worker 版本，不保证与 Router 版本一致。 |
-
-### files[].upload：待上传描述
-
-固定使用 PUT 上传原始字节；对象不重复携带 file_id，也不返回 upload_method。查询仍提供当前有效的上传入口。
-
-| 字段 | JSON 类型 | 含义 |
-|---|---|---|
-| `url` | string | 完整上传地址，签名 URL 原样使用。 |
-| `headers` | object | 必带的字符串请求头映射，允许为空对象。 |
-| `expires_at` | integer | 固定的 Unix 秒级截止时间，查询不续期。 |
+| `duration_ms` | integer | 否 | 已知的毫秒级耗时，包含源读取/下载、校验、解析和导出，不含等待上传、准备名额及解析队列时间；未知时省略。 |
+| `parser_version` | string | 否 | 已知的执行 worker 版本，不保证与 Router 版本一致；未知时省略。 |
 
 ### ErrorDetail：父任务或逐文件错误
 
-成功快照中的 error 必带 `type/message`，有值时附带 `code/param`；空值仍省略。缺少顶层 error 不代表所有文件成功，partial/failed 的原因可能只在逐文件 error 中。
-HTTP 非成功错误 envelope 保持现有契约，见下文。
+成功快照中适用于 **GET 查询** 的顶层 `error` 和 `files[].error`，以及 **POST 取消** 的 `files[].error`。
+
+| 字段 | JSON 类型 | 必带 | 含义 |
+|---|---|---|---|
+| `type` | string | 是 | 错误类型。 |
+| `message` | string | 是 | 错误说明。 |
+| `code` | string | 否 | 具体错误码，有值时返回。 |
+| `param` | string | 否 | 关联参数，有值时返回。 |
+
+上表按成功快照说明，`code/param` 无值时省略。缺少顶层 `error` 不代表所有文件成功，`partial/failed` 的原因可能只在逐文件 `error` 中。
+HTTP 非成功响应也使用 `ErrorDetail`，但外层为 `{"error": ...}`，并保留各自的空值规则（`code/param` 可以为 `null`）；完整示例及错误码见 [各接口错误响应](#各接口错误响应)。
 
 ## 各接口成功响应
 
