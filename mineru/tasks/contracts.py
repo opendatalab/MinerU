@@ -85,7 +85,8 @@ class UploadTaskOptions(BaseModel):
         description=(
             "PDF/image tier only. Omitted or null selects the highest supported tier in the order "
             "standard, basic, flash; advanced requires an explicit request. Explicit unsupported tiers are rejected. "
-            "Supported native document formats always use flash, ignoring any valid tier value."
+            "All servers support native document formats with flash, independently of /v1/tiers "
+            "and ignoring any valid tier value."
         ),
     )
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"

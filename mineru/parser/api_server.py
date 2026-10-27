@@ -69,7 +69,7 @@ from .page_range import (
     format_page_range as _compact_page_numbers,
 )
 from .process_control import ManagedProcessControlWatcher
-from .server_tiers import model_tier_for_server_tiers, parse_server_tiers, resolve_server_tiers
+from .server_tiers import model_tier_for_server_tiers, parse_server_tier, resolve_server_tiers
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
@@ -208,7 +208,7 @@ class HealthResponse(BaseModel):
 # 不对应任何可单独调用的引擎。
 _VIRTUAL_MODEL_ID = f"mineru-{__version__}"
 _VIRTUAL_MODEL_DESCRIPTION = (
-    "MinerU virtual model. Quality is selected per request via tier (flash|basic|standard|advanced); "
+    "MinerU virtual model. PDF/image quality is selected per request via tier; native documents always use flash. "
     "this id identifies the server version, not a specific engine."
 )
 
@@ -1205,7 +1205,6 @@ async def _run_execution(
     url_timeout: int = 60,
     allow_http_source: bool = False,
     max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
-    flash_enabled: bool = True,
     vlm_config: VlmConfig | None = None,
     execution_store: ExecutionStore | None = None,
 ) -> None:
@@ -1243,8 +1242,6 @@ async def _run_execution(
                 suffix = ".html"
             if not stype:
                 raise ValueError(f"Unsupported file type: {req.file_name}")
-            if not flash_enabled and is_flash_only_parse_extension(stype):
-                raise ValueError("Flash parsing is disabled in this server, but this input requires the Flash backend")
 
             suffix = suffix or ".pdf"
             tmp_path = pathlib.Path(tmpdir) / f"input_0{suffix}"
@@ -1450,7 +1447,7 @@ async def get_model(
     tags=["Tiers"],
 )
 async def list_tiers(request: Request) -> TierListResponse:
-    """List all available parser tiers."""
+    """发布 PDF/图片可选档位；原生文档的固定 Flash 能力不由该列表控制。"""
     _require_model_preload_ready(request)
     tiers: list[TierInfoData] = request.app.state.tiers
     return TierListResponse(
@@ -1545,14 +1542,9 @@ async def submit_execution(
     _require_model_preload_ready(request)
     default_tier: Tier | None = request.app.state.default_tier
     can_default_to_flash = _execution_can_default_to_flash(body)
-    if not request.app.state.flash_enabled and _execution_requires_flash(body):
-        raise_api_error(
-            400,
-            error_type="invalid_request_error",
-            code="invalid_request",
-            message="Flash parsing is disabled in this server, but one or more inputs require the Flash backend",
-            param="files",
-        )
+    native_document = _execution_requires_flash(body)
+    if native_document:
+        body.tier = "flash"
     if body.tier is None and default_tier is None:
         if can_default_to_flash:
             body.tier = "flash"
@@ -1569,9 +1561,10 @@ async def submit_execution(
     else:
         body.tier = body.tier or default_tier
     runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
-    runtime = runtime_options.get(body.tier)
+    # 公开 runtime 表仅约束 PDF/图片；原生文档始终走独立 Flash 路径。
+    runtime = runtime_options_for_tier("flash") if native_document else runtime_options.get(body.tier)
     if runtime is None and can_default_to_flash:
-        runtime = runtime_options.get("flash") or runtime_options_for_tier("flash")
+        runtime = runtime_options_for_tier("flash")
     if runtime is None:
         raise_api_error(
             400,
@@ -1587,7 +1580,6 @@ async def submit_execution(
     url_timeout_val: int = request.app.state.url_timeout
     allow_http_source_val: bool = request.app.state.allow_http_source
     max_url_bytes_val: int = request.app.state.max_url_bytes
-    flash_enabled_val: bool = request.app.state.flash_enabled
     image_analysis_val: bool = request.app.state.image_analysis
     vlm_config_val: VlmConfig = request.app.state.vlm_config
 
@@ -1600,7 +1592,6 @@ async def submit_execution(
             url_timeout=url_timeout_val,
             allow_http_source=allow_http_source_val,
             max_url_bytes=max_url_bytes_val,
-            flash_enabled=flash_enabled_val,
             vlm_config=vlm_config_val,
             execution_store=execution_store,
         )
@@ -1819,8 +1810,9 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tiers:
-        Exact non-empty set of advertised request tiers. ``None`` recommends
-        tiers from available hardware and existing OCR calibration evidence.
+        Exact non-empty set of PDF/image request tiers. ``None`` recommends
+        a capability ceiling from hardware and existing OCR calibration evidence.
+        Native documents always use Flash independently of this set.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -1864,7 +1856,6 @@ def create_app(
         application.state.server_tiers = server_tiers
         application.state.model_tier = model_tier
         application.state.default_tier = default_tier
-        application.state.flash_enabled = "flash" in server_tiers
         application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = [_VIRTUAL_MODEL_ID]
         application.state.model_registered_at = _model_registered_at
@@ -1993,7 +1984,6 @@ def create_app(
     application.state.server_tiers = server_tiers
     application.state.model_tier = model_tier
     application.state.default_tier = default_tier
-    application.state.flash_enabled = "flash" in server_tiers
     application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = [_VIRTUAL_MODEL_ID]
     application.state.model_registered_at = _model_registered_at
@@ -2120,10 +2110,10 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     type=click.Path(file_okay=False, writable=True, resolve_path=True),
 )
 @click.option(
-    "--tiers",
+    "--tier",
     default="auto",
     type=str,
-    help="Exact comma-separated tiers (flash,basic,standard,advanced), or auto for hardware recommendations (default).",
+    help="PDF/image tier ceiling: flash, basic, standard, advanced, or auto (default). Native documents always use Flash.",
 )
 @click.option(
     "--concurrency",
@@ -2177,7 +2167,7 @@ def main(
     host: str,
     port: int,
     upload_dir: str,
-    tiers: str,
+    tier: str,
     concurrency: int,
     url_timeout: int,
     max_url_bytes: int,
@@ -2231,7 +2221,7 @@ def main(
         )
         application = create_app(
             upload_dir=upload_dir,
-            tiers=parse_server_tiers(tiers),
+            tiers=parse_server_tier(tier),
             concurrency=concurrency,
             url_timeout=url_timeout,
             max_url_bytes=max_url_bytes,

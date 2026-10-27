@@ -19,7 +19,7 @@ MinerU 当前定义四个公开 tier。文档中使用面向用户的显示名�
 | Standard | `standard` | 标准解析 | 使用少量 VLM 工作，CPU 可运行、GPU 可加速，也是 MinerU 线上 API 提供的档位 |
 | Advanced | `advanced` | 高级解析 | 与 Standard 硬件要求相同，但消耗更多算力和时间，困难文档质量更高 |
 
-`auto` 不是解析请求的公开 tier 值；API 启动参数 `--tiers auto` 专门表示硬件推荐开放集合。CLI 中不传 `--tier`、HTTP API 中省略 `tier` 或传 JSON `null`、Python SDK 中传 `None`，都表示使用当前入口的默认选择策略。
+`auto` 不是解析请求的公开 tier 值；API 启动参数 `--tier auto` 专门表示硬件推荐开放集合。CLI 中不传 `--tier`、HTTP API 中省略 `tier` 或传 JSON `null`、Python SDK 中传 `None`，都表示使用当前入口的默认选择策略。
 
 核心原则：
 
@@ -54,7 +54,7 @@ MinerU 当前定义四个公开 tier。文档中使用面向用户的显示名�
 
 ### 3.1 无能力列表的场景
 
-直接本地解析时，如果当前入口没有可用 tier 列表可参考，默认 tier 是 `standard`。API 服务启动的开放集合独立按 `--tiers` 配置或硬件推荐确定。
+直接本地解析时，如果当前入口没有可用 tier 列表可参考，默认 tier 是 `standard`。API 服务启动的开放集合独立按 `--tier` 上限或硬件推荐确定。
 
 典型场景:
 
@@ -73,7 +73,7 @@ Doclib 主动解析调用某个 parse-server，或有等价的可用 tier 上下
 standard -> basic -> 报错
 ```
 
-也就是说，`standard` 是默认优先档位；没有 `standard` 时回退到 `basic`。`advanced` 必须由用户显式指定，不参与默认选择。API 服务可以显式只开放 `advanced`；Doclib 既有 Standard 托管预设仍同时开放 standard 和 advanced。
+也就是说，`standard` 是默认优先档位；没有 `standard` 时回退到 `basic`。`advanced` 必须由用户显式指定，不参与默认选择。内嵌服务可以使用精确集合只开放 advanced；Doclib 的 standard 上限只开放到 standard，需要高级档位时显式配置 advanced。
 
 | 可发现能力 | 默认解析结果 |
 |------------|-----------------|
@@ -100,9 +100,9 @@ advanced 只接受显式选择：只有 advanced 时没有默认档位，返回�
 
 ### 3.4 API 服务启动推荐
 
-`--tiers auto` 或省略启动参数时：进程可用逻辑 CPU 不足 4 且没有达标 GPU，只开放 flash；CPU 至少 4 时开放 flash、basic、standard；可用独显、有效 OCR 校准达标的集显、或 Metal 可用的 Apple Silicon 开放全部四档。推荐集合在启动时固定，不进行模型性能实测或额外内存分级。
+`--tier auto` 或省略启动参数时：进程可用逻辑 CPU 不足 4 且没有达标 GPU，只开放 flash；CPU 至少 4 时开放 flash、basic、standard；可用独显、有效 OCR 校准达标的集显、或 Metal 可用的 Apple Silicon 开放全部四档。推荐集合在启动时固定，不进行模型性能实测或额外内存分级。
 
-`--tiers flash,standard` 等显式列表只开放指定档位，允许覆盖推荐。请求默认仍优先 standard，advanced 不参与默认选档。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
+`--tier standard` 等显式上限开放自身和全部较低档位，允许覆盖硬件推荐。`/v1/tiers` 只约束 PDF/图片，原生文档在任何正常可用服务上均固定使用 flash。请求默认仍优先 standard，advanced 不参与默认选档。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
 
 ## 4. Flash
 
@@ -124,7 +124,7 @@ Doclib 只有在用户明确指定 `flash` 时，才返回 `flash` 的解析内�
 
 `basic` 的核心价值是本地隐私解析：当用户不接受把文档发送到远端解析，同时硬件又不是特别高端时，`basic` 应成为本地可用的最佳默认方案。
 
-本地 managed parse server 只有 `basic` 和 `standard` 两个启动能力上限，两者建议配置至少 16GB 总内存（建议值，代码不做硬件检查）。Standard 服务同时提供 Standard 和 Advanced 请求能力。低于该基线时，不建议启用本地 managed 质量 tier；应考虑远端解析，或在用户明确接受低质量时显式使用 `flash`。
+本地 Doclib managed parse server 支持 basic、standard、advanced 三个质量上限，standard 不包含 advanced；advanced 复用 Standard 模型配置。内存建议不作为自动推荐的分级门槛。低于该基线时，不建议启用本地 managed 质量 tier；应考虑远端解析，或在用户明确接受低质量时显式使用 `flash`。
 
 ## 6. Standard
 
@@ -153,7 +153,7 @@ Doclib 只有在用户明确指定 `flash` 时，才返回 `flash` 的解析内�
 - vLLM / LMDeploy 使用 `mineru[full]`，其中 Linux 安装 vLLM，Windows 安装 LMDeploy。
 - 显式选择 MLX 时，单独安装 `mlx-vlm>=0.7.0,<0.8.0`。
 
-使用 `mineru-kit models download --tier standard` 准备模型，并以 Standard 启动 parse-server；解析请求再显式选择 `--tier advanced`。Advanced 不需要也不支持独立的服务启动配置。
+使用 `mineru-kit models download --tier standard` 准备模型，并以 `mineru-kit api-server --tier advanced` 启动服务；解析请求再显式选择 advanced。模型下载档位与服务启动上限是不同概念。
 
 ## 8. 隐私优先与质量优先
 
@@ -178,7 +178,7 @@ MinerU 的 tier 策略同时遵守隐私优先和质量优先。
 | 请求 | 默认执行路径 |
 |------|--------------|
 | watch 自动发现文件 | 本地 `flash` |
-| `mineru-kit api-server` 未传 `--tiers` | 硬件推荐开放集合；HTTP 请求按 standard → basic → flash 选档 |
+| `mineru-kit api-server` 未传 `--tier` | 硬件推荐开放集合；HTTP 请求按 standard → basic → flash 选档 |
 | `mineru-kit parse` local 模式未传 `--tier` | PDF/image 直接按 `standard` 解析；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按 `flash` 语义处理；其它 text 不作为解析输入 |
 | watch 命中 parsing-rule 且 rule 指定 tier | PDF 按 rule 中的 tier、页码范围和 remote 配置执行；image 按 tier 和 remote 整文件执行并忽略 page_range；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 忽略 rule tier、page_range 和 remote，按 `flash` 整本解析；其它 text 只入库和索引 |
 | watch 命中 parsing-rule 但 rule 未指定 tier | PDF/image 按 `standard` -> `basic` -> `flash` 选择；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按 `flash`；其它 text 只入库和索引 |

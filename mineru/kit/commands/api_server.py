@@ -14,8 +14,8 @@ def api_server_cmd(
     host: str = typer.Option("127.0.0.1", "--host", help=t("Server host")),
     port: int = typer.Option(8000, "--port", help=t("Server port")),
     upload_dir: str = typer.Option("", "--upload-dir", help=t("Upload directory")),
-    tiers: str = typer.Option(
-        "auto", "--tiers", help=t("Exact tiers: flash,basic,standard,advanced; or auto for hardware recommendations")
+    tier: str = typer.Option(
+        "auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")
     ),
     retention_seconds: int | None = typer.Option(
         None,
@@ -77,8 +77,8 @@ def api_server_cmd(
                 str(concurrency),
                 "--url-timeout",
                 str(url_timeout),
-                "--tiers",
-                tiers,
+                "--tier",
+                tier,
                 *vlm_args,
                 *(["--allow-http-source"] if allow_http_source else []),
                 *(["--upload-dir", upload_dir] if upload_dir else []),

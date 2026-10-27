@@ -73,7 +73,7 @@ EPUB、Office、HTML 和 CSV 即使通过高层接口传入了 `basic`、`standa
 批量操作中，EPUB/Office/HTML/CSV 的实际 parse row、缓存目录、locator 和 metadata 必须记录 `flash`，不能记录用户传入的质量 tier。其它 text 不得生成这些解析产物。
 
 Tasks 的顶层请求 `tier` 可选，只对 PDF/image 生效。省略或 JSON `null` 时，接单服务按 `standard -> basic -> flash` 选择支持的档位；advanced 必须显式指定，仅有 advanced 时省略 tier 返回 `503 quality_tier_unavailable`。
-显式档位不受支持且批次包含 PDF/image 时，整个创建请求返回 `400 invalid_request`，不自动升降档。纯原生文档忽略合法的显式 tier，固定使用 flash；非法枚举或空字符串仍报参数错误，flash 被禁用时不能解析原生文档。
+显式档位不受支持且批次包含 PDF/image 时，整个创建请求返回 `400 invalid_request`，不自动升降档。纯原生文档忽略合法的显式 tier，固定使用 flash；非法枚举或空字符串仍报参数错误，原生解析是所有正常可用服务的必备能力，不依赖 `/v1/tiers` 是否发布 flash。
 选档在接单时保存，后续逐文件执行和 Router 转发使用有效档位，不随 worker 默认值变化。成功结果通过 `files[].parse.tier` 返回真实执行档位，不在顶层回显请求 tier，也不产生伪质量缓存。其它 text 不进入 Tasks 解析。
 Tasks 默认选择独立于 Doclib 主动操作的默认质量策略，不改变后者必须显式选择 flash 的规则。
 

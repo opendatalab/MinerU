@@ -42,7 +42,7 @@
 ```bash
 mineru-openai-server --engine vllm --host 127.0.0.1 --port 30000
 mineru-models-download --tier standard --source modelscope
-mineru-api --host 127.0.0.1 --port 8000 --tiers flash,standard
+mineru-api --host 127.0.0.1 --port 8000 --tier standard
 ```
 
 `mineru-openai-server` 保留向底层引擎透传额外参数的能力。`mineru-models-download` 后直接填写模型仓库名或 `--tier` 等下载参数，不需要再输入 `download`。
@@ -90,7 +90,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tiers flash,standard
 - 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`。
 - `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
 - `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
-- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 默认 `standard`，`--worker-concurrency` 默认 `1`。
+- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 是包含较低档位的上限，可选 flash/basic/standard/advanced，默认 standard；`--worker-concurrency` 默认 `1`。
 - Router 提供 V1 health、models、tiers、usage、按 ID 操作 Files，以及 `/v1/tasks` JSON 创建、按 ID 查询/取消、逐文件上传和结果下载；不提供任务或文件列表。
 - Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
 - tasks 与 files 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。

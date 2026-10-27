@@ -336,8 +336,8 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
 
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:
     assert api_server_args_for_tier("standard", host="127.0.0.1", port=16580) == [
-        "--tiers",
-        "basic,standard,advanced",
+        "--tier",
+        "standard",
         "--host",
         "127.0.0.1",
         "--port",
@@ -347,7 +347,7 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "warning",
     ]
     assert api_server_args_for_tier("basic", host="127.0.0.2", port=16581) == [
-        "--tiers",
+        "--tier",
         "basic",
         "--host",
         "127.0.0.2",
@@ -618,8 +618,8 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
     def _popen(*args: Any, **kwargs: Any) -> _Proc:
         popen_calls.append({"args": args, "kwargs": kwargs})
         cmd = args[0]
-        assert "--tiers" in cmd
-        assert cmd[cmd.index("--tiers") + 1] == "basic,standard,advanced"
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "standard"
         assert "--host" in cmd
         assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
         assert "--port" in cmd
@@ -804,8 +804,8 @@ def test_managed_parse_server_restart_ignores_invalid_tier_override(monkeypatch:
 
     def _popen(*args: Any, **kwargs: Any) -> _Proc:
         cmd = args[0]
-        assert "--tiers" in cmd
-        assert cmd[cmd.index("--tiers") + 1] == "basic,standard,advanced"
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "standard"
         events.append("start")
         return _Proc()
 

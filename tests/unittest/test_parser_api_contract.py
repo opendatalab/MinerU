@@ -422,12 +422,13 @@ def test_public_tier_literals_match_product_contract() -> None:
 
 
 def test_server_and_deployment_tier_constants_match_product_contract() -> None:
-    assert SERVER_TIERS == ("flash", "basic", "standard")
+    assert SERVER_TIERS == ("flash", "basic", "standard", "advanced")
     assert DEPLOYMENT_TIERS == ("basic", "standard")
     assert TIERS_BY_SERVER_TIER == {
         "flash": ("flash",),
         "basic": ("flash", "basic"),
-        "standard": ("flash", "basic", "standard", "advanced"),
+        "standard": ("flash", "basic", "standard"),
+        "advanced": ("flash", "basic", "standard", "advanced"),
     }
 
 
@@ -762,7 +763,7 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
     assert app.state.model_tier == "standard"
     assert app.state.default_tier == "standard"
     assert app.state.tier_runtime_options["standard"].effort == "high"
-    assert app.state.flash_enabled is False
+    assert not hasattr(app.state, "flash_enabled")
     assert [tier["id"] for tier in app.state.tiers] == ["basic", "standard", "advanced"]
     assert app.state.model_ids == [api_server._VIRTUAL_MODEL_ID]
     assert api_server._VIRTUAL_MODEL_ID == f"mineru-{api_server.__version__}"
@@ -1152,8 +1153,8 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
 def test_api_server_cli_exposes_parser_runtime_options() -> None:
     option_names = {name for param in main.params for name in param.opts}
 
-    assert "--tiers" in option_names
-    assert "--tier" not in option_names
+    assert "--tier" in option_names
+    assert "--tiers" not in option_names
     assert "--backend" not in option_names
     assert "--language" not in option_names
     assert "--ocr-mode" not in option_names
@@ -1184,7 +1185,7 @@ def test_api_server_cli_defaults_to_hardware_recommendation(monkeypatch: pytest.
     seen: dict[str, object] = {}
 
     def _fake_run(server: Any) -> None:
-        """记录无 --tiers 启动后的自动推荐能力，不启动真实服务。"""
+        """记录无 --tier 启动后的自动推荐能力，不启动真实服务。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
         seen["effort_by_tier"] = {
@@ -1203,8 +1204,8 @@ def test_api_server_cli_defaults_to_hardware_recommendation(monkeypatch: pytest.
     }
 
 
-def test_api_server_cli_accepts_quality_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    """显式质量档位列表无需禁用开关即可排除 Flash。"""
+def test_api_server_cli_accepts_advanced_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Advanced 上限包含全部 PDF/图片档位。"""
     seen: dict[str, object] = {}
 
     def _fake_run(server: Any) -> None:
@@ -1217,13 +1218,13 @@ def test_api_server_cli_accepts_quality_tier_list(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tiers", "basic,standard,advanced", "--host", "0.0.0.0", "--port", "15984"])
+    result = runner.invoke(main, ["--tier", "advanced", "--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
     assert seen == {
-        "tiers": ["basic", "standard", "advanced"],
+        "tiers": ["flash", "basic", "standard", "advanced"],
         "default_tier": "standard",
-        "effort_by_tier": {"basic": "medium", "standard": "high", "advanced": "xhigh"},
+        "effort_by_tier": {"flash": "flash", "basic": "medium", "standard": "high", "advanced": "xhigh"},
     }
 
 
@@ -1241,7 +1242,7 @@ def test_api_server_cli_accepts_list_without_advanced(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tiers", "flash,basic,standard", "--host", "0.0.0.0", "--port", "15984"])
+    result = runner.invoke(main, ["--tier", "standard", "--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
     assert seen == {
@@ -1259,14 +1260,14 @@ def test_api_server_cli_enables_model_preload(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tiers", "flash,basic", "--preload-models"])
+    result = runner.invoke(main, ["--tier", "basic", "--preload-models"])
 
     assert result.exit_code == 0
     assert seen == {"preload_models": True}
 
 
 def test_api_server_cli_rejects_invalid_tier_names() -> None:
-    result = runner.invoke(main, ["--tiers", "ultra"])
+    result = runner.invoke(main, ["--tier", "ultra"])
 
     assert result.exit_code != 0
     assert "Unsupported tier 'ultra'" in result.output
@@ -1293,7 +1294,8 @@ def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:
     normalized_output = result.output.replace("-\n                                  ", "-")
 
     assert result.exit_code == 0
-    assert "--tiers" in normalized_output
+    assert "--tier" in normalized_output
+    assert "--tiers" not in normalized_output
     assert "flash" in normalized_output
     assert "basic" in normalized_output
     assert "standard" in normalized_output

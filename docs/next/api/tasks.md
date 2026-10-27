@@ -1,6 +1,8 @@
 # V1 Tasks：JSON 清单、逐文件上传与下载
 
 `/v1/tasks` 是本地 API Server、Router 和 SaaS 的共同异步客户端契约。
+
+`/v1/tiers` 只约束 PDF/图片。所有正常可用的兼容服务均支持现有原生文档格式并固定使用 flash，无需额外能力字段。Router 转发原生文件时省略 tier；PDF/图片转发已确定的档位。
 客户端用 JSON 创建任务，按 `files[].upload` 上传缺失文件，再通过固定路径 `GET /v1/tasks/{task_id}` 轮询。
 每个文件就绪后立即执行，完成后在 `files[].result_url` 返回独立下载链接。
 客户端不拼接存储路径，也不要求 SaaS 实现本地 Files API。
@@ -46,8 +48,8 @@ ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。�
 请求包含 PDF/图片且显式提供 tier 时，服务支持该档位就原样使用；不支持则在创建阶段返回 `400 invalid_request`，`error.param="tier"`，整个请求不接单、不分配上传链接，也不自动升档或降档。
 空字符串和未知枚举始终是参数错误，包括纯原生文档请求。
 
-Office、HTML 等已支持的原生文档固定使用 flash，不受请求 tier 影响。纯原生文档批次忽略合法的显式 tier，不要求服务开放该 PDF/图片档位；但仍要求服务具备 flash 原生解析能力。
-例如，部署开放 standard 和 flash 时：
+Office、HTML 等已支持的原生文档固定使用 flash，不受请求 tier 影响。纯原生文档批次忽略合法的显式 tier，不要求服务开放该 PDF/图片档位；原生解析是所有正常可用服务的必备能力，不从 `/v1/tiers` 判断。
+例如，部署只对 PDF/图片开放 standard 时：
 
 | 输入 | 请求 tier | 执行结果 |
 |---|---|---|

@@ -40,7 +40,7 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 
 未提供 tier 表单字段时，包装层在上游 Tasks 请求中省略该字段，由上游按 **standard → basic → flash** 选择默认档位；advanced 必须显式指定。
 显式值原样传递，PDF/图片请求的档位不受上游支持时返回错误，不自动升降档。
-Office、HTML 等已支持的原生文档固定使用 flash，即使传入上游未开放的合法档位也不改变原生解析路径。
+所有正常可用服务都支持 Office、HTML 等现有原生格式，固定使用 flash，即使传入上游未开放的合法档位也不改变原生解析路径。
 表单空字符串或字符串 `"null"` 不是省略字段，属于非法值；OpenAPI 将 tier 声明为可省略的字符串枚举，不声明可空值。完整规则见 [Tasks tier 语义](tasks.md#tier默认选择与文件作用范围)。
 
 ```bash

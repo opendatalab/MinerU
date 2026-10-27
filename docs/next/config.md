@@ -250,7 +250,7 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
-| `parse_server.local.managed_tier` | `standard` | managed 模式启动能力上限，只接受 `basic` 或 `standard`；Standard 同时提供 Advanced 请求能力 |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动能力上限，接受 `basic`、`standard`、`advanced`，包含自身及较低档位；Advanced 复用 Standard 模型配置 |
 | `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
 
 ## 5. Parse-server 配置

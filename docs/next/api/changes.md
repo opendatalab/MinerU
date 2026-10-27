@@ -1,5 +1,18 @@
 # Tasks 唯一异步接口迁移
 
+## 单 tier 上限与原生文档统一契约
+
+API 启动改为 `--tier auto|flash|basic|standard|advanced`，移除 `--tiers`，不支持 `--no-flash` 或 `--no-advanced`。上限包含自身和较低档位；standard 不再隐含 advanced，WebUI、Router、Doclib 托管配置同样遵循该规则。
+
+`/v1/tiers` 的响应结构不变，作用范围收敛为 PDF/图片。所有兼容服务均支持现有原生文档格式，固定使用 flash；无需原生能力声明。SaaS 可以只发布 standard，原生文件仍由同一服务处理。Gradio 不再因远端缺少 flash 而启动本地补充服务。
+
+Python `create_app(tiers=...)` 保留精确 PDF/图片集合，模型依赖及预加载仍按实际需求合并。HTTP 请求默认、逐文件实际档位和产物协议保持原规则。
+
+这是一轮能力语义和启动参数升级：先停收并排空在途任务，再协调更新 worker、Router 和客户端。SaaS Go 服务由部署方同步对齐，避免新客户端把原生文件交给仍限制 Flash 的旧服务。模型故障恢复、Doclib 原生执行路径及缓存语义不属于本轮改动。
+
+## 既有 Tasks 接口迁移
+
+
 这是破坏性 HTTP 接口升级：独立 `/v1/uploads` 全部路由及 `/v1/parse/jobs` 创建、列表、查询和取消路由已移除，返回 404；不保留别名或客户端自动回退。
 
 | 旧方式 | 新方式 |

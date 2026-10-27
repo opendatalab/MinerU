@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from ..errors import InvalidRequestError
-from ..types import DEPLOYMENT_TIERS
+from ..types import MANAGED_SERVER_TIERS
 from .config_defaults import CONFIG_DEFAULTS
 
 LOCAL_PARSE_SERVER_MODES = ("disabled", "managed", "self_hosted")
@@ -23,7 +23,7 @@ def validate_config_value(key: str, value: str) -> None:
         _validate_enum_value(key, value, LOCAL_PARSE_SERVER_MODES)
         return
     if key == "parse_server.local.managed_tier":
-        _validate_enum_value(key, value, DEPLOYMENT_TIERS)
+        _validate_enum_value(key, value, MANAGED_SERVER_TIERS)
         return
     if key in URL_CONFIG_KEYS:
         allow_empty = key == "parse_server.local.self_hosted_url"

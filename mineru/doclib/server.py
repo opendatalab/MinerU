@@ -28,9 +28,10 @@ from ..parser.page_range import (
     parse_page_range_set,
 )
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
+from ..parser.server_tiers import model_tier_for_server_tiers
 from ..types import (
-    DEPLOYMENT_TIERS,
-    DeploymentTier,
+    MANAGED_SERVER_TIERS,
+    ManagedServerTier,
     Tier,
 )
 from ..version import __version__
@@ -1193,17 +1194,23 @@ def _parse_server_status(
     )
 
 
-def _ensure_managed_parse_server_tier_available(tier: DeploymentTier, param: str) -> None:
+def _ensure_managed_parse_server_tier_available(tier: ManagedServerTier, param: str) -> None:
+    """按托管上限检查模型配置，Advanced 复用 Standard 依赖。"""
+    model_tier = model_tier_for_server_tiers((tier,))
+    assert model_tier is not None
     try:
-        ensure_tier_runtime_dependencies(tier)
+        ensure_tier_runtime_dependencies(model_tier)
     except TierDependencyError as exc:
         raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
     _ensure_managed_parse_server_models_ready(tier, param)
 
 
-def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) -> None:
+def _ensure_managed_parse_server_models_ready(tier: ManagedServerTier, param: str) -> None:
+    """检查上限所需的共享模型，并给出真实可用的模型下载参数。"""
+    model_tier = model_tier_for_server_tiers((tier,))
+    assert model_tier is not None
     missing_repos: list[str] = []
-    for repo in model_repos_for_tier(tier):
+    for repo in model_repos_for_tier(model_tier):
         result = verify_model_repo(repo)
         if result.ready:
             continue
@@ -1216,7 +1223,7 @@ def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) 
     raise InvalidRequestError(
         "parse_server_model_not_ready",
         f"Local managed tier '{tier}' requires model files that are not ready. {details}. "
-        f"Run: mineru-kit models download --tier {tier}",
+        f"Run: mineru-kit models download --tier {model_tier}",
         param,
     )
 
@@ -1226,14 +1233,14 @@ def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str
     return f"{repo.name} missing: {missing}"
 
 
-def _validate_managed_parse_server_tier(value: str, param: str) -> DeploymentTier:
-    if value not in DEPLOYMENT_TIERS:
+def _validate_managed_parse_server_tier(value: str, param: str) -> ManagedServerTier:
+    if value not in MANAGED_SERVER_TIERS:
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: basic, standard.",
+            "parse_server.local.managed_tier must be one of: basic, standard, advanced.",
             param,
         )
-    return cast(DeploymentTier, value)
+    return cast(ManagedServerTier, value)
 
 
 def _port_from_url(url: str | None) -> int | None:

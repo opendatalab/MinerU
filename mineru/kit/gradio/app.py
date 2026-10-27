@@ -422,6 +422,7 @@ def build_gradio_app(
                         step=1,
                         precision=0,
                         interactive=len(tier_choices) > 1,
+                        visible=len(tier_choices) > 1,
                         label=i18n("mineru.tier"),
                         show_label=False,
                         elem_classes=["mineru-tier-slider"],
@@ -1129,7 +1130,7 @@ def launch_gradio(
     api_server_preload_models: bool,
     max_pages: int | None = None,
 ) -> None:
-    """启动 Gradio，并在外部服务缺少 Flash 时托管本地 Flash V1 服务。"""
+    """连接外部服务或托管一个本地服务，原生文档始终由同一服务解析。"""
     configure_standard_streams()
     configure_global_log_level()
     validate_max_pages(max_pages)
@@ -1149,19 +1150,8 @@ def launch_gradio(
             )
             resolved_api_url = managed_server.start()
         client = V1ArtifactClient(api_url=resolved_api_url, api_key=resolved_api_key)
-        capabilities = asyncio.run(client.discover())
-        local_flash: V1ArtifactClient | None = None
-        if api_url is not None and "flash" not in capabilities.tiers:
-            managed_server = ManagedLocalApiServer(
-                tier="flash",
-                concurrency=api_server_concurrency,
-                disable_image_analysis=api_server_disable_image_analysis,
-                preload_models=api_server_preload_models,
-                api_key="",
-            )
-            local_flash = V1ArtifactClient(api_url=managed_server.start(), api_key="")
-            asyncio.run(local_flash.discover())
-        routed_client = GradioArtifactClient(client, local_flash=local_flash)
+        asyncio.run(client.discover())
+        routed_client = GradioArtifactClient(client)
         demo = build_gradio_app(
             routed_client,
             routed_client.capabilities,

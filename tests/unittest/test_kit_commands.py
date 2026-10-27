@@ -173,7 +173,7 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
         (
             "mineru-api",
             api_server.main,
-            ("--host", "--port", "--tiers", "--preload-models"),
+            ("--host", "--port", "--tier", "--preload-models"),
         ),
     ],
 )
@@ -207,7 +207,7 @@ def test_standalone_command_help(
             "0.0.0.0",
             "--port",
             "18000",
-            "--tiers",
+            "--tier",
             "basic",
             "--preload-models",
         ],
@@ -318,7 +318,7 @@ def test_standalone_vlm_mlx_matches_kit(monkeypatch: pytest.MonkeyPatch) -> None
     ("script", "entrypoint", "args", "prefix", "exit_code"),
     [
         ("mineru-api", api_server.main, ["--backend", "hybrid-engine"], ["api-server"], 2),
-        ("mineru-api", api_server.main, ["--tier", "advanced"], ["api-server"], 2),
+        ("mineru-api", api_server.main, ["--tiers", "advanced"], ["api-server"], 2),
         ("mineru-models-download", models.download_main, [], ["models", "download"], 1),
         ("mineru-models-download", models.download_main, ["--tier", "flash"], ["models", "download"], 1),
         ("mineru-openai-server", vlm_server.main, ["--engine", "sglang"], ["vlm-server"], 1),
@@ -368,7 +368,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     [
         ("parse", ("--output", "--format", "--tier")),
         ("webui", ("--api-url", "--server-name", "--api-server-tier")),
-        ("api-server", ("--host", "--port", "--tiers", "--preload-models")),
+        ("api-server", ("--host", "--port", "--tier", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
         ("version", ("--json",)),
@@ -661,13 +661,13 @@ def test_api_server_forwards_explicit_tier_list(monkeypatch: Any) -> None:
 
     result = runner.invoke(
         app,
-        ["api-server", "--tiers", "standard", "--preload-models"],
+        ["api-server", "--tier", "standard", "--preload-models"],
     )
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
-    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tiers"] == ["standard"]
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
     assert "--no-flash" not in seen["args"]
     assert "--no-advanced" not in seen["args"]
     assert "--preload-models" in seen["args"]
@@ -691,16 +691,16 @@ def test_api_server_without_tiers_forwards_auto(monkeypatch: Any) -> None:
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
-    assert seen["args"][seen["args"].index("--tiers") + 1] == "auto"
-    assert "--tier" not in seen["args"]
+    assert seen["args"][seen["args"].index("--tier") + 1] == "auto"
+    assert "--tiers" not in seen["args"]
     assert "--no-flash" not in seen["args"]
     assert "--no-advanced" not in seen["args"]
     assert "--preload-models" not in seen["args"]
 
 
-def test_api_server_rejects_removed_tier_option() -> None:
+def test_api_server_rejects_removed_tiers_option() -> None:
     """旧单值 API 启动参数明确报错。"""
-    result = runner.invoke(app, ["api-server", "--tier", "advanced"])
+    result = runner.invoke(app, ["api-server", "--tiers", "advanced"])
 
     assert result.exit_code == 2
     assert "No such option" in result.output

@@ -151,6 +151,6 @@ remote 模式通过以下参数进入：
 | remote 模式 | remote、remote-url、api-key |
 | 输出控制 | format、output |
 
-local 模式的 `ocr-mode`、`disable-image-analysis` 与 `mineru-kit api-server` 一致；`mineru-kit parse --tier` 选择单次解析档位，`api-server --tiers` 则配置四个档位中的任意非空集合，或通过 auto 推荐。`--language` OCR 语言参数已从全部命令移除，传入会报错。
+local 模式的 `ocr-mode`、`disable-image-analysis` 与 `mineru-kit api-server` 一致；`mineru-kit parse --tier` 选择单次解析档位，`api-server --tier` 则选择最高开放档位并包含较低档位，或通过 auto 推荐。`--language` OCR 语言参数已从全部命令移除，传入会报错。
 
 完整决策背景见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。

@@ -30,8 +30,6 @@ logger = logging.getLogger(__name__)
 def resolve_task_tier(options: UploadTaskOptions, inputs: list[TaskFileInput], tiers: set[Tier]) -> Tier:
     """接单时固定 PDF/图片档位；纯原生文档归一为 flash，显式档位不升降级。"""
     lightweight = [is_flash_only_parse_extension(item.file_name) for item in inputs]
-    if any(lightweight) and "flash" not in tiers:
-        invalid_task_request("Flash parsing is disabled, but an input requires it", param="files")
     if all(lightweight):
         return "flash"
     if options.tier is not None:

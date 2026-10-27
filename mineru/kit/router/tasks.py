@@ -293,12 +293,11 @@ class RouterTaskBackend:
         checked_workers: set[str] = set()
         for item in inputs:
             lightweight = is_flash_only_parse_extension(item.file_name)
-            selection_tier = batch_effective_parse_tier(options.tier, item.file_name)
+            selection_tier = None if lightweight else options.tier
             candidates = self.pool.capable_workers(
                 tier=selection_tier,
                 required_sources={"url" if item.url is not None else "upload"},
                 required_task_outputs=set(options.output_formats),
-                require_flash=lightweight,
             )
             if not candidates:
                 raise_api_error(
@@ -391,10 +390,9 @@ class RouterTaskBackend:
         lightweight = is_flash_only_parse_extension(item.file_name)
         tier = batch_effective_parse_tier(options.tier, item.file_name)
         reservation = self.pool.reserve_job(
-            tier=tier,
+            tier=None if lightweight else tier,
             required_sources={"url" if item.url is not None else "upload"},
             required_task_outputs=set(options.output_formats),
-            require_flash=lightweight,
         )
         if reservation is None:
             raise_api_error(
@@ -418,7 +416,7 @@ class RouterTaskBackend:
                 request=self.request,
                 json_body={
                     "files": [worker_input],
-                    "tier": tier,
+                    **({"tier": tier} if not lightweight else {}),
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
                 },

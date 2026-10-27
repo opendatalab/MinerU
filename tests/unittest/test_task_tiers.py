@@ -48,7 +48,6 @@ def _set_tiers(app: FastAPI, tiers: tuple[Tier, ...]) -> None:
     app.state.tier_runtime_options = {tier: runtime_options_for_tier(tier) for tier in tiers}
     app.state.tiers = api_server._tiers_for_server_tiers(list(tiers))
     app.state.default_tier = select_default_quality_tier(tiers)
-    app.state.flash_enabled = "flash" in tiers
 
 
 @asynccontextmanager
@@ -195,7 +194,10 @@ def test_task_explicit_tier_is_not_upgraded_or_downgraded(tier: Tier) -> None:
         (("flash",), {"tier": ""}, ["input.docx"], 400, "tier"),
         (("flash",), {"tier": "unknown"}, ["input.docx"], 400, "tier"),
         (("advanced",), {}, ["input.pdf"], 503, None),
-        (("standard",), {}, ["input.pdf", "input.docx"], 400, "files"),
+        (("standard",), {}, ["input.pdf", "input.docx"], 202, None),
+        (("standard",), {"tier": "flash"}, ["input.pdf", "input.docx"], 400, "tier"),
+        (("standard",), {"tier": "basic"}, ["input.png"], 400, "tier"),
+        (("standard",), {"tier": "advanced"}, ["input.pdf"], 400, "tier"),
     ],
 )
 def test_task_tier_preflight_and_schema(
@@ -220,7 +222,7 @@ def test_task_tier_preflight_and_schema(
             assert response.status_code == status, response.text
             if status == 202:
                 record = app.state.task_store._records[response.json()["task_id"]]
-                assert record.options.tier == "flash"
+                assert record.options.tier == ("standard" if "standard" in tiers else "flash")
             else:
                 assert response.json()["error"]["param"] == param
                 assert response.json()["error"]["code"] == ("quality_tier_unavailable" if status == 503 else "invalid_request")
@@ -244,7 +246,9 @@ def test_mixed_task_tiers_across_deployments(
     async def scenario() -> None:
         """检查接单记录、各跳请求、推理参数和最终产物中的档位。"""
         capabilities = (
-            {"worker": TIERS} if deployment == "api" else {"quality": ("basic", "standard", "advanced"), "native": ("flash",)}
+            {"worker": ("standard", "advanced")}
+            if deployment == "api"
+            else {"quality": ("standard", "advanced"), "native": ("basic",)}
         )
         async with _deployment(tmp_path, deployment, capabilities) as (client, app, apps, submissions):
             inputs = _mixed_inputs()
@@ -266,8 +270,8 @@ def test_mixed_task_tiers_across_deployments(
             assert len(submissions) == {"api": 0, "router": 4, "cascade": 8}[deployment]
             for host, body in submissions:
                 native = Path(body["files"][0]["file_name"]).suffix in {".html", ".docx"}
-                assert body["tier"] == ("flash" if native else expected)
-                assert host == "inner" or host == ("native" if native else "quality")
+                assert body.get("tier") == (None if native else expected)
+                assert host == "inner" or host in ({"native", "quality"} if native else {"quality"})
             for service in apps:
                 if hasattr(service.state, "execution_store"):
                     for execution in service.state.execution_store._executions.values():
@@ -283,7 +287,7 @@ def test_native_only_task_ignores_unavailable_explicit_tier(tmp_path: Path, depl
 
     async def scenario() -> None:
         """使用真实 HTML 和 DOCX 验证单一 flash 部署的参数作用域。"""
-        async with _deployment(tmp_path, deployment, {"native": ("flash",)}) as (client, app, _apps, submissions):
+        async with _deployment(tmp_path, deployment, {"native": ("standard",)}) as (client, app, _apps, submissions):
             inputs = _mixed_inputs()[1:3]
             response = await client.post("/v1/tasks", json=_request_body(inputs, {"tier": "advanced"}))
             assert response.status_code == 202, response.text
@@ -292,7 +296,7 @@ def test_native_only_task_ignores_unavailable_explicit_tier(tmp_path: Path, depl
             result = await _complete(client, task, inputs)
             assert result["status"] == "completed", result
             assert all(item["parse"]["tier"] == "flash" for item in result["files"])
-            assert all(body["tier"] == "flash" for _host, body in submissions)
+            assert all("tier" not in body for _host, body in submissions)
 
     asyncio.run(scenario())
 

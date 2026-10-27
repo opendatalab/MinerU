@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -20,7 +20,8 @@ from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_en
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
-from ...types import TIERS_BY_SERVER_TIER, SERVER_TIERS, TIERS, ServerTier, Tier
+from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
+from ...filetypes import is_flash_only_parse_extension
 from ...utils.stdio import utf8_subprocess_env
 from .status import (
     STATUS_CHECKING_SERVER,
@@ -200,14 +201,15 @@ class V1ArtifactClient:
         if self._capabilities is None:
             emit(STATUS_CHECKING_SERVER)
             await self.discover()
-        if self._capabilities is None or tier not in self._capabilities.tiers:
+        native_document = is_flash_only_parse_extension(path)
+        if self._capabilities is None or (not native_document and tier not in self._capabilities.tiers):
             raise V1ArtifactError(f"Tier '{tier}' is not available in the configured V1 API server", code="tier_unavailable")
 
         emit(STATUS_SUBMITTING_TASK)
         parser = MinerUApiParser(
             api_url=self.base_url,
             api_key=self.api_key,
-            tier=cast(Tier, tier),
+            tier=None if native_document else cast(Tier, tier),
             ocr_mode=ocr_mode,
             include_images=True,
         )
@@ -252,23 +254,18 @@ class V1ArtifactClient:
 
 
 class GradioArtifactClient:
-    """合并已发现的服务能力，并将缺失的 Flash 请求路由到本地 V1 服务。"""
+    """使用唯一连接服务解析文件，公开档位只约束 PDF/图片。"""
 
-    def __init__(self, primary: V1ArtifactClient, *, local_flash: V1ArtifactClient | None = None) -> None:
-        """根据独立能力快照建立明确的档位映射，不修改任何服务声明。"""
-        capabilities = primary.capabilities
-        if capabilities is None:
+    def __init__(self, primary: V1ArtifactClient) -> None:
+        """保存已发现的服务与能力快照，不合并额外的本地 Flash 服务。"""
+        if primary.capabilities is None:
             raise ValueError("Discover the primary V1 API capabilities before constructing the Gradio client")
-        self._clients_by_tier = dict.fromkeys(capabilities.tiers, primary)
-        if local_flash is not None and "flash" not in self._clients_by_tier:
-            if local_flash.capabilities is None or "flash" not in local_flash.capabilities.tiers:
-                raise V1ArtifactError("The local V1 API server did not advertise Flash", code="tier_unavailable")
-            self._clients_by_tier["flash"] = local_flash
-        self._capabilities = replace(capabilities, tiers=tuple(tier for tier in TIERS if tier in self._clients_by_tier))
+        self._primary = primary
+        self._capabilities = primary.capabilities
 
     @property
     def capabilities(self) -> V1ServerCapabilities:
-        """返回供界面使用的有效档位集合，主服务地址和协议能力保持原值。"""
+        """返回所连接服务实际发布的 PDF/图片档位及协议能力。"""
         return self._capabilities
 
     async def parse_file(
@@ -280,13 +277,8 @@ class GradioArtifactClient:
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
-        """仅向该档位对应的服务提交文件，复用原有状态、取消和产物流程。"""
-        if tier not in TIERS:
-            raise V1ArtifactError(f"Unsupported parse tier: {tier}", code="invalid_request")
-        client = self._clients_by_tier.get(tier)
-        if client is None:
-            raise V1ArtifactError(f"Tier '{tier}' is not available in Gradio", code="tier_unavailable")
-        return await client.parse_file(
+        """文件类型与档位校验由唯一 V1 客户端完成，复用取消和产物流程。"""
+        return await self._primary.parse_file(
             path, tier=tier, page_range=page_range, ocr_mode=ocr_mode, status_callback=status_callback
         )
 
@@ -428,8 +420,8 @@ class ManagedLocalApiServer:
             str(port),
             "--upload-dir",
             str(upload_dir),
-            "--tiers",
-            ",".join(TIERS_BY_SERVER_TIER[self.tier]),
+            "--tier",
+            self.tier,
             "--concurrency",
             str(self.concurrency),
             "--log-level",

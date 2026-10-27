@@ -1,10 +1,10 @@
-"""API 服务的精确档位集合、CLI 参数解析与共享模型配置。"""
+"""PDF/图片的启动上限、内嵌精确集合与共享模型配置。"""
 
 from __future__ import annotations
 
 from collections.abc import Collection
 
-from ..types import TIERS, DeploymentTier, Tier, validate_tier
+from ..types import TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, Tier, validate_tier
 
 
 def normalize_server_tiers(tiers: Collection[Tier]) -> tuple[Tier, ...]:
@@ -17,11 +17,11 @@ def normalize_server_tiers(tiers: Collection[Tier]) -> tuple[Tier, ...]:
     return tuple(tier for tier in TIERS if tier in selected)
 
 
-def parse_server_tiers(value: str) -> tuple[Tier, ...] | None:
-    """解析 auto 或逗号分隔列表；空项及 auto 混用均明确报错。"""
+def parse_server_tier(value: str) -> tuple[Tier, ...] | None:
+    """解析单档上限或 auto；上限包含自身及全部较低 PDF/图片档位。"""
     if value.strip().lower() == "auto":
         return None
-    return normalize_server_tiers(value.split(","))  # type: ignore[arg-type]
+    return TIERS_BY_SERVER_TIER[validate_tier(value)]
 
 
 def resolve_server_tiers(tiers: Collection[Tier] | None) -> tuple[Tier, ...]:
@@ -29,7 +29,8 @@ def resolve_server_tiers(tiers: Collection[Tier] | None) -> tuple[Tier, ...]:
     if tiers is None:
         from ..model.runtime.tier_recommendation import recommend_tiers
 
-        tiers = recommend_tiers()
+        recommended = normalize_server_tiers(recommend_tiers())
+        tiers = TIERS_BY_SERVER_TIER[recommended[-1]]
     return normalize_server_tiers(tiers)
 
 
@@ -42,4 +43,4 @@ def model_tier_for_server_tiers(tiers: Collection[Tier]) -> DeploymentTier | Non
     return None
 
 
-__all__ = ["model_tier_for_server_tiers", "normalize_server_tiers", "parse_server_tiers", "resolve_server_tiers"]
+__all__ = ["model_tier_for_server_tiers", "normalize_server_tiers", "parse_server_tier", "resolve_server_tiers"]

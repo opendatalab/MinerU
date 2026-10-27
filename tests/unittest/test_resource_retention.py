@@ -339,7 +339,7 @@ def test_kit_cli_forwards_explicit_retention(monkeypatch: pytest.MonkeyPatch) ->
     forwarded = MagicMock()
     monkeypatch.setattr(api_server.main, "main", forwarded)
     response = CliRunner().invoke(
-        app, ["api-server", "--tiers", "flash", "--retention-seconds", "0"], env={"MINERU_API_RETENTION_SECONDS": "7200"}
+        app, ["api-server", "--tier", "flash", "--retention-seconds", "0"], env={"MINERU_API_RETENTION_SECONDS": "7200"}
     )
     assert response.exit_code == 0, response.output
     args = forwarded.call_args.kwargs["args"]
