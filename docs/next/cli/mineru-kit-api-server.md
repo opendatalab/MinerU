@@ -64,9 +64,17 @@ Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `nul
 
 CPU 数按逻辑 CPU 计算，并考虑进程亲和性和 Linux cgroup 配额。集显沿用有效 OCR 校准的 GPU 时间不高于 CPU 时间 0.8 倍的判定。探测失败或设备身份不明确时按 CPU 条件推荐。显式上限可以覆盖推荐，随后仍执行正常依赖预检。
 
-推荐阶段只探测设备并读取已有校准记录，不下载模型、不执行 OCR/VLM 性能测试、不写配置，也不增加内存分级门槛。实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`，仅复用设备、运行时版本与 CPU 配置匹配的有效结果；旧 cpu/gpu 偏好及手动 GPU 设置不视为校准证据。新证据在下次启动时生效。
+自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）只验证实际设备可用性：可用 CUDA/MPS/XPU 等加速设备推荐 advanced；显式 CPU 或设备不可用时按 CPU 条件推荐，不下载 ONNX 校准模型或改写其配置/记录。Torch 推荐不依赖 llama.cpp 库存。
 
-远程 VLM 配置不自动扩大推荐上限。模型正常惰性加载及显式 `--preload-models` 行为与推荐阶段独立。
+ONNX 分支先探测硬件并读取已有校准记录。如果初选达到 Basic 或更高档位，Windows/Linux 会在发布服务能力前同步执行现有 ONNX 设备选择流程，再根据最新证据确定最终上限。初选只有 Flash、macOS 及其他平台跳过这一步；显式 `--tier` 和 Python 精确集合也不触发这项启动校准。
+
+启动选型继续遵守 `model.onnx_device`：`auto` 才按既有设备策略决定是否测速，显式或已保存的 `cpu/gpu` 不强制重新校准；Windows 独显、无可用 GPU、兼容策略排除的 GPU 等仍沿用原规则。需要测速时会按正常模型生命周期准备或下载 OCR rec 权重，并复用已有进程缓存、文件锁、采样阈值及失败回退。下载和模型准备不计入 15 秒校准子进程超时。校准失败或结果不稳定不会阻止后续推荐，但不作为 GPU 胜出证据。
+
+实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`，仅复用设备、运行时版本与 CPU 配置匹配的有效结果；旧 cpu/gpu 偏好及手动 GPU 设置不视为校准证据。启动阶段产生的新证据在本次最终推荐中生效，之后 `/v1/tiers` 在服务生命周期内固定。
+
+远程 VLM 配置不自动扩大推荐上限，也不增加 VLM 性能测试或内存分级门槛。上述 OCR 选型不要求 `--preload-models`；该参数仍另外控制完整模型或 VLM 客户端的提前初始化。
+
+`mineru-kit hardware detect` 使用同一结构化推荐流程；`hardware info` 只读输出诊断报告，详见 [hardware 命令](mineru-kit-hardware.md)。API 工厂的 VLM 配置覆盖也参与推荐，避免与实际运行配置不一致。
 
 ### 内嵌部署与 SaaS
 

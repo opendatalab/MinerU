@@ -46,7 +46,7 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 一个 API 服务进程使用 `--tier auto|flash|basic|standard|advanced` 表示 PDF/图片的最高开放档位，上限包含自身及全部较低档位；省略等价于 auto，取硬件推荐集合的最高档。Standard 上限不再隐含 Advanced。`--tiers`、`--no-flash`、`--no-advanced` 均直接移除。
 
-自动推荐沿用现有 CPU、独显、有效 OCR 校准和 Apple Silicon Metal 规则；不引入新的模型实测或内存门槛。依赖预检与可选预加载仍执行，Advanced 复用 Standard 模型配置。
+自动推荐先按有效小模型后端分流。Torch 使用实际加速设备可用性，GPU 路径开放 Advanced，CPU 路径按可用核数推荐，不执行 OCR 校准或写入 ONNX 配置。ONNX 沿用现有 CPU、独显、有效 OCR 校准和 Apple Silicon Metal 规则；初选达到 Basic 时，Windows/Linux 同步完成适用选型，再按最新证据确定本次上限。初选仅 Flash 或显式指定上限不增加启动校准。不引入新的采样阈值、VLM 实测或内存门槛。依赖预检与可选预加载仍执行，Advanced 复用 Standard 模型配置。`hardware detect` 与服务使用相同结构化推荐。
 
 `/v1/tiers` 仅发布 PDF/图片可选档位。所有服务都支持现有原生文档格式，固定使用 flash；原生支持不再从公开 flash 档位推断，不新增原生能力声明。Tasks 请求 tier 继续可选，PDF/图片按 `standard -> basic -> flash` 默认选择，advanced 仅显式使用。
 

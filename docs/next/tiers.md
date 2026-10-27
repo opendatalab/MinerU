@@ -100,7 +100,9 @@ advanced 只接受显式选择：只有 advanced 时没有默认档位，返回�
 
 ### 3.4 API 服务启动推荐
 
-`--tier auto` 或省略启动参数时：进程可用逻辑 CPU 不足 4 且没有达标 GPU，只开放 flash；CPU 至少 4 时开放 flash、basic、standard；可用独显、有效 OCR 校准达标的集显、或 Metal 可用的 Apple Silicon 开放全部四档。推荐集合在启动时固定，不进行模型性能实测或额外内存分级。
+`--tier auto` 或省略启动参数时，先解析有效小模型后端。Torch 有经核验可用的 CUDA/MPS/XPU 等加速设备时开放全部四档，跳过 OCR 校准；显式 CPU 或设备不可用时，进程可用逻辑 CPU 至少 4 开放 flash、basic、standard，否则只开放 flash。此规则也适用于 auto 最终选择 Torch，不改写 ONNX 配置或校准记录。
+
+ONNX 保留既有规则：CPU 不足 4 且没有达标 GPU 时只开放 flash；CPU 至少 4 时开放到 standard；可用独显、有效 OCR 校准达标的集显或 Metal 可用的 Apple Silicon 开放全部四档。初选达到 basic 后，Windows/Linux 同步完成现有 ONNX 选型和适用校准，再确定本次上限。最终集合在启动时固定，不增加 VLM 性能测试或额外内存分级。`mineru-kit hardware detect` 共享这套推荐；`hardware info` 只读收集环境信息。
 
 `--tier standard` 等显式上限开放自身和全部较低档位，允许覆盖硬件推荐。`/v1/tiers` 只约束 PDF/图片，原生文档在任何正常可用服务上均固定使用 flash。请求默认仍优先 standard，advanced 不参与默认选档。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
 

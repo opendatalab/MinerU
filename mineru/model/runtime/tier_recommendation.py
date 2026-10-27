@@ -1,15 +1,47 @@
-"""通过静态设备事实与已有 OCR 校准，推荐 API 服务开放的档位集合。"""
+"""通过硬件初选与启动阶段的 OCR 设备校准，确定 API 服务开放档位。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import os
 import sys
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ...types import TIERS, Tier
 from .cpu_threads import effective_cpu_count
+from .device import resolve_small_model_backend, resolve_torch_device
+from .onnx_calibration_cache import CalibrationInfo, inspect_calibration_record
+
+if TYPE_CHECKING:
+    from ...config import VlmConfig
+
+
+@dataclass(frozen=True)
+class CalibrationDecision:
+    """描述本次推荐中的校准状态，避免把设备可用性当成实测胜出。"""
+
+    status: str
+    reason: str
+    evidence: CalibrationInfo | None = None
+
+
+@dataclass(frozen=True)
+class TierRecommendation:
+    """API 自动启动和硬件命令共同消费的推荐报告。"""
+
+    ceiling: Tier
+    pdf_image_tiers: tuple[Tier, ...]
+    default_request_tier: Tier
+    reason: str
+    cpu_count: int
+    small_backend: str
+    vlm_engine: str
+    device: str
+    calibration: CalibrationDecision
+    warnings: tuple[str, ...] = ()
+    schema_version: int = 1
 
 
 @dataclass(frozen=True)
@@ -86,7 +118,7 @@ def _advanced_gpu_reason() -> str | None:
 
 
 def detect_tier_hardware() -> TierHardware:
-    """探测失败时保守使用 CPU 条件，推荐过程不下载模型或保存配置。"""
+    """只读探测当前硬件与校准证据；失败时使用 CPU 条件，不下载模型或保存配置。"""
     try:
         count = effective_cpu_count()
     except OSError as error:
@@ -100,17 +132,93 @@ def detect_tier_hardware() -> TierHardware:
     return TierHardware(count, bool(reason), reason or "cpu")
 
 
-def recommend_tiers() -> frozenset[Tier]:
-    """每次调用读取当前硬件事实；API 服务只在启动阶段调用一次。"""
-    hardware = detect_tier_hardware()
+def recommend_tiers(*, vlm_config: VlmConfig | None = None) -> TierRecommendation:
+    """先分流实际小模型后端；Torch 免测速，ONNX 初选达标后同步完成既有选型。"""
+    from ...config import get_config
+    from ..vlm.selector import resolve_vlm_engine
+
+    settings = vlm_config if vlm_config is not None else get_config().model.vlm
+    settings.validate_environment()
+    small_backend = resolve_small_model_backend()
+    vlm_engine = "http-client" if settings.server_url else resolve_vlm_engine(settings.engine)
+    warnings: list[str] = []
+    device = "cpu"
+    calibration = CalibrationDecision("skipped", "not_required")
+    if small_backend == "torch":
+        choice = resolve_torch_device()
+        try:
+            count = effective_cpu_count()
+        except OSError as error:
+            count = 1
+            warnings.append(f"CPU availability discovery failed: {error}")
+        hardware = TierHardware(count, choice.accelerated, choice.reason)
+        device = choice.device
+        calibration = CalibrationDecision("skipped", "torch_backend")
+        if choice.warning:
+            warnings.append(choice.warning)
+    else:
+        hardware = detect_tier_hardware()
     tiers = tiers_for_hardware(hardware)
+    if small_backend == "onnx" and "basic" in tiers and sys.platform in {"win32", "linux"}:
+        logger.info("Automatic API tier selection is resolving the ONNX device before finalizing tiers")
+        try:
+            from .onnx_device import cached_onnx_device, resolve_onnx_device
+
+            # 复用模型运行时的配置、锁和缓存；显式设备选择及不兼容 GPU 不强制测速。
+            cached = cached_onnx_device()
+            onnx_choice = resolve_onnx_device()
+            device = f"{onnx_choice.backend}:gpu" if onnx_choice.device == "gpu" else "cpu"
+            evidence = inspect_calibration_record((onnx_choice.adapter,) if onnx_choice.adapter is not None else None)
+            status = "skipped"
+            if onnx_choice.reason == "rec_calibration":
+                status = "reused" if cached is not None else "completed"
+            elif onnx_choice.reason in {
+                "selection_failed",
+                "calibration_unstable",
+                "directml_unavailable",
+                "calibration_pending",
+            }:
+                status = "failed"
+                warnings.append(f"ONNX selection used CPU: {onnx_choice.reason}")
+            elif onnx_choice.reason in {"configured_cpu", "configured_gpu"}:
+                status = "reused" if evidence.matches_environment and evidence.decision_valid else "skipped"
+            calibration = CalibrationDecision(status, onnx_choice.reason, evidence)
+        except Exception as error:
+            logger.warning("Startup ONNX selection unavailable; recommending tiers from current evidence: {}", error)
+            warnings.append(f"ONNX selection unavailable: {error}")
+            calibration = CalibrationDecision("failed", "selection_unavailable")
+        # 校准会写入新证据或撤销旧证据，必须在发布能力前重新计算，不能等到下次启动。
+        hardware = detect_tier_hardware()
+        tiers = tiers_for_hardware(hardware)
+    if hardware.reason == "gpu_discovery_unavailable":
+        warnings.append("GPU discovery unavailable; using CPU recommendation rules")
     logger.info(
         "Recommended API tiers: {} (available CPUs: {}, reason: {})",
         ",".join(tier for tier in TIERS if tier in tiers),
         hardware.cpu_count,
         hardware.reason,
     )
-    return tiers
+    ordered = tuple(tier for tier in TIERS if tier in tiers)
+    default = next(tier for tier in ("standard", "basic", "flash") if tier in tiers)
+    return TierRecommendation(
+        ordered[-1],
+        ordered,
+        default,
+        hardware.reason,
+        hardware.cpu_count,
+        small_backend,
+        vlm_engine,
+        device,
+        calibration,
+        tuple(warnings),
+    )
 
 
-__all__ = ["TierHardware", "detect_tier_hardware", "recommend_tiers", "tiers_for_hardware"]
+__all__ = [
+    "CalibrationDecision",
+    "TierHardware",
+    "TierRecommendation",
+    "detect_tier_hardware",
+    "recommend_tiers",
+    "tiers_for_hardware",
+]

@@ -402,6 +402,7 @@ def test_kit_root_commands_keep_product_order() -> None:
         "vlm-server",
         "router",
         "models",
+        "hardware",
         "version",
     ]
 

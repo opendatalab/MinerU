@@ -7,6 +7,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -67,7 +68,9 @@ _REMOVED_FORMULA_ENABLE_ENV = "MINERU_" + "FORMULA" + "_ENABLE"
 @pytest.fixture(autouse=True)
 def _stable_hardware_recommendation(monkeypatch: pytest.MonkeyPatch) -> None:
     """固定服务契约测试的硬件推荐，设备组合由独立测试覆盖。"""
-    monkeypatch.setattr("mineru.model.runtime.tier_recommendation.recommend_tiers", lambda: frozenset(TIERS))
+    monkeypatch.setattr(
+        "mineru.model.runtime.tier_recommendation.recommend_tiers", lambda **kwargs: SimpleNamespace(pdf_image_tiers=TIERS)
+    )
 
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -774,8 +777,13 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
 
 @pytest.mark.parametrize(
     ("tiers", "default"),
-    [(('flash', 'standard'), 'standard'), (('standard',), 'standard'),
-     (('basic',), 'basic'), (('flash',), 'flash'), (('advanced',), None)],
+    [
+        (("flash", "standard"), "standard"),
+        (("standard",), "standard"),
+        (("basic",), "basic"),
+        (("flash",), "flash"),
+        (("advanced",), None),
+    ],
 )
 def test_api_server_explicit_capability_matrix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tiers: tuple[Tier, ...], default: Tier | None
@@ -977,7 +985,6 @@ def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeyp
     app = create_app(
         upload_dir=str(tmp_path / "api"),
         tiers=("flash", "basic", "standard"),
-
     )
 
     with TestClient(app) as client:
@@ -1000,7 +1007,6 @@ def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: 
     app = create_app(
         upload_dir=str(tmp_path / "api"),
         tiers=("basic", "standard", "advanced"),
-
     )
 
     response = TestClient(app).post(

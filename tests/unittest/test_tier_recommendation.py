@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import importlib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 from mineru.model.runtime import onnx_calibration_cache as cache
 from mineru.model.runtime import tier_recommendation as recommendation
@@ -16,6 +18,12 @@ from mineru.model.runtime.llama_probe import LlamaDevice
 from mineru.model.runtime.webgpu import WebGPUDevice
 from mineru.model.runtime.windows_gpu import GpuAdapter
 from mineru.types import TIERS
+
+
+@pytest.fixture(autouse=True)
+def onnx_recommendation_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """本文件验证 ONNX 既有推荐规则，隔离宿主可能自动选择的 Torch 后端。"""
+    monkeypatch.setattr(recommendation, "resolve_small_model_backend", lambda: "onnx")
 
 
 @pytest.mark.parametrize(
@@ -141,14 +149,17 @@ def test_unwritable_record_does_not_break_calibration(evidence_path: Path, monke
 @pytest.mark.parametrize(("platform", "metal"), [("darwin", True), ("darwin", False), ("other", False)])
 def test_apple_metal_recommendation(monkeypatch: pytest.MonkeyPatch, platform: str, metal: bool) -> None:
     """Apple Silicon 按 Metal 可用性推荐，不要求 Windows/Linux 校准记录。"""
-    from mineru.model.runtime import llama_device
+    from mineru.model.runtime import llama_device, onnx_device
 
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.setattr(recommendation, "sys", SimpleNamespace(platform=platform))
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 4)
     monkeypatch.setattr(recommendation, "_apple_metal_available", lambda: metal)
     monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: ())
-    assert recommendation.recommend_tiers() == frozenset(TIERS if metal else TIERS[:-1])
+    selection = Mock(side_effect=AssertionError("unsupported platform must not select ONNX device"))
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", selection)
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS if metal else TIERS[:-1])
+    selection.assert_not_called()
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])
@@ -156,7 +167,7 @@ def test_apple_metal_recommendation(monkeypatch: pytest.MonkeyPatch, platform: s
 def test_gpu_discovery_uses_only_existing_evidence(
     evidence_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, kind: str
 ) -> None:
-    """以真实证据读取验证跨平台 GPU 路由，并禁止推荐路径调用校准。"""
+    """硬件初选只读取真实证据，校准由达到门槛后的启动编排触发。"""
     from mineru.model.runtime import llama_device, onnx_device, webgpu, windows_gpu
 
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
@@ -182,7 +193,8 @@ def test_gpu_discovery_uses_only_existing_evidence(
     if kind != "unknown":
         cache.save_calibration_record(adapter, _measurement(gpu_elapsed=3.0 if kind == "slow" else 1.0))
     before = evidence_path.read_bytes() if evidence_path.exists() else None
-    assert recommendation.recommend_tiers() == frozenset(TIERS if kind in {"discrete", "calibrated"} else TIERS[:-1])
+    hardware = recommendation.detect_tier_hardware()
+    assert recommendation.tiers_for_hardware(hardware) == frozenset(TIERS if kind in {"discrete", "calibrated"} else TIERS[:-1])
     assert (evidence_path.read_bytes() if evidence_path.exists() else None) == before
     onnx_device.resolve_onnx_device.assert_not_called()
 
@@ -191,4 +203,177 @@ def test_explicit_cpu_and_discovery_failure(monkeypatch: pytest.MonkeyPatch) -> 
     """显式 CPU 禁止 GPU 推荐，CPU 探测失败时只推荐基础档位。"""
     monkeypatch.setenv("MINERU_LLAMA_CPP_BACKEND", "cpu")
     monkeypatch.setattr(recommendation, "effective_cpu_count", Mock(side_effect=OSError("affinity")))
-    assert recommendation.recommend_tiers() == {"flash"}
+    assert recommendation.recommend_tiers().pdf_image_tiers == ("flash",)
+
+
+@pytest.fixture(params=["win32", "linux"])
+def startup_calibration(
+    request: pytest.FixtureRequest, evidence_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Mock]:
+    """模拟双平台物理设备和测速 worker，保留真实选型、配置落盘及证据读取链路。"""
+    import onnxruntime
+
+    from mineru.model import registry
+    from mineru.model.runtime import llama_device, onnx_calibration, onnx_device, webgpu, windows_gpu
+
+    settings = importlib.import_module("mineru.config")
+    config_file = evidence_path.with_name("settings.yaml")
+    config_file.write_text("model:\n  onnx_device: auto\n  source: local\n", encoding="utf-8")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", "auto")
+    monkeypatch.setattr(settings, "get_config_file_path", lambda: str(config_file))
+    monkeypatch.setattr(settings, "get_config_source", lambda key: "file")
+    monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
+    for module in (recommendation, onnx_device):
+        monkeypatch.setattr(module, "sys", SimpleNamespace(platform=request.param))
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 8)
+    monkeypatch.setattr(onnx_device, "_selections", {})
+    monkeypatch.setattr(onnxruntime, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
+    for module in (onnx_device, windows_gpu):
+        monkeypatch.setattr(module, "discover_gpus", lambda **kwargs: (_adapter(),))
+    for module in (onnx_device, webgpu):
+        monkeypatch.setattr(module, "discover_webgpu_devices", lambda: (WebGPUDevice(0x8086, 0x7D51),))
+    monkeypatch.setattr(
+        llama_device,
+        "discover_llama_devices",
+        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", True, 0x8086, 0x7D51),),
+    )
+    monkeypatch.setattr(
+        registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=Mock(return_value="rec.onnx")))
+    )
+    measurement = Mock(return_value=_measurement())
+
+    def run_calibration(
+        model_path: str,
+        adapter: GpuAdapter | WebGPUDevice,
+        *,
+        intra_op_num_threads: int,
+        inter_op_num_threads: int,
+        threshold: float,
+    ) -> dict[str, Any]:
+        """只替换实际硬件测量，按真实 worker 生命周期撤销并保存性能证据。"""
+        cache.invalidate_calibration_record()
+        result = measurement()
+        cache.save_calibration_record(adapter, result)
+        return result
+
+    monkeypatch.setattr(onnx_calibration, "run_calibration", run_calibration)
+    return config_file, measurement
+
+
+@pytest.mark.parametrize("outcome", ["fast", "slow", "unstable", "timeout", "output_error"])
+def test_auto_startup_calibrates_before_publishing(
+    startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """真实服务工厂在发布能力前读取本次校准，失败保持标准上限且不伪造 CPU 胜出。"""
+    from fastapi.testclient import TestClient
+
+    from mineru.model.runtime import onnx_device
+    from mineru.parser import api_server
+
+    config_file, measurement = startup_calibration
+    if outcome == "slow":
+        measurement.return_value = _measurement(gpu_elapsed=2.0)
+    elif outcome == "unstable":
+        measurement.return_value = _measurement(decision_valid=False)
+    elif outcome in {"timeout", "output_error"}:
+        measurement.side_effect = TimeoutError("worker") if outcome == "timeout" else ValueError("outputs differ")
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", Mock())
+    preload = Mock(side_effect=AssertionError("startup calibration must not require model preload"))
+    monkeypatch.setattr(api_server, "_preload_server_models", preload)
+
+    app = api_server.create_app(upload_dir=str(config_file.parent / "uploads"))
+    expected = TIERS if outcome == "fast" else TIERS[:-1]
+    measurement.assert_called_once()
+    assert app.state.server_tiers == expected
+    assert app.state.default_tier == "standard"
+    with TestClient(app) as client:
+        assert tuple(row["id"] for row in client.get("/v1/tiers").json()["data"]) == expected
+    preload.assert_not_called()
+    # 随后的模型初始化复用本进程选择，不再开启第二次校准。
+    selected = onnx_device.resolve_onnx_device()
+    assert selected.device == ("gpu" if outcome == "fast" else "cpu")
+    measurement.assert_called_once()
+    saved = "gpu" if outcome == "fast" else "cpu" if outcome == "slow" else "auto"
+    assert yaml.safe_load(config_file.read_text(encoding="utf-8"))["model"] == {
+        "onnx_device": saved,
+        "source": "local",
+    }
+
+
+def test_flash_initial_recommendation_skips_calibration(
+    startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """可用 CPU 不足四且无已有 GPU 证据时，只开放 Flash 并跳过启动选型。"""
+    from mineru.model.runtime import onnx_device
+
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 3)
+    assert recommendation.recommend_tiers().pdf_image_tiers == ("flash",)
+    startup_calibration[1].assert_not_called()
+    assert not onnx_device._selections
+
+
+def test_low_cpu_advanced_recommendation_still_selects_device(
+    startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """门槛按初选档位判断，低 CPU 配额的独显设备仍按平台规则提前选型。"""
+    from mineru.model.runtime import llama_device, onnx_device
+
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 2)
+    monkeypatch.setattr(
+        llama_device,
+        "discover_llama_devices",
+        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", False, 0x8086, 0x7D51),),
+    )
+    monkeypatch.setattr(onnx_device, "discover_gpus", lambda **kwargs: (replace(_adapter(), uma=False),))
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
+    assert onnx_device._selections
+    assert startup_calibration[1].call_count == (0 if onnx_device.sys.platform == "win32" else 1)
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_explicit_ceiling_skips_startup_selection(startup_calibration: tuple[Path, Mock], tier: str) -> None:
+    """显式启动上限和 Python 精确集合均不进入自动推荐的设备选择。"""
+    from mineru.model.runtime import onnx_device
+    from mineru.parser.server_tiers import parse_server_tier, resolve_server_tiers
+
+    selected = parse_server_tier(tier)
+    assert resolve_server_tiers(selected) == selected
+    startup_calibration[1].assert_not_called()
+    assert not onnx_device._selections
+
+
+@pytest.mark.parametrize("requested", ["cpu", "gpu"])
+def test_startup_preserves_explicit_device_without_performance_evidence(
+    startup_calibration: tuple[Path, Mock], requested: str
+) -> None:
+    """已保存或手动的设备偏好不触发测速，也不代替集显的有效性能证据。"""
+    settings = importlib.import_module("mineru.config")
+    config_file, measurement = startup_calibration
+    settings.get_config().model.onnx_device = requested
+    config_file.write_text(f"model:\n  onnx_device: {requested}\n", encoding="utf-8")
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS[:-1])
+    measurement.assert_not_called()
+    assert yaml.safe_load(config_file.read_text(encoding="utf-8"))["model"]["onnx_device"] == requested
+
+
+def test_next_startup_reuses_saved_device_and_evidence(startup_calibration: tuple[Path, Mock]) -> None:
+    """同次启动采用新证据，后续进程复用保存结果，不再次测速。"""
+    from mineru.model.runtime import onnx_device
+
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
+    onnx_device._selections.clear()
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
+    startup_calibration[1].assert_called_once()
+    assert onnx_device.resolve_onnx_device().reason == "configured_gpu"
+
+
+def test_failed_recalibration_revokes_previous_fast_evidence(startup_calibration: tuple[Path, Mock]) -> None:
+    """强制重新校准失败后，本次启动不能沿用已经撤销的旧 GPU 胜出证据。"""
+    from mineru.model.runtime import onnx_device
+
+    adapter = _adapter() if onnx_device.sys.platform == "win32" else WebGPUDevice(0x8086, 0x7D51)
+    cache.save_calibration_record(adapter, _measurement())
+    startup_calibration[1].side_effect = TimeoutError("worker")
+    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS[:-1])
+    startup_calibration[1].assert_called_once()
+    assert not cache.calibration_record_path().exists()

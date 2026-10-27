@@ -8,6 +8,10 @@ API 启动改为 `--tier auto|flash|basic|standard|advanced`，移除 `--tiers`�
 
 Python `create_app(tiers=...)` 保留精确 PDF/图片集合，模型依赖及预加载仍按实际需求合并。HTTP 请求默认、逐文件实际档位和产物协议保持原规则。
 
+`--tier auto`（包括省略参数）按有效小模型后端分流。Torch 使用经过验证的实际设备可用性，有加速设备时开放 Advanced，CPU 情况按可用核数推荐，不执行 OCR 校准或改写 ONNX 配置。ONNX 在硬件初选达到 Basic 后，会在 Windows/Linux 启动阶段同步完成现有设备选型及适用的 OCR 校准，再确定最终开放上限。无需启用 `--preload-models`，首次校准可能准备或下载 OCR rec 模型。初选仅 Flash、显式启动档位以及已保存的设备选择不强制测速；模型预加载与请求默认档位保持原规则。
+
+新增 `mineru-kit hardware detect [--json]` 和 `hardware info [--json]`，分别用于同源推荐与只读问题反馈诊断。软件版本只展示指定清单内已安装的包；没有 `--quiet` 或 `auto-tier` 别名。
+
 这是一轮能力语义和启动参数升级：先停收并排空在途任务，再协调更新 worker、Router 和客户端。SaaS Go 服务由部署方同步对齐，避免新客户端把原生文件交给仍限制 Flash 的旧服务。模型故障恢复、Doclib 原生执行路径及缓存语义不属于本轮改动。
 
 ## 既有 Tasks 接口迁移

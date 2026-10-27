@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from itertools import combinations
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
@@ -55,14 +56,14 @@ def test_auto_recommendation_is_fixed_at_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preflight: Mock, tiers: tuple[Tier, ...]
 ) -> None:
     """自动推荐每个服务只计算一次，生命周期启动与能力查询不重新选择。"""
-    recommend = Mock(return_value=frozenset(tiers))
+    recommend = Mock(return_value=SimpleNamespace(pdf_image_tiers=tiers))
     monkeypatch.setattr(tier_recommendation, "recommend_tiers", recommend)
     app = api_server.create_app(upload_dir=str(tmp_path))
-    recommend.return_value = frozenset({"advanced"})
+    recommend.return_value = SimpleNamespace(pdf_image_tiers=("advanced",))
     with TestClient(app) as client:
         for _ in range(2):
             assert tuple(row["id"] for row in client.get("/v1/tiers").json()["data"]) == TIERS_BY_SERVER_TIER[tiers[-1]]
-    recommend.assert_called_once_with()
+    recommend.assert_called_once_with(vlm_config=app.state.vlm_config)
 
 
 @pytest.mark.parametrize(
@@ -72,7 +73,7 @@ def test_auto_server_accepts_task_with_standard_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preflight: Mock, options: dict[str, str | None], expected: str
 ) -> None:
     """硬件推荐四档后，经公共接单接口固定默认 standard 或调用方指定的 advanced。"""
-    monkeypatch.setattr(tier_recommendation, "recommend_tiers", lambda: frozenset(TIERS))
+    monkeypatch.setattr(tier_recommendation, "recommend_tiers", lambda **kwargs: SimpleNamespace(pdf_image_tiers=TIERS))
     app = api_server.create_app(upload_dir=str(tmp_path))
     with TestClient(app) as client:
         response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
@@ -121,7 +122,7 @@ def test_old_python_options_removed(option: str) -> None:
 def test_cli_entrypoints(monkeypatch: pytest.MonkeyPatch, preflight: Mock, entry: str, options: list[str]) -> None:
     """三个入口共享自动推荐与单档上限，不启动监听进程。"""
     seen: list[tuple[Tier, ...]] = []
-    monkeypatch.setattr(tier_recommendation, "recommend_tiers", lambda: frozenset(TIERS))
+    monkeypatch.setattr(tier_recommendation, "recommend_tiers", lambda **kwargs: SimpleNamespace(pdf_image_tiers=TIERS))
     monkeypatch.setattr("uvicorn.Server.run", lambda server: seen.append(server.config.app.state.server_tiers))
     if entry == "module":
         result = CliRunner().invoke(api_server.main, options)

@@ -1,8 +1,8 @@
-"""保存可验证的 OCR 校准证据，供服务启动时只读推荐档位。"""
+"""保存可验证的 OCR 校准证据，供服务启动推荐和只读诊断复用。"""
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
 import json
 import os
@@ -32,6 +32,47 @@ class CalibrationRecord(BaseModel):
     outputs_match: Literal[True]
     decision_valid: bool
     model_sha256: str
+
+
+@dataclass(frozen=True)
+class CalibrationInfo:
+    """只读校准摘要；未知环境匹配状态与明确不匹配分开表达。"""
+
+    path: str
+    status: str
+    matches_environment: bool | None = None
+    decision_valid: bool | None = None
+    outputs_match: bool | None = None
+    cpu_elapsed: float | None = None
+    gpu_elapsed: float | None = None
+    ratio: float | None = None
+    threshold: float | None = None
+    model_sha256: str | None = None
+    error: str | None = None
+
+
+def inspect_calibration_record(adapters: tuple[GpuAdapter | WebGPUDevice, ...] | None = None) -> CalibrationInfo:
+    """读取记录并与已探测的物理设备比较，不创建目录、不测速或修改文件。"""
+    path = calibration_record_path()
+    try:
+        record = CalibrationRecord.model_validate_json(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return CalibrationInfo(str(path), "missing")
+    except (OSError, ValueError) as error:
+        return CalibrationInfo(str(path), "invalid", error=str(error))
+    matches = None if adapters is None else any(record.fingerprint == _fingerprint(adapter) for adapter in adapters)
+    return CalibrationInfo(
+        str(path),
+        "present",
+        matches,
+        record.decision_valid,
+        record.outputs_match,
+        record.cpu_elapsed,
+        record.gpu_elapsed,
+        record.gpu_elapsed / record.cpu_elapsed,
+        record.threshold,
+        record.model_sha256,
+    )
 
 
 def calibration_record_path() -> Path:
@@ -139,4 +180,11 @@ def calibrated_gpu_is_faster(adapter: GpuAdapter | WebGPUDevice, threshold: floa
         return False
 
 
-__all__ = ["calibrated_gpu_is_faster", "calibration_record_path", "invalidate_calibration_record", "save_calibration_record"]
+__all__ = [
+    "CalibrationInfo",
+    "calibrated_gpu_is_faster",
+    "calibration_record_path",
+    "inspect_calibration_record",
+    "invalidate_calibration_record",
+    "save_calibration_record",
+]

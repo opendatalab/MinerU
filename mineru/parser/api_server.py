@@ -1811,7 +1811,9 @@ def create_app(
         Directory for uploaded files and parse artifacts.
     tiers:
         Exact non-empty set of PDF/image request tiers. ``None`` recommends
-        a capability ceiling from hardware and existing OCR calibration evidence.
+        a capability ceiling from the effective small-model backend and hardware.
+        Torch validates acceleration without OCR calibration; ONNX may calibrate
+        before finalizing a preliminary ceiling of Basic or higher on Windows/Linux.
         Native documents always use Flash independently of this set.
     concurrency:
         Maximum concurrent parse jobs (default 1).
@@ -1834,11 +1836,11 @@ def create_app(
     """
     retention_seconds = resolve_retention_seconds(retention_seconds)
     upload_dir = upload_dir or ""
-    server_tiers = resolve_server_tiers(tiers)
+    vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
+    server_tiers = resolve_server_tiers(tiers, vlm_config=vlm_config)
     model_tier = model_tier_for_server_tiers(server_tiers)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     default_tier = next((tier for tier in ("standard", "basic", "flash") if tier in server_tiers), None)
-    vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
     _preflight_tier_dependencies(model_tier, vlm_config)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))

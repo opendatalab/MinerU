@@ -40,6 +40,21 @@ _lock = threading.RLock()
 _selections: dict[tuple[int, str, str, str, bool], OnnxSelection] = {}
 
 
+def cached_onnx_device(*, allow_download: bool = True) -> OnnxSelection | None:
+    """只读查询当前配置的进程内选择，用于区分本次选型与已缓存结果。"""
+    from ...config import get_config, get_config_file_path, get_config_source
+
+    key = (
+        os.getpid(),
+        get_config_file_path(),
+        get_config().model.onnx_device,
+        get_config_source("model.onnx_device"),
+        allow_download,
+    )
+    with _lock:
+        return _selections.get(key)
+
+
 def metacommands_enabled(vendor: str, model_kind: str) -> bool | None:
     """None leaves an unknown vendor on the ORT default."""
     return METACOMMANDS.get(vendor, {}).get(model_kind)
@@ -127,7 +142,7 @@ def _select_and_save(
 def resolve_onnx_device(
     *, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0, allow_download: bool = True
 ) -> OnnxSelection:
-    """Resolve at first model use; imports and diagnostic commands never call this function."""
+    """在首次模型使用或达到 Basic 的 API 自动推荐时选型；导入和诊断命令不调用。"""
     from ...config import get_config, get_config_file_path, get_config_source
 
     requested = get_config().model.onnx_device
@@ -184,6 +199,7 @@ __all__ = [
     "ONNX_GPU_TIME_RATIO_THRESHOLDS",
     "OnnxSelection",
     "choose_gpu",
+    "cached_onnx_device",
     "confirm_gpu_session",
     "metacommands_enabled",
     "resolve_onnx_device",

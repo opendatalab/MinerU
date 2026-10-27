@@ -30,6 +30,9 @@ def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
     """单测不触发真实设备探测、模型加载或持久化校准。"""
     monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="linux", executable="python"))
     monkeypatch.setattr(policy, "_runtime_environment", None)
+    from mineru.model.runtime import device
+
+    monkeypatch.setattr(device, "resolve_small_model_backend", lambda: "onnx")
     for name in (*policy._BACKEND_ENV, "MINERU_LLAMA_CPP_BACKEND"):
         monkeypatch.delenv(name, raising=False)
 

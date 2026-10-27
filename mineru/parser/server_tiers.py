@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+from typing import TYPE_CHECKING
 
 from ..types import TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, Tier, validate_tier
+
+if TYPE_CHECKING:
+    from ..config import VlmConfig
 
 
 def normalize_server_tiers(tiers: Collection[Tier]) -> tuple[Tier, ...]:
@@ -24,12 +28,12 @@ def parse_server_tier(value: str) -> tuple[Tier, ...] | None:
     return TIERS_BY_SERVER_TIER[validate_tier(value)]
 
 
-def resolve_server_tiers(tiers: Collection[Tier] | None) -> tuple[Tier, ...]:
-    """显式列表完全跳过硬件推荐，自动模式只在调用时惰性探测。"""
+def resolve_server_tiers(tiers: Collection[Tier] | None, *, vlm_config: VlmConfig | None = None) -> tuple[Tier, ...]:
+    """显式列表跳过推荐与启动校准；自动模式按硬件初选并完成适用的 OCR 选型。"""
     if tiers is None:
         from ..model.runtime.tier_recommendation import recommend_tiers
 
-        recommended = normalize_server_tiers(recommend_tiers())
+        recommended = normalize_server_tiers(recommend_tiers(vlm_config=vlm_config).pdf_image_tiers)
         tiers = TIERS_BY_SERVER_TIER[recommended[-1]]
     return normalize_server_tiers(tiers)
 

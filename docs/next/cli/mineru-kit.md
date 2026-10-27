@@ -22,6 +22,7 @@
 | 子命令 | 作用 | 文档 |
 |--------|------|------|
 | `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
+| `mineru-kit hardware` | 自动推荐档位及只读硬件/运行时诊断 | [mineru-kit hardware](mineru-kit-hardware.md) |
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
