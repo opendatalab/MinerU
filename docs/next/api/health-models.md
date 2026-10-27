@@ -181,14 +181,13 @@ Local Parse Server 的 `health` 通常返回:
 
 | 本地 api-server 进程能力 | `/v1/tiers` 应返回 |
 |-------------------------|-------------------|
-| `--tier flash` | `flash`；默认选择请求应失败，除非显式请求 Flash。 |
-| `--tier basic` | `flash`、`basic` |
-| `--tier basic --no-flash` | `basic` |
-| `--tier basic --no-advanced` | `flash`、`basic` |
-| `--tier standard` | `flash`、`basic`、`standard`、`advanced` |
-| `--tier standard --no-flash` | `basic`、`standard`、`advanced` |
-| `--tier standard --no-advanced` | `flash`、`basic`、`standard` |
-| `--tier standard --no-flash --no-advanced` | `basic`、`standard` |
+| `--tiers flash` | `flash`；Tasks 省略请求 tier 时使用 flash |
+| `--tiers basic` | `basic` |
+| `--tiers standard` | `standard` |
+| `--tiers flash,standard` | `flash`、`standard` |
+| `--tiers advanced` | `advanced`；请求必须显式指定 tier |
+| `--tiers flash,basic,standard,advanced` | 全部四档；Tasks 默认 standard |
+| `--tiers auto` 或省略 | 启动时的硬件推荐集合，详见 [API 启动文档](../cli/mineru-kit-api-server.md#自动推荐) |
 
 本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。客户端不应根据启动参数猜测具体能力。
 

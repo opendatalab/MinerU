@@ -16,6 +16,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Collection
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -49,7 +50,7 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
+from ..types import DeploymentTier, PageInfo, Tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.runtime.ownership import RuntimeOwner, runtime_owner
 from ..model.vlm.errors import is_fatal_engine_error
@@ -68,10 +69,10 @@ from .page_range import (
     format_page_range as _compact_page_numbers,
 )
 from .process_control import ManagedProcessControlWatcher
+from .server_tiers import model_tier_for_server_tiers, parse_server_tiers, resolve_server_tiers
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
-    effort_for_tier,
     ensure_tier_runtime_dependencies,
     runtime_options_for_tier,
 )
@@ -82,7 +83,6 @@ from ..tasks.execution import TaskExecution, TaskInputMetadata, execution_timest
 from ..tasks.http import build_task_router
 from ..tasks.service import TaskStore
 
-_DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _MAX_URL_BYTES_DEFAULT = 209715200
 
 logger = logging.getLogger("mineru.parser.api_server")
@@ -1653,30 +1653,8 @@ def _build_v1_router() -> APIRouter:
     return _router
 
 
-def _normalize_server_tier(tier: str | None) -> ServerTier:
-    """规范化 API server 的单个启动能力档位。"""
-    if tier is not None and not isinstance(tier, str):
-        raise ValueError("Server tier must be a single value: flash, basic, or standard")
-    normalized = (tier or _DEFAULT_API_SERVER_TIER).strip().lower()
-    if normalized in SERVER_TIERS:
-        return normalized  # type: ignore[return-value]
-    supported = ", ".join(SERVER_TIERS)
-    raise ValueError(f"Unsupported server tier '{tier}'. Supported server tiers: {supported}")
-
-
-def _request_tiers_for_server_tier(tier: ServerTier, *, no_flash: bool, no_advanced: bool = False) -> list[Tier]:
-    """将单个启动档位展开为该进程可接受的请求 tier。"""
-    if tier == "flash" and no_flash:
-        raise ValueError("--tier flash cannot be combined with --no-flash")
-    return [
-        request_tier
-        for request_tier in TIERS_BY_SERVER_TIER[tier]
-        if (not no_flash or request_tier != "flash") and (not no_advanced or request_tier != "advanced")
-    ]
-
-
-def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRuntimeOptions]:
-    """为展开后的请求 tier 生成独立 runtime，API server 只允许 tier 决定 backend/effort。"""
+def _runtime_options_for_server_tiers(tiers: Collection[Tier]) -> dict[Tier, ParserRuntimeOptions]:
+    """为明确开放的请求 tier 生成独立 runtime，执行 effort 仍由 tier 决定。"""
     return {tier: runtime_options_for_tier(tier) for tier in tiers}
 
 
@@ -1716,14 +1694,14 @@ def _tiers_for_server_tier(tier: Tier) -> list[TierInfoData]:
     ]
 
 
-def _tiers_for_server_tiers(tiers: list[Tier]) -> list[TierInfoData]:
-    """展开后的请求 tier metadata。"""
+def _tiers_for_server_tiers(tiers: Collection[Tier]) -> list[TierInfoData]:
+    """按精确集合发布请求 tier metadata。"""
     return [tier_info for tier in tiers for tier_info in _tiers_for_server_tier(tier)]
 
 
-def _preflight_tier_dependencies(tier: ServerTier, vlm_config: VlmConfig | None = None) -> None:
+def _preflight_tier_dependencies(tier: DeploymentTier | None, vlm_config: VlmConfig | None = None) -> None:
     """远程 VLM 仅预检本地 Hybrid 依赖，避免要求安装本地 VLM serving 引擎。"""
-    if tier == "flash":
+    if tier is None:
         return
     settings = vlm_config if vlm_config is not None else get_config().model.vlm
     if tier == "standard":
@@ -1823,9 +1801,7 @@ def _start_force_exit_timer(
 def create_app(
     *,
     upload_dir: str = "",
-    tier: ServerTier | None = None,
-    no_flash: bool = False,
-    no_advanced: bool = False,
+    tiers: Collection[Tier] | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
@@ -1842,13 +1818,9 @@ def create_app(
     ----------
     upload_dir:
         Directory for uploaded files and parse artifacts.
-    tier:
-        Server capability ceiling. ``"flash"`` exposes Flash, ``"basic"``
-        exposes Flash and Basic, and ``"standard"`` exposes all request tiers.
-    no_flash:
-        Disable Flash advertisement and execution. Invalid with ``tier="flash"``.
-    no_advanced:
-        Disable Advanced advertisement and execution.
+    tiers:
+        Exact non-empty set of advertised request tiers. ``None`` recommends
+        tiers from available hardware and existing OCR calibration evidence.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -1870,13 +1842,12 @@ def create_app(
     """
     retention_seconds = resolve_retention_seconds(retention_seconds)
     upload_dir = upload_dir or ""
-    tier = _normalize_server_tier(tier)
-    server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash, no_advanced=no_advanced)
+    server_tiers = resolve_server_tiers(tiers)
+    model_tier = model_tier_for_server_tiers(server_tiers)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
-    default_tier = select_default_quality_tier(tier_runtime_options)
-    effort = effort_for_tier(tier)
+    default_tier = next((tier for tier in ("standard", "basic", "flash") if tier in server_tiers), None)
     vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
-    _preflight_tier_dependencies(tier, vlm_config)
+    _preflight_tier_dependencies(model_tier, vlm_config)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -1885,16 +1856,15 @@ def create_app(
 
     _tiers = _tiers_for_server_tiers(server_tiers)
     _model_registered_at = int(time.time())
-    _preload_tier: DeploymentTier | None = None
-    if preload_models and tier != "flash":
-        _preload_tier = tier
+    _preload_tier = model_tier if preload_models else None
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.upload_dir = _upload_dir
-        application.state.tier = tier
+        application.state.server_tiers = server_tiers
+        application.state.model_tier = model_tier
         application.state.default_tier = default_tier
-        application.state.flash_enabled = not no_flash
+        application.state.flash_enabled = "flash" in server_tiers
         application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = [_VIRTUAL_MODEL_ID]
         application.state.model_registered_at = _model_registered_at
@@ -1904,7 +1874,6 @@ def create_app(
         application.state.max_url_bytes = max_url_bytes
         application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
-        application.state.effort = effort
         application.state.image_analysis = image_analysis
         application.state.preload_models = preload_models
         application.state.vlm_config = vlm_config
@@ -2021,9 +1990,10 @@ def create_app(
             return get_swagger_ui_oauth2_redirect_html()
 
     application.state.upload_dir = _upload_dir
-    application.state.tier = tier
+    application.state.server_tiers = server_tiers
+    application.state.model_tier = model_tier
     application.state.default_tier = default_tier
-    application.state.flash_enabled = not no_flash
+    application.state.flash_enabled = "flash" in server_tiers
     application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = [_VIRTUAL_MODEL_ID]
     application.state.model_registered_at = _model_registered_at
@@ -2033,7 +2003,6 @@ def create_app(
     application.state.max_url_bytes = max_url_bytes
     application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
-    application.state.effort = effort
     application.state.image_analysis = image_analysis
     application.state.preload_models = preload_models
     application.state.vlm_config = vlm_config
@@ -2151,23 +2120,10 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     type=click.Path(file_okay=False, writable=True, resolve_path=True),
 )
 @click.option(
-    "--tier",
-    default=None,
-    type=click.Choice(list(SERVER_TIERS)),
-    help=(
-        "Server capability tier: flash, basic, or standard. "
-        "Defaults to standard, which accepts flash, basic, standard, and advanced requests."
-    ),
-)
-@click.option(
-    "--no-flash",
-    is_flag=True,
-    help="Disable Flash tier advertisement and execution.",
-)
-@click.option(
-    "--no-advanced",
-    is_flag=True,
-    help="Disable Advanced tier advertisement and execution.",
+    "--tiers",
+    default="auto",
+    type=str,
+    help="Exact comma-separated tiers (flash,basic,standard,advanced), or auto for hardware recommendations (default).",
 )
 @click.option(
     "--concurrency",
@@ -2221,9 +2177,7 @@ def main(
     host: str,
     port: int,
     upload_dir: str,
-    tier: ServerTier | None,
-    no_flash: bool,
-    no_advanced: bool,
+    tiers: str,
     concurrency: int,
     url_timeout: int,
     max_url_bytes: int,
@@ -2277,9 +2231,7 @@ def main(
         )
         application = create_app(
             upload_dir=upload_dir,
-            tier=tier,
-            no_flash=no_flash,
-            no_advanced=no_advanced,
+            tiers=parse_server_tiers(tiers),
             concurrency=concurrency,
             url_timeout=url_timeout,
             max_url_bytes=max_url_bytes,

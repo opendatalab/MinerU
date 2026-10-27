@@ -67,7 +67,7 @@ mineru-kit webui \
 | `--enable-example` | 显示当前工作目录 `examples/` 中的示例文件。 |
 | `--enable-api` | 暴露 Gradio 转换事件 API。 |
 
-Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advanced`、`--no-advanced`；传入会报错。独立 API 启动命令仍保留 `--no-flash` 和 `--no-advanced`。
+Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advanced`、`--no-advanced`；传入会报错。独立 API 启动命令使用 `--tiers` 精确列表；WebUI 的既有单值托管配置会转换为等价列表。
 
 指定外部 `--api-url` 时，Gradio 先校验 `/v1/health` 和 `/v1/tiers`。远程已提供 Flash 时，全部请求使用远程；远程缺少 Flash 时，在运行 Gradio 的机器上自动启动仅提供 Flash 的 loopback V1 API，并完成能力发现后启动界面。Flash 请求只上传至本地服务，其他档位继续使用远程；远程未提供的 Advanced 不会补充。
 

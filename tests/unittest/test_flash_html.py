@@ -199,7 +199,7 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
         """跳过后台解析，仅验证 admission 已选择 Flash tier。"""
 
     monkeypatch.setattr(api_server, "_run_execution", fake_run_job)
-    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",))
 
     with TestClient(app) as client:
         response = client.post(

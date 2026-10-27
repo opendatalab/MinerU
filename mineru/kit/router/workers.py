@@ -21,7 +21,7 @@ from loguru import logger
 
 from ...model.runtime.device import get_device
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, ServerTier, Tier
+from ...types import TIERS_BY_SERVER_TIER, SERVER_TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
 from ...utils.retention import resolve_retention_seconds
 
@@ -205,8 +205,8 @@ class ManagedLocalWorker:
             str(port),
             "--upload-dir",
             str(upload_dir),
-            "--tier",
-            self.settings.worker_tier,
+            "--tiers",
+            ",".join(TIERS_BY_SERVER_TIER[self.settings.worker_tier]),
             "--concurrency",
             str(self.settings.worker_concurrency),
             "--retention-seconds",

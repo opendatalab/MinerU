@@ -113,10 +113,10 @@ class _WorkerTransport(httpx.AsyncBaseTransport):
 def service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[tuple[TestClient, FastAPI]]:
     """对本地服务与双 worker Router 执行同一份共同协议验收。"""
     if request.param == "api":
-        app = api_server.create_app(upload_dir=str(tmp_path / "direct"), tier="flash")
+        app = api_server.create_app(upload_dir=str(tmp_path / "direct"), tiers=("flash",))
     else:
         workers = {
-            host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash") for host in ("worker-a", "worker-b")
+            host: api_server.create_app(upload_dir=str(tmp_path / host), tiers=("flash",)) for host in ("worker-a", "worker-b")
         }
         transport = _WorkerTransport(workers)
         app = create_router(
@@ -902,7 +902,7 @@ def test_cancel_url_download_closes_stream_and_releases_worker(
 
 def test_router_private_hash_cache_and_task_scope(tmp_path: Path) -> None:
     """Router 的缓存、任务与文件地址均隔离调用方，不能仅凭已知 hash 使用他人输入。"""
-    workers = {"worker-a": api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash")}
+    workers = {"worker-a": api_server.create_app(upload_dir=str(tmp_path / "worker"), tiers=("flash",))}
     app = create_router(
         RouterSettings(upstream_urls=("http://worker-a",), local_gpus="none", worker_refresh_interval_seconds=0),
         transport=_WorkerTransport(workers),
@@ -925,7 +925,7 @@ def test_router_private_hash_cache_and_task_scope(tmp_path: Path) -> None:
 @pytest.mark.parametrize("root", ["", "/mineru"])
 def test_task_links_respect_proxy_root(tmp_path: Path, root: str) -> None:
     """固定查询路由保留客户端部署前缀，上传和结果仍使用服务返回的链接。"""
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), api_key="secret")
     with TestClient(
         app, base_url="http://testserver" + root, root_path=root, headers={"Authorization": "Bearer secret"}
     ) as client:
@@ -1038,7 +1038,9 @@ def test_completed_child_retention_starts_after_parent_finishes(service: tuple[T
 
 def test_router_batch_uses_independent_workers_and_task_capabilities(tmp_path: Path) -> None:
     """单个父任务的文件按负载分发，旧 worker 即使声明 zip 也不能接新 Tasks。"""
-    workers = {host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash") for host in ("worker-a", "worker-b")}
+    workers = {
+        host: api_server.create_app(upload_dir=str(tmp_path / host), tiers=("flash",)) for host in ("worker-a", "worker-b")
+    }
     app = create_router(
         RouterSettings(
             upstream_urls=("http://worker-a", "http://worker-b"), local_gpus="none", worker_refresh_interval_seconds=0
@@ -1062,7 +1064,7 @@ def test_router_batch_uses_independent_workers_and_task_capabilities(tmp_path: P
 
 def test_worker_upload_renews_result_lease_after_long_transfer(tmp_path: Path) -> None:
     """Router 转传超过内部租约长度时，上传完成会保护刚生成的子结果。"""
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     with TestClient(app) as client:
         task = _submit(client, [("a.html", HTML)], hashes=False)
         record = app.state.task_store._records[task["task_id"]]
@@ -1096,7 +1098,7 @@ def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path:
     """保留期结束后 worker 拒绝释放请求也不能永久保留过期的本地路由。"""
     from mineru.kit.router.tasks import maintain_task_result_leases
 
-    worker = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    worker = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     transport = _WorkerTransport({"worker-a": worker})
     app = create_router(
         RouterSettings(upstream_urls=("http://worker-a",), local_gpus="none", worker_refresh_interval_seconds=0),
@@ -1206,7 +1208,7 @@ def test_router_lease_timeout_does_not_expire_other_worker_results(tmp_path: Pat
     from mineru.kit.router import tasks as router_tasks
 
     workers = {
-        host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash", retention_seconds=1)
+        host: api_server.create_app(upload_dir=str(tmp_path / host), tiers=("flash",), retention_seconds=1)
         for host in ("worker-a", "worker-b")
     }
     transport = _WorkerTransport(workers)

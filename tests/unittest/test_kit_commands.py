@@ -173,7 +173,7 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
         (
             "mineru-api",
             api_server.main,
-            ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models"),
+            ("--host", "--port", "--tiers", "--preload-models"),
         ),
     ],
 )
@@ -207,10 +207,8 @@ def test_standalone_command_help(
             "0.0.0.0",
             "--port",
             "18000",
-            "--tier",
+            "--tiers",
             "basic",
-            "--no-flash",
-            "--no-advanced",
             "--preload-models",
         ],
     ],
@@ -320,7 +318,7 @@ def test_standalone_vlm_mlx_matches_kit(monkeypatch: pytest.MonkeyPatch) -> None
     ("script", "entrypoint", "args", "prefix", "exit_code"),
     [
         ("mineru-api", api_server.main, ["--backend", "hybrid-engine"], ["api-server"], 2),
-        ("mineru-api", api_server.main, ["--tier", "advanced"], ["api-server"], 1),
+        ("mineru-api", api_server.main, ["--tier", "advanced"], ["api-server"], 2),
         ("mineru-models-download", models.download_main, [], ["models", "download"], 1),
         ("mineru-models-download", models.download_main, ["--tier", "flash"], ["models", "download"], 1),
         ("mineru-openai-server", vlm_server.main, ["--engine", "sglang"], ["vlm-server"], 1),
@@ -370,7 +368,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     [
         ("parse", ("--output", "--format", "--tier")),
         ("webui", ("--api-url", "--server-name", "--api-server-tier")),
-        ("api-server", ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models")),
+        ("api-server", ("--host", "--port", "--tiers", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
         ("version", ("--json",)),
@@ -649,7 +647,8 @@ def test_kit_commands_do_not_expose_formula_table_switches() -> None:
         assert _REMOVED_DISABLE_FORMULA_OPTION not in output
 
 
-def test_api_server_forwards_single_tier_and_disabled_tiers(monkeypatch: Any) -> None:
+def test_api_server_forwards_explicit_tier_list(monkeypatch: Any) -> None:
+    """精确列表原样转发，不再构造旧的禁用开关。"""
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
@@ -662,24 +661,25 @@ def test_api_server_forwards_single_tier_and_disabled_tiers(monkeypatch: Any) ->
 
     result = runner.invoke(
         app,
-        ["api-server", "--tier", "standard", "--no-flash", "--no-advanced", "--preload-models"],
+        ["api-server", "--tiers", "standard", "--preload-models"],
     )
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
-    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
-    assert "--no-flash" in seen["args"]
-    assert "--no-advanced" in seen["args"]
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tiers"] == ["standard"]
+    assert "--no-flash" not in seen["args"]
+    assert "--no-advanced" not in seen["args"]
     assert "--preload-models" in seen["args"]
     assert "--ocr-mode" not in seen["args"]
 
 
-def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypatch: Any) -> None:
+def test_api_server_without_tiers_forwards_auto(monkeypatch: Any) -> None:
+    """省略启动集合时转发 auto，交由服务进行硬件推荐。"""
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 默认参数，由底层应用 Standard 能力默认值。"""
+        """记录 mineru-kit api-server 默认参数，由底层应用硬件推荐集合。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
@@ -691,24 +691,27 @@ def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypa
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
+    assert seen["args"][seen["args"].index("--tiers") + 1] == "auto"
     assert "--tier" not in seen["args"]
     assert "--no-flash" not in seen["args"]
     assert "--no-advanced" not in seen["args"]
     assert "--preload-models" not in seen["args"]
 
 
-def test_api_server_rejects_advanced_startup_tier() -> None:
+def test_api_server_rejects_removed_tier_option() -> None:
+    """旧单值 API 启动参数明确报错。"""
     result = runner.invoke(app, ["api-server", "--tier", "advanced"])
 
-    assert result.exit_code == 1
-    assert "Unsupported server tier 'advanced'" in result.output
+    assert result.exit_code == 2
+    assert "No such option" in result.output
 
 
-def test_api_server_rejects_flash_no_flash_conflict() -> None:
+def test_api_server_rejects_removed_disable_options() -> None:
+    """旧禁用参数不再构成可接受的 API 启动配置。"""
     result = runner.invoke(app, ["api-server", "--tier", "flash", "--no-flash"])
 
-    assert result.exit_code == 1
-    assert "--tier flash cannot be combined with --no-flash" in result.output
+    assert result.exit_code == 2
+    assert "No such option" in result.output
 
 
 def test_api_server_rejects_removed_language_option() -> None:

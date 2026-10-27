@@ -44,26 +44,15 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 ### 3. 单进程 tier 规则
 
-一个 `mineru-kit api-server` 进程使用单个 `--tier` 表示启动能力上限。
+一个 API 服务进程使用 `--tiers` 配置精确开放集合，接受 `flash/basic/standard/advanced` 的逗号分隔列表，省略等价于 `auto`。旧 `--tier`、`--no-flash`、`--no-advanced` 参数直接移除。
 
-支持的启动 tier：
+自动推荐规则：所有设备推荐 flash；进程可用逻辑 CPU 至少 4 时增加 basic、standard；可用独显、有效 OCR 校准判定更优的集显，或 Metal 可用的 Apple Silicon，推荐全部四档。设备探测失败或校准记录不可用时按 CPU 条件推荐。推荐不加载模型或运行性能测试，不增加内存门槛。
 
-- `flash`
-- `basic`
-- `standard`
+显式列表精确决定能力集合，可以覆盖推荐；依赖预检和可选模型预加载仍执行。Standard 与 Advanced 共用模型配置，模型需求合并不扩展公开档位。空集合、未知值、空项和 auto 混用均报错。
 
-Advanced 仍是公开请求 tier，但不是启动 tier；Standard 的依赖和模型同时覆盖 Advanced。
+开放集合在启动时固定。Tasks 请求的单数 `tier` 保持可选，默认顺序为 `standard -> basic -> flash`，advanced 仅显式使用；原生文档始终要求 flash 能力。
 
-规则：
-
-1. `--tier flash` 暴露 `flash`
-2. `--tier basic` 暴露 `flash`、`basic`
-3. `--tier standard` 暴露 `flash`、`basic`、`standard`、`advanced`
-4. 未传 `--tier` 等价于 `--tier standard`
-5. `--no-flash` 从能力中移除 Flash，并禁止该进程执行 Flash backend
-6. `--tier flash --no-flash` 启动失败
-7. `--no-advanced` 从能力中移除 Advanced，并禁止该进程接受 Advanced 请求
-8. `--no-flash --no-advanced` 可组合使用；Standard server 此时只发布 Basic 与 Standard
+Python 工厂改为 `create_app(tiers=...)`，None 自动推荐。Doclib、WebUI 和 Router 的托管配置保持原有语义，只把子进程参数转换为等价列表。详细规则及旧命令迁移见 [API 启动文档](../cli/mineru-kit-api-server.md)。
 
 ### 4. backend 的公开边界
 
@@ -84,9 +73,7 @@ backend 不是普通 API 协议层字段。
 
 - `--host`
 - `--port`
-- `--tier`
-- `--no-flash`
-- `--no-advanced`
+- `--tiers`
 - `--api-key`
 
 #### 稳定解析参数

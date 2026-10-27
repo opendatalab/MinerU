@@ -156,14 +156,14 @@ def test_startup_orphan_cleanup_and_directory_ownership(
     unknown = root / "blobs/unknown.txt"
     unknown.write_text("keep")
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
-    app = api_server.create_app(upload_dir=str(root), tier="flash", retention_seconds=10)
+    app = api_server.create_app(upload_dir=str(root), tiers=("flash",), retention_seconds=10)
     with TestClient(app):
         assert not orphan_store._blob_abs(sha).exists() and unknown.exists()
-        other = api_server.create_app(upload_dir=str(root), tier="flash", retention_seconds=10)
+        other = api_server.create_app(upload_dir=str(root), tiers=("flash",), retention_seconds=10)
         with pytest.raises(RuntimeError, match="already owned"):
             with TestClient(other):
                 pass
-    with TestClient(api_server.create_app(upload_dir=str(root), tier="flash", retention_seconds=10)):
+    with TestClient(api_server.create_app(upload_dir=str(root), tiers=("flash",), retention_seconds=10)):
         pass
 
 
@@ -239,7 +239,7 @@ def test_queued_cancel_releases_input_before_execution(tmp_path: Path, clock: li
 def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """清单 hash 命中后的声明大小校验失败不会泄漏准备阶段的 blob 引用。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
-    app = api_server.create_app(upload_dir=str(tmp_path / "files"), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path / "files"), tiers=("flash",))
     with TestClient(app) as client:
         _, sha = _source(app.state.file_store, tmp_path)
         response = client.post(
@@ -339,7 +339,7 @@ def test_kit_cli_forwards_explicit_retention(monkeypatch: pytest.MonkeyPatch) ->
     forwarded = MagicMock()
     monkeypatch.setattr(api_server.main, "main", forwarded)
     response = CliRunner().invoke(
-        app, ["api-server", "--tier", "flash", "--retention-seconds", "0"], env={"MINERU_API_RETENTION_SECONDS": "7200"}
+        app, ["api-server", "--tiers", "flash", "--retention-seconds", "0"], env={"MINERU_API_RETENTION_SECONDS": "7200"}
     )
     assert response.exit_code == 0, response.output
     args = forwarded.call_args.kwargs["args"]

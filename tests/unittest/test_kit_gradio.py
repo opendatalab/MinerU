@@ -321,8 +321,8 @@ def test_v1_client_discovers_api_server_without_advanced(
     monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="standard",
-        no_advanced=True,
+        tiers=("flash", "basic", "standard"),
+
     )
     request_log: list[tuple[str, str, str | None]] = []
 
@@ -439,7 +439,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     monkeypatch.setattr(task_outputs, "build_task_output", export)
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="flash",
+        tiers=("flash",),
         api_key="secret",
     )
     request_log: list[tuple[str, str, str | None]] = []
@@ -479,9 +479,9 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
 
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
     remote_api = parser_api_server.create_app(
-        upload_dir=str(tmp_path / "remote"), tier="standard", no_flash=True, no_advanced=True, api_key="remote-secret"
+        upload_dir=str(tmp_path / "remote"), tiers=("basic", "standard"),   api_key="remote-secret"
     )
-    local_api = parser_api_server.create_app(upload_dir=str(tmp_path / "local"), tier="flash")
+    local_api = parser_api_server.create_app(upload_dir=str(tmp_path / "local"), tiers=("flash",))
     requests: list[tuple[str, str, str, str | None]] = []
     with TestClient(remote_api, base_url="http://remote.test") as remote_http:
         with TestClient(local_api, base_url="http://local.test") as local_http:
@@ -624,7 +624,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
         return middle, model
 
     monkeypatch.setattr(mineru_parser, "aio_doc_analyze", fake_analyze)
-    api = parser_api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    api = parser_api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",))
     with TestClient(api, base_url="http://testserver") as test_client:
         request_log: list[tuple[str, str, str | None]] = []
         proxy = _httpx_proxy_for_test_client(test_client, request_log)
@@ -768,7 +768,7 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     command = server._command(8123, Path("/tmp/mineru-upload"))
     assert command[command.index("--log-level") + 1] == "warning"
     assert command[:4] == [server._command(8123, Path("/tmp/mineru-upload"))[0], "-m", "mineru.kit.main", "api-server"]
-    assert "--tier" in command and command[command.index("--tier") + 1] == "standard"
+    assert "--tiers" in command and command[command.index("--tiers") + 1] == "flash,basic,standard,advanced"
     assert "--no-flash" not in command
     assert "--no-advanced" not in command
     assert "--preload-models" in command

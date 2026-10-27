@@ -54,7 +54,7 @@ async def _cascade(
     tmp_path: Path, *, block_submission: bool = False
 ) -> AsyncIterator[tuple[httpx.AsyncClient, FastAPI, FastAPI, FastAPI, _WorkerTransport]]:
     """在同一事件循环启动外层、内层 Router 与实际解析 API。"""
-    worker = api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash", retention_seconds=1)
+    worker = api_server.create_app(upload_dir=str(tmp_path / "worker"), tiers=("flash",), retention_seconds=1)
     transport = _WorkerTransport(worker, block_submission=block_submission)
     inner = create_app(
         RouterSettings(

@@ -120,7 +120,7 @@ def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> 
 
     assert command[:5] == [command[0], "-m", "mineru.kit.main", "api-server", "--host"]
     assert command[0].endswith("python")
-    assert ["--tier", "basic"] == command[command.index("--tier") : command.index("--tier") + 2]
+    assert ["--tiers", "flash,basic"] == command[command.index("--tiers") : command.index("--tiers") + 2]
     assert ["--concurrency", "3"] == command[command.index("--concurrency") : command.index("--concurrency") + 2]
     assert "--preload-models" in command
 

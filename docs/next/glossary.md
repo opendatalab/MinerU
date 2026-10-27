@@ -83,7 +83,7 @@
 - 对普通用户只显示 `tier`，不要把 `backend` 作为主选择项。
 - 任何 CLI / SDK / API 入口都不接受 `backend` 入参；运行差异由 tier 派生的 effort 表达，不要重新引入 `--backend` 类参数或 backend 派生函数。
 - API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不应要求用户理解或选择 `backend`。
-- `mineru-kit api-server` 使用单值 `--tier flash|basic|standard` 表示能力上限；启动后的 HTTP API 通过 `/v1/tiers` 发布展开后的请求 tier。
+- `mineru-kit api-server` 使用 `--tiers` 指定精确开放集合或 auto 硬件推荐；启动后的 HTTP API 通过 `/v1/tiers` 发布实际开放档位。
 - Middle JSON schema 2.0 不记录 `_meta.backend`；产物 metadata 不包含 backend 字段，用户可见语义只记录 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。
 

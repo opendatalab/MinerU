@@ -45,9 +45,10 @@ def _mixed_inputs() -> list[tuple[str, bytes]]:
 def _service(tmp_path: Path, deployment: str) -> FastAPI:
     """创建完整本地或双 worker Router 服务，复用真实上传和后台执行流程。"""
     if deployment == "api":
-        return api_server.create_app(upload_dir=str(tmp_path / "api"), tier="standard")
+        return api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash", "basic", "standard", "advanced"))
     workers = {
-        name: api_server.create_app(upload_dir=str(tmp_path / name), tier="standard") for name in ("worker-a", "worker-b")
+        name: api_server.create_app(upload_dir=str(tmp_path / name), tiers=("flash", "basic", "standard", "advanced"))
+        for name in ("worker-a", "worker-b")
     }
     return create_router(
         RouterSettings(
@@ -126,7 +127,7 @@ def test_missing_actual_metadata_does_not_fabricate_requested_tier(tmp_path: Pat
         )
 
     monkeypatch.setattr(api_server, "parse_async", infer)
-    with TestClient(api_server.create_app(upload_dir=str(tmp_path), tier="flash")) as client:
+    with TestClient(api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))) as client:
         inputs = [("input.html", b"<p>missing metadata</p>")]
         task = _submit(client, inputs)
         _upload(client, task, inputs)

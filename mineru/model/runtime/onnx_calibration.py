@@ -292,6 +292,9 @@ def run_calibration(
     threshold: float | None = None,
 ) -> dict[str, Any]:
     """Run a fresh, hidden worker and kill it on timeout; failed measurements are never decisions."""
+    from .onnx_calibration_cache import invalidate_calibration_record, save_calibration_record
+
+    invalidate_calibration_record()
     # Build/hash the derived graph outside the bounded inference worker, like model download.
     threshold = _threshold(adapter, threshold)
     prepare_rec_model(model_path)
@@ -338,6 +341,8 @@ def run_calibration(
         raise ValueError(f"Calibration worker did not confirm valid {provider} results")
     _validate_sampling(result)
     result["worker_wall_s"] = time.perf_counter() - started
+    # 保存实际校准证据供下次服务启动读取，不将手动 cpu/gpu 偏好视为性能结论。
+    save_calibration_record(adapter, result)
     return result
 
 

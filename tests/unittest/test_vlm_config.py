@@ -160,7 +160,7 @@ def test_vlm_app_and_parser_snapshot_configuration(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
     settings = VlmConfig(server_url="http://remote.test", model="alias")
     monkeypatch.setattr(api_server.get_config().model, "vlm", settings)
-    app = api_server.create_app(upload_dir=str(tmp_path))
+    app = api_server.create_app(tiers=("flash", "basic", "standard", "advanced"), upload_dir=str(tmp_path))
     parser = MinerUParser()
     local_parser = MinerUParser(vlm_config=VlmConfig())
     settings.model = "changed"

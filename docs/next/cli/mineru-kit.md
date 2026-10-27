@@ -42,7 +42,7 @@
 ```bash
 mineru-openai-server --engine vllm --host 127.0.0.1 --port 30000
 mineru-models-download --tier standard --source modelscope
-mineru-api --host 127.0.0.1 --port 8000 --tier standard
+mineru-api --host 127.0.0.1 --port 8000 --tiers flash,standard
 ```
 
 `mineru-openai-server` 保留向底层引擎透传额外参数的能力。`mineru-models-download` 后直接填写模型仓库名或 `--tier` 等下载参数，不需要再输入 `download`。

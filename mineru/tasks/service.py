@@ -23,24 +23,29 @@ from .execution import TaskBackend, TaskExecution, TaskUpload, execution_timesta
 
 TASK_UPLOAD_TTL = 3600
 TERMINAL_TASK_STATUSES = frozenset({"completed", "partial", "failed", "canceled"})
+_DEFAULT_TASK_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic", "flash")
 logger = logging.getLogger(__name__)
 
 
-def resolve_task_tier(options: UploadTaskOptions, inputs: list[TaskFileInput], tiers: set[Tier], default: Tier | None) -> Tier:
-    """按现有轻量格式回退规则解析 tier，不触发 worker 选择或模型执行。"""
+def resolve_task_tier(options: UploadTaskOptions, inputs: list[TaskFileInput], tiers: set[Tier]) -> Tier:
+    """接单时固定 PDF/图片档位；纯原生文档归一为 flash，显式档位不升降级。"""
     lightweight = [is_flash_only_parse_extension(item.file_name) for item in inputs]
     if any(lightweight) and "flash" not in tiers:
         invalid_task_request("Flash parsing is disabled, but an input requires it", param="files")
-    tier = options.tier or default
-    if tier is None and all(lightweight) and "flash" in tiers:
-        tier = "flash"
-    if tier is None:
-        invalid_task_request(
-            "No default quality tier is available; pass tier explicitly", code="quality_tier_unavailable", status_code=503
-        )
-    if tier not in tiers and not (all(lightweight) and "flash" in tiers):
-        invalid_task_request(f"Tier '{tier}' is not available", param="tier")
-    return tier
+    if all(lightweight):
+        return "flash"
+    if options.tier is not None:
+        if options.tier not in tiers:
+            invalid_task_request(f"Tier '{options.tier}' is not available", param="tier")
+        return options.tier
+    for tier in _DEFAULT_TASK_TIER_SELECTION_ORDER:
+        if tier in tiers:
+            return tier
+    invalid_task_request(
+        "No default tier is available (standard, basic, or flash); pass tier explicitly",
+        code="quality_tier_unavailable",
+        status_code=503,
+    )
 
 
 async def file_chunks(path: Path) -> AsyncIterator[bytes]:

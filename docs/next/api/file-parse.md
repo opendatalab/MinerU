@@ -31,12 +31,17 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `file` | 必填 | 一个非空文件，保留扩展名；不接受多文件。 |
-| `tier` | 上游默认 | `flash/basic/standard/advanced`。 |
+| `tier` | 上游默认 | 可选，仅对 PDF/图片生效；`flash/basic/standard/advanced`。 |
 | `ocr_mode` | `auto` | `auto/txt/ocr`。 |
 | `page_range` | 整本 | 与 Tasks 一致，PDF 支持 `1-5`、`r1`、`all`；格式支持范围由上游校验。 |
 | `output_formats` | `default` | `default/docx/html/latex`；重复同名字段表达列表，重复值按首次出现去重。 |
 | `wait_timeout` | `3600` | 整数秒，范围 `0–3600`。 |
 | `request_id` | 自动生成 | 1–64 个字母、数字、下划线或短横线。提前指定并保存它，可在连接中断后查询。 |
+
+未提供 tier 表单字段时，包装层在上游 Tasks 请求中省略该字段，由上游按 **standard → basic → flash** 选择默认档位；advanced 必须显式指定。
+显式值原样传递，PDF/图片请求的档位不受上游支持时返回错误，不自动升降档。
+Office、HTML 等已支持的原生文档固定使用 flash，即使传入上游未开放的合法档位也不改变原生解析路径。
+表单空字符串或字符串 `"null"` 不是省略字段，属于非法值；OpenAPI 将 tier 声明为可省略的字符串枚举，不声明可空值。完整规则见 [Tasks tier 语义](tasks.md#tier默认选择与文件作用范围)。
 
 ```bash
 # 成功时 response.body 是附件；超时或错误时是 JSON，请同时检查 response.headers。
@@ -283,6 +288,8 @@ Content-Type: application/json
 | 502 | `submission_unknown`、`upstream_unreachable`、`upstream_protocol_error`、`invalid_result`、下载错误码或上游错误码 | 上游创建、查询、传输或解析失败，或结果校验失败。 |
 
 上游认证失败以包装层的 `502` 返回，例如 `error.code="invalid_api_key"`、`error.upstream_status=401`；包装入口本身没有 API Key 认证，不把上游配置错误伪报为入口鉴权失败。
+上游明确拒绝档位请求时也沿用包装层 `502`：显式 tier 不受支持保留 `error.code="invalid_request"`、`error.upstream_status=400`；没有可用默认档位的标准 Tasks 错误响应保留 `error.code="quality_tier_unavailable"`、`error.upstream_status=503`。两者记录为 `failed`，`task_id=null`，不标记为提交结果未知。
+创建阶段的 5xx 响应中，仅符合共享错误结构的 `503 quality_tier_unavailable` 可确认为档位拒单；其余 5xx、408、畸形响应或网络异常仍按 `submission_unknown` 处理。明确拒单和提交结果未知都不会自动重放创建，保留期内相同 request_id 的重复请求和重启恢复沿用原记录。
 `submission_unknown` 首次创建失败通常返回 `502`；后续请求仍可能得到 `409/502`，应查询原恢复记录，不自动重放创建。
 
 ## 等待、超时与断连后查询

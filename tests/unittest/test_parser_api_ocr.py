@@ -89,7 +89,7 @@ def test_api_parser_rejects_invalid_ocr_mode(value: object) -> None:
 @pytest.mark.parametrize("value", [None, "", "forced", True, 1, {}])
 def test_api_server_rejects_invalid_request_ocr_mode(tmp_path: Path, value: object) -> None:
     """非法模式统一返回带参数定位的 HTTP 400，且不会创建任务。"""
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     with TestClient(app) as client:
         response = client.post(
             "/v1/tasks",
@@ -108,7 +108,7 @@ def test_api_server_ocr_defaults_to_request_auto_without_startup_configuration(t
     """请求缺省值固定为 auto，应用生命周期不保存全局 OCR 模式。"""
     request = CreateTaskRequest.model_validate({"files": [{"file_name": "demo.pdf", "bytes": 9}]})
     assert request.ocr_mode == "auto"
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     assert not hasattr(app.state, "ocr_mode")
     with TestClient(app):
         assert not hasattr(app.state, "ocr_mode")

@@ -45,7 +45,6 @@ from mineru.types import (
     TIERS_BY_SERVER_TIER,
     MiddleJson,
     PageInfo,
-    ServerTier,
     Tier,
     select_default_quality_tier,
     select_parsing_rule_tier,
@@ -63,6 +62,12 @@ _REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
 _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
 _REMOVED_TABLE_ENABLE_ENV = "MINERU_" + "TABLE" + "_ENABLE"
 _REMOVED_FORMULA_ENABLE_ENV = "MINERU_" + "FORMULA" + "_ENABLE"
+
+
+@pytest.fixture(autouse=True)
+def _stable_hardware_recommendation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """固定服务契约测试的硬件推荐，设备组合由独立测试覆盖。"""
+    monkeypatch.setattr("mineru.model.runtime.tier_recommendation.recommend_tiers", lambda: frozenset(TIERS))
 
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -621,13 +626,13 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
 
     app = create_app(upload_dir=str(tmp_path))
 
-    assert app.state.tier == "standard"
+    assert app.state.model_tier == "standard"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
     assert app.state.allow_http_source is False
     assert not hasattr(app.state, "ocr_mode")
     assert not hasattr(app.state, "language")
-    assert app.state.effort == "high"
+    assert app.state.tier_runtime_options["standard"].effort == "high"
     assert app.state.image_analysis is True
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
     assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
@@ -720,27 +725,28 @@ def test_health_response_rejects_nonstandard_version_fields(field: str) -> None:
 
 def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
-    flash_app = create_app(upload_dir=str(tmp_path / "flash"), tier="flash")
-    basic_app = create_app(upload_dir=str(tmp_path / "basic"), tier="basic")
-    standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
+    flash_app = create_app(upload_dir=str(tmp_path / "flash"), tiers=("flash",))
+    basic_app = create_app(upload_dir=str(tmp_path / "basic"), tiers=("flash", "basic"))
+    standard_app = create_app(upload_dir=str(tmp_path / "standard"), tiers=("flash", "basic", "standard", "advanced"))
 
-    assert flash_app.state.tier == "flash"
+    assert flash_app.state.model_tier is None
     assert [tier["id"] for tier in flash_app.state.tiers] == ["flash"]
-    assert basic_app.state.tier == "basic"
-    assert basic_app.state.effort == "medium"
+    assert basic_app.state.model_tier == "basic"
+    assert basic_app.state.tier_runtime_options["basic"].effort == "medium"
     assert [tier["id"] for tier in basic_app.state.tiers] == ["flash", "basic"]
-    assert standard_app.state.tier == "standard"
-    assert standard_app.state.effort == "high"
+    assert standard_app.state.model_tier == "standard"
+    assert standard_app.state.tier_runtime_options["standard"].effort == "high"
     assert [tier["id"] for tier in standard_app.state.tiers] == ["flash", "basic", "standard", "advanced"]
 
 
-def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_defaults_to_hardware_recommendation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """默认使用推荐集合，模型配置与逐档执行参数保持一致。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
 
-    assert app.state.tier == "standard"
+    assert app.state.model_tier == "standard"
     assert app.state.default_tier == "standard"
-    assert app.state.effort == "high"
+    assert app.state.tier_runtime_options["standard"].effort == "high"
     assert [tier["id"] for tier in app.state.tiers] == ["flash", "basic", "standard", "advanced"]
     assert app.state.tier_runtime_options["flash"].effort == "flash"
     assert app.state.tier_runtime_options["basic"].effort == "medium"
@@ -751,11 +757,11 @@ def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: p
 def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验 Standard 能力上限发布三个模型档位，并可严格禁用 Flash。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="standard", no_flash=True)
+    app = create_app(upload_dir=str(tmp_path), tiers=("basic", "standard", "advanced"))
 
-    assert app.state.tier == "standard"
+    assert app.state.model_tier == "standard"
     assert app.state.default_tier == "standard"
-    assert app.state.effort == "high"
+    assert app.state.tier_runtime_options["standard"].effort == "high"
     assert app.state.flash_enabled is False
     assert [tier["id"] for tier in app.state.tiers] == ["basic", "standard", "advanced"]
     assert app.state.model_ids == [api_server._VIRTUAL_MODEL_ID]
@@ -766,40 +772,25 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
 
 
 @pytest.mark.parametrize(
-    ("tier", "no_flash", "expected_tiers", "expected_default_tier"),
-    [
-        ("standard", False, ("flash", "basic", "standard"), "standard"),
-        ("standard", True, ("basic", "standard"), "standard"),
-        ("basic", False, ("flash", "basic"), "basic"),
-        ("flash", False, ("flash",), None),
-    ],
+    ("tiers", "default"),
+    [(('flash', 'standard'), 'standard'), (('standard',), 'standard'),
+     (('basic',), 'basic'), (('flash',), 'flash'), (('advanced',), None)],
 )
-def test_api_server_no_advanced_capability_matrix(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    tier: ServerTier,
-    no_flash: bool,
-    expected_tiers: tuple[str, ...],
-    expected_default_tier: str | None,
+def test_api_server_explicit_capability_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tiers: tuple[Tier, ...], default: Tier | None
 ) -> None:
-    """验证禁用 Advanced 可与 server tier 和禁用 Flash 组合，且不改变其它档位。"""
+    """精确集合独立控制能力发现、执行 runtime 与请求默认档位。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(
-        upload_dir=str(tmp_path / f"{tier}-{no_flash}"),
-        tier=tier,
-        no_flash=no_flash,
-        no_advanced=True,
-    )
-
-    assert tuple(tier_info["id"] for tier_info in app.state.tiers) == expected_tiers
-    assert tuple(app.state.tier_runtime_options) == expected_tiers
-    assert app.state.default_tier == expected_default_tier
+    app = create_app(upload_dir=str(tmp_path), tiers=tiers)
+    assert tuple(tier_info["id"] for tier_info in app.state.tiers) == tiers
+    assert tuple(app.state.tier_runtime_options) == tiers
+    assert app.state.default_tier == default
 
 
 def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验 /v1/tiers 与 /v1/models 返回 Standard 上限展开后的全部能力。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="standard")
+    app = create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"))
 
     with TestClient(app) as client:
         health_response = client.get("/v1/health")
@@ -829,7 +820,7 @@ def test_api_server_models_created_is_stable_across_requests(
 ) -> None:
     """回归：created 是部署注册时间，两次请求之间不随墙钟跳动。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="standard")
+    app = create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"))
 
     with TestClient(app) as client:
         first = client.get("/v1/models").json()["data"][0]["created"]
@@ -841,7 +832,7 @@ def test_api_server_models_created_is_stable_across_requests(
 def test_api_server_model_detail_rejects_unknown_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """非虚拟模型 id 一律 404，包括历史上的引擎品牌名。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="standard")
+    app = create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"))
 
     with TestClient(app) as client:
         response = client.get("/v1/models/MinerU2.5-Pro-2605-1.2B")
@@ -856,7 +847,7 @@ def test_api_server_no_advanced_http_metadata_keeps_shared_models(
 ) -> None:
     """验证能力接口隐藏 Advanced；虚拟模型 id 不随档位开关变化。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="standard", no_advanced=True)
+    app = create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard"))
 
     with TestClient(app) as client:
         tiers_response = client.get("/v1/tiers")
@@ -878,7 +869,7 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
         raise ValueError("CUDA is not available.")
 
     monkeypatch.setattr(api_server, "_preload_server_models", _fail_preload)
-    app = create_app(upload_dir=str(tmp_path), tier="standard", preload_models=True)
+    app = create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"), preload_models=True)
 
     with TestClient(app) as client:
         health_response = client.get("/v1/health")
@@ -905,11 +896,13 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
 
     monkeypatch.setattr(api_server, "_preload_server_models", _preload)
 
-    with TestClient(create_app(upload_dir=str(tmp_path / "lazy"), tier="basic")) as lazy_client:
+    with TestClient(create_app(upload_dir=str(tmp_path / "lazy"), tiers=("flash", "basic"))) as lazy_client:
         assert lazy_client.get("/v1/health").status_code == 200
-    with TestClient(create_app(upload_dir=str(tmp_path / "preload"), tier="basic", preload_models=True)) as preload_client:
+    with TestClient(
+        create_app(upload_dir=str(tmp_path / "preload"), tiers=("flash", "basic"), preload_models=True)
+    ) as preload_client:
         assert preload_client.get("/v1/health").status_code == 200
-    with TestClient(create_app(upload_dir=str(tmp_path / "flash"), tier="flash", preload_models=True)) as flash_client:
+    with TestClient(create_app(upload_dir=str(tmp_path / "flash"), tiers=("flash",), preload_models=True)) as flash_client:
         assert flash_client.get("/v1/health").status_code == 200
 
     assert calls == ["basic"]
@@ -930,7 +923,7 @@ def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier="standard")
+    app = create_app(upload_dir=str(tmp_path / "api"), tiers=("flash", "basic", "standard", "advanced"))
     file_store = FileStore(tmp_path / "api-files")
     execution_store = api_server.ExecutionStore()
 
@@ -960,7 +953,7 @@ def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: 
     _stub_api_server_dependency_preflight(monkeypatch)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier="basic")
+    app = create_app(upload_dir=str(tmp_path / "api"), tiers=("flash", "basic"))
 
     with TestClient(app) as client:
         response = client.post(
@@ -982,8 +975,8 @@ def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeyp
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="standard",
-        no_advanced=True,
+        tiers=("flash", "basic", "standard"),
+
     )
 
     with TestClient(app) as client:
@@ -1005,8 +998,8 @@ def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: 
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="standard",
-        no_flash=True,
+        tiers=("basic", "standard", "advanced"),
+
     )
 
     response = TestClient(app).post(
@@ -1022,14 +1015,15 @@ def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: 
 
 
 def test_api_server_rejects_invalid_startup_tier_configuration(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="Unsupported server tier 'advanced'"):
-        create_app(upload_dir=str(tmp_path / "advanced"), tier="advanced")  # type: ignore[arg-type]
-
-    with pytest.raises(ValueError, match="must be a single value"):
-        create_app(upload_dir=str(tmp_path / "multiple"), tier=["basic", "standard"])  # type: ignore[arg-type]
-
-    with pytest.raises(ValueError, match="--tier flash cannot be combined with --no-flash"):
-        create_app(upload_dir=str(tmp_path / "empty"), tier="flash", no_flash=True)
+    """拒绝非法集合与已移除的旧启动参数。"""
+    with pytest.raises(ValueError, match="Unsupported tier"):
+        create_app(upload_dir=str(tmp_path / "invalid"), tiers=("ultra",))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-empty collection"):
+        create_app(upload_dir=str(tmp_path / "string"), tiers="standard")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-empty collection"):
+        create_app(upload_dir=str(tmp_path / "empty"), tiers=())
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        create_app(tier="standard")  # type: ignore[call-arg]
 
 
 def test_api_server_skips_dependency_preflight_for_flash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1038,7 +1032,7 @@ def test_api_server_skips_dependency_preflight_for_flash(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(importlib, "import_module", fail_import_module)
 
-    create_app(upload_dir=str(tmp_path), tier="flash")
+    create_app(upload_dir=str(tmp_path), tiers=("flash",))
 
 
 def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1052,7 +1046,7 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
     monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
     monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
-    create_app(upload_dir=str(tmp_path), tier="basic")
+    create_app(upload_dir=str(tmp_path), tiers=("flash", "basic"))
 
     assert imported_modules == [
         "onnxruntime",
@@ -1075,7 +1069,7 @@ def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypat
     monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
     monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
-    create_app(upload_dir=str(tmp_path), tier="standard")
+    create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"))
 
     assert imported_modules == [
         "onnxruntime",
@@ -1101,7 +1095,7 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
     monkeypatch.setattr(api_server.get_config().model, "small_backend", "torch")
     monkeypatch.setattr(api_server.get_config().model.vlm, "engine", "llama-cpp")
 
-    create_app(upload_dir=str(tmp_path), tier="standard")
+    create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"))
 
     assert imported_modules == [
         "onnxruntime",
@@ -1125,7 +1119,7 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
     with pytest.raises(api_server.ParseServerStartupError, match="tier 'basic'.*torch.*mineru\\[torch\\]"):
-        create_app(upload_dir=str(tmp_path), tier="basic")
+        create_app(upload_dir=str(tmp_path), tiers=("flash", "basic"))
 
 
 def test_api_server_create_app_rejects_backend_and_effort_parameters(tmp_path: Path) -> None:
@@ -1143,13 +1137,13 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(
         upload_dir=str(tmp_path),
-        tier="basic",
+        tiers=("flash", "basic"),
         image_analysis=False,
     )
 
     assert not hasattr(app.state, "ocr_mode")
     assert not hasattr(app.state, "language")
-    assert app.state.effort == "medium"
+    assert app.state.tier_runtime_options["basic"].effort == "medium"
     assert app.state.image_analysis is False
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
     assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
@@ -1158,7 +1152,8 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
 def test_api_server_cli_exposes_parser_runtime_options() -> None:
     option_names = {name for param in main.params for name in param.opts}
 
-    assert "--tier" in option_names
+    assert "--tiers" in option_names
+    assert "--tier" not in option_names
     assert "--backend" not in option_names
     assert "--language" not in option_names
     assert "--ocr-mode" not in option_names
@@ -1184,11 +1179,12 @@ def test_api_server_cli_rejects_backend_and_effort_options() -> None:
     assert "--effort" in effort_result.output
 
 
-def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_cli_defaults_to_hardware_recommendation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLI 省略集合时使用推荐结果，默认请求仍选择 standard。"""
     seen: dict[str, object] = {}
 
     def _fake_run(server: Any) -> None:
-        """记录无 --tier 启动后的默认 API server 能力，不启动真实服务。"""
+        """记录无 --tiers 启动后的自动推荐能力，不启动真实服务。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
         seen["effort_by_tier"] = {
@@ -1207,11 +1203,12 @@ def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.Monkey
     }
 
 
-def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_cli_accepts_quality_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """显式质量档位列表无需禁用开关即可排除 Flash。"""
     seen: dict[str, object] = {}
 
     def _fake_run(server: Any) -> None:
-        """记录单个 --tier 与 --no-flash 启动后的 API server 能力列表。"""
+        """记录显式质量档位集合及其默认请求档位。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
         seen["effort_by_tier"] = {
@@ -1220,7 +1217,7 @@ def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.Mon
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tier", "standard", "--no-flash", "--host", "0.0.0.0", "--port", "15984"])
+    result = runner.invoke(main, ["--tiers", "basic,standard,advanced", "--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
     assert seen == {
@@ -1230,8 +1227,8 @@ def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.Mon
     }
 
 
-def test_api_server_cli_accepts_no_advanced(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证底层 Click 入口将 --no-advanced 应用于能力发布与 runtime。"""
+def test_api_server_cli_accepts_list_without_advanced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证精确列表同时约束能力发布与执行 runtime。"""
     seen: dict[str, object] = {}
 
     def _fake_run(server: Any) -> None:
@@ -1244,7 +1241,7 @@ def test_api_server_cli_accepts_no_advanced(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tier", "standard", "--no-advanced", "--host", "0.0.0.0", "--port", "15984"])
+    result = runner.invoke(main, ["--tiers", "flash,basic,standard", "--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
     assert seen == {
@@ -1262,24 +1259,25 @@ def test_api_server_cli_enables_model_preload(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tier", "basic", "--preload-models"])
+    result = runner.invoke(main, ["--tiers", "flash,basic", "--preload-models"])
 
     assert result.exit_code == 0
     assert seen == {"preload_models": True}
 
 
 def test_api_server_cli_rejects_invalid_tier_names() -> None:
-    result = runner.invoke(main, ["--tier", "ultra"])
+    result = runner.invoke(main, ["--tiers", "ultra"])
 
     assert result.exit_code != 0
-    assert "Invalid value for '--tier'" in result.output
+    assert "Unsupported tier 'ultra'" in result.output
 
 
-def test_api_server_cli_rejects_flash_no_flash_conflict() -> None:
+def test_api_server_cli_rejects_old_options() -> None:
+    """旧单值与禁用参数均被 CLI 拒绝。"""
     result = runner.invoke(main, ["--tier", "flash", "--no-flash"])
 
     assert result.exit_code != 0
-    assert "--tier flash cannot be combined with --no-flash" in result.output
+    assert "No such option" in result.output
 
 
 def test_api_server_cli_rejects_removed_language_option() -> None:
@@ -1295,12 +1293,13 @@ def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:
     normalized_output = result.output.replace("-\n                                  ", "-")
 
     assert result.exit_code == 0
-    assert "--tier" in normalized_output
+    assert "--tiers" in normalized_output
     assert "flash" in normalized_output
     assert "basic" in normalized_output
     assert "standard" in normalized_output
     assert "advanced" in normalized_output
-    assert "--no-advanced" in normalized_output
+    assert "--no-advanced" not in normalized_output
+    assert "--no-flash" not in normalized_output
     assert "--backend" not in normalized_output
     assert "--effort" not in normalized_output
     assert "hybrid-engine" not in normalized_output

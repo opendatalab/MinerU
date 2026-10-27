@@ -20,7 +20,7 @@ from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_en
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
+from ...types import TIERS_BY_SERVER_TIER, SERVER_TIERS, TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
 from .status import (
     STATUS_CHECKING_SERVER,
@@ -428,8 +428,8 @@ class ManagedLocalApiServer:
             str(port),
             "--upload-dir",
             str(upload_dir),
-            "--tier",
-            self.tier,
+            "--tiers",
+            ",".join(TIERS_BY_SERVER_TIER[self.tier]),
             "--concurrency",
             str(self.concurrency),
             "--log-level",

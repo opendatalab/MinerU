@@ -221,11 +221,18 @@ def test_remote_preload_failure_is_reported(
     """预加载认证失败通过现有健康和能力错误暴露，未预加载时保持懒连接。"""
     monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
     settings = _settings(openai_server, api_key="wrong-key")
-    lazy = api_server.create_app(upload_dir=str(tmp_path / "lazy"), vlm_config=settings)
+    lazy = api_server.create_app(
+        tiers=("flash", "basic", "standard", "advanced"), upload_dir=str(tmp_path / "lazy"), vlm_config=settings
+    )
     with TestClient(lazy) as client:
         assert client.get("/v1/health").status_code == 200
         assert openai_server.requests == []
-    preloaded = api_server.create_app(upload_dir=str(tmp_path / "preload"), vlm_config=settings, preload_models=True)
+    preloaded = api_server.create_app(
+        tiers=("flash", "basic", "standard", "advanced"),
+        upload_dir=str(tmp_path / "preload"),
+        vlm_config=settings,
+        preload_models=True,
+    )
     with TestClient(preloaded) as client:
         for endpoint in ("health", "tiers", "models"):
             response = client.get(f"/v1/{endpoint}")
@@ -330,7 +337,7 @@ def test_api_job_through_http_vlm_to_middle_json(
     app = api_server.create_app(
         upload_dir=str(tmp_path / "api"),
         api_key="inbound-key",
-        no_flash=True,
+        tiers=("basic", "standard", "advanced"),
         vlm_config=_settings(openai_server),
     )
     with TestClient(app, headers={"Authorization": "Bearer inbound-key"}) as client:

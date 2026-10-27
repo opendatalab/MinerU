@@ -97,12 +97,12 @@ def live_service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_Li
     execution_apps: list[FastAPI] = []
     try:
         if request.param == "api":
-            app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash", api_key="test-key")
+            app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",), api_key="test-key")
             execution_apps.append(app)
         else:
             for index in range(2):
                 worker_app = api_server.create_app(
-                    upload_dir=str(tmp_path / f"worker-{index}"), tier="flash", api_key="test-key"
+                    upload_dir=str(tmp_path / f"worker-{index}"), tiers=("flash",), api_key="test-key"
                 )
                 execution_apps.append(worker_app)
                 worker = _Server(worker_app)
@@ -223,7 +223,7 @@ def test_pdf_without_file_id_keeps_metadata_and_cached_results(live_service: _Li
 def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -> None:
     """TLS 终止代理后的上传、hash 复用及下载保持可用，worker 不继承客户端来源头。"""
     calls: list[tuple[str, str, dict[str, str]]] = []
-    worker_app = api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash", api_key="test-key")
+    worker_app = api_server.create_app(upload_dir=str(tmp_path / "worker"), tiers=("flash",), api_key="test-key")
     worker_app.add_middleware(_WorkerRequests, calls=calls)
     worker = _Server(worker_app)
     servers = [worker]
@@ -720,6 +720,7 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         assert all({"client_file_id", "file_id"}.isdisjoint(item) for item in manifest)
         manifest = [{**item, "file_id": f"file-{task_id}-{index + 1}"} for index, item in enumerate(manifest)]
         state.tasks[task_id] = {
+            "request": submitted,
             "files": manifest,
             "ready": {item["file_id"] for item in manifest if item.get("sha256sum") in state.cache},
             "upload_version": 0,
@@ -817,6 +818,25 @@ def cloud() -> Iterator[_CloudState]:
     finally:
         api_server_instance.stop()
         storage_server.stop()
+
+
+@pytest.mark.parametrize("tier", [None, "basic", "advanced"])
+def test_example_script_forwards_optional_tier(cloud: _CloudState, tmp_path: Path, tier: str | None) -> None:
+    """执行真实示例脚本，验证缺省不发送 tier、显式选档不由客户端替换。"""
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"%PDF-script-protocol")
+    env = _script_env(tmp_path, cloud.gateway_url)
+    if tier is None:
+        env.pop("MINERU_TIER")
+    else:
+        env["MINERU_TIER"] = tier
+    result = _run_script(env, source)
+    assert result.returncode == 0, result.stdout + result.stderr
+    body = cloud.tasks["cloud_1"]["request"]
+    if tier is None:
+        assert "tier" not in body
+    else:
+        assert body["tier"] == tier
 
 
 @pytest.mark.parametrize("cache_mode", ["none", "mixed", "all", "no_hash"])

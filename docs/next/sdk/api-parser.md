@@ -13,6 +13,9 @@ print(result.markdown())
 构造参数保留 `api_url/api_key/tier/ocr_mode/include_images`。
 地址默认读取 `MINERU_API_URL`，否则使用 `https://mineru.net/api`；密钥默认读取 `MINERU_API_KEY`。
 `tier=None` 和 `ocr_mode=None` 省略对应请求字段；服务默认 OCR 模式是 `auto`。
+SDK 不自行选择默认 tier：PDF/图片由服务端按 **standard → basic → flash** 选择支持的档位，advanced 必须显式指定。
+显式 tier 原样发送，服务不支持该 PDF/图片档位时返回错误，不自动升降档。
+Office、HTML 等已支持的原生文档始终使用 flash，忽略合法的显式 tier；单文件 HTTP 调用也遵循 [Tasks 规则](../api/tasks.md#tier默认选择与文件作用范围)，与直接本地解析及 Doclib 的选档策略独立。
 `parse()` 和 `parse_async()` 均接收 `page_range/status_callback/duration_callback`。
 
 ## 请求与结果

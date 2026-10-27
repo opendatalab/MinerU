@@ -17,7 +17,7 @@ import httpx
 
 from ...config import LogConfig, ManagedParseServerConfig, get_config
 from ...parser.api_client import should_trust_env_for_url
-from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
+from ...types import TIERS_BY_SERVER_TIER, DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
 from ...parser.process_control import ManagedProcessControl
 from ...utils.stdio import utf8_subprocess_env
 from ..config_defaults import CONFIG_DEFAULTS
@@ -59,20 +59,14 @@ async def get_managed_parse_server_tier(config_svc: "ConfigService") -> Deployme
 
 
 def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> list[str]:
-    """Return managed api-server process args for a doclib tier.
-
-    Managed doclib startup uses ``--tier`` so the api-server resolves its own
-    backend. Backend remains an api-server implementation detail and must not
-    leak into runtime doclib parse requests.
-    """
+    """把既有 Doclib 托管配置转换为等价的显式档位集合，继续排除 Flash。"""
     return [
-        "--tier",
-        tier,
+        "--tiers",
+        ",".join(item for item in TIERS_BY_SERVER_TIER[tier] if item != "flash"),
         "--host",
         host,
         "--port",
         str(port),
-        "--no-flash",
         "--preload-models",
         "--log-level",
         "warning",
