@@ -25,9 +25,11 @@ mineru-kit hardware info --json > hardware-info.json
 
 `small_backend=auto` 最终选择 Torch 时同样免校准。显式设备字符串必须经过实际可用性检查；检查失败会给出保守结果及原因，不修改设备配置。Torch 推荐不依赖 llama.cpp 库存，不下载 ONNX 校准权重，也不写入 `model.onnx_device` 或 OCR 校准记录。
 
-ONNX 分支保留既有兼容策略、0.8 阈值、进程缓存和配置保存规则。首次实际测速可能下载 OCR rec 模型；下载和派生图准备不计入 15 秒校准 worker 超时。显式或已保存的 CPU/GPU 选择不强制重测。校准失败、超时或不稳定时保守推荐，并携带警告。
+ONNX 分支保留既有兼容策略、0.8 阈值和进程缓存。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均免 OCR 校准，报告 `status=skipped, reason=discrete_gpu`；首次真实 GPU 会话成功后才保存 `gpu`，硬件推荐本身不生成校准记录。集显或类型无法确认的候选继续测速，首次可能下载 OCR rec 模型；下载和派生图准备不计入 15 秒校准 worker 超时。显式或已保存的 CPU/GPU 选择不强制重测。校准失败、超时或不稳定时保守推荐，并携带警告。
 
 llama.cpp 自动集显路径同样按有效小模型后端分流：Torch 使用加速可用性结果，不再绕回 OCR 校准；ONNX 保留原有性能结果和设备身份匹配。原生独显优先、显式 CPU/GPU 参数、物理绑定和兼容处理保持不变。
+
+OCR、llama.cpp、档位推荐与诊断共用 GPU 分类和双向唯一身份匹配。先按各后端的实际可见性和兼容性过滤，再按独显、集显、虚拟 GPU、未知类型排序；后端之间无需选择同一张卡。ggml 的 GPU/IGPU 标志不再直接作为独显判据，Windows 使用 D3D12 UMA、Linux 使用 Vulkan 原生分类。无法唯一关联的设备保留未知类型，不授予独显免校准或仅凭类型开放 Advanced。
 
 JSON 报告 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default_request_tier`、`reason`、`cpu_count`、`small_backend`、`vlm_engine`、`device`、`calibration` 和 `warnings`。校准状态来自执行结果；Torch 使用 `status=skipped, reason=torch_backend`，不将可用性结论标成性能实测通过。
 
@@ -40,6 +42,7 @@ JSON 报告 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default
 - 系统、Python 版本与解释器路径，MinerU 版本与实际模块路径。
 - CPU 型号、物理/逻辑/进程可用核数，基础/当前/最大频率（MHz）；内存总量及可用量（bytes）。
 - 系统可探测到的全部独显、集显和虚拟 GPU，以及当前进程运行时可用设备。保留名称、身份、驱动及可获得的显存/共享内存信息。
+- GPU 的 `kind` 与选型共用同一套分类；`kind_source` 标识分类来源，`source` 保留硬件资料的采集来源，`unified_memory` 单独记录已知的统一内存属性。
 - 已安装的软件包版本与位置：MinerU、DocVortex、mineru-llama-cpp、mineru-vl-utils、torch、transformers、ONNX Runtime及EP、vLLM、LMDeploy、mlx-vlm、pypdfium2。未安装的包不列入软件版本列表。
 - Torch 导入、编译使用的 CUDA/ROCm 版本和后端可用性；ORT provider 与相关引擎的探测结果。
 - 后端、设备、线程及可见设备限制的有效配置与来源；OCR 校准记录的存在状态、环境匹配、稳定性、耗时和阈值。

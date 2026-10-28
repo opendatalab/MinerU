@@ -12,6 +12,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import onnx_calibration as calibration
 from mineru.model.runtime.windows_gpu import GpuAdapter
 from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, WebGPUDevice
@@ -20,7 +21,7 @@ from scripts.benchmark_onnx_selection import derive_threshold
 
 
 def gpu() -> GpuAdapter:
-    return GpuAdapter(2, "id", "test", 0x8086, 1, True, 0)
+    return with_gpu_classification(GpuAdapter(2, "id", "test", 0x8086, 1, 0), classify_d3d12_gpu(True))
 
 
 @pytest.fixture(autouse=True)

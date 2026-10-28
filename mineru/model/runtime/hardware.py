@@ -13,6 +13,7 @@ from .hardware_probe import run_probe
 from .hardware_system import collect_system_hardware
 from .hardware_types import GpuInfo, HardwareInfo, PackageInfo, RuntimeProbe
 from .onnx_calibration_cache import inspect_calibration_record
+from .gpu import GPU_KIND_ORDER, GpuIdentity, gpu_identities_match, match_gpu_identities
 
 if TYPE_CHECKING:
     from .webgpu import WebGPUDevice
@@ -92,27 +93,38 @@ def merge_gpu_inventory(gpus: list[GpuInfo], probe: RuntimeProbe) -> None:
     if probe.status != "ok":
         return
     vendors = {0x8086: "Intel", 0x10DE: "NVIDIA", 0x1002: "AMD"}
-    for row in probe.data.get("devices", []):
-        vendor, chip = row.get("vendor_id"), row.get("device_id")
-        if vendor is None or chip is None:
-            continue
-        identity = f"0x{vendor:04x}:0x{chip:04x}"
-        matches = [gpu for gpu in gpus if gpu.device_id == identity]
+    rows = [
+        row for row in probe.data.get("devices", []) if row.get("vendor_id") is not None and row.get("device_id") is not None
+    ]
+    identities = [
+        GpuIdentity(row["vendor_id"], row["device_id"], luid=row.get("luid"), bus_id=row.get("bus_id"), name=row.get("name"))
+        for row in rows
+    ]
+    targets = [gpu.identity for gpu in gpus]
+    matches = match_gpu_identities(identities, targets)
+    native_matches = match_gpu_identities(identities, identities)
+    for index, (row, matched) in enumerate(zip(rows, matches)):
+        vendor, chip = row["vendor_id"], row["device_id"]
         name = row.get("name")
-        if len(matches) > 1:
-            matches = [gpu for gpu in matches if gpu.name == name]
-            if len(matches) != 1:
-                continue
-        kind = row.get("kind") or {1: "integrated", 2: "discrete", 3: "virtual"}.get(row.get("device_type"), "unknown")
-        if matches:
-            target = matches[0]
+        kind = row.get("kind", "unknown")
+        if kind not in GPU_KIND_ORDER or native_matches[index] is None:
+            kind = "unknown"
+        if matched is not None:
+            target = gpus[matched]
             target.name = target.name or name
-            target.kind = kind
         else:
+            if any(gpu_identities_match(identities[index], identity) for identity in targets):
+                continue  # 存在同型号候选但不能唯一关联，保留系统报告中的未知类型。
             target = GpuInfo(
-                name=name, vendor=vendors.get(vendor, hex(vendor)), device_id=identity, kind=kind, source=probe.name
+                name=name,
+                vendor=vendors.get(vendor, hex(vendor)),
+                device_id=f"0x{vendor:04x}:0x{chip:04x}",
+                source=probe.name,
             )
             gpus.append(target)
+        target.kind = kind
+        target.kind_source = row.get("kind_source", "unknown")
+        target.unified_memory = row.get("unified_memory")
         for attribute in ("dedicated_memory_bytes", "shared_memory_bytes"):
             if row.get(attribute) is not None:
                 setattr(target, attribute, row[attribute])

@@ -15,6 +15,7 @@ from loguru import logger
 
 from .windows_gpu import GpuAdapter, discover_gpus, preferred_gpu
 from .webgpu import WebGPUDevice, discover_webgpu_devices, select_webgpu_device
+from .gpu import is_discrete_gpu
 
 # Require at least 20% lower GPU inference time; simplified to 0.8 at the user's request.
 # Evidence: docs/next/onnx-selection-validation.md. Each backend can be calibrated independently.
@@ -85,7 +86,7 @@ def _select(
         devices = discover_webgpu_devices()
         adapter = select_webgpu_device(devices)
         if devices and adapter is None:
-            logger.info("Linux WebGPU Intel architecture policy selected CPU; no eligible visible GPU")
+            logger.info("Linux WebGPU device policy selected CPU; no eligible visible GPU")
             return OnnxSelection(reason="webgpu_architecture_policy", backend=backend), False
     else:
         import onnxruntime as ort
@@ -97,7 +98,11 @@ def _select(
     if adapter is None:
         # A plugin can expose no devices after a driver discovery failure. Do not persist that as a CPU win.
         return OnnxSelection(reason="no_hardware_gpu"), requested == "auto" and backend == "dml"
-    if requested == "gpu" or (isinstance(adapter, GpuAdapter) and adapter.uma is False):
+    # Linux 只有唯一确认的 Vulkan 独显且会话带物理约束，才与 DML 独显一样免校准。
+    discrete = is_discrete_gpu(adapter) and (
+        not isinstance(adapter, WebGPUDevice) or adapter.vulkan_device == (adapter.vendor_id, adapter.device_id)
+    )
+    if requested == "gpu" or discrete:
         return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu", backend), False
     threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS[backend]
     if threshold is None:
@@ -182,7 +187,7 @@ def resolve_onnx_device(
 
 
 def confirm_gpu_session(selection: OnnxSelection) -> None:
-    """Persist a discrete-GPU auto choice only after an actual DML session succeeded."""
+    """独显自动选型仅在真实 DML/WebGPU 会话成功后保存，初始化回退不写入 GPU 偏好。"""
     if selection.reason != "discrete_gpu":
         return
     from ...config import get_config, get_config_source, update_config_file

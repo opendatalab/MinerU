@@ -139,7 +139,7 @@ def run(args: argparse.Namespace) -> None:
         adapter = next((gpu for gpu in adapters if gpu.luid == args.luid), None) if args.luid else preferred_gpu(adapters)
     if adapter is None:
         raise ValueError("Requested hardware GPU was not found")
-    if backend == "dml" and adapter.uma is not True:
+    if backend == "dml" and adapter.kind != "integrated":
         raise ValueError("Threshold calibration must explicitly target a confirmed integrated GPU")
     if args.model is None:
         from mineru.model.registry import MINERU_4_MODELS_ONNX

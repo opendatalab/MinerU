@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes as ct
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import importlib
 import json
 import os
@@ -13,11 +13,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime import intel_gpu, onnx, onnx_device, vulkan, webgpu
 
 
 @pytest.fixture(autouse=True)
 def fresh_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """隔离运行时和宿主 Vulkan 驱动，让各用例显式声明可见设备。"""
     monkeypatch.setattr(webgpu, "_runtime_pid", None)
     monkeypatch.setattr(webgpu, "_runtime_device", None)
     monkeypatch.setattr(webgpu, "sys", SimpleNamespace(platform="linux"))
@@ -83,10 +85,15 @@ def test_unknown_intel_is_not_guessed_from_numeric_age(device_id: int) -> None:
 
 @pytest.mark.parametrize("vendor", [0x1002, 0x10DE])
 def test_amd_nvidia_ids_never_use_intel_mapping(vendor: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    """AMD/NVIDIA 即使使用相同设备号，也按 Vulkan 类型而非 Intel 架构表分类。"""
     descriptor = webgpu.WebGPUDevice(vendor, 0x4680)
-    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", Mock(side_effect=AssertionError("unnecessary Vulkan probe")))
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        lambda: (with_gpu_classification(vulkan.VulkanDevice(vendor, 0x4680, "GPU"), classify_vulkan_gpu(1)),),
+    )
     assert intel_gpu.supports_webgpu_architecture(vendor, descriptor.device_id)
-    assert webgpu.select_webgpu_device((descriptor,)) is descriptor
+    assert webgpu.select_webgpu_device((descriptor,)) == with_gpu_classification(descriptor, classify_vulkan_gpu(1))
 
 
 @pytest.mark.parametrize("requested", ["auto", "gpu"])
@@ -131,22 +138,30 @@ def test_mixed_host_selects_and_binds_eligible_gpu(
         vulkan,
         "enumerate_vulkan_devices",
         lambda: (
-            vulkan.VulkanDevice(old.vendor_id, old.device_id, 1, "old"),
-            vulkan.VulkanDevice(*eligible, 2, "discrete"),
+            with_gpu_classification(vulkan.VulkanDevice(old.vendor_id, old.device_id, "old"), classify_vulkan_gpu(1)),
+            with_gpu_classification(vulkan.VulkanDevice(*eligible, "discrete"), classify_vulkan_gpu(2)),
         ),
     )
     selected = webgpu.select_webgpu_device(devices)
-    assert selected == webgpu.WebGPUDevice(*eligible, vulkan_device=eligible)
+    assert selected == with_gpu_classification(webgpu.WebGPUDevice(*eligible, vulkan_device=eligible), classify_vulkan_gpu(2))
 
 
-def test_icd_exclusion_cannot_be_bypassed_by_ort_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("include_old", [False, True])
+def test_icd_exclusion_cannot_be_bypassed_by_ort_inventory(monkeypatch: pytest.MonkeyPatch, include_old: bool) -> None:
+    """即使 ORT 只报告独显，也不能绕过 Vulkan ICD 对该设备的隐藏。"""
     old = webgpu.WebGPUDevice(0x8086, 0x4680)
     good = webgpu.WebGPUDevice(0x10DE, 0x2489)
-    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda: (vulkan.VulkanDevice(0x8086, 0x4680, 1, "Intel-only ICD"),))
-    assert webgpu.select_webgpu_device((good, old)) is None
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x4680, "Intel-only ICD"), classify_vulkan_gpu(1)),),
+    )
+    assert webgpu.select_webgpu_device((good, old) if include_old else (good,)) is None
 
 
-def test_multiple_good_candidates_prefer_discrete_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("include_old", [False, True])
+def test_multiple_good_candidates_prefer_discrete_gpu(monkeypatch: pytest.MonkeyPatch, include_old: bool) -> None:
+    """全部架构受支持的多卡机器也应独显优先，不依赖 ORT 的枚举顺序。"""
     old, integrated, discrete = (
         webgpu.WebGPUDevice(0x8086, 0x4680),
         webgpu.WebGPUDevice(0x1002, 0x150E),
@@ -156,13 +171,35 @@ def test_multiple_good_candidates_prefer_discrete_gpu(monkeypatch: pytest.Monkey
         vulkan,
         "enumerate_vulkan_devices",
         lambda: (
-            vulkan.VulkanDevice(0x1002, 0x150E, 1, "AMD integrated"),
-            vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA"),
-            vulkan.VulkanDevice(0x8086, 0x4680, 1, "old Intel"),
+            with_gpu_classification(vulkan.VulkanDevice(0x1002, 0x150E, "AMD integrated"), classify_vulkan_gpu(1)),
+            with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA"), classify_vulkan_gpu(2)),
+            with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x4680, "old Intel"), classify_vulkan_gpu(1)),
         ),
     )
-    selected = webgpu.select_webgpu_device((old, integrated, discrete))
-    assert selected is not None and selected.vulkan_device == (0x10DE, 0x2489)
+    selected = webgpu.select_webgpu_device((old, integrated, discrete) if include_old else (integrated, discrete))
+    assert selected == with_gpu_classification(replace(discrete, vulkan_device=(0x10DE, 0x2489)), classify_vulkan_gpu(2))
+
+
+@pytest.mark.parametrize("duplicate", ["vulkan", "ort"])
+def test_ambiguous_device_identity_does_not_confirm_discrete(monkeypatch: pytest.MonkeyPatch, duplicate: str) -> None:
+    """同型号多卡或重复 EP 注册无法唯一对应时，不授予独显免校准资格。"""
+    descriptor = webgpu.WebGPUDevice(0x10DE, 0x2489)
+    physical = with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "GPU"), classify_vulkan_gpu(2))
+    monkeypatch.setattr(
+        vulkan, "enumerate_vulkan_devices", lambda: (physical, physical) if duplicate == "vulkan" else (physical,)
+    )
+    selected = webgpu.select_webgpu_device((descriptor, descriptor) if duplicate == "ort" else (descriptor,))
+    assert selected is not None and selected.kind == "unknown"
+
+
+@pytest.mark.parametrize("failure", [OSError("loader unavailable"), RuntimeError("enumeration failed")])
+def test_unknown_vulkan_type_keeps_calibration_eligible(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
+    """没有受限架构时，原生类型查询失败只撤销免校准资格，不猜测独显。"""
+    descriptor = webgpu.WebGPUDevice(0x10DE, 0x2489, (("type", "discrete"),))
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", Mock(side_effect=failure))
+    assert webgpu.select_webgpu_device((descriptor,)) == descriptor
+    with pytest.raises(type(failure)):
+        webgpu.select_webgpu_device((descriptor, webgpu.WebGPUDevice(0x8086, 0x4680)))
 
 
 def test_windows_dml_does_not_apply_linux_policy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,7 +209,11 @@ def test_windows_dml_does_not_apply_linux_policy(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(onnx_device, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider"])
-    monkeypatch.setattr(onnx_device, "discover_gpus", lambda **_: (GpuAdapter(0, "id", "UHD770", 0x8086, 0x4680, True, 0),))
+    monkeypatch.setattr(
+        onnx_device,
+        "discover_gpus",
+        lambda **_: (with_gpu_classification(GpuAdapter(0, "id", "UHD770", 0x8086, 0x4680, 0), classify_d3d12_gpu(True)),),
+    )
     monkeypatch.setattr(onnx_device, "select_webgpu_device", Mock(side_effect=AssertionError("Linux policy")))
     monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=lambda: "rec.onnx")))
     measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 1, "gpu_elapsed": 0.5})
@@ -183,24 +224,54 @@ def test_windows_dml_does_not_apply_linux_policy(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.parametrize("device_id", [0x7D51, 0x7D55, 0x56A0, 0x64A0, 0xE20B, 0xB080])
-def test_modern_intel_auto_still_runs_adaptive_calibration(monkeypatch: pytest.MonkeyPatch, device_id: int) -> None:
+@pytest.mark.parametrize("device_type", [1, 2, None])
+def test_modern_intel_auto_calibrates_according_to_vulkan_type(
+    monkeypatch: pytest.MonkeyPatch, device_id: int, device_type: int | None
+) -> None:
+    """架构白名单只决定兼容性，是否免校准由实际 Vulkan 类型独立决定。"""
     from mineru.model.runtime import onnx_calibration
     from mineru.model import registry
 
     descriptor = webgpu.WebGPUDevice(0x8086, device_id)
     monkeypatch.setattr(onnx_device, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(onnx_device, "discover_webgpu_devices", lambda: (descriptor,))
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        Mock(
+            return_value=(
+                with_gpu_classification(
+                    vulkan.VulkanDevice(0x8086, device_id, "Intel GPU"), classify_vulkan_gpu(device_type or 1)
+                ),
+            ),
+            side_effect=OSError("type unavailable") if device_type is None else None,
+        ),
+    )
     monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=lambda: "rec.onnx")))
     measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 1, "gpu_elapsed": 0.5})
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
     selected, completed = onnx_device._select("auto", 4, 1)
-    assert selected.device == "gpu" and selected.reason == "rec_calibration" and completed
-    measure.assert_called_once_with("rec.onnx", descriptor, intra_op_num_threads=4, inter_op_num_threads=1, threshold=0.8)
+    assert selected.device == "gpu"
+    if device_type == 2:
+        assert selected.reason == "discrete_gpu" and not completed
+        measure.assert_not_called()
+    else:
+        assert selected.reason == "rec_calibration" and completed
+        measure.assert_called_once_with(
+            "rec.onnx",
+            with_gpu_classification(descriptor, classify_vulkan_gpu(device_type)),
+            intra_op_num_threads=4,
+            inter_op_num_threads=1,
+            threshold=0.8,
+        )
 
 
 @pytest.mark.parametrize("fail", [False, True])
 def test_loader_restriction_is_verified_and_restores_environment(monkeypatch: pytest.MonkeyPatch, fail: bool) -> None:
-    old, good = vulkan.VulkanDevice(0x8086, 0x4680, 1, "Intel"), vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA")
+    old, good = (
+        with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x4680, "Intel"), classify_vulkan_gpu(1)),
+        with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA"), classify_vulkan_gpu(2)),
+    )
     monkeypatch.setenv("VK_LOADER_VENDOR_ID_FILTER", "0x8086,0x10de")
     monkeypatch.setenv("VK_LOADER_DEVICE_ID_FILTER", "0:65535")
     snapshot = dict(os.environ)
@@ -220,7 +291,10 @@ def test_loader_restriction_is_verified_and_restores_environment(monkeypatch: py
 
 
 def test_older_loader_uses_verified_mesa_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    old, good = vulkan.VulkanDevice(0x8086, 0x4680, 1, "Intel"), vulkan.VulkanDevice(0x8086, 0x56A0, 2, "Arc")
+    old, good = (
+        with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x4680, "Intel"), classify_vulkan_gpu(1)),
+        with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x56A0, "Arc"), classify_vulkan_gpu(2)),
+    )
     snapshot = dict(os.environ)
 
     def visible() -> tuple[vulkan.VulkanDevice, ...]:
@@ -233,7 +307,10 @@ def test_older_loader_uses_verified_mesa_fallback(monkeypatch: pytest.MonkeyPatc
 
 
 def test_ignored_filters_fail_before_creating_a_gpu_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    old, good = vulkan.VulkanDevice(0x8086, 0x4680, 1, "Intel"), vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA")
+    old, good = (
+        with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x4680, "Intel"), classify_vulkan_gpu(1)),
+        with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA"), classify_vulkan_gpu(2)),
+    )
     monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda: (old, good))
     factory = Mock(side_effect=AssertionError("unsafe native session"))
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
@@ -252,7 +329,7 @@ def test_forbidden_intel_cannot_bypass_policy_through_low_level_factory(monkeypa
 
 
 def test_scope_covers_provider_attachment_and_native_session_initialization(monkeypatch: pytest.MonkeyPatch) -> None:
-    good = vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA")
+    good = with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA"), classify_vulkan_gpu(2))
     monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda: (good,))
     snapshot = dict(os.environ)
 
@@ -277,7 +354,9 @@ def test_bound_descriptor_roundtrips_through_worker_json(monkeypatch: pytest.Mon
     import io
     from mineru.model.runtime import onnx_calibration
 
-    descriptor = webgpu.WebGPUDevice(0x10DE, 0x2489, (("pci_bus_id", "0000:01:00.0"),), (0x10DE, 0x2489))
+    descriptor = with_gpu_classification(
+        webgpu.WebGPUDevice(0x10DE, 0x2489, (("pci_bus_id", "0000:01:00.0"),), (0x10DE, 0x2489)), classify_vulkan_gpu(2)
+    )
     stream = io.StringIO(json.dumps({"backend": "webgpu", "adapter": asdict(descriptor), "model_path": "rec.onnx"}))
     monkeypatch.setattr(onnx_calibration.sys, "stdin", stream)
     measure = Mock(return_value={"ok": True})
@@ -288,9 +367,12 @@ def test_bound_descriptor_roundtrips_through_worker_json(monkeypatch: pytest.Mon
 
 
 @pytest.mark.parametrize("error", [False, True])
+@pytest.mark.parametrize("native_type", [0, 1, 2, 3])
 def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cleans_up(
-    monkeypatch: pytest.MonkeyPatch, error: bool
+    monkeypatch: pytest.MonkeyPatch, error: bool, native_type: int
 ) -> None:
+    """原生类型在适配边界统一转换，未知硬件仍保留，而软件 CPU 不进入 GPU 库存。"""
+
     def create(info: object, allocator: object, instance: object) -> int:
         instance._obj.value = 123
         return 0
@@ -306,7 +388,7 @@ def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cle
     def properties(handle: object, storage: object) -> None:
         p = storage._obj.prefix
         p.vendorID, p.deviceID, p.deviceType, p.deviceName = (
-            (0x10DE, 0x2489, 2, b"NVIDIA") if handle == 100 else (0x10005, 0, 4, b"llvmpipe")
+            (0x10DE, 0x2489, native_type, b"NVIDIA") if handle == 100 else (0x10005, 0, 4, b"llvmpipe")
         )
 
     lib = SimpleNamespace(
@@ -320,6 +402,8 @@ def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cle
         with pytest.raises(RuntimeError, match="count devices"):
             vulkan.enumerate_vulkan_devices()
     else:
-        assert vulkan.enumerate_vulkan_devices() == (vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA", 0),)
+        assert vulkan.enumerate_vulkan_devices() == (
+            with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA", 0), classify_vulkan_gpu(native_type)),
+        )
     lib.vkDestroyInstance.assert_called_once()
     assert ct.sizeof(vulkan._PropertiesStorage) >= 824

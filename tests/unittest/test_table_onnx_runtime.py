@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import onnx
 
 
@@ -227,7 +228,11 @@ def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.Mo
     monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu")
     monkeypatch.setenv("MINERU_ONNX_PROFILE_DIR", str(tmp_path / "profiles"))
     monkeypatch.setenv("MINERU_INTRA_OP_NUM_THREADS", "8")
-    select = Mock(return_value=OnnxSelection("gpu", GpuAdapter(7, "id", "intel", 0x8086, 1, True, 0), backend="dml"))
+    select = Mock(
+        return_value=OnnxSelection(
+            "gpu", with_gpu_classification(GpuAdapter(7, "id", "intel", 0x8086, 1, 0), classify_d3d12_gpu(True)), backend="dml"
+        )
+    )
     monkeypatch.setattr(onnx, "resolve_onnx_device", select)
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())

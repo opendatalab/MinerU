@@ -12,6 +12,7 @@ from loguru import logger
 from ...types import TIERS, Tier
 from .cpu_threads import effective_cpu_count
 from .device import resolve_small_model_backend, resolve_torch_device
+from .gpu import is_discrete_gpu, match_gpu_identities
 from .onnx_calibration_cache import CalibrationInfo, inspect_calibration_record
 
 if TYPE_CHECKING:
@@ -87,7 +88,7 @@ def _advanced_gpu_reason() -> str | None:
     from .llama_device import discover_llama_devices
 
     devices = tuple(d for d in discover_llama_devices() if backend == "auto" or d.backend == backend)
-    if any(not device.integrated for device in devices):
+    if any(is_discrete_gpu(device) for device in devices):
         return "discrete_gpu"
     if not devices:
         return None
@@ -107,8 +108,8 @@ def _advanced_gpu_reason() -> str | None:
         threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS["webgpu"]
     if adapter is None or threshold is None:
         return None
-    matches = [d for d in devices if (d.vendor_id, d.device_id) == (adapter.vendor_id, adapter.device_id)]
-    if len(matches) != 1:
+    matched = match_gpu_identities((adapter.identity,), [device.identity for device in devices])[0]
+    if matched is None:
         logger.info("GPU tier recommendation uses CPU rules: OCR adapter identity is not uniquely matched")
         return None
     if calibrated_gpu_is_faster(adapter, threshold):

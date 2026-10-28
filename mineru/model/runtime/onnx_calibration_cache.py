@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 import json
 import os
@@ -105,9 +105,12 @@ def _fingerprint(
     adapter: GpuAdapter | WebGPUDevice, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0
 ) -> dict[str, Any]:
     """绑定物理设备、后端版本及 CPU 配置；忽略进程内设备序号和排序。"""
-    identity = asdict(adapter)
-    identity.pop("index", None)
-    identity.pop("preference", None)
+    # 显式保持既有证据格式，分类来源等新增诊断字段不参与性能证据的身份指纹。
+    identity: dict[str, Any] = {"vendor_id": adapter.vendor_id, "device_id": adapter.device_id}
+    if isinstance(adapter, GpuAdapter):
+        identity.update(luid=adapter.luid, name=adapter.name, uma=adapter.unified_memory)
+    else:
+        identity.update(metadata=adapter.metadata, vulkan_device=adapter.vulkan_device)
     backend = "webgpu" if isinstance(adapter, WebGPUDevice) else "dml"
     # JSON 往返统一 metadata 等元组，确保读写指纹完全一致。
     return json.loads(

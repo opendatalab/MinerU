@@ -142,7 +142,7 @@ def test_torch_llama_integrated_route_does_not_return_to_onnx(
     monkeypatch.delenv("GGML_VK_SERIALIZE_SUBMISSIONS", raising=False)
     monkeypatch.setenv("MINERU_DEVICE_MODE", "xpu" if accelerated else "cpu")
     _fake_torch(monkeypatch, "xpu", accelerated)
-    native = LlamaDevice("Vulkan0", "Arc", "vulkan", True, 0x8086, 0x7D51, 0)
+    native = LlamaDevice("Vulkan0", "Arc", "vulkan", 0x8086, 0x7D51, 0, kind="integrated", kind_source="vulkan")
     monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: (native,))
     bind = Mock(side_effect=lambda selection: selection)
     monkeypatch.setattr(llama_device, "_bind", bind)

@@ -16,6 +16,7 @@ from typing import Any
 
 from .cpu_threads import effective_cpu_count
 from .hardware_types import GpuInfo, SystemHardware
+from .gpu import GpuIdentity, classify_macos_gpu, gpu_identities_match, match_gpu_identities
 
 _VENDORS = {"0x8086": "Intel", "0x10de": "NVIDIA", "0x1002": "AMD"}
 
@@ -135,15 +136,18 @@ def parse_macos_displays(payload: dict[str, Any], report: SystemHardware, archit
     """解析系统显示设备 JSON，只保留显卡属性，不包含显示器序列号等无关数据。"""
     for row in payload.get("SPDisplaysDataType", []):
         vendor = row.get("spdisplays_vendor", "").removeprefix("sppci_vendor_") or None
-        unified = vendor == "Apple" and architecture in {"arm64", "aarch64"}
-        integrated = unified or row.get("spdisplays_integrated") == "spdisplays_yes"
+        classification = classify_macos_gpu(
+            vendor, architecture, integrated=row.get("spdisplays_integrated") == "spdisplays_yes"
+        )
+        unified = classification.unified_memory
         memory = _memory_size(row.get("spdisplays_vram") or row.get("spdisplays_vram_shared"))
         report.gpus.append(
             GpuInfo(
                 name=row.get("sppci_model") or row.get("_name"),
                 vendor=vendor,
                 device_id=row.get("spdisplays_device-id"),
-                kind="integrated" if integrated else "unknown",
+                kind=classification.kind,
+                kind_source=classification.kind_source,
                 bus_id=row.get("sppci_bus"),
                 driver=row.get("spdisplays_driver_version"),
                 dedicated_memory_bytes=None if unified or row.get("spdisplays_vram_shared") else memory,
@@ -257,23 +261,22 @@ def _nvidia_details(report: SystemHardware) -> None:
     output = _command(
         [executable, "--query-gpu=pci.bus_id,name,driver_version,memory.total", "--format=csv,noheader,nounits"], report
     )
-    for row in csv.reader(io.StringIO(output or "")):
-        if len(row) != 4:
-            continue
-        bus, name, driver, memory = (value.strip() for value in row)
-        matching = [gpu for gpu in report.gpus if gpu.bus_id and gpu.bus_id.lower()[-10:] == bus.lower()[-10:]]
-        if not matching:
-            matching = [gpu for gpu in report.gpus if gpu.bus_id is None and gpu.name == name]
-        if not matching:
+    rows = [tuple(value.strip() for value in row) for row in csv.reader(io.StringIO(output or "")) if len(row) == 4]
+    identities = [GpuIdentity(bus_id=row[0], name=row[1]) for row in rows]
+    targets = [gpu.identity for gpu in report.gpus]
+    matches = match_gpu_identities(identities, targets, allow_name=True)
+    for index, ((bus, name, driver, memory), matched) in enumerate(zip(rows, matches)):
+        if matched is None:
+            if any(gpu_identities_match(identities[index], target, allow_name=True) for target in targets):
+                continue
             gpu = GpuInfo(name=name, vendor="NVIDIA", bus_id=bus, source="nvidia-smi")
             report.gpus.append(gpu)
-            matching = [gpu]
-        if len(matching) == 1:
-            gpu = matching[0]
-            gpu.name, gpu.driver, gpu.bus_id = name, driver, bus
-            amount = _number(memory)
-            if amount is not None:
-                gpu.dedicated_memory_bytes = int(amount * 1024**2)
+        else:
+            gpu = report.gpus[matched]
+        gpu.name, gpu.driver, gpu.bus_id = name, driver, bus
+        amount = _number(memory)
+        if amount is not None:
+            gpu.dedicated_memory_bytes = int(amount * 1024**2)
 
 
 def collect_system_hardware() -> SystemHardware:

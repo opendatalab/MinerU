@@ -12,6 +12,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime import onnx_calibration_cache as cache
 from mineru.model.runtime import tier_recommendation as recommendation
 from mineru.model.runtime.llama_probe import LlamaDevice
@@ -74,7 +75,7 @@ def evidence_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _adapter() -> GpuAdapter:
     """构造具有稳定物理身份的集显。"""
-    return GpuAdapter(0, "physical-id", "integrated", 0x8086, 0x7D51, True, 0)
+    return with_gpu_classification(GpuAdapter(0, "physical-id", "integrated", 0x8086, 0x7D51, 0), classify_d3d12_gpu(True))
 
 
 def _measurement(**overrides: Any) -> dict[str, Any]:
@@ -174,7 +175,15 @@ def test_gpu_discovery_uses_only_existing_evidence(
     monkeypatch.setattr(recommendation, "sys", SimpleNamespace(platform=platform))
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 4)
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", Mock(side_effect=AssertionError("must not calibrate")))
-    descriptor = LlamaDevice("Vulkan0", "test", "vulkan", kind != "discrete", 0x8086, 0x7D51)
+    descriptor = LlamaDevice(
+        "Vulkan0",
+        "test",
+        "vulkan",
+        0x8086,
+        0x7D51,
+        kind="integrated" if kind != "discrete" else "discrete",
+        kind_source="vulkan",
+    )
     if kind == "mismatch":
         descriptor = replace(descriptor, device_id=1)
     inventory = () if kind == "hidden" else (descriptor,)
@@ -213,8 +222,8 @@ def startup_calibration(
     """模拟双平台物理设备和测速 worker，保留真实选型、配置落盘及证据读取链路。"""
     import onnxruntime
 
-    from mineru.model import registry
-    from mineru.model.runtime import llama_device, onnx_calibration, onnx_device, webgpu, windows_gpu
+    from mineru.model.download import ModelPath
+    from mineru.model.runtime import llama_device, onnx_calibration, onnx_device, vulkan, webgpu, windows_gpu
 
     settings = importlib.import_module("mineru.config")
     config_file = evidence_path.with_name("settings.yaml")
@@ -223,8 +232,13 @@ def startup_calibration(
     monkeypatch.setattr(settings, "get_config_file_path", lambda: str(config_file))
     monkeypatch.setattr(settings, "get_config_source", lambda key: "file")
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
-    for module in (recommendation, onnx_device):
+    for module in (recommendation, onnx_device, webgpu):
         monkeypatch.setattr(module, "sys", SimpleNamespace(platform=request.param))
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "test"), classify_vulkan_gpu(1)),),
+    )
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 8)
     monkeypatch.setattr(onnx_device, "_selections", {})
     monkeypatch.setattr(onnxruntime, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
@@ -235,11 +249,10 @@ def startup_calibration(
     monkeypatch.setattr(
         llama_device,
         "discover_llama_devices",
-        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", True, 0x8086, 0x7D51),),
+        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 0x7D51, kind="integrated", kind_source="vulkan"),),
     )
-    monkeypatch.setattr(
-        registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=Mock(return_value="rec.onnx")))
-    )
+    # 只替换权重准备，避免服务惰性导入的模块永久持有伪造的仓库对象。
+    monkeypatch.setattr(ModelPath, "ensure", Mock(return_value=Path("rec.onnx")))
     measurement = Mock(return_value=_measurement())
 
     def run_calibration(
@@ -316,18 +329,31 @@ def test_low_cpu_advanced_recommendation_still_selects_device(
     startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """门槛按初选档位判断，低 CPU 配额的独显设备仍按平台规则提前选型。"""
-    from mineru.model.runtime import llama_device, onnx_device
+    from mineru.model.runtime import llama_device, onnx_device, vulkan
 
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 2)
     monkeypatch.setattr(
         llama_device,
         "discover_llama_devices",
-        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", False, 0x8086, 0x7D51),),
+        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 0x7D51, kind="discrete", kind_source="vulkan"),),
     )
-    monkeypatch.setattr(onnx_device, "discover_gpus", lambda **kwargs: (replace(_adapter(), uma=False),))
-    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
+    monkeypatch.setattr(
+        onnx_device, "discover_gpus", lambda **kwargs: (with_gpu_classification(_adapter(), classify_d3d12_gpu(False)),)
+    )
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "test"), classify_vulkan_gpu(2)),),
+    )
+    report = recommendation.recommend_tiers()
+    assert frozenset(report.pdf_image_tiers) == frozenset(TIERS)
+    assert report.calibration.status == "skipped" and report.calibration.reason == "discrete_gpu"
+    assert report.default_request_tier == "standard"
     assert onnx_device._selections
-    assert startup_calibration[1].call_count == (0 if onnx_device.sys.platform == "win32" else 1)
+    startup_calibration[1].assert_not_called()
+    config_file = startup_calibration[0]
+    assert yaml.safe_load(config_file.read_text(encoding="utf-8"))["model"]["onnx_device"] == "auto"
+    assert not cache.calibration_record_path().exists()
 
 
 @pytest.mark.parametrize("tier", TIERS)
@@ -377,3 +403,22 @@ def test_failed_recalibration_revokes_previous_fast_evidence(startup_calibration
     assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS[:-1])
     startup_calibration[1].assert_called_once()
     assert not cache.calibration_record_path().exists()
+
+
+@pytest.mark.parametrize("backend", ["dml", "webgpu"])
+def test_shared_classification_preserves_existing_calibration_fingerprint(evidence_path: Path, backend: str) -> None:
+    """分类和诊断字段变化不废弃旧校准格式，真实设备或绑定变化仍使证据失效。"""
+    import json
+
+    adapter = _adapter() if backend == "dml" else WebGPUDevice(0x8086, 0x7D51)
+    cache.save_calibration_record(adapter, _measurement())
+    identity = json.loads(evidence_path.read_text(encoding="utf-8"))["fingerprint"]["adapter"]
+    assert set(identity) == (
+        {"vendor_id", "device_id", "name", "luid", "uma"}
+        if backend == "dml"
+        else {"vendor_id", "device_id", "metadata", "vulkan_device"}
+    )
+    assert cache.calibrated_gpu_is_faster(replace(adapter, kind="unknown", kind_source="new_probe"), 0.8)
+    assert not cache.calibrated_gpu_is_faster(replace(adapter, device_id=1), 0.8)
+    if backend == "webgpu":
+        assert not cache.calibrated_gpu_is_faster(replace(adapter, vulkan_device=(0x8086, 0x7D51)), 0.8)

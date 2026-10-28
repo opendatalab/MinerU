@@ -139,7 +139,13 @@ def test_linux_cpu_quota_frequency_and_mixed_pci_inventory(tmp_path: Path, monke
     assert result.memory == MemoryInfo(16384 * 1024, 8192 * 1024)
     assert [gpu.vendor for gpu in result.gpus] == ["Intel", "NVIDIA"]
     runtime = RuntimeProbe(
-        "vulkan", "ok", {"devices": [{"name": "Intel GPU", "vendor_id": 0x8086, "device_id": 0x7D51, "device_type": 1}]}
+        "vulkan",
+        "ok",
+        {
+            "devices": [
+                {"name": "Intel GPU", "vendor_id": 0x8086, "device_id": 0x7D51, "kind": "integrated", "kind_source": "vulkan"}
+            ]
+        },
     )
     hardware.merge_gpu_inventory(result.gpus, runtime)
     assert len(result.gpus) == 2 and result.gpus[0].kind == "integrated"

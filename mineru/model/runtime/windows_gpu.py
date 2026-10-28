@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 import ctypes as C
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import sys
 from typing import Any
 import uuid
 
+from .gpu import GpuClassification, GpuIdentity, classify_d3d12_gpu, gpu_kind_rank, with_gpu_classification
+
 
 @dataclass(frozen=True)
-class GpuAdapter:
+class GpuAdapter(GpuClassification):
     """One hardware adapter, with its ordinary DXGI index and preference rank."""
 
     index: int
@@ -19,8 +21,12 @@ class GpuAdapter:
     name: str
     vendor_id: int
     device_id: int
-    uma: bool | None
     preference: int
+
+    @property
+    def identity(self) -> GpuIdentity:
+        """提供已有 LUID 与 PCI 型号，设备序号不参与物理身份匹配。"""
+        return GpuIdentity(self.vendor_id, self.device_id, luid=self.luid, name=self.name)
 
     @property
     def vendor(self) -> str:
@@ -160,17 +166,22 @@ def discover_gpus(*, classify: bool = True) -> tuple[GpuAdapter, ...]:
                 supported, uma = _architecture(adapter, create_device, classify=classify or not modern)
                 if supported:
                     luid = _luid(desc)
-                    rows.append(GpuAdapter(index, luid, desc.name, desc.vendor, desc.device, uma, ranks.get(luid, index)))
+                    rows.append(
+                        with_gpu_classification(
+                            GpuAdapter(index, luid, desc.name, desc.vendor, desc.device, ranks.get(luid, index)),
+                            classify_d3d12_gpu(uma),
+                        )
+                    )
             finally:
                 _release(adapter)
-        return tuple(sorted(rows, key=lambda item: (item.uma is not False, item.preference, item.index)))
+        return tuple(sorted(rows, key=lambda item: (gpu_kind_rank(item.kind), item.preference, item.index)))
     finally:
         _release(factory)
 
 
 def preferred_gpu(adapters: tuple[GpuAdapter, ...]) -> GpuAdapter | None:
     """Prefer a confirmed discrete GPU, then Windows performance preference."""
-    return min(adapters, key=lambda item: (item.uma is not False, item.preference, item.index), default=None)
+    return min(adapters, key=lambda item: (gpu_kind_rank(item.kind), item.preference, item.index), default=None)
 
 
 def inspect_gpus() -> list[dict[str, Any]]:
@@ -208,7 +219,7 @@ def inspect_gpus() -> list[dict[str, Any]]:
                         "device_id": desc.device,
                         "luid": _luid(desc),
                         "d3d12_available": supported,
-                        "kind": "unknown" if uma is None else "integrated" if uma else "discrete",
+                        **asdict(classify_d3d12_gpu(uma)),
                         "dedicated_memory_bytes": desc.video_memory,
                         "shared_memory_bytes": desc.shared_memory,
                     }

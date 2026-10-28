@@ -11,11 +11,26 @@ model:
 环境变量 `MINERU_MODEL_ONNX_DEVICE` 高于文件配置。`small_backend=auto` 仍按原有规则选择
 Torch 或 ONNX；此选项不强制切换模型栈，也不改变 Torch / VLM 的设备。
 
+### 共享 GPU 分类与选型
+
+OCR、llama.cpp、auto tier 和硬件诊断共用 `discrete / integrated / virtual / unknown` 分类。
+Windows 的分类依据为 D3D12 UMA，Linux 为 Vulkan 原生设备类型，macOS 复用现有系统显示设备信息。
+统一内存属性单独保存，不将 Apple Silicon 的集显分类解释为低性能设备。
+
+各后端先应用显式配置、设备可见性及兼容限制，再按“确认独显 → 确认集显 → 虚拟 GPU → 类型未知”排序；
+同类设备保留 Windows 高性能排序、Vulkan 原生顺序或 llama.cpp 的单后端多设备分组规则。
+OCR 与 llama.cpp 可以因支持范围不同选择不同显卡；不在目标后端候选中的独显不影响当前设备的校准或推荐。
+
+ggml 的 GPU/IGPU 枚举仅用于确定 llama.cpp 可见的 GPU 库存，分类来自与平台原生设备的唯一关联。
+身份匹配优先使用双方已有的 LUID、PCI 地址，再使用双方唯一的厂商/设备型号；名称只用于原生库存的唯一关联，
+不用于猜测类型。重复库存、同型号多卡无法唯一关联或原生查询失败时保留未知，不凭此开放 Advanced 或免校准。
+本实现不增加 UUID、PCI 地址等身份采集。Torch 的加速可用性推荐和 Apple Silicon/MPS 特例保持不变。
+
 | 值 | Windows DML | Linux WebGPU |
 |---|---|---|
 | `cpu` | 全部使用 CPU，不枚举显卡、不测速 | 全部使用 CPU，不加载插件、不探测 GPU |
 | `gpu` | 首次使用时发现 GPU，独显优先，不测速 | 通过 Intel 架构检查后使用 GPU，不测速；旧 Intel 回退 CPU |
-| `auto` | 独显直接使用；集显执行 rec 测速 | 通过架构检查的集显、独显均执行自适应 rec 测速 |
+| `auto` | 独显直接使用；集显或类型未知执行 rec 测速 | 通过架构检查且唯一确认的独显直接使用；集显或类型未知执行自适应 rec 测速 |
 
 Windows 使用 DXGI 高性能顺序、D3D12 UMA 属性和 LUID 匹配；适配器编号不写入配置。
 已保存的 `gpu` 使用 Windows 高性能排序及无设备创建的 D3D12 能力检查，避免逐张创建设备查询 UMA；
@@ -28,6 +43,9 @@ Linux 使用原生 `onnxruntime-ep-webgpu`，通过 Dawn/Vulkan 执行。
 WebGPU 0.4 的 ORT 设备枚举项用于注册 EP，并不绑定 Dawn 的物理显卡。通常仍使用
 `powerPreference=high-performance`；参数固定为 `preferredLayout=NHWC`、`enableGraphCapture=0`、
 `dawnBackendType=Vulkan`，其他计算参数沿用运行时默认值。
+独显/集显分类读取 Vulkan 的 `VkPhysicalDeviceProperties.deviceType`，不依据厂商名称、显存大小或 ORT 元数据猜测。
+只有 ORT 描述与 Vulkan 可见设备唯一匹配、类型为 `DISCRETE_GPU` 且会话采用物理设备约束时，才跳过自动校准。
+同型号多卡、重复 EP 描述或无法确认类型时保留校准；虚拟 GPU 不视为独显。
 
 ### Linux Intel 架构策略
 
@@ -39,14 +57,14 @@ WebGPU 0.4 的 ORT 设备枚举项用于注册 EP，并不绑定 Dawn 的物理�
 |---|---|
 | 01、04、0a、0c、0d、0f、16、22、19、31、3e、5a、59、87、9b、8a、45、4e、98 | 旧架构，CPU |
 | 46、4c、49、9a、a7 | Xe-LP，CPU（包含 DG1 独显） |
-| 4f、56 | Xe-HPG，继续自适应校准 |
-| 7d、b6 | Xe-LPG 系，继续自适应校准 |
-| 64、e2 | Xe2-LPG / Xe2-HPG，继续自适应校准 |
-| b0、fd | Xe3-LPG / Xe3-LPG XS，继续自适应校准 |
+| 4f、56 | Xe-HPG，允许 GPU；按 Vulkan 类型决定是否校准 |
+| 7d、b6 | Xe-LPG 系，允许 GPU；按 Vulkan 类型决定是否校准 |
+| 64、e2 | Xe2-LPG / Xe2-HPG，允许 GPU；按 Vulkan 类型决定是否校准 |
+| b0、fd | Xe3-LPG / Xe3-LPG XS，允许 GPU；按 Vulkan 类型决定是否校准 |
 | 未识别的 Intel PCI ID 家族 | 保守使用 CPU，补充显式映射后才启用 |
 
 例如 `8086:4680`、`8086:a780`、`8086:9a49` 直接走 CPU；`8086:7d51`、`8086:7d55`、
-`8086:56a0`、`8086:64a0`、`8086:e20b`、`8086:b080` 继续原有校准。
+`8086:56a0`、`8086:64a0`、`8086:e20b`、`8086:b080` 进入 GPU 选型，其中确认的独显免校准。
 AMD/NVIDIA 不参与 Intel 分类；Windows DML 的设备规则和 metacommands 保持原样。
 这是 MinerU 的产品支持策略，不是宣称旧 Intel 硬件不支持 WebGPU。
 
@@ -56,16 +74,16 @@ AMD/NVIDIA 不参与 Intel 分类；Windows DML 的设备规则和 metacommands 
 
 ### 混合显卡的物理设备约束
 
-只有 ORT 库存同时包含被限制的 Intel 和其他候选 GPU 时，才查询 Vulkan 实际可见设备，尊重用户的 ICD/驱动筛选。
+Linux GPU 选型查询 Vulkan 实际可见设备，尊重用户的 ICD/驱动筛选；全部架构受支持的机器同样执行此查询。
 该查询仅创建实例、枚举属性，不创建 logical device、不编译 shader、不进行 GPU 推理。
 从实际可见且架构允许的设备中优先选择独显，避免“发现一张 UHD 就禁用整个 WebGPU”。
 例如 UHD 770＋3060 Ti 仍选择独显；若用户通过 `VK_DRIVER_FILES` 仅开放 Intel ICD，则直接走 CPU，
 不会把 ORT 中仍然存在的 NVIDIA 枚举项误当成可用物理独显。
 
-混合场景在每次 WebGPU 会话创建期间临时设置 Vulkan 厂商/设备 ID 过滤，并在创建 Dawn 前重新枚举，
+确认的独显及多卡场景在每次 WebGPU 会话创建期间临时设置 Vulkan 厂商/设备 ID 过滤，并在创建 Dawn 前重新枚举，
 确认只剩目标设备才继续。优先使用 Vulkan-Loader 1.4.326 起支持的 `VK_LOADER_VENDOR_ID_FILTER` /
 `VK_LOADER_DEVICE_ID_FILTER`；旧 loader 尝试 Mesa device-select 的 `vendor:device!`，同样必须验证结果。
-若两种约束都不可用或被忽略，则记录原因、回退 CPU，不进行可能落到旧 Intel 的模型推理。
+若两种约束都不可用或被忽略，则记录原因、回退 CPU，不保存独显 GPU 偏好，也不进行可能落到其他卡的模型推理。
 此时需升级 Vulkan loader 或安装/启用 Mesa device-select；不依赖 `vulkaninfo` 命令或新增 Python 包。
 
 过滤值随设备描述传入校准子进程；临时环境变量在成功和异常退出时均恢复。
@@ -74,7 +92,8 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 这些环境变量是进程级的，宿主若另有独立 Vulkan 消费者，应避免在同一进程同时初始化它们。
 宿主也不应在 MinerU 之前自行初始化同一插件的默认 Dawn context；已有外部 WebGPU 会话时需使用新进程，
 本策略无法重新绑定外部提前创建的原生 context。
-纯 AMD/NVIDIA 或全部为已支持架构的机器不额外查询 Vulkan、不设置过滤，保留原来的默认选择。
+单张集显保持默认物理选择。若原生类型查询失败且 ORT 库存中的架构均受支持，则保留默认候选并继续校准，
+不会据此授予独显免校准资格；存在受限 Intel 架构时，查询失败直接回退 CPU。
 
 本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
 
@@ -82,8 +101,12 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 
 `mineru-kit hardware detect` 与 API 自动启动共享推荐逻辑；`hardware info` 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
+校准证据显式保存设备、运行时与线程指纹；分类来源等诊断字段不进入指纹，原有有效记录可继续复用。
+实际设备或物理绑定改变后，旧记录不再作为当前设备的性能证据。
+Windows/Linux 免校准独显都只在首次真实 GPU 会话成功后保存 `gpu`；仅运行硬件推荐时仍保留 `auto`，
+不下载校准权重、不生成性能校准记录。初始化错误或静默回退 CPU 不保存 GPU 偏好。
 环境变量覆盖不写入文件；只读配置保留本进程选择。测速失败不保存为 CPU 性能优胜，同进程不重复尝试。
-Linux 插件缺失、Vulkan/设备发现失败（包括未发现可用硬件设备）、校准超时或输出不一致时保留 `auto`。
+Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或输出不一致时保留 `auto`。
 通过环境变量强制 `auto` 时，每个新进程重新选择，并使用选择锁避免同时测速。
 显式或已保存的 `cpu` 不会因后来接入独显而改变。
 
@@ -214,7 +237,7 @@ Linux 标签可自定义，独立验证必须显式提供 `--expect cpu|gpu`；`
 WebGPU 推导新阈值需要至少三台不同标签机器的完整五进程报告，同时有 CPU/GPU 优胜组，
 各组通过 `--expect` 按独立性能证据标记。不能混合 DML/WebGPU、EP 版本或 WebGPU 参数来推导阈值。
 报告 schema v2 增加 backend/EP 字段；推导工具仍接受历史 v1 DML 报告。
-WebGPU 阈值为 `None` 时，所有 auto GPU 路径保留 `auto` 并临时使用 CPU，显式 `gpu` 不受此限制。
+WebGPU 阈值为 `None` 时，需要校准的 auto 路径保留 `auto` 并临时使用 CPU；显式 `gpu` 和确认的独显不受此限制。
 
 ## 安装
 

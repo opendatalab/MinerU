@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .onnx_calibration_cache import CalibrationInfo
+from .gpu import GpuIdentity, GpuKind
 
 
 @dataclass
@@ -36,13 +37,26 @@ class GpuInfo:
     name: str | None = None
     vendor: str | None = None
     device_id: str | None = None
-    kind: str = "unknown"
+    kind: GpuKind = "unknown"
+    kind_source: str = "unknown"
     bus_id: str | None = None
     driver: str | None = None
     dedicated_memory_bytes: int | None = None
     shared_memory_bytes: int | None = None
     unified_memory: bool | None = None
     source: str = "unknown"
+
+    @property
+    def identity(self) -> GpuIdentity:
+        """将报告已有的 PCI 型号和地址转换为共享身份，不从名称猜测厂商或类型。"""
+        vendor, chip = None, None
+        if self.device_id:
+            try:
+                vendor_text, chip_text = self.device_id.split(":")
+                vendor, chip = int(vendor_text, 16), int(chip_text, 16)
+            except ValueError:
+                pass
+        return GpuIdentity(vendor, chip, bus_id=self.bus_id, name=self.name)
 
 
 @dataclass

@@ -1,7 +1,7 @@
 """Linux plugin lifecycle, real-provider checks, model routing and shared locking."""
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 import sys
@@ -12,6 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from mineru.model.runtime.gpu import classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime import onnx, webgpu
 from mineru.model.runtime.onnx_device import OnnxSelection
 
@@ -52,7 +53,9 @@ def test_production_options_resolve_native_handles_locally(monkeypatch: pytest.M
     ep = SimpleNamespace(device=SimpleNamespace(vendor_id=0x1002, device_id=1, metadata=dict(device().metadata)))
     monkeypatch.setattr(webgpu, "_devices", lambda: [ep])
     options = SimpleNamespace(add_provider_for_devices=Mock())
-    webgpu.attach_webgpu_provider(options, device())
+    webgpu.attach_webgpu_provider(
+        options, with_gpu_classification(replace(device(), vulkan_device=(0x1002, 1)), classify_vulkan_gpu(2))
+    )
     options.add_provider_for_devices.assert_called_once_with([ep], webgpu.WEBGPU_OPTIONS)
     descriptor = json.loads(json.dumps(asdict(device())))
     assert descriptor == {
@@ -60,6 +63,9 @@ def test_production_options_resolve_native_handles_locally(monkeypatch: pytest.M
         "device_id": 1,
         "metadata": [["pci_bus_id", "0000:00:01.0"]],
         "vulkan_device": None,
+        "kind": "unknown",
+        "kind_source": "unknown",
+        "unified_memory": None,
     }
     with pytest.raises(RuntimeError, match="no longer available"):
         webgpu.attach_webgpu_provider(options, webgpu.WebGPUDevice(1, 2))
