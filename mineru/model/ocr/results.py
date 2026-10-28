@@ -67,6 +67,9 @@ def get_ocr_result_list(
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
                 need_ocr_rec = True
 
+        if need_ocr_rec and img_crop is None:
+            continue
+
         poly = [p1, p2, p3, p4]
         if (p3[0] - p1[0]) < OcrConfidence.min_width:
             continue

@@ -254,10 +254,17 @@ class PytorchPaddleOCR(TextSystem):
 
             # Standard text OCR rotates tall crops before recognition.
             # Seal OCR keeps its dedicated poly-crop path above.
+            crop_boxes = []
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
-                img_crop_list.append(img_crop)
+                if img_crop is not None:
+                    img_crop_list.append(img_crop)
+                    crop_boxes.append(dt_boxes[bno])
+            dt_boxes = crop_boxes
+
+        if not img_crop_list and not self.is_seal:
+            return [], []
 
         rec_res, elapse = self.text_recognizer(img_crop_list)
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
