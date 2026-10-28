@@ -87,6 +87,8 @@ nav:
       - Tiers and Runtimes: usage/tiers.md
       - Python SDK: usage/sdk_api.md
       - V1 HTTP API: usage/http_api.md
+      - Tasks API: usage/tasks.md
+      - Synchronous File Parse: usage/file_parse.md
       - Legacy Platforms (MinerU <4): usage/compatibility.md
       - Model Source: usage/model_source.md
       - CLI Tools: usage/cli_tools.md
@@ -94,6 +96,7 @@ nav:
     - Reference:
       - Reference: reference/index.md
       - Migration to 4.0: reference/migration_4.md
+      - Migration to 4.1: reference/migration_4_1.md
       - Output File Format: reference/output_files.md
       - Changelog: reference/changelog.md
     - FAQ:
@@ -110,6 +113,8 @@ nav:
     - Tiers and Runtimes: usage/tiers.md
     - Python SDK: usage/sdk_api.md
     - V1 HTTP API: usage/http_api.md
+    - Tasks API: usage/tasks.md
+    - Synchronous File Parse: usage/file_parse.md
     - Legacy Platforms (MinerU <4): usage/compatibility.md
     - Model Source: usage/model_source.md
     - CLI Tools: usage/cli_tools.md
@@ -117,6 +122,7 @@ nav:
   - Reference:
     - Reference: reference/index.md
     - Migration to 4.0: reference/migration_4.md
+    - Migration to 4.1: reference/migration_4_1.md
     - Output File Format: reference/output_files.md
     - Changelog: reference/changelog.md
   - FAQ:
@@ -151,8 +157,11 @@ plugins:
             Tiers and Runtimes: 档位与运行环境
             Python SDK: Python SDK
             V1 HTTP API: V1 HTTP API
+            Tasks API: Tasks 异步接口
+            Synchronous File Parse: 单文件同步解析
             Legacy Platforms (MinerU <4): 旧平台适配（MinerU <4）
             Migration to 4.0: 迁移到 4.0
+            Migration to 4.1: 迁移到 4.1
             Model Source: 模型源配置
             Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答

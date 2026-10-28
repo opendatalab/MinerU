@@ -5,6 +5,9 @@
 ## 目录
 
 - [3.x → 4.0 迁移](migration_4.md)
+- [4.0.x → 4.1 迁移](migration_4_1.md)
+- [Tasks 异步接口](../usage/tasks.md)
+- [file-parse 同步接口](../usage/file_parse.md)
 - [Python SDK](../usage/sdk_api.md)
 
 - [输出文件说明](./output_files.md) - 详细介绍所有输出文件及其格式

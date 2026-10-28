@@ -2,20 +2,52 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
-## Unreleased
+## 4.1.0 (Upcoming)
+
+This section covers changes since 4.0.12. See the [4.1 migration guide](migration_4_1.md) for upgrade steps and breaking changes.
+
+### Automatic acceleration and hardware diagnostics
+
+- Added automatic ONNX DirectML selection on Windows x64 and ONNX WebGPU selection on Linux x86_64 for compatible Intel, AMD, and NVIDIA GPUs. Shared classification and identity matching prioritize available discrete GPUs; integrated graphics use performance and compatibility checks, with valid choices and calibration evidence saved.
+- Optimized OCR recognition outputs and transfers, routed UNet through shared device selection, and split formula recognition between GPU batches and CPU tails. Representative core inference workloads run at approximately 2–3× CPU speed; this is not a claim for every device or full-document parsing.
+- Added `mineru-kit hardware detect/info` with JSON output, sharing hardware diagnostics and automatic API tier recommendations. llama.cpp integrated-GPU routing reuses applicable device evidence, with improved Linux Intel Vulkan submission stability.
+- Optimized the default Torch CPU convolution configuration by disabling NNPACK, improving CPU inference on affected devices.
+
+### Tasks and synchronous parsing
+
+- [Tasks](../usage/tasks.md) is the only asynchronous parsing API, replacing standalone uploads and parse/jobs with JSON file manifests, URL inputs, cached-upload reuse, and per-file queuing and downloads.
+- Unified server-generated file IDs, file states, and POST cancellation. Creation, detail, cancellation, and upload use separate responses; success responses omit nulls, and completed files expose their actual tier and one result link.
+- Public errors now contain required `code/message` and optional `param`, removing `type` and omitting absent param values. Clients and servers must upgrade together.
+- Added the standalone [file-parse service](../usage/file_parse.md) for single-file attachments, polling after wait timeouts, request-ID idempotency, and recovery of known tasks.
+- API startup uses one `--tier` ceiling. Standard no longer implies Advanced; native documents always use Flash, independently of the PDF/image tier list.
+- Output choices are `default/docx/html/latex`. ModelJson stays internal; `include_model_output` and public model-output files are removed.
+
+### Document library, parsing, and reliability
+
+- Added paginated filename search and unified page selection for parsing, reading, and exports. Fixed incomplete whole-document output caused by estimated page counts for non-PDF native documents.
+- WebUI clearing, replacing files, resubmitting, or receiving a normal page-close event now cancels obsolete remote tasks while preserving completed artifacts.
+- Fixed missing native PDF drop caps and word boundaries; skipped invalid text/seal crops while preserving recognition alignment; raised the inline-formula confidence threshold to reduce low-confidence false positives.
+- Improved Router cascading uploads, result leases, and forwarded-header isolation, plus Doclib configuration isolation, health state, and shutdown cleanup.
+
+### Runtime requirements
 
 - Raised the minimum Python version to 3.11; the supported range is `>=3.11,<3.15`. Starting with the next stable release, stop MinerU services in the old environment, create a new virtual environment with Python 3.11–3.14, reinstall dependencies, and update interpreter paths in service startup configuration. Python 3.12 remains the recommended starting point. Verify the installed versions with `mineru version --json`.
+- Updated dependencies to `docvortex>=0.6.0,<0.7` and `gradio>=6.21,<7`. The base package supplies platform-specific ONNX dependencies for Windows/Linux; Apple Silicon retains Torch/MPS and llama.cpp/Metal.
+
+## 4.0
+
+### Compatibility changes present by 4.0.12
 
 - Image naming change: newly materialized CLI/API ZIP images now use Gradio visual-parent names, inline ordinals count all img src attributes, and collisions receive `_duplicate_n`. References update together; image bytes and MiddleJson 2.0 are unchanged. Historical ZIPs retain their stored references. Requires `docvortex>=0.4.19,<1`.
 
 - Breaking change: removed the `--backend` option from `mineru-kit parse` (introduced during the 4.0 alphas). The option only inferred a tier and had no independent effect, so use `--tier` instead: `pipeline` → `--tier basic`; `vlm-engine`, `vlm-auto-engine`, and `vlm-http-client` → `--tier advanced`; `hybrid-engine` and `hybrid-auto-engine` → `--tier standard` (or omit the option); `flash` → `--tier flash`. Parsing with a remote VLM service is configured through the VLM server settings and is unrelated to this option.
 - Breaking change: removed the `PARSER_BACKENDS` constant from the `mineru.parser` exports (present in the 4.0 release). Backends are derived from tiers and are no longer a public choice or a public symbol; configure engines through `model.small_backend` and `model.vlm.engine` instead.
 
-## 4.0
+### Main capabilities
 
 - Four parsing tiers, native document formats, a local library, and progressive reading.
 - ONNX/Torch small models with independent VLM engines, plus unified SDK, V1 API, WebUI, and rendering interfaces.
-- See the [4.0 overview](../index.md) and [migration guide](migration_4.md) for capabilities and deployment changes. Legacy platform adaptations remain on `mineru<4`.
+- See the [product overview](../index.md) and [migration guide](migration_4.md) for capabilities and deployment changes. Legacy platform guides remain scoped to `mineru<4`.
 
 ## 3.x release history
 
@@ -306,7 +338,7 @@ This is the first major update of MinerU 2, which includes a large number of new
 
 **Experience Enhancements**
 
-- Built-in ready-to-use `fastapi service` and `gradio webui`. For detailed usage instructions, please refer to [Documentation](https://opendatalab.github.io/MinerU/usage/quick_usage/#advanced-usage-via-api-webui-sglang-clientserver).
+- Built-in ready-to-use `fastapi service` and `gradio webui`. For detailed usage instructions, please refer to [Documentation](../usage/quick_usage.md).
 - Adapted to `sglang` version `0.4.8`, significantly reducing the GPU memory requirements for the `vlm-sglang` backend. It can now run on graphics cards with as little as `8GB GPU memory` (Turing architecture or newer).
 - Added transparent parameter passing for all commands related to `sglang`, allowing the `sglang-engine` backend to receive all `sglang` parameters consistently with the `sglang-server`.
 - Supports feature extensions based on configuration files, including `custom formula delimiters`, `enabling heading classification`, and `customizing local model directories`. For detailed usage instructions, please refer to [Documentation](https://opendatalab.github.io/MinerU/usage/quick_usage/#extending-mineru-functionality-with-configuration-files).

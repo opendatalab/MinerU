@@ -1,6 +1,6 @@
 # V1 HTTP API
 
-Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON `files` array, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](../../next/api/tasks.md) and [Python SDK](sdk_api.md).
+In the upcoming 4.1 release, Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON `files` array, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](tasks.md) and [Python SDK](sdk_api.md).
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
@@ -12,7 +12,7 @@ OUTPUT_FORMATS=default,docx MINERU_API_URL=http://127.0.0.1:8000 bash scripts/ht
 
 Send application/json to POST `/v1/tasks`. Each files entry requires file_name and, for uploads, bytes; sha256sum and page_range are optional. URL entries may omit bytes. Requests must not include client_file_id or file_id, even as null. The server generates a unique file_id for every entry and returns entries in input order. This ID remains stable through upload, query, cancellation and result download. Options are tier, ocr_mode, page_range and output_formats.
 
-The response contains task_id and an upload object on each file that still needs uploading. files[].upload is null otherwise; its fields are url, headers and expires_at. Uploads always use PUT; upload_method is not returned. Follow each returned PUT URL and its headers; no completion request is needed. Each ready file enters pending independently. waiting-file covers upload, server-side download and validation; only a non-null upload object asks the client to send bytes. Input preparation consumes no parsing slot.
+The response contains task_id and an upload object on each file that still needs uploading. files[].upload is omitted otherwise; its fields are url, headers and expires_at. Uploads always use PUT; upload_method is not returned. Follow each returned PUT URL and its headers; no completion request is needed. Each ready file enters pending independently. waiting-file covers upload, server-side download and validation; only a present upload object asks the client to send bytes. Input preparation consumes no parsing slot.
 
 Loopback requests follow the same protocol. The SDK computes SHA-256 before submission; completed, unexpired cached inputs are not uploaded again. Concurrent first uploads may transfer duplicate bytes, but source storage is deduplicated. Default retention is 24 hours with collection every 5 minutes; active task and transfer references protect their bytes.
 
@@ -34,6 +34,6 @@ Both shell examples delegate to the standard-library Python Tasks client. RESULT
 
 Creation is not automatically retried. MAX_POLLS/POLL_INTERVAL bound polling; CONNECT_TIMEOUT/REQUEST_TIMEOUT bound individual requests. Exit codes are 0 (success), 2 (partial success), 1 (failure or cancellation) and 124 (poll budget exhausted). Completed downloads remain on disk.
 
-Tasks and Files JSON use `file_name`; creation accepts `files`. Old `manifest`/`filename` fields and mixed old/new fields are rejected with 400. The standalone upload and Jobs APIs have been removed. Coordinate server, Router and SDK upgrades; see [migration notes](../../next/api/changes.md). The separate [file_parse wrapper](../../next/api/file-parse.md) provides recoverable synchronous single-file calls.
+Tasks and Files JSON use `file_name`; creation accepts `files`. Old `manifest`/`filename` fields and mixed old/new fields are rejected with 400. The standalone upload and Jobs APIs have been removed. Coordinate server, Router and SDK upgrades; see [4.1 migration](../reference/migration_4_1.md). The separate [file-parse wrapper](file_parse.md) provides recoverable synchronous single-file calls.
 
 POST returns a creation receipt, GET returns task details, POST cancel returns every file’s final state and successful result links, and local PUT returns task_id/file_id/status. Tasks success responses omit null fields but preserve zero values and empty collections. POST cancel cancels unfinished files while preserving completed results.

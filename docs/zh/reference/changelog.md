@@ -2,20 +2,52 @@
 
 本文档记录 MinerU 项目的版本更新历史、主要能力演进和重要兼容性变动。
 
-## 未发布
+## 4.1.0（即将发布）
+
+本节记录 4.0.12 之后的主要变化；升级步骤与破坏性变更见 [4.1 迁移说明](migration_4_1.md)。
+
+### 自动加速与硬件诊断
+
+- 新增 Windows x64 ONNX DirectML、Linux x86_64 ONNX WebGPU 自动选型，支持兼容的 Intel、AMD、NVIDIA GPU。共享设备分类与身份匹配，优先选择可用独显；集显按性能与兼容性选择 GPU 或 CPU，并保存有效选择与校准证据。
+- 优化 OCR rec 输出与传输，UNet 接入共享设备选择，公式识别按实际批量分配 GPU 与 CPU 尾批。代表性核心推理场景约为 CPU 的 2～3 倍速度；该倍率不代表所有设备或整本解析。
+- 新增 `mineru-kit hardware detect/info` 及 JSON 输出，统一硬件诊断与 API 自动档位推荐。llama.cpp 集显路由复用适用的设备证据，并改善 Linux Intel Vulkan 提交稳定性。
+- 优化 Torch CPU 默认卷积配置，关闭默认 NNPACK，改善受影响设备的 CPU 推理表现。
+
+### Tasks 与同步解析
+
+- [Tasks](../usage/tasks.md) 成为唯一异步解析接口，替换独立 uploads 和 parse/jobs；支持 JSON 文件清单、URL 输入、缓存免传、逐文件排队与下载。
+- 统一服务端文件 ID、文件状态与 POST 取消；创建、详情、取消、上传确认分别使用独立响应。成功响应省略 null，完成文件返回实际档位与单一结果链接。
+- 公共错误统一为必填 `code/message` 与可选 `param`，移除 `type`，省略空 param；客户端需与服务端同步升级。
+- 新增独立 [file-parse 服务](../usage/file_parse.md)，支持单文件同步附件、超时后查询、请求 ID 幂等及已知任务恢复。
+- API 启动使用单个 `--tier` 上限，Standard 不再隐含 Advanced；原生文档固定 Flash，不受 PDF/图片档位列表限制。
+- 输出选项统一为 `default/docx/html/latex`；ModelJson 保留为内部数据，移除 `include_model_output` 和对外模型输出文件。
+
+### 文档库、解析与稳定性
+
+- 新增文档库文件名搜索分页，统一解析、阅读和导出的页码选择；修复非 PDF 原生文档因预估页数导致的整本输出不完整。
+- WebUI 清除、更换文件、重新提交或收到正常页面关闭事件时，联动取消旧的远端任务，保留已完成产物。
+- 修复原生 PDF 大号首字缺失及词边界问题；跳过无效文字/印章裁切并保持识别结果对齐；提高行内公式置信度阈值，减少低置信度误检。
+- 改善 Router 级联上传、结果租约和代理头隔离，以及 Doclib 配置隔离、健康状态与退出清理。
+
+### 运行环境
 
 - Python 最低版本提升至 3.11，支持范围为 `>=3.11,<3.15`。从下一正式版本开始，请先停止旧环境中的 MinerU 服务，再使用 Python 3.11–3.14 新建虚拟环境、重新安装依赖，并更新服务启动配置中的解释器路径；建议新环境使用 Python 3.12。升级后通过 `mineru version --json` 核对实际版本。
+- 更新依赖范围至 `docvortex>=0.6.0,<0.7`、`gradio>=6.21,<7`。Windows/Linux 的 ONNX 平台依赖随基础包安装；Apple Silicon 延续 Torch/MPS 与 llama.cpp/Metal 路径。
+
+## 4.0
+
+### 4.0.12 及之前的兼容性调整
 
 - 图片命名变更：CLI/API ZIP 的新物化图片统一采用 Gradio 的视觉父块命名，表内图按所有 img src 顺序编号，冲突追加 `_duplicate_n`。引用同步更新，图片字节及 MiddleJson 2.0 不变；历史 ZIP 仍按已有引用读取。需要 `docvortex>=0.4.19,<1`。
 
 - 破坏性变更：移除 `mineru-kit parse` 的 `--backend` 参数（该参数在 4.0 alpha 阶段引入）。它仅用于推断 tier，没有独立作用，请改用 `--tier`：`pipeline` → `--tier basic`；`vlm-engine`、`vlm-auto-engine`、`vlm-http-client` → `--tier advanced`；`hybrid-engine`、`hybrid-auto-engine` → `--tier standard`（或省略该参数）；`flash` → `--tier flash`。使用远程 VLM 服务由 VLM 服务配置表达，与该参数无关。
 - 破坏性变更：移除 `mineru.parser` 公开导出中的 `PARSER_BACKENDS` 常量（4.0 正式版包含该导出）。backend 由 tier 派生，不再是公开选择或公开符号；请通过 `model.small_backend` 与 `model.vlm.engine` 配置引擎。
 
-## 4.0
+### 主要能力
 
 - 四档解析、多格式原生文档支持、文档库与渐进阅读。
 - ONNX/Torch 小模型与独立 VLM 引擎配置，统一 SDK、V1 API、WebUI 和渲染接口。
-- 主要能力见[4.0 概览](../index.md)，接口与部署调整见[迁移指南](migration_4.md)；旧平台适配继续限制 `mineru<4`。
+- 主要能力见[产品概览](../index.md)，接口与部署调整见[迁移指南](migration_4.md)；旧平台适配指南继续限制 `mineru<4`。
 
 ## 3.x 系列版本
 
@@ -312,7 +344,7 @@
 
 **体验优化**
 
-- 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuisglang-clientserver)
+- 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](../usage/quick_usage.md)
 - `sglang`适配`0.4.8`版本，大幅降低`vlm-sglang`后端的显存要求，最低可在`8G显存`(Turing及以后架构)的显卡上运行
 - 对所有命令增加`sglang`的参数透传，使得`sglang-engine`后端可以与`sglang-server`一致，接收`sglang`的所有参数
 - 支持基于配置文件的功能扩展，包含`自定义公式标识符`、`开启标题分级功能`、`自定义本地模型目录`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#mineru_1)
