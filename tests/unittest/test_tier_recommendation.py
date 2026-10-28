@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib
+import json
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -12,10 +13,9 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from mineru.model.runtime.gpu import classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime import onnx_calibration_cache as cache
 from mineru.model.runtime import tier_recommendation as recommendation
-from mineru.model.runtime.gpu import GpuIdentity
+from mineru.model.runtime.gpu import GpuIdentity, classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime.gpu_memory import GpuMemory
 from mineru.model.runtime.llama_probe import LlamaDevice
 from mineru.model.runtime.webgpu import WebGPUDevice
@@ -291,6 +291,17 @@ def startup_calibration(
     return config_file, measurement
 
 
+@pytest.fixture
+def configured_gpu(startup_calibration: tuple[Path, Mock]) -> tuple[Path, Mock]:
+    """复用双平台选型环境，仅将用户设备偏好设置为 GPU。"""
+    from mineru.config import get_config
+
+    config_file, measurement = startup_calibration
+    get_config().model.onnx_device = "gpu"
+    config_file.write_text("model:\n  onnx_device: gpu\n  source: local\n", encoding="utf-8")
+    return config_file, measurement
+
+
 @pytest.mark.parametrize("outcome", ["fast", "slow", "unstable", "timeout", "output_error"])
 def test_auto_startup_calibrates_before_publishing(
     startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, outcome: str
@@ -391,25 +402,171 @@ def test_explicit_ceiling_skips_startup_selection(startup_calibration: tuple[Pat
 def test_startup_preserves_explicit_device_without_performance_evidence(
     startup_calibration: tuple[Path, Mock], requested: str
 ) -> None:
-    """已保存或手动的设备偏好不触发测速，也不代替集显的有效性能证据。"""
+    """显式设备不触发测速，实际选中的达标 GPU 无需校准证据即可开放四档。"""
     settings = importlib.import_module("mineru.config")
     config_file, measurement = startup_calibration
     settings.get_config().model.onnx_device = requested
     config_file.write_text(f"model:\n  onnx_device: {requested}\n", encoding="utf-8")
-    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS[:2])
+    report = recommendation.recommend_tiers()
+    assert report.pdf_image_tiers == (TIERS if requested == "gpu" else TIERS[:2])
+    assert report.reason == f"configured_{requested}"
+    assert report.calibration.status == "skipped"
     measurement.assert_not_called()
     assert yaml.safe_load(config_file.read_text(encoding="utf-8"))["model"]["onnx_device"] == requested
 
 
-def test_next_startup_reuses_saved_device_and_evidence(startup_calibration: tuple[Path, Mock]) -> None:
-    """同次启动采用新证据，后续进程复用保存结果，不再次测速。"""
+@pytest.mark.parametrize("remove_evidence", [False, True])
+def test_next_startup_reuses_saved_device(startup_calibration: tuple[Path, Mock], remove_evidence: bool) -> None:
+    """自动校准保存 GPU 后，即使记录丢失也直接采用 GPU 与当前内存预算。"""
     from mineru.model.runtime import onnx_device
 
     assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
     onnx_device._selections.clear()
-    assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS)
+    if remove_evidence:
+        cache.calibration_record_path().unlink()
+    report = recommendation.recommend_tiers()
+    assert report.pdf_image_tiers == TIERS
+    assert report.reason == "configured_gpu"
+    assert report.calibration.status == "skipped" and report.calibration.reason == "configured_gpu"
     startup_calibration[1].assert_called_once()
     assert onnx_device.resolve_onnx_device().reason == "configured_gpu"
+
+
+@pytest.mark.parametrize("record", ["missing", "invalid", "stale", "slow", "unstable", "valid", "read_error"])
+def test_configured_gpu_does_not_require_performance_evidence(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """历史测速只供诊断，不能限制已选 GPU、触发补测或改写配置。"""
+    from mineru.model.runtime import onnx_device
+
+    settings = importlib.import_module("mineru.config")
+    config_file, measurement = configured_gpu
+    path = cache.calibration_record_path()
+    if record == "invalid":
+        path.write_text("broken", encoding="utf-8")
+    elif record not in {"missing", "read_error"}:
+        adapter = _adapter() if onnx_device.sys.platform == "win32" else WebGPUDevice(0x8086, 0x7D51)
+        if record == "stale":
+            adapter = replace(adapter, device_id=1)
+        cache.save_calibration_record(
+            adapter, _measurement(gpu_elapsed=3.0 if record == "slow" else 1.0, decision_valid=record != "unstable")
+        )
+    if record == "read_error":
+        monkeypatch.setattr(recommendation, "inspect_calibration_record", Mock(side_effect=OSError("record unavailable")))
+    evidence_before = path.read_bytes() if path.exists() else None
+    config_before = config_file.read_bytes()
+    writes = Mock(side_effect=AssertionError("configured GPU must not write configuration"))
+    performance = Mock(side_effect=AssertionError("configured GPU must not require performance evidence"))
+    monkeypatch.setattr(settings, "update_config_file", writes)
+    monkeypatch.setattr(cache, "calibrated_gpu_is_faster", performance)
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 3)
+
+    report = recommendation.recommend_tiers()
+
+    assert report.pdf_image_tiers == TIERS and report.default_request_tier == "standard"
+    assert report.reason == "configured_gpu" and report.device.endswith(":gpu")
+    assert report.calibration.status == "skipped" and report.calibration.reason == "configured_gpu"
+    if record == "read_error":
+        assert report.calibration.evidence is None
+        assert any("record unavailable" in warning for warning in report.warnings)
+    else:
+        assert report.calibration.evidence is not None
+    assert config_file.read_bytes() == config_before
+    assert (path.read_bytes() if path.exists() else None) == evidence_before
+    measurement.assert_not_called()
+    performance.assert_not_called()
+    writes.assert_not_called()
+
+
+@pytest.mark.parametrize("cores", [3, 4])
+@pytest.mark.parametrize("amount", [None, 5_905_580_032 - 1, 5_905_580_032, 6 * 1024**3 - 1])
+def test_configured_gpu_memory_threshold(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, cores: int, amount: int | None
+) -> None:
+    """配置 GPU 仍遵守精确内存门槛，内存不足时按 CPU 核数降级且不测速。"""
+    config_file, measurement = configured_gpu
+    before = config_file.read_bytes()
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: cores)
+    monkeypatch.setattr(
+        recommendation, "native_gpu_memory", lambda identity, *, device: GpuMemory(device, identity, amount, "budget", "test")
+    )
+
+    report = recommendation.recommend_tiers()
+
+    enough = amount is not None and amount >= 5_905_580_032
+    expected = TIERS if enough else TIERS[:2] if cores >= 4 else ("flash",)
+    assert report.pdf_image_tiers == expected
+    assert report.default_request_tier == ("standard" if enough else expected[-1])
+    assert report.gpu_memory.memory_bytes == amount
+    if cores >= 4 or enough:
+        assert report.device.endswith(":gpu")
+        assert report.calibration.status == "skipped" and report.calibration.reason == "configured_gpu"
+        assert report.reason == (
+            "configured_gpu" if enough else "gpu_memory_unknown" if amount is None else "gpu_memory_insufficient"
+        )
+    measurement.assert_not_called()
+    assert config_file.read_bytes() == before
+    assert not cache.calibration_record_path().exists()
+
+
+def test_configured_gpu_does_not_require_calibration_threshold(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """性能阈值仅约束自动测速，不能阻断已选 GPU 的内存判定。"""
+    from mineru.model.runtime import onnx_device
+
+    monkeypatch.setitem(onnx_device.ONNX_GPU_TIME_RATIO_THRESHOLDS, "dml", None)
+    monkeypatch.setitem(onnx_device.ONNX_GPU_TIME_RATIO_THRESHOLDS, "webgpu", None)
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 3)
+    assert recommendation.recommend_tiers().pdf_image_tiers == TIERS
+    configured_gpu[1].assert_not_called()
+
+
+@pytest.mark.parametrize("inventory", ["hidden", "mismatch", "ambiguous"])
+def test_configured_gpu_still_requires_visible_matching_device(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, inventory: str
+) -> None:
+    """配置 GPU 不能借用不可见、另一张卡或身份不唯一的显存来开放高级档位。"""
+    from mineru.model.runtime import llama_device
+
+    device = LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 1 if inventory == "mismatch" else 0x7D51)
+    devices = () if inventory == "hidden" else (device, device) if inventory == "ambiguous" else (device,)
+    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: devices)
+    report = recommendation.recommend_tiers()
+    assert report.device.endswith(":gpu") and report.pdf_image_tiers == TIERS[:2]
+    assert report.reason == ("no_visible_gpu" if inventory == "hidden" else "gpu_identity_unconfirmed")
+    configured_gpu[1].assert_not_called()
+
+
+def test_configured_gpu_cli_and_api_agree(configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch) -> None:
+    """真实推荐同时驱动 CLI 报告和 API 能力，缺少校准记录仍默认 Standard。"""
+    from fastapi.testclient import TestClient
+    from typer.testing import CliRunner
+
+    from mineru.kit.commands import hardware
+    from mineru.kit.main import app as kit_app
+    from mineru.parser import api_server
+
+    monkeypatch.setattr(hardware, "_detect_data", lambda: asdict(recommendation.recommend_tiers()))
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", Mock())
+    output = CliRunner().invoke(kit_app, ["hardware", "detect", "--json"])
+    assert output.exit_code == 0, output.output
+    data = json.loads(output.stdout)
+    assert data["ceiling"] == "advanced" and data["default_request_tier"] == "standard"
+    assert data["reason"] == "configured_gpu" and data["calibration"]["status"] == "skipped"
+    assert data["calibration"]["reason"] == "configured_gpu" and data["calibration"]["evidence"]["status"] == "missing"
+    assert "推荐启动上限：advanced" in hardware.render_detection(data)
+    app = api_server.create_app(upload_dir=str(configured_gpu[0].parent / "uploads"))
+    assert app.state.server_tiers == tuple(data["pdf_image_tiers"]) == TIERS
+    assert app.state.default_tier == data["default_request_tier"]
+    with TestClient(app) as client:
+        assert tuple(row["id"] for row in client.get("/v1/tiers").json()["data"]) == TIERS
+        for options in ({}, {"tier": "standard"}, {"tier": "advanced"}):
+            response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
+            assert response.status_code == 202
+            assert app.state.task_store._records[response.json()["task_id"]].options.tier == options.get("tier", "standard")
+    configured_gpu[1].assert_not_called()
+    assert not cache.calibration_record_path().exists()
 
 
 def test_failed_recalibration_revokes_previous_fast_evidence(startup_calibration: tuple[Path, Mock]) -> None:
@@ -446,7 +603,9 @@ def test_startup_gpu_memory_threshold_and_low_cpu_calibration(
         assert report.reason == ("gpu_memory_unknown" if amount is None else "gpu_memory_insufficient")
 
 
-@pytest.mark.parametrize("failure", ["configured_cpu", "selection_failed", "raise"])
+@pytest.mark.parametrize(
+    "failure", ["configured_cpu", "selection_failed", "no_hardware_gpu", "webgpu_architecture_policy", "raise"]
+)
 def test_final_cpu_result_cannot_be_upgraded_by_discrete_inventory(
     startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
@@ -483,8 +642,6 @@ def test_apple_onnx_path_also_requires_budget(monkeypatch: pytest.MonkeyPatch, a
 @pytest.mark.parametrize("backend", ["dml", "webgpu"])
 def test_shared_classification_preserves_existing_calibration_fingerprint(evidence_path: Path, backend: str) -> None:
     """分类和诊断字段变化不废弃旧校准格式，真实设备或绑定变化仍使证据失效。"""
-    import json
-
     adapter = _adapter() if backend == "dml" else WebGPUDevice(0x8086, 0x7D51)
     cache.save_calibration_record(adapter, _measurement())
     identity = json.loads(evidence_path.read_text(encoding="utf-8"))["fingerprint"]["adapter"]

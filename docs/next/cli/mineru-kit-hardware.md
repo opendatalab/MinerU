@@ -21,7 +21,7 @@ mineru-kit hardware info --json > hardware-info.json
 |----------|------|
 | Torch + 可用 CUDA/MPS/XPU 等加速设备 | 跳过 OCR 测速；选定设备的显存／预算至少 5.5 GiB 时推荐 advanced，否则按 CPU 条件推荐 |
 | Torch + 显式 CPU 或加速设备不可用 | 跳过测速，进程可用逻辑 CPU 至少 4 时推荐 basic，否则 flash |
-| ONNX | CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，在 Windows/Linux 同步完成适用的 OCR 选型，再确定最终上限 |
+| ONNX | CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，在 Windows/Linux 同步完成现有设备选型；实际选中 GPU 且内存达标时开放全部四档，不再额外检查性能证据 |
 
 自动推荐的 CPU 条件只开放 Basic：进程可用逻辑核数至少 4 时开放 `flash,basic`，默认请求 Basic，否则只开放 Flash。计数遵守进程亲和性和容器 CPU 配额。GPU 经现有选型确认可用且显存／预算至少 `5_905_580_032` 字节时，独立于 CPU 核数开放全部四档；默认请求仍为 Standard，Advanced 必须显式请求。
 
@@ -29,7 +29,9 @@ mineru-kit hardware info --json > hardware-info.json
 
 `small_backend=auto` 最终选择 Torch 时同样免校准。显式设备字符串必须经过实际可用性检查；检查失败会给出保守结果及原因，不修改设备配置。Torch 推荐不依赖 llama.cpp 库存，不下载 ONNX 校准权重，也不写入 `model.onnx_device` 或 OCR 校准记录。
 
-ONNX 分支保留既有兼容策略、0.8 阈值和进程缓存。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均免 OCR 校准，报告 `status=skipped, reason=discrete_gpu`；首次真实 GPU 会话成功后才保存 `gpu`，硬件推荐本身不生成校准记录。集显或类型无法确认的候选继续测速，首次可能下载 OCR rec 模型；下载和派生图准备不计入 15 秒校准 worker 超时。显式或已保存的 CPU/GPU 选择不强制重测。校准失败、超时或不稳定时保守推荐，并携带警告。
+ONNX 分支保留既有兼容策略、0.8 阈值和进程缓存。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均免 OCR 校准，报告 `status=skipped, reason=discrete_gpu`；首次真实 GPU 会话成功后才保存 `gpu`，硬件推荐本身不生成校准记录。`onnx_device=auto` 时，集显或类型无法确认的候选继续沿用现有设备选型测速，首次可能下载 OCR rec 模型；下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定导致本次设备选型回退 CPU 时，按 CPU 条件推荐，并携带警告。
+
+`onnx_device=gpu` 无论来自用户配置还是之前的自动选型，都不触发测速；实际选中兼容 GPU 后，仅检查该设备的显存／预算是否达到 5.5 GiB。校准记录缺失、损坏、过期或记录 GPU 较慢，均不阻止内存达标的 GPU 开放 Standard/Advanced。此时推荐原因是 `configured_gpu`，校准状态为 `status=skipped, reason=configured_gpu`。内存不足或未知时报告相应内存原因。记录摘要只供诊断，读取失败会附带警告，不改变设备和档位结论。`onnx_device=cpu` 仍遵循 CPU 规则。
 
 llama.cpp 自动集显路径同样按有效小模型后端分流：Torch 使用加速可用性结果，不再绕回 OCR 校准；ONNX 保留原有性能结果和设备身份匹配。原生独显优先、显式 CPU/GPU 参数、物理绑定和兼容处理保持不变。
 
@@ -37,7 +39,7 @@ OCR、llama.cpp、档位推荐与诊断共用 GPU 分类和双向唯一身份匹
 
 JSON 报告保留 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default_request_tier`、`reason`、`cpu_count`、`small_backend`、`vlm_engine`、`device`、`calibration` 和 `warnings`，并增补 `gpu_memory`。内存证据包含 `device`、`identity`、`memory_bytes`、`kind`（`dedicated`／`budget`／`unknown`）、`source`、`warning`；没有候选设备时为 `null`。校准状态来自执行结果；Torch 使用 `status=skipped, reason=torch_backend`，不将可用性结论标成性能实测通过。
 
-本次实际选型落在 CPU、校准失败或证据失效时，不会凭静态显卡库存重新开放高档位。设备容量信息不进入 OCR 校准指纹，既有有效测速记录可以继续复用。每个服务在启动阶段形成一次最终开放集合，运行过程中不动态升降档位。
+本次实际选型落在 CPU 或选型失败时，不会凭静态显卡库存重新开放高档位。性能判断归属 ONNX 自动设备选型，auto tier 不增加独立测速或历史性能证据门槛。设备容量信息不进入 OCR 校准指纹，每次启动读取当前选定设备的内存容量。每个服务在启动阶段形成一次最终开放集合，运行过程中不动态升降档位。
 
 开放 Advanced 后，请求省略 tier 仍默认 Standard。推荐不代表模型已准备好，API 服务继续执行依赖预检；显式启动上限和 Python 精确集合不进入自动推荐。API 工厂的 VLM 配置覆盖参与共享推荐，远程 VLM 显示为 `http-client`，不自动扩大本机上限。
 

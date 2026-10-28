@@ -102,7 +102,7 @@ advanced 只接受显式选择：只有 advanced 时没有默认档位，返回�
 
 `--tier auto` 或省略启动参数时，进程可用逻辑 CPU 至少 4 核默认开放 flash、basic，否则只开放 flash；计数遵守亲和性和容器配额。只有实际 GPU 已经确认可用，并且选中设备的专用显存总量或 GPU 内存预算至少 5.5 GiB，才开放 standard、advanced。GPU 达标不要求 CPU 同时达到 4 核；开放全部四档时请求默认仍为 standard。
 
-自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）、Apple Metal 和符合既有确认与绑定规则的独显保留免 OCR 测速路径；其他 ONNX GPU 继续要求有效校准胜出。CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，Windows/Linux 在本次启动内完成适用的 ONNX 选型。最终选中 CPU、校准失败、设备身份不明确或内存未知时按 CPU 条件推荐，静态 GPU 库存不能覆盖最终结果。
+自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）、Apple Metal 和符合既有确认与绑定规则的独显保留免 OCR 测速路径。CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，Windows/Linux 在本次启动内完成现有 ONNX 设备选型：`onnx_device=auto` 保留适用的性能校准，`onnx_device=gpu` 无论来自手动配置还是先前自动选型都不测速。auto tier 直接采用实际选型结果，GPU 内存达标即开放全部四档，不再额外要求独显类型或校准胜出记录；历史记录缺失、损坏、过期或 GPU 较慢均不影响已选 GPU 的档位判断。最终选中 CPU、选型失败、设备身份不明确或内存未知时按 CPU 条件推荐，静态 GPU 库存不能覆盖最终结果。
 
 显存按原始字节比较，不取整、不累加多卡，不使用虚拟显存覆盖。统一／共享内存使用 Metal 推荐工作集、DXGI 本地预算或 Vulkan `heapBudget`，不以系统总内存替代。最终集合在启动时固定；`mineru-kit hardware detect` 共享推荐与内存证据，`hardware info` 只读收集环境信息。
 

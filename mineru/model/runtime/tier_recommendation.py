@@ -1,11 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""通过硬件初选与启动阶段的 OCR 设备校准，确定 API 服务开放档位。"""
+"""通过现有设备选型与选定 GPU 的内存预算，确定 API 服务开放档位。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import os
 import sys
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -80,7 +80,7 @@ def _apple_metal_available() -> bool:
 
 
 def _gpu_hardware(count: int, confirmed: bool, reason: str, memory: GpuMemory) -> TierHardware:
-    """把设备确认和容量阈值合并为一次可解释的推荐，不把配置偏好当成性能证据。"""
+    """把设备确认和容量阈值合并为一次可解释的推荐。"""
     if confirmed and not memory.sufficient:
         reason = "gpu_memory_unknown" if memory.memory_bytes is None else "gpu_memory_insufficient"
     return TierHardware(count, confirmed and memory.sufficient, reason, memory)
@@ -110,34 +110,41 @@ def _onnx_gpu_hardware(count: int, choice: OnnxSelection | None = None) -> TierH
     if not devices:
         return TierHardware(count, reason="no_visible_gpu")
 
-    from .onnx_calibration_cache import calibrated_gpu_is_faster
-    from .onnx_device import ONNX_GPU_TIME_RATIO_THRESHOLDS
-
-    from .webgpu import WebGPUDevice
-
     if choice is not None:
         adapter = choice.adapter
-        threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS.get(choice.backend)
     elif sys.platform == "win32":
         from .windows_gpu import discover_gpus, preferred_gpu
 
         adapter = preferred_gpu(discover_gpus())
-        threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS["dml"]
     else:
         from .webgpu import discover_webgpu_devices, select_webgpu_device
 
         adapter = select_webgpu_device(discover_webgpu_devices())
-        threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS["webgpu"]
-    if adapter is None or threshold is None:
+    if adapter is None:
         return TierHardware(count, reason="no_eligible_gpu")
     matched = match_gpu_identities((adapter.identity,), [device.identity for device in devices])[0]
     if matched is None:
         return TierHardware(count, reason="gpu_identity_unconfirmed")
     memory = native_gpu_memory(adapter.identity, device=f"{choice.backend if choice else 'onnx'}:gpu")
+    if choice is not None:
+        # 性能判断属于 ONNX 自动选型；已选 GPU 仅需满足内存门槛，不再要求历史校准证据。
+        reason = "ocr_calibrated_gpu" if choice.reason == "rec_calibration" else choice.reason
+        return _gpu_hardware(count, True, reason, memory)
+    if get_config().model.onnx_device == "gpu":
+        # 初选保留内存候选，让低 CPU 配额也能进入实际设备选型，配置本身不确认设备可用。
+        return TierHardware(count, reason="configured_gpu", gpu_memory=memory)
+
+    from .onnx_calibration_cache import calibrated_gpu_is_faster
+    from .onnx_device import ONNX_GPU_TIME_RATIO_THRESHOLDS
+    from .webgpu import WebGPUDevice
+
+    threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS["webgpu" if sys.platform == "linux" else "dml"]
+    if threshold is None:
+        return TierHardware(count, reason="no_eligible_gpu")
     discrete = (is_discrete_gpu(adapter) or is_discrete_gpu(devices[matched])) and (
         not isinstance(adapter, WebGPUDevice) or adapter.vulkan_device == (adapter.vendor_id, adapter.device_id)
     )
-    calibrated = (choice is not None and choice.reason == "rec_calibration") or calibrated_gpu_is_faster(adapter, threshold)
+    calibrated = calibrated_gpu_is_faster(adapter, threshold)
     reason = "discrete_gpu" if discrete else "ocr_calibrated_gpu" if calibrated else "gpu_calibration_required"
     return _gpu_hardware(count, discrete or calibrated, reason, memory)
 
@@ -200,7 +207,12 @@ def recommend_tiers(*, vlm_config: VlmConfig | None = None) -> TierRecommendatio
             cached = cached_onnx_device()
             onnx_choice = resolve_onnx_device()
             device = f"{onnx_choice.backend}:gpu" if onnx_choice.device == "gpu" else "cpu"
-            evidence = inspect_calibration_record((onnx_choice.adapter,) if onnx_choice.adapter is not None else None)
+            hardware = _onnx_gpu_hardware(hardware.cpu_count, onnx_choice)
+            try:
+                evidence = inspect_calibration_record((onnx_choice.adapter,) if onnx_choice.adapter is not None else None)
+            except Exception as error:
+                evidence = None
+                warnings.append(f"ONNX calibration diagnostics unavailable: {error}")
             status = "skipped"
             if onnx_choice.reason == "rec_calibration":
                 status = "reused" if cached is not None else "completed"
@@ -212,10 +224,9 @@ def recommend_tiers(*, vlm_config: VlmConfig | None = None) -> TierRecommendatio
             }:
                 status = "failed"
                 warnings.append(f"ONNX selection used CPU: {onnx_choice.reason}")
-            elif onnx_choice.reason in {"configured_cpu", "configured_gpu"}:
+            elif onnx_choice.reason == "configured_cpu" and evidence is not None:
                 status = "reused" if evidence.matches_environment and evidence.decision_valid else "skipped"
             calibration = CalibrationDecision(status, onnx_choice.reason, evidence)
-            hardware = _onnx_gpu_hardware(hardware.cpu_count, onnx_choice)
         except Exception as error:
             logger.warning("Startup ONNX selection unavailable; using CPU recommendation rules: {}", error)
             warnings.append(f"ONNX selection unavailable: {error}")
