@@ -4,7 +4,7 @@ All examples target MinerU 4.x and run inside an activated virtual environment.
 
 | Installation | Includes | Use case |
 | --- | --- | --- |
-| `mineru>=4.0,<5` | ONNX, llama.cpp, WebUI, SDK/API; Torch is automatic on Apple Silicon | Native documents, CPU small models, llama.cpp, or an existing service |
+| `mineru>=4.0,<5` | ONNX, llama.cpp, WebUI, SDK/API; Torch is automatic on Apple Silicon | Native documents, ONNX small models (automatic GPU/CPU selection in 4.1), llama.cpp, or an existing service |
 | `mineru[torch]>=4.0,<5` | Base package + Torch, Torchvision, Transformers, Accelerate | Torch small models with an independently selected VLM engine |
 | `mineru[full]>=4.0,<5` | Torch extra + vLLM on Linux / LMDeploy on Windows | Higher-throughput serving on supported devices |
 

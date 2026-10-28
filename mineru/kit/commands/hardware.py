@@ -37,6 +37,15 @@ def render_detection(data: dict[str, Any]) -> str:
         f"实际设备：{data['device']}",
         f"校准状态：{calibration['status']} ({calibration['reason']})",
     ]
+    memory = data.get("gpu_memory")
+    if memory is not None:
+        lines.extend(
+            [
+                f"GPU 内存设备：{memory['device']}，身份：{_value(memory['identity'])}",
+                f"GPU 内存：{_value(memory['memory_bytes'])} bytes，口径：{memory['kind']}，来源：{memory['source']}",
+                "Standard/Advanced 内存门槛：5.5 GiB (5905580032 bytes)",
+            ]
+        )
     lines.extend(f"提示：{warning}" for warning in data.get("warnings", []))
     return "\n".join(lines)
 

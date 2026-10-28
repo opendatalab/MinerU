@@ -1,6 +1,6 @@
 # V1 HTTP API
 
-Tasks 是唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](../../next/api/tasks.md)。
+4.1 使用 Tasks 作为唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](tasks.md)。
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
@@ -14,7 +14,7 @@ Tasks 与 Files JSON 统一使用 `file_name`；旧字段 `manifest`、`filename
 
 向 `POST /v1/tasks` 提交 `application/json`：files 每项包含逻辑 file_name、上传文件的 bytes 和可选 sha256sum/page_range，也可提供 URL（bytes 可省略）。禁止传入 client_file_id 或 file_id；服务端生成唯一 file_id，按输入顺序返回，并在上传、查询、取消和产物下载中保持不变。解析选项为 tier/ocr_mode/page_range/output_formats。
 
-创建返回稳定的 `task_id`；每个文件的 `upload` 为待上传描述或 `null`，包含 `url/headers/expires_at`。客户端固定使用 PUT 上传缺失文件，使用响应指定的 PUT 地址及请求头，无需 complete。每个文件就绪即独立排队，其他文件等待上传不会阻塞它。
+创建返回稳定的 `task_id`；仅需要客户端上传的文件携带 `upload`，包含 `url/headers/expires_at`，其他文件省略该字段。客户端固定使用 PUT 上传缺失文件，使用响应指定的 PUT 地址及请求头，无需 complete。每个文件就绪即独立排队，其他文件等待上传不会阻塞它。
 同机也使用相同流程。SDK 总是计算 hash；已完成上传的有效缓存可以免传。并发首次请求允许重复传输，但源字节去重。缓存默认保留 24 小时、每 5 分钟扫描，正在执行及传输的引用受保护。
 
 上传链接固定有效一小时，查询不会续期。截止前已受理上传可继续完成。中断后先查询，进入 pending/running/completed 后跳过上传；waiting-file 且 upload 省略 时只等待，有有效上传目标时才有限重试。过期文件进入 failed，错误码为 upload_expired。
@@ -43,6 +43,6 @@ ModelJson 仅在解析内部使用，API、SDK、CLI 和 Gradio 均不输出模�
 使用相同文件顺序设置 `TASK_ID` 可继续原任务。创建请求不自动重试；`MAX_POLLS/POLL_INTERVAL` 限制轮询，`CONNECT_TIMEOUT/REQUEST_TIMEOUT` 限制单次传输。
 退出码为 0（全部成功）、2（部分成功）、1（失败或取消）、124（轮询耗尽）。已下载产物保留。
 
-旧独立上传和 Jobs 接口已移除，客户端与服务端需协调升级，详见 [迁移说明](../../next/api/changes.md)。需要同步单文件返回时使用独立的 [file_parse 包装服务](../../next/api/file-parse.md)。
+旧独立上传和 Jobs 接口已移除，客户端与服务端需协调升级，详见 [4.1 迁移说明](../reference/migration_4_1.md)。需要同步单文件返回时使用独立的 [file-parse 包装服务](file_parse.md)。
 
 POST 创建、GET 详情、POST cancel 和本地 PUT 分别返回创建回执、查询详情、逐文件取消结果和上传确认；Tasks 成功响应省略 null，但保留零值和空集合。POST cancel 取消未完成文件，成功文件的产物仍可直接下载。

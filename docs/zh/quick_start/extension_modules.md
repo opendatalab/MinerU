@@ -4,7 +4,7 @@
 
 | 安装方式 | 包含能力 | 适用场景 |
 | --- | --- | --- |
-| `mineru>=4.0,<5` | ONNX、llama.cpp、WebUI、SDK/API；Apple Silicon 自动包含 Torch | 原生文档、CPU 小模型、llama.cpp 或连接已有服务 |
+| `mineru>=4.0,<5` | ONNX、llama.cpp、WebUI、SDK/API；Apple Silicon 自动包含 Torch | 原生文档、ONNX 小模型（4.1 支持自动 GPU/CPU 选型）、llama.cpp 或连接已有服务 |
 | `mineru[torch]>=4.0,<5` | 基础包 + Torch、Torchvision、Transformers、Accelerate | 使用 Torch 小模型，VLM 引擎独立选择 |
 | `mineru[full]>=4.0,<5` | Torch extra + Linux 上的 vLLM / Windows 上的 LMDeploy | 支持设备上的高吞吐部署 |
 

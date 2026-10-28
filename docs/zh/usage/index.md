@@ -7,6 +7,9 @@
 - [档位与运行环境](tiers.md)
 - [Python SDK](sdk_api.md)
 - [V1 HTTP API](http_api.md)
+- [Tasks 异步接口](tasks.md)
+- [file-parse 同步接口](file_parse.md)
+- [4.0.x → 4.1 迁移](../reference/migration_4_1.md)
 - [3.x → 4.0 迁移](../reference/migration_4.md)
 - 本地部署
     * [基础使用](./quick_usage.md) - 快速上手和基本使用

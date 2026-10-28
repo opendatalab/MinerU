@@ -7,6 +7,9 @@ This section provides comprehensive usage instructions for the project. We will 
 - [Tiers and runtimes](tiers.md)
 - [Python SDK](sdk_api.md)
 - [V1 HTTP API](http_api.md)
+- [Tasks API](tasks.md)
+- [Synchronous file-parse API](file_parse.md)
+- [4.0.x → 4.1 migration](../reference/migration_4_1.md)
 - [3.x → 4.0 migration](../reference/migration_4.md)
 - [Legacy platforms (MinerU <4)](compatibility.md)
 

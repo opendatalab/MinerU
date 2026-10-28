@@ -1,6 +1,6 @@
 # Migrating from 3.x to 4.0
 
-4.0 changes command entrypoints, dependency groups, configuration, and APIs. Validate in an isolated environment before migrating production callers. AMD and vendor accelerators stay on `mineru<4` using the [legacy guides](../usage/compatibility.md).
+4.0 changes command entrypoints, dependency groups, configuration, and APIs. Validate in an isolated environment before migrating production callers. For 4.1, also apply its [HTTP and runtime migration steps](migration_4_1.md). [Legacy guides](../usage/compatibility.md) for AMD-specific software stacks and vendor accelerators remain scoped to `mineru<4`; see [Tiers and runtimes](../usage/tiers.md) for new 4.1 Windows/Linux ONNX support.
 
 ## Entrypoints and installation
 
@@ -10,7 +10,7 @@
 | Directory batch conversion | `mineru-kit parse ./documents -o ./output --format zip` |
 | `mineru-gradio` | `mineru-webui` / `mineru-kit webui` |
 | Model download option `-m all` | `mineru-kit models download --tier standard` |
-| Old HTTP parsing calls | V1 uploads → parse jobs → output files |
+| Old HTTP parsing calls | 4.1: V1 Tasks JSON manifest → upload missing files → per-file results; see [Tasks](../usage/tasks.md) |
 | Extras such as `mineru[core]` and `mineru[pipeline]` | Base package, `mineru[torch]`, or `mineru[full]` |
 
 Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name when needed. The package requires Python `>=3.11,<3.15`; optional engines also require suitable wheels and drivers. Stop services in the original environment before upgrading and check `mineru version --json` afterwards. Do not replace legacy platform images or installation commands with mainline 4.0 instructions.
@@ -60,7 +60,7 @@ Restart relevant services after configuration changes, and download and verify m
 
 ## API and WebUI
 
-Asynchronous parsing uses `/v1/tasks` JSON manifests, optional uploads and per-file result URLs. Upgrade the SDK and WebUI together with the service. Files downloads and the separate synchronous wrapper remain available; loopback callers also use hash preflight. See [HTTP API](../usage/http_api.md).
+4.1 asynchronous parsing uses `/v1/tasks` JSON manifests, optional uploads, and per-file result URLs. Upgrade the SDK and WebUI together with the service. Files downloads remain available; synchronous single-file calls use the standalone [file-parse service](../usage/file_parse.md). Loopback callers also use hash preflight. See [HTTP API](../usage/http_api.md) and [4.1 migration](migration_4_1.md).
 
 Existing Gradio clients also need to follow the new event interface; renaming the command alone is insufficient. Retained third-party integration guides describe their original adaptations and do not imply V1 compatibility.
 

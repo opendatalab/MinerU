@@ -43,7 +43,20 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 </div>
 
-# MinerU 4.0
+# MinerU
+
+## 产品概览
+
+### MinerU 4.1
+
+- **主流平台与 GPU 自动加速**：Windows、Linux 新增面向 Intel、AMD、NVIDIA 兼容 GPU 的 ONNX 自动加速，结合 macOS 已有的 MPS/Metal 路径，进一步简化跨平台部署。自动识别设备、优先选择独显，并根据集显性能与兼容性选择 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
+- **统一 Tasks 异步接口**：以 `/v1/tasks` 替换旧 `/v1/uploads`、`/v1/parse/jobs` 工作流，支持文件清单、URL 输入、缓存免传、逐文件执行与结果下载，并统一状态查询和取消操作。此次包含破坏性接口变更，升级前请查阅 [Tasks 接口详情](https://opendatalab.github.io/MinerU/zh/usage/tasks/)。
+- **新增可恢复的同步解析服务**：独立的 `file-parse-server` 提供 `/v1/file_parse`，上传单个文件即可等待并获取附件；等待超时后可继续查询，并通过请求 ID 恢复已知任务。详见 [file-parse 接口说明](https://opendatalab.github.io/MinerU/zh/usage/file_parse/)。
+- **更清晰的硬件诊断与档位推荐**：新增 `mineru-kit hardware detect` 和 `hardware info`，帮助选择合适的服务档位，并查看设备、运行环境与校准信息。
+
+**升级提示：** Python 支持范围调整为 **3.11–3.14**。使用旧 HTTP 接口的部署，请协调升级服务端、Router、SDK 和客户端。具体升级步骤见 [4.1 迁移说明](https://opendatalab.github.io/MinerU/zh/reference/migration_4_1/)。
+
+### MinerU 4.0
 
 MinerU 4.0 将多格式文档解析、文档库和服务工具整合到统一工作流，面向文档转换、应用集成和 Agent 阅读。
 
@@ -68,7 +81,7 @@ Install or update the global `mineru` skill. First, run `npx skills add opendata
 
 ### 手动安装
 
-Python `>=3.11,<3.15`，在虚拟环境中安装 4.0 正式版：
+Python `>=3.11,<3.15`，在虚拟环境中安装最新 4.x 正式版：
 
 ```bash
 pip install uv
@@ -86,7 +99,11 @@ mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
-默认安装即可开箱即用：小模型使用 ONNX CPU 推理，VLM 以 llama.cpp Vulkan 模式运行，在绝大多数设备上都有良好的兼容性。如果设备配备 NVIDIA GPU，可安装 `mineru[full]>=4.0` 获得最佳吞吐；注意 Windows 的 GPU 版本 torch 需要单独安装，而 macOS 默认安装已是最佳吞吐包，无需额外安装 `[full]`。其他非 NVIDIA 设备需自行安装与硬件匹配的加速版 torch 及 vllm/lmdeploy，才能获得最佳推理速度/吞吐。
+默认安装即可在 Windows、Linux 和 macOS 上使用 CPU 运行，也支持 Intel、AMD、NVIDIA 和 Apple Silicon 的兼容独显或集显加速推理。
+
+> [!TIP]
+> 1. Linux 和 Windows 上的 NVIDIA 高吞吐部署可选择 `mineru[full]`。
+> 2. 在 Windows 上使用 `mineru[full]` 进行 NVIDIA 高吞吐部署时，需单独安装 GPU 版 `torch`。
 
 文档库与 Agent 阅读使用 `mineru parse document.pdf --json`；PDF 默认前 10 页，后续按返回的 locator 继续。无状态转换使用 `mineru-kit parse`，默认全部页。
 

@@ -43,7 +43,20 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 </div>
 
-# MinerU 4.0
+# MinerU
+
+## Overview
+
+### MinerU 4.1
+
+- **Automatic acceleration across major platforms and GPUs:** Windows and Linux gain automatic ONNX acceleration for compatible Intel, AMD, and NVIDIA GPUs, alongside existing MPS/Metal support on macOS. MinerU detects devices, prioritizes discrete GPUs, and selects GPU or CPU execution for integrated graphics based on performance and compatibility. Representative core inference workloads run at approximately **2–3× CPU speed**.
+- **A unified asynchronous Tasks API:** `/v1/tasks` replaces the previous `/v1/uploads` and `/v1/parse/jobs` workflow, with file manifests, URL inputs, cached-upload reuse, per-file execution and downloads, status queries, and cancellation. This is a breaking API update; review the [Tasks API reference](https://opendatalab.github.io/MinerU/usage/tasks/) before upgrading.
+- **Recoverable synchronous file parsing:** The standalone `file-parse-server` provides `/v1/file_parse` for single-file uploads and attachment responses. Requests remain queryable after a wait timeout, and request IDs support recovery of known tasks. See the [file-parse API reference](https://opendatalab.github.io/MinerU/usage/file_parse/).
+- **Hardware diagnostics and tier recommendations:** New `mineru-kit hardware detect` and `hardware info` commands help select a suitable service tier and inspect devices, runtime versions, and calibration information.
+
+**Upgrade note:** Supported Python versions are now **3.11–3.14**. Deployments using the previous HTTP APIs should upgrade servers, Routers, SDKs, and clients together. See the [4.1 migration guide](https://opendatalab.github.io/MinerU/reference/migration_4_1/) for upgrade steps.
+
+### MinerU 4.0
 
 MinerU 4.0 brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
 
@@ -68,7 +81,7 @@ Install or update the global `mineru` skill. First, run `npx skills add opendata
 
 ### Install Manually
 
-Python `>=3.11,<3.15`. Install MinerU 4.0 stable in a virtual environment:
+Python `>=3.11,<3.15`. Install the latest stable 4.x release in a virtual environment:
 
 ```bash
 pip install uv
@@ -85,6 +98,12 @@ uv pip install -U "mineru>=4.0,<5"
 mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
+
+The default installation supports CPU inference on Windows, Linux, and macOS, as well as accelerated inference on compatible Intel, AMD, NVIDIA, and Apple Silicon GPUs, including integrated graphics.
+
+> [!TIP]
+> 1. For high-throughput NVIDIA deployments on Linux and Windows, use `mineru[full]`.
+> 2. On Windows, NVIDIA deployments using `mineru[full]` require a separately installed GPU-enabled build of `torch`.
 
 ### Python SDK
 
@@ -115,8 +134,6 @@ print(content.content)
 `DoclibClient` also covers search, watched directories, locators for
 page/block continuation, and result invalidation — see
 `help(DoclibClient)` or the [SDK and API guide](https://opendatalab.github.io/MinerU/usage/sdk_api/).
-
-The default install works out of the box: small models run ONNX CPU inference and the VLM runs llama.cpp in Vulkan mode, which offers good compatibility on the vast majority of devices. If the device has an NVIDIA GPU, install `mineru[full]>=4.0` for the best throughput. Note that on Windows the GPU build of torch must be installed separately, while on macOS the default install is already the best-throughput package and `[full]` is not needed. On other non-NVIDIA devices, you need to install an accelerated build of torch plus vllm/lmdeploy yourself to get the best inference speed and throughput.
 
 For the document library and agent reading, use `mineru parse document.pdf --json`. It defaults to the first 10 PDF pages; continue with returned locators. Stateless `mineru-kit parse` defaults to all pages.
 

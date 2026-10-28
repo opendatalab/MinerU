@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import os
 import sys
 import threading
+from typing import Any
 
 from .gpu import GpuClassification, GpuIdentity, classify_vulkan_gpu, with_gpu_classification
 
@@ -29,6 +30,9 @@ class VulkanDevice(GpuClassification):
     device_id: int
     name: str
     index: int = -1
+    dedicated_memory_bytes: int | None = None
+    memory_budget_bytes: int | None = None
+    memory_error: str | None = None
 
     @property
     def identity(self) -> GpuIdentity:
@@ -79,13 +83,78 @@ class _PropertiesStorage(ct.Union):
     _fields_ = [("prefix", _PropertiesPrefix), ("storage", ct.c_uint64 * 128)]
 
 
+class _MemoryType(ct.Structure):
+    _fields_ = [("flags", ct.c_uint32), ("heap_index", ct.c_uint32)]
+
+
+class _MemoryHeap(ct.Structure):
+    _fields_ = [("size", ct.c_uint64), ("flags", ct.c_uint32)]
+
+
+class _MemoryProperties(ct.Structure):
+    _fields_ = [
+        ("type_count", ct.c_uint32),
+        ("types", _MemoryType * 32),
+        ("heap_count", ct.c_uint32),
+        ("heaps", _MemoryHeap * 16),
+    ]
+
+
+class _MemoryProperties2(ct.Structure):
+    _fields_ = [("sType", ct.c_uint32), ("pNext", ct.c_void_p), ("memory", _MemoryProperties)]
+
+
+class _MemoryBudget(ct.Structure):
+    _fields_ = [
+        ("sType", ct.c_uint32),
+        ("pNext", ct.c_void_p),
+        ("budget", ct.c_uint64 * 16),
+        ("usage", ct.c_uint64 * 16),
+    ]
+
+
+class _ExtensionProperties(ct.Structure):
+    _fields_ = [("name", ct.c_char * 256), ("version", ct.c_uint32)]
+
+
+def _device_memory(library: Any, handle: ct.c_void_p, *, discrete: bool) -> tuple[int | None, int | None]:
+    """按唯一设备的本地堆读取容量和预算；共享内存无预算扩展时保持未知。"""
+    properties = library.vkGetPhysicalDeviceMemoryProperties
+    properties.argtypes, properties.restype = [ct.c_void_p, ct.POINTER(_MemoryProperties)], None
+    memory = _MemoryProperties()
+    properties(handle, ct.byref(memory))
+    local = [index for index in range(min(memory.heap_count, 16)) if memory.heaps[index].flags & 1]
+    total = sum(memory.heaps[index].size for index in local) or None
+    if discrete:
+        return total, None
+    extensions = library.vkEnumerateDeviceExtensionProperties
+    extensions.argtypes = [ct.c_void_p, ct.c_char_p, ct.POINTER(ct.c_uint32), ct.POINTER(_ExtensionProperties)]
+    extensions.restype = ct.c_int32
+    count = ct.c_uint32()
+    _check(extensions(handle, None, ct.byref(count), None), "count memory extensions")
+    rows = (_ExtensionProperties * count.value)()
+    _check(extensions(handle, None, ct.byref(count), rows), "read memory extensions")
+    if not any(row.name == b"VK_EXT_memory_budget" for row in rows):
+        return None, None
+    budget = _MemoryBudget(sType=1000237000)
+    info = _MemoryProperties2(sType=1000059006, pNext=ct.cast(ct.pointer(budget), ct.c_void_p))
+    properties2 = library.vkGetPhysicalDeviceMemoryProperties2
+    properties2.argtypes, properties2.restype = [ct.c_void_p, ct.POINTER(_MemoryProperties2)], None
+    properties2(handle, ct.byref(info))
+    # 预算为进程可用上限，不减去当前用量；每个物理堆只计一次。
+    local = [index for index in range(min(info.memory.heap_count, 16)) if info.memory.heaps[index].flags & 1]
+    if not local or any(budget.budget[index] == 0 for index in local):
+        return None, None
+    return None, sum(min(budget.budget[index], info.memory.heaps[index].size) for index in local)
+
+
 def _check(result: int, operation: str) -> None:
     if result != 0:
         raise RuntimeError(f"Vulkan {operation} failed ({result})")
 
 
-def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
-    """Enumerate GPUs visible to the loader, honoring the user's ICD/layer filters."""
+def enumerate_vulkan_devices(*, include_memory: bool = False) -> tuple[VulkanDevice, ...]:
+    """遵守 ICD 和设备过滤枚举 GPU；仅推荐容量时额外读取本地堆或共享预算。"""
     library = ct.WinDLL("vulkan-1.dll") if sys.platform == "win32" else ct.CDLL("libvulkan.so.1")
     create = library.vkCreateInstance
     create.argtypes = [ct.POINTER(_InstanceCreateInfo), ct.c_void_p, ct.POINTER(ct.c_void_p)]
@@ -118,6 +187,12 @@ def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
                 properties(handle, ct.byref(storage))
                 value = storage.prefix
                 if value.deviceType in (0, 1, 2, 3):  # 保留未知原生类型，由运行后端过滤可用性；排除软件 CPU。
+                    total, budget, memory_error = None, None, None
+                    if include_memory:
+                        try:
+                            total, budget = _device_memory(library, handle, discrete=value.deviceType == 2)
+                        except Exception as error:
+                            memory_error = str(error)
                     result.append(
                         with_gpu_classification(
                             VulkanDevice(
@@ -125,6 +200,9 @@ def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
                                 value.deviceID,
                                 value.deviceName.decode("utf-8", errors="replace"),
                                 index,
+                                total,
+                                budget,
+                                memory_error,
                             ),
                             classify_vulkan_gpu(value.deviceType),
                         )
