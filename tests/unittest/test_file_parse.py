@@ -30,6 +30,7 @@ from mineru.kit.file_parse.client import TaskClient
 from mineru.kit.file_parse.models import ParseOptions, Record, fingerprint
 from mineru.kit.file_parse.settings import origin
 from mineru.kit.file_parse.store import RecordStore
+from mineru.types import Tier
 
 
 def artifact_bytes(formats: list[str]) -> bytes:
@@ -127,6 +128,8 @@ class Upstream:
             }
             if self.create_failure == "lost":
                 raise httpx.ReadError("creation response lost")
+            if self.create_failure == "timeout":
+                raise httpx.ReadTimeout("creation response timed out")
             payload = self.payload(task_id)
             if self.create_failure == "malformed":
                 payload["task_id"] = None
@@ -218,6 +221,20 @@ FORMATS = [
 ]
 
 
+@pytest.mark.parametrize("tier", [None, "flash", "basic", "standard", "advanced"])
+def test_file_parse_forwards_tier_only_when_provided(tmp_path: Path, tier: str | None) -> None:
+    """同步包装层不猜测上游默认档位，显式值原样进入 Tasks 请求。"""
+    upstream = Upstream()
+    with TestClient(application(tmp_path, upstream)) as client:
+        response = submit(client, **({"tier": tier} if tier is not None else {}))
+        assert response.status_code == 200, response.text
+    options = upstream.tasks["task_1"]["options"]
+    if tier is None:
+        assert "tier" not in options
+    else:
+        assert options["tier"] == tier
+
+
 @pytest.mark.parametrize("formats", FORMATS)
 def test_formats_are_returned_unchanged(tmp_path: Path, formats: list[str]) -> None:
     """覆盖全部十五种格式组合及附件字节、文件名、MIME 和临时文件释放。"""
@@ -297,7 +314,7 @@ def test_wait_budget_excludes_storage_notification_delay(tmp_path: Path) -> None
     assert upstream.uploads == 1
 
 
-@pytest.mark.parametrize("failure", ["lost", "malformed"])
+@pytest.mark.parametrize("failure", ["lost", "timeout", "malformed"])
 def test_unknown_creation_is_never_replayed(tmp_path: Path, failure: str) -> None:
     """上游创建成功但响应丢失或身份缺失时，重试和重启都不能再次 POST。"""
     upstream = Upstream()
@@ -312,6 +329,94 @@ def test_unknown_creation_is_never_replayed(tmp_path: Path, failure: str) -> Non
         assert client.get("/v1/file_parse/request_1").json()["status"] == "submission_unknown"
         assert submit(client).status_code in {409, 502}
     assert len(upstream.tasks) == 1
+
+
+@pytest.mark.parametrize("deployment", ["api", "router"])
+@pytest.mark.parametrize(
+    "tiers,tier,code,upstream_status",
+    [
+        (("advanced",), None, "quality_tier_unavailable", 503),
+        (("flash",), "basic", "invalid_request", 400),
+    ],
+)
+def test_real_task_tier_rejection_is_failed_and_not_replayed(
+    tmp_path: Path, deployment: str, tiers: tuple[Tier, ...], tier: Tier | None, code: str, upstream_status: int
+) -> None:
+    """真实 Tasks 拒单保留错误原因，包装层重复提交和重启都不能再次创建任务。"""
+    from test_task_tiers import _deployment
+
+    async def scenario() -> None:
+        """同一事件循环驱动真实 API、Router 和包装服务，观察上游提交次数与持久状态。"""
+        async with _deployment(tmp_path / "upstream", deployment, {"worker": tiers}) as (_client, upstream, apps, _calls):
+            transport = httpx.ASGITransport(app=upstream)
+            submitted: list[httpx.Request] = []
+
+            async def handle(request: httpx.Request) -> httpx.Response:
+                """记录包装层实际发送的请求，错误正文仍由真实 Tasks 生成。"""
+                submitted.append(request)
+                return await transport.handle_async_request(request)
+
+            fields = [("file", ("report.pdf", b"source")), ("request_id", (None, "rejected"))]
+            if tier is not None:
+                fields.append(("tier", (None, tier)))
+            settings = FileParseSettings("http://upstream", state_dir=tmp_path / "wrapper", poll_interval=0.01)
+            for _restart in range(2):
+                app = create_app(settings, transport=httpx.MockTransport(handle))
+                async with app.router.lifespan_context(app):
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://wrapper") as client:
+                        for _repeat in range(2):
+                            response = await client.post("/v1/file_parse", files=fields)
+                            assert response.status_code == 502, response.text
+                            payload = response.json()
+                            assert payload["status"] == "failed" and payload["task_id"] is None
+                            assert payload["error"]["code"] == code
+                            assert payload["error"]["upstream_status"] == upstream_status
+                            assert payload["error"]["message"] != "Task creation outcome is unknown; not resubmitting"
+                        response = await client.get("/v1/file_parse/rejected")
+                        assert response.status_code == 200
+                        assert response.json()["status"] == "failed"
+                        assert response.json()["error"]["code"] == code
+                        assert not list(app.state.service.store.sources.iterdir())
+            assert len(submitted) == 1 and submitted[0].method == "POST"
+            assert all(not app.state.task_store._records for app in apps)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "status,payload",
+    [
+        (503, b"<html>Service unavailable</html>"),
+        (503, {"error": {"type": "api_error", "code": "temporary", "message": "Try later"}}),
+        (503, {"error": {"code": "quality_tier_unavailable", "message": "Missing required error type"}}),
+        (
+            503,
+            {"task_id": "maybe-created", "error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "x"}},
+        ),
+        (500, {"error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "Unexpected status"}}),
+        (408, {"error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "Timed out"}}),
+    ],
+)
+def test_ambiguous_creation_errors_remain_unknown(tmp_path: Path, status: int, payload: bytes | dict[str, Any]) -> None:
+    """未列为明确拒单的状态或畸形错误信封保持未知，不能靠错误码字符串判断已拒绝。"""
+    calls: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        """模拟代理错误或矛盾响应，记录是否发生意外重放。"""
+        calls.append(request)
+        assert request.method == "POST"
+        return httpx.Response(status, content=payload) if isinstance(payload, bytes) else httpx.Response(status, json=payload)
+
+    for _restart in range(2):
+        app = create_app(FileParseSettings("https://api.test", state_dir=tmp_path), transport=httpx.MockTransport(handle))
+        with TestClient(app) as client:
+            for _repeat in range(2):
+                response = submit(client)
+                assert response.status_code == 502
+                assert response.json()["status"] == "submission_unknown"
+                assert response.json()["error"]["code"] == "submission_unknown"
+            assert client.get("/v1/file_parse/request_1").json()["status"] == "submission_unknown"
+    assert len(calls) == 1
 
 
 def test_auth_failure_cleans_source_without_retry(tmp_path: Path) -> None:
@@ -651,6 +756,8 @@ def test_late_query_cannot_replace_reused_request_id(tmp_path: Path) -> None:
         {"output_formats": ["markdown"]},
         {"output_formats": [""]},
         {"tier": "wrong"},
+        {"tier": ""},
+        {"tier": "null"},
         {"ocr_mode": "wrong"},
         {"api_url": "https://different.test"},
     ],
@@ -691,6 +798,11 @@ def test_openapi_and_light_imports(tmp_path: Path) -> None:
     request = post["requestBody"]["content"]["multipart/form-data"]["schema"]
     assert request["properties"]["wait_timeout"]["maximum"] == 3600
     assert request["properties"]["output_formats"]["items"]["enum"] == ["default", "docx", "html", "latex"]
+    assert "tier" not in request["required"]
+    tier = request["properties"]["tier"]
+    assert tier["type"] == "string" and tier["enum"] == ["flash", "basic", "standard", "advanced"]
+    assert {"anyOf", "nullable", "default"}.isdisjoint(tier)
+    assert "Omit this multipart field" in tier["description"]
     assert "application/zip" in post["responses"]["200"]["content"]
     result = subprocess.run(
         [

@@ -65,7 +65,7 @@ def test_url_preparation_does_not_block_ready_files_or_use_upload_expiry(
             closed.set()
 
     _install_downloads(monkeypatch, lambda _: httpx.Response(200, stream=Source()))
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", concurrency=1)
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), concurrency=1)
     try:
         with TestClient(app) as client:
             remote = _url_task(client)
@@ -116,7 +116,7 @@ def test_ready_url_inputs_wait_in_pending_with_bounded_preparation(
 
     monkeypatch.setattr(api_server, "parse_async", infer)
     _install_downloads(monkeypatch, download)
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", concurrency=1)
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), concurrency=1)
     try:
         with TestClient(app) as client:
             blocking = [("blocker.html", b"<html><body>blocker</body></html>")]
@@ -167,7 +167,7 @@ def test_file_duration_includes_preparation_but_excludes_queue_wait(tmp_path: Pa
 
     _install_downloads(monkeypatch, download)
     monkeypatch.setattr(api_server, "parse_async", infer)
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", concurrency=1)
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), concurrency=1)
     with TestClient(app) as client:
         client.portal.call(app.state.execution_store._semaphore.acquire)
         task = _url_task(client)

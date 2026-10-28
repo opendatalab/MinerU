@@ -23,6 +23,7 @@ from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ...task_types import TASK_OUTPUT_FORMATS
+from ...types import TIERS
 from .models import GatewayError, ParseOptions, Record
 from .service import FileParseService
 from .settings import FileParseSettings
@@ -96,6 +97,16 @@ def _request_schema() -> dict[str, Any]:
             "wait_timeout": {"type": "integer", "minimum": 0, "maximum": 3600, "default": 3600},
         }
     )
+    properties["tier"] = {
+        "title": "Tier",
+        "type": "string",
+        "enum": list(TIERS),
+        "description": (
+            "Optional PDF/image tier. Omit this multipart field to let the server choose standard, basic, then flash; "
+            "advanced requires an explicit request. Explicit unsupported PDF/image tiers are rejected. "
+            "Supported native documents always use flash. Empty strings and the literal string 'null' are invalid."
+        ),
+    }
     properties["output_formats"] = {
         "type": "array",
         "items": {"type": "string", "enum": list(TASK_OUTPUT_FORMATS)},

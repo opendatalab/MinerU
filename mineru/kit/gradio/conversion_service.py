@@ -144,14 +144,14 @@ class ConversionService:
         suffix = source_path.suffix.lower().lstrip(".")
         if suffix not in PARSEABLE_EXTENSIONS:
             raise ValueError(f"unsupported file type '.{suffix}'")
-        position = inputs.tier_position
-        if isinstance(position, bool) or position not in range(len(self.tier_choices)):
-            raise ValueError("Invalid tier slider position")
-        selected_tier = self.tier_choices[int(position)]
         if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
-            if "flash" not in self.tier_choices:
-                raise ValueError("tier_unavailable: 该格式仅支持 Flash，当前服务不可用")
-            selected_tier = "flash"
+            # 原生文档独立于 PDF/图片滑块，隐藏控件的旧值不能影响提交。
+            selected_tier: Tier = "flash"
+        else:
+            position = inputs.tier_position
+            if isinstance(position, bool) or position not in range(len(self.tier_choices)):
+                raise ValueError("Invalid tier slider position")
+            selected_tier = self.tier_choices[int(position)]
         return _ValidatedInput(source_path, suffix, selected_tier)
 
     async def _convert(

@@ -13,6 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import llama_device as policy
 from mineru.model.runtime.llama_probe import LlamaDevice, PROBE_MARKER
 from mineru.model.runtime.onnx_device import OnnxSelection
@@ -22,7 +23,16 @@ from mineru.model.runtime.windows_gpu import GpuAdapter
 
 def gpu(vendor: int, chip: int, *, integrated: bool = True, index: int = 0) -> LlamaDevice:
     """构造有稳定物理索引的原生设备。"""
-    return LlamaDevice(f"Vulkan{index}", f"GPU {vendor:04x}:{chip:04x}", "vulkan", integrated, vendor, chip, index)
+    return LlamaDevice(
+        f"Vulkan{index}",
+        f"GPU {vendor:04x}:{chip:04x}",
+        "vulkan",
+        vendor,
+        chip,
+        index,
+        kind="integrated" if integrated else "discrete",
+        kind_source="vulkan",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +40,9 @@ def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
     """单测不触发真实设备探测、模型加载或持久化校准。"""
     monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="linux", executable="python"))
     monkeypatch.setattr(policy, "_runtime_environment", None)
+    from mineru.model.runtime import device
+
+    monkeypatch.setattr(device, "resolve_small_model_backend", lambda: "onnx")
     for name in (*policy._BACKEND_ENV, "MINERU_LLAMA_CPP_BACKEND"):
         monkeypatch.delenv(name, raising=False)
 
@@ -125,7 +138,11 @@ def test_integrated_only_reuses_platform_decision(
     monkeypatch.setattr(policy.sys, "platform", platform)
     device = gpu(0x8086, 0x7D51)
     inventory(monkeypatch, (device,))
-    adapter = WebGPUDevice(0x8086, 0x7D51) if backend == "webgpu" else GpuAdapter(0, "luid", "Arc", 0x8086, 0x7D51, True, 0)
+    adapter = (
+        WebGPUDevice(0x8086, 0x7D51)
+        if backend == "webgpu"
+        else with_gpu_classification(GpuAdapter(0, "luid", "Arc", 0x8086, 0x7D51, 0), classify_d3d12_gpu(True))
+    )
     calibrate = onnx(monkeypatch, OnnxSelection(decision, adapter if decision == "gpu" else None, "rec_calibration", backend))
     result = policy.resolve_llama_device()
     assert result.device == decision
@@ -149,6 +166,17 @@ def test_failed_or_mismatched_calibration_cannot_select_gpu(monkeypatch: pytest.
     assert policy.resolve_llama_device().device == "cpu"
     onnx(monkeypatch, OnnxSelection("gpu", WebGPUDevice(0x10DE, 0x2489), "rec_calibration", "webgpu"))
     assert policy.resolve_llama_device().reason == "onnx_gpu_identity_unconfirmed"
+
+
+def test_unselected_backend_discrete_does_not_exempt_integrated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """其他后端的独显不在自动候选中时，实际选中的 Vulkan 集显仍需复用校准决策。"""
+    unavailable = replace(gpu(0x10DE, 1, integrated=False), backend="other")
+    integrated = gpu(0x1002, 0x150E, index=1)
+    inventory(monkeypatch, (unavailable, integrated))
+    calibrate = onnx(monkeypatch, OnnxSelection(reason="configured_cpu"))
+    result = policy.resolve_llama_device()
+    assert result.device == "cpu" and result.reason == "onnx_configured_cpu"
+    calibrate.assert_called_once()
 
 
 def test_no_gpu_and_explicit_cpu_do_not_calibrate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,7 +273,8 @@ def test_probe_protocol_uses_native_inventory_without_parsing_log_names(monkeypa
             "name": "Vulkan0",
             "description": "device",
             "backend": "vulkan",
-            "integrated": True,
+            "kind": "integrated",
+            "kind_source": "vulkan",
             "vendor_id": 0x8086,
             "device_id": 0x4680,
             "vulkan_index": 1,

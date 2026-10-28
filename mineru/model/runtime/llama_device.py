@@ -16,6 +16,7 @@ from typing import Literal
 from loguru import logger
 
 from .intel_gpu import INTEL_VENDOR_ID, intel_architecture
+from .gpu import GPU_KIND_ORDER, is_discrete_gpu, match_gpu_identities
 from .llama_probe import LlamaDevice, PROBE_MARKER
 from .vulkan import vulkan_environment_lock
 
@@ -79,19 +80,19 @@ def needs_serialized_submissions(device: LlamaDevice) -> bool:
 
 def _preferred(devices: tuple[LlamaDevice, ...], backend: str) -> tuple[LlamaDevice, ...]:
     """与包内 Engine 的独显优先、单后端多设备规则保持一致。"""
-    for integrated in (False, True):
+    for kind in GPU_KIND_ORDER:
         for name in ("metal", "vulkan"):
             if backend not in ("auto", name):
                 continue
-            group = tuple(d for d in devices if d.integrated == integrated and d.backend == name)
+            group = tuple(d for d in devices if d.kind == kind and d.backend == name)
             if group:
                 return group
     return ()
 
 
-def _identity(device: LlamaDevice) -> tuple[str, bool, int | None, int | None]:
+def _identity(device: LlamaDevice) -> tuple[str, str, int | None, int | None, str]:
     """不使用可能因可见设备过滤而变化的 VulkanN 名称作为物理身份。"""
-    return device.description, device.integrated, device.vendor_id, device.device_id
+    return device.description, device.kind, device.vendor_id, device.device_id, device.luid or ""
 
 
 def _bind(selection: LlamaSelection) -> LlamaSelection:
@@ -122,7 +123,7 @@ def resolve_llama_device(
     backend: str | None = None,
     allow_download: bool = True,
 ) -> LlamaSelection:
-    """自动模式只在没有原生可用独显时复用 ONNX；显式 CPU/GPU 设置优先。"""
+    """自动集显按小模型后端复用 Torch 可用性或 ONNX 选型；显式设备设置优先。"""
     with _lock:
         selection = _resolve(
             n_gpu_layers=n_gpu_layers, device_names=device_names, backend=backend, allow_download=allow_download
@@ -161,18 +162,25 @@ def _resolve(
         return LlamaSelection("cpu", reason="no_gpu")
     manual = requested != "auto" or n_gpu_layers is not None or device_names is not None
     reason = "explicit_gpu" if manual else "discrete_gpu"
-    if not manual and not any(not d.integrated for d in inventory):
-        from .onnx_device import resolve_onnx_device
+    if not manual and not any(is_discrete_gpu(d) for d in selected):
+        from .device import resolve_small_model_backend, resolve_torch_device
 
-        choice = resolve_onnx_device() if allow_download else resolve_onnx_device(allow_download=False)
-        if choice.device != "gpu" or choice.adapter is None:
-            return LlamaSelection("cpu", reason=f"onnx_{choice.reason}")
-        matches = tuple(
-            d for d in selected if (d.vendor_id, d.device_id) == (choice.adapter.vendor_id, choice.adapter.device_id)
-        )
-        if len(matches) != 1:
-            return LlamaSelection("cpu", reason="onnx_gpu_identity_unconfirmed")
-        selected, reason = matches, f"onnx_{choice.backend}_{choice.reason}"
+        if resolve_small_model_backend() == "torch":
+            torch_choice = resolve_torch_device()
+            if not torch_choice.accelerated:
+                return LlamaSelection("cpu", reason=torch_choice.reason)
+            # Torch 只提供加速可用性结论，物理设备仍由当前原生库存和绑定校验决定。
+            reason = "torch_accelerator"
+        else:
+            from .onnx_device import resolve_onnx_device
+
+            choice = resolve_onnx_device() if allow_download else resolve_onnx_device(allow_download=False)
+            if choice.device != "gpu" or choice.adapter is None:
+                return LlamaSelection("cpu", reason=f"onnx_{choice.reason}")
+            matched = match_gpu_identities((choice.adapter.identity,), [d.identity for d in selected])[0]
+            if matched is None:
+                return LlamaSelection("cpu", reason="onnx_gpu_identity_unconfirmed")
+            selected, reason = (selected[matched],), f"onnx_{choice.backend}_{choice.reason}"
     serialized_devices = tuple(d for d in selected if needs_serialized_submissions(d))
     if serialized_devices and len(serialized_devices) != len(selected):
         if manual:

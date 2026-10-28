@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from fastapi import Request
 
+from ..filetypes import batch_effective_parse_tier
 from ..tasks.contracts import TaskFileInput, TaskFileItem, UploadTaskOptions
 from ..tasks.errors import invalid_task_request
 from ..tasks.execution import TaskExecution, TaskUpload
@@ -71,7 +72,7 @@ class ApiTaskBackend:
                     )
                 except ValueError as exc:
                     invalid_task_request(str(exc), param=f"files.{index}.url")
-        options.tier = resolve_task_tier(options, inputs, set(state.tier_runtime_options), state.default_tier)
+        options.tier = resolve_task_tier(options, inputs, set(state.tier_runtime_options))
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
         """原子查找并取得缓存租约，准备阶段不会因原文件视图到期丢失字节。"""
@@ -112,6 +113,9 @@ class ApiTaskBackend:
         self, execution_id: str, options: UploadTaskOptions, item: TaskFileItem, upload: TaskUpload | None
     ) -> TaskExecution:
         """提交唯一文件并保留公开结果身份，源文件视图只用于内部读取和租约。"""
+        if options.tier is None:
+            raise ValueError("Task tier must be resolved before execution")
+        tier = batch_effective_parse_tier(options.tier, item.file_name)
         if upload is not None:
             await run_sync(
                 self.files.register_source_file, upload.filename, upload.path, upload.sha256sum, upload.file_id, keep_alive=True
@@ -129,7 +133,7 @@ class ApiTaskBackend:
             bytes=item.bytes,
             sha256sum=item.sha256sum,
             page_range=item.page_range or None,
-            tier=options.tier,
+            tier=tier,
             ocr_mode=options.ocr_mode,
             output_formats=options.output_formats,
         )

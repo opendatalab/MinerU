@@ -171,7 +171,7 @@ def test_all_task_output_combinations(
 @pytest.mark.parametrize("formats", [["docx"], ["html"], ["default"], ["latex"]])
 def test_task_formats_use_only_service_authentication(tmp_path: Path, formats: list[str]) -> None:
     """启用 Key 时四种格式都需要服务认证，通过认证后都可执行。"""
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), api_key="secret")
     with TestClient(app) as client:
         body = {"files": [{"file_name": "a.html", "bytes": len(HTML)}], "output_formats": formats}
         assert client.post("/v1/tasks", json=body).status_code == 401

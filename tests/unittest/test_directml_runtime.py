@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import onnx
 from mineru.model.runtime.onnx_device import OnnxSelection
 from mineru.model.runtime.windows_gpu import GpuAdapter
@@ -26,7 +27,7 @@ from mineru.model.runtime.windows_gpu import GpuAdapter
     ],
 )
 def test_vendor_presets_and_actual_index(monkeypatch: pytest.MonkeyPatch, vendor: int, enabled: list[bool | None]) -> None:
-    adapter = GpuAdapter(7, "luid", "gpu", vendor, 1, True, 0)
+    adapter = with_gpu_classification(GpuAdapter(7, "luid", "gpu", vendor, 1, 0), classify_d3d12_gpu(True))
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())
     factory = Mock(return_value=native)
@@ -58,7 +59,7 @@ def test_cpu_models_do_not_select_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize("failure", ["unavailable", "exception", "silent"])
 @pytest.mark.parametrize("kind", ["layout", "unet"])
 def test_production_fallback_does_not_save_gpu(monkeypatch: pytest.MonkeyPatch, failure: str, kind: str) -> None:
-    adapter = GpuAdapter(1, "id", "gpu", 0x8086, 1, False, 0)
+    adapter = with_gpu_classification(GpuAdapter(1, "id", "gpu", 0x8086, 1, 0), classify_d3d12_gpu(False))
     cpu = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
     monkeypatch.setattr(
         onnx.ort, "get_available_providers", lambda: [] if failure == "unavailable" else ["DmlExecutionProvider"]
@@ -94,7 +95,9 @@ def test_calibration_factory_fails_instead_of_falling_back(monkeypatch: pytest.M
         onnx.ort, "InferenceSession", Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
     )
     with pytest.raises(RuntimeError, match="fell back"):
-        onnx.create_ort_session("test.onnx", adapter=GpuAdapter(0, "id", "gpu", 1, 1, True, 0))
+        onnx.create_ort_session(
+            "test.onnx", adapter=with_gpu_classification(GpuAdapter(0, "id", "gpu", 1, 1, 0), classify_d3d12_gpu(True))
+        )
 
 
 def test_run_is_serialized_per_session() -> None:

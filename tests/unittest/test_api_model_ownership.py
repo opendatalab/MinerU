@@ -93,8 +93,8 @@ def test_api_apps_share_native_sessions_until_last_owner_closes(tmp_path: Path, 
     monkeypatch.setattr(hybrid, "atom_model_init", create_session)
     monkeypatch.setattr(api_server, "parse_async", parse_with_shared_models)
 
-    with TestClient(api_server.create_app(upload_dir=str(tmp_path / "second"), tier="flash")) as second:
-        with TestClient(api_server.create_app(upload_dir=str(tmp_path / "first"), tier="flash")) as first:
+    with TestClient(api_server.create_app(upload_dir=str(tmp_path / "second"), tiers=("flash",))) as second:
+        with TestClient(api_server.create_app(upload_dir=str(tmp_path / "first"), tiers=("flash",))) as first:
             _parse_task(first, b"<p>first</p>")
             _parse_task(second, b"<p>second</p>")
             assert len(sessions) == 3  # OCR、Layout 与惰性 MFR 只创建一份。
@@ -105,7 +105,7 @@ def test_api_apps_share_native_sessions_until_last_owner_closes(tmp_path: Path, 
     gc.collect()
     assert all(reference() is None for reference in sessions)
 
-    with TestClient(api_server.create_app(upload_dir=str(tmp_path / "replacement"), tier="flash")) as replacement:
+    with TestClient(api_server.create_app(upload_dir=str(tmp_path / "replacement"), tiers=("flash",))) as replacement:
         _parse_task(replacement, b"<p>replacement</p>")
         assert len(sessions) == 6
     gc.collect()

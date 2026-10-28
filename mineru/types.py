@@ -109,19 +109,26 @@ ServerTier = Literal[
     "flash",
     "basic",
     "standard",
+    "advanced",
 ]
 
 SERVER_TIERS: tuple[ServerTier, ...] = (
     "flash",
     "basic",
     "standard",
+    "advanced",
 )
 
 TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]] = {
     "flash": ("flash",),
     "basic": ("flash", "basic"),
-    "standard": ("flash", "basic", "standard", "advanced"),
+    "standard": ("flash", "basic", "standard"),
+    "advanced": ("flash", "basic", "standard", "advanced"),
 }
+
+# Doclib 托管质量档位是服务上限，与下方的模型准备配置分开。
+ManagedServerTier = Literal["basic", "standard", "advanced"]
+MANAGED_SERVER_TIERS: tuple[ManagedServerTier, ...] = ("basic", "standard", "advanced")
 
 DeploymentTier = Literal[
     "basic",
@@ -310,6 +317,8 @@ __all__ = [
     "ServerTier",
     "SERVER_TIERS",
     "TIERS_BY_SERVER_TIER",
+    "ManagedServerTier",
+    "MANAGED_SERVER_TIERS",
     "DeploymentTier",
     "DEPLOYMENT_TIERS",
     "DEFAULT_QUALITY_TIER_SELECTION_ORDER",

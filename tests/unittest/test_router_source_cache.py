@@ -74,7 +74,7 @@ def test_private_cache_disabled_retention_and_rollback(monkeypatch: pytest.Monke
 
 def test_parent_cleanup_releases_sources_after_worker_route_disappears(tmp_path: Path) -> None:
     """执行路由已移除时，父任务仍须结束私有源引用并允许独立缓存回收。"""
-    worker = api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash")
+    worker = api_server.create_app(upload_dir=str(tmp_path / "worker"), tiers=("flash",))
     app = create_app(
         RouterSettings(upstream_urls=("http://worker",), local_gpus="none", worker_refresh_interval_seconds=0),
         transport=_WorkerTransport({"worker": worker}),

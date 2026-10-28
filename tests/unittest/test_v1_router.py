@@ -82,6 +82,24 @@ def _make_router(
     return create_app(settings, transport=httpx.MockTransport(_handler)), by_host
 
 
+def test_native_routing_requires_one_worker_with_complete_capabilities() -> None:
+    """原生文档绕过 tier 筛选，但来源和输出能力必须由同一个健康 worker 满足。"""
+    app, _ = _make_router(_FakeV1Upstream("worker-a", ("standard",)), _FakeV1Upstream("worker-b", ("basic",)))
+    with TestClient(app) as client:
+        first, second = app.state.worker_pool.workers
+        first.features = {"sources": ["upload"], "task_output_formats": ["default"]}
+        second.features = {"sources": ["url"], "task_output_formats": ["html"]}
+        body = {"files": [{"file_name": "native.docx", "bytes": 1}], "tier": "advanced", "output_formats": ["html"]}
+        rejected = client.post("/v1/tasks", json=body)
+        assert rejected.status_code == 503
+        assert not app.state.task_store._records
+        assert first.active_jobs == second.active_jobs == 0
+        first.features["task_output_formats"].append("html")
+        accepted = client.post("/v1/tasks", json=body)
+        assert accepted.status_code == 202, accepted.text
+        assert app.state.task_store._records[accepted.json()["task_id"]].options.tier == "flash"
+
+
 def test_v1_router_preserves_upstream_tier_metadata() -> None:
     """验证 Router 不再从全局 models 列表推断各 tier 的 current_model。"""
     upstream = _FakeV1Upstream(

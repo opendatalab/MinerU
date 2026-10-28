@@ -43,7 +43,7 @@ def test_http_example_delegates_to_tasks(tmp_path: Path) -> None:
     """原脚本入口执行同一 Tasks 客户端并保留退出码，不残留旧 HTTP 流程。"""
     from mineru.parser.api_server import create_app
 
-    server = _Server(create_app(upload_dir=str(tmp_path / "api"), tier="flash"))
+    server = _Server(create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",)))
     source = tmp_path / "source.html"
     source.write_text("<h1>Unified HTTP example</h1>")
     server.start()

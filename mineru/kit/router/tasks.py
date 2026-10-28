@@ -18,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from ...filetypes import is_flash_only_parse_extension
+from ...filetypes import batch_effective_parse_tier, is_flash_only_parse_extension
 from ...tasks.contracts import (
     CancelTaskResponse,
     CreateTaskResponse,
@@ -32,7 +32,6 @@ from ...tasks.contracts import (
 from ...tasks.errors import ApiServerError, raise_api_error
 from ...tasks.execution import TaskExecution, TaskInputMetadata, TaskUpload
 from ...tasks.service import TERMINAL_TASK_STATUSES, file_chunks, resolve_task_tier
-from ...types import select_default_quality_tier
 from ...utils.async_utils import drain_future
 from .proxy import (
     RouterProxyError,
@@ -290,16 +289,15 @@ class RouterTaskBackend:
     async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileInput]) -> None:
         """能力预检不推进轮询游标，也不为尚未上传的任务预占 worker。"""
         tiers = self.pool.available_tiers()
-        options.tier = resolve_task_tier(options, inputs, tiers, select_default_quality_tier(tiers))
+        options.tier = resolve_task_tier(options, inputs, tiers)
         checked_workers: set[str] = set()
         for item in inputs:
             lightweight = is_flash_only_parse_extension(item.file_name)
-            selection_tier = "flash" if lightweight else options.tier
+            selection_tier = None if lightweight else options.tier
             candidates = self.pool.capable_workers(
                 tier=selection_tier,
                 required_sources={"url" if item.url is not None else "upload"},
                 required_task_outputs=set(options.output_formats),
-                require_flash=lightweight,
             )
             if not candidates:
                 raise_api_error(
@@ -387,13 +385,14 @@ class RouterTaskBackend:
         self, execution_id: str, options: UploadTaskOptions, item: TaskFileItem, upload: TaskUpload | None
     ) -> TaskExecution:
         """为单文件预占 worker，并把公开文件身份与下游身份一一关联。"""
+        if options.tier is None:
+            raise ValueError("Task tier must be resolved before execution")
         lightweight = is_flash_only_parse_extension(item.file_name)
-        tier = "flash" if lightweight else options.tier
+        tier = batch_effective_parse_tier(options.tier, item.file_name)
         reservation = self.pool.reserve_job(
-            tier=tier,
+            tier=None if lightweight else tier,
             required_sources={"url" if item.url is not None else "upload"},
             required_task_outputs=set(options.output_formats),
-            require_flash=lightweight,
         )
         if reservation is None:
             raise_api_error(
@@ -417,7 +416,7 @@ class RouterTaskBackend:
                 request=self.request,
                 json_body={
                     "files": [worker_input],
-                    "tier": options.tier,
+                    **({"tier": tier} if not lightweight else {}),
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
                 },

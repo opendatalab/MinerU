@@ -52,7 +52,7 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
             cleanup.append(name)
 
     monkeypatch.setattr(api_server, "parse_async", infer)
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", concurrency=2)
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), concurrency=2)
     with TestClient(app) as client:
 
         async def make_gate() -> None:

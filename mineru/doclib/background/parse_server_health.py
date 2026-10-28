@@ -17,7 +17,7 @@ import httpx
 
 from ...config import LogConfig, ManagedParseServerConfig, get_config
 from ...parser.api_client import should_trust_env_for_url
-from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
+from ...types import MANAGED_SERVER_TIERS, TIERS, ManagedServerTier, Tier
 from ...parser.process_control import ManagedProcessControl
 from ...utils.stdio import utf8_subprocess_env
 from ..config_defaults import CONFIG_DEFAULTS
@@ -44,27 +44,22 @@ _NON_RETRYABLE_MODEL_PRELOAD_ERRORS = frozenset(
 )
 
 
-async def get_managed_parse_server_tier(config_svc: "ConfigService") -> DeploymentTier:
+async def get_managed_parse_server_tier(config_svc: "ConfigService") -> ManagedServerTier:
     """读取 managed parse-server tier；忽略非法存量值并回退到默认值。"""
     key = "parse_server.local.managed_tier"
     raw_tier = await config_svc.get(key) or CONFIG_DEFAULTS[key]
-    if raw_tier in DEPLOYMENT_TIERS:
-        return cast(DeploymentTier, raw_tier)
+    if raw_tier in MANAGED_SERVER_TIERS:
+        return cast(ManagedServerTier, raw_tier)
     logger.warning(
         "Ignoring invalid managed parse-server tier override %r and using default %r",
         raw_tier,
         CONFIG_DEFAULTS[key],
     )
-    return cast(DeploymentTier, CONFIG_DEFAULTS[key])
+    return cast(ManagedServerTier, CONFIG_DEFAULTS[key])
 
 
-def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> list[str]:
-    """Return managed api-server process args for a doclib tier.
-
-    Managed doclib startup uses ``--tier`` so the api-server resolves its own
-    backend. Backend remains an api-server implementation detail and must not
-    leak into runtime doclib parse requests.
-    """
+def api_server_args_for_tier(tier: ManagedServerTier, *, host: str, port: int) -> list[str]:
+    """按统一上限启动托管服务，原生文档解析不受公开档位限制。"""
     return [
         "--tier",
         tier,
@@ -72,7 +67,6 @@ def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> l
         host,
         "--port",
         str(port),
-        "--no-flash",
         "--preload-models",
         "--log-level",
         "warning",
@@ -148,7 +142,7 @@ def open_managed_parse_server_logs(*, marker: str, log_cfg: LogConfig | None = N
 
 def start_managed_parse_server(
     *,
-    tier: DeploymentTier,
+    tier: ManagedServerTier,
     managed_cfg: ManagedParseServerConfig,
     log_cfg: LogConfig | None,
     marker: str,
@@ -431,7 +425,7 @@ class ParseServerHealthCheck:
     async def _try_restart_managed_for_tier_change(
         self,
         health: ParseServerHealth,
-        desired_managed_tier: DeploymentTier,
+        desired_managed_tier: ManagedServerTier,
     ) -> bool:
         running_managed_tier = health.running_managed_tier
         if running_managed_tier is None or running_managed_tier == desired_managed_tier:

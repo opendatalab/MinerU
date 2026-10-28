@@ -19,7 +19,7 @@ def plan() -> LlamaSelection:
     """显式选择原来的 Vulkan1 后，隔离原生设备索引会变为 Vulkan0。"""
     return LlamaSelection(
         "gpu",
-        (LlamaDevice("Vulkan0", "Intel", "vulkan", True, 0x8086, 0x4680, 1),),
+        (LlamaDevice("Vulkan0", "Intel", "vulkan", 0x8086, 0x4680, 1, kind="integrated", kind_source="vulkan"),),
         "explicit_gpu",
         ((SERIALIZE_ENV, "1"), ("GGML_VK_VISIBLE_DEVICES", "1")),
         (("Vulkan1", "Vulkan0"),),
@@ -166,7 +166,9 @@ def test_actual_device_policy_reaches_server_environment(
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
-    device = LlamaDevice("Vulkan0", "Intel", "vulkan", chip != 0x56A0, 0x8086, chip, 0)
+    device = LlamaDevice(
+        "Vulkan0", "Intel", "vulkan", 0x8086, chip, 0, kind="integrated" if chip != 0x56A0 else "discrete", kind_source="vulkan"
+    )
     monkeypatch.setattr(policy, "discover_llama_devices", Mock(return_value=(device,)))
     args = ["-ngl", "0", "--mmproj-device", "Vulkan0", "--mmproj-offload"] if projector_only else ["--device", "Vulkan0"]
     selected = server._device_policy(args)

@@ -31,7 +31,7 @@ def test_output_format_validation_precedes_worker_selection(formats: Any, tmp_pa
     upstream = _FakeV1Upstream("worker-a", ("flash",))
     app, _ = _make_router(upstream)
     body = {**BODY, "tier": "flash", "output_formats": formats}
-    with TestClient(create_api_app(upload_dir=str(tmp_path / "files"), tier="flash")) as direct:
+    with TestClient(create_api_app(upload_dir=str(tmp_path / "files"), tiers=("flash",))) as direct:
         expected = direct.post("/v1/tasks", json=body)
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post("/v1/tasks", json=body)
@@ -109,7 +109,9 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(api_server, "parse_async", delayed)
-    workers = {host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash") for host in ("worker-a", "worker-b")}
+    workers = {
+        host: api_server.create_app(upload_dir=str(tmp_path / host), tiers=("flash",)) for host in ("worker-a", "worker-b")
+    }
     transport = _WorkerTransport(workers)
     app = create_app(
         RouterSettings(
@@ -169,7 +171,7 @@ def test_task_submission_failure_and_replacement_release_only_owned_load(
 ) -> None:
     """新 tasks 的网络失败和迟到响应释放自身预占，不能扣除新 generation 的任务。"""
     for replacement in (False, True):
-        worker_app = api_server.create_app(upload_dir=str(tmp_path / str(replacement)), tier="flash")
+        worker_app = api_server.create_app(upload_dir=str(tmp_path / str(replacement)), tiers=("flash",))
         transport = _WorkerTransport({"worker-a": worker_app})
         app = create_app(
             RouterSettings(upstream_urls=("http://worker-a",), local_gpus="none", worker_refresh_interval_seconds=0),

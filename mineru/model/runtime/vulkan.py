@@ -13,6 +13,8 @@ import os
 import sys
 import threading
 
+from .gpu import GpuClassification, GpuIdentity, classify_vulkan_gpu, with_gpu_classification
+
 _environment_lock = threading.RLock()
 
 
@@ -22,12 +24,16 @@ def vulkan_environment_lock() -> threading.RLock:
 
 
 @dataclass(frozen=True)
-class VulkanDevice:
+class VulkanDevice(GpuClassification):
     vendor_id: int
     device_id: int
-    device_type: int
     name: str
     index: int = -1
+
+    @property
+    def identity(self) -> GpuIdentity:
+        """返回现有 PCI 型号和原生名称，不把枚举序号当作跨后端身份。"""
+        return GpuIdentity(self.vendor_id, self.device_id, name=self.name)
 
 
 class _ApplicationInfo(ct.Structure):
@@ -111,14 +117,16 @@ def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
                 storage = _PropertiesStorage()
                 properties(handle, ct.byref(storage))
                 value = storage.prefix
-                if value.deviceType in (1, 2, 3):  # integrated, discrete, virtual GPU; exclude software CPU
+                if value.deviceType in (0, 1, 2, 3):  # 保留未知原生类型，由运行后端过滤可用性；排除软件 CPU。
                     result.append(
-                        VulkanDevice(
-                            value.vendorID,
-                            value.deviceID,
-                            value.deviceType,
-                            value.deviceName.decode("utf-8", errors="replace"),
-                            index,
+                        with_gpu_classification(
+                            VulkanDevice(
+                                value.vendorID,
+                                value.deviceID,
+                                value.deviceName.decode("utf-8", errors="replace"),
+                                index,
+                            ),
+                            classify_vulkan_gpu(value.deviceType),
                         )
                     )
             return tuple(result)

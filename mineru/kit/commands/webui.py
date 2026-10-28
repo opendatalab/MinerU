@@ -71,7 +71,7 @@ def webui_cmd(
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
     api_server_tier: str = typer.Option(
-        "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
+        "standard", "--api-server-tier", "--tier", help=t("Managed API server tier ceiling")
     ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")

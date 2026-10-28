@@ -12,6 +12,15 @@ import threading
 from typing import TYPE_CHECKING
 
 from .intel_gpu import supports_webgpu_architecture
+from .gpu import (
+    GpuClassification,
+    GpuIdentity,
+    gpu_identities_match,
+    gpu_kind_rank,
+    is_discrete_gpu,
+    match_gpu_identities,
+    with_gpu_classification,
+)
 
 if TYPE_CHECKING:
     import onnxruntime as ort
@@ -26,14 +35,19 @@ WEBGPU_OPTIONS: dict[str, str] = {
 
 
 @dataclass(frozen=True)
-class WebGPUDevice:
+class WebGPUDevice(GpuClassification):
     """Serializable EP registration identity, NOT a Dawn physical-adapter selector."""
 
     vendor_id: int
     device_id: int
     metadata: tuple[tuple[str, str], ...] = ()
-    # Only needed when old Intel and eligible GPUs coexist. No native handles.
+    # 物理设备约束用于多卡选型及独显免校准；只传递身份，不保存原生句柄。
     vulkan_device: tuple[int, int] | None = None
+
+    @property
+    def identity(self) -> GpuIdentity:
+        """复用 EP 已提供的身份元数据，不额外查询 UUID 或 PCI 地址。"""
+        return GpuIdentity(self.vendor_id, self.device_id, bus_id=dict(self.metadata).get("pci_bus_id"))
 
 
 _lock = threading.RLock()
@@ -75,7 +89,7 @@ def discover_webgpu_devices() -> tuple[WebGPUDevice, ...]:
 
 
 def select_webgpu_device(devices: tuple[WebGPUDevice, ...]) -> WebGPUDevice | None:
-    """Apply the Linux Intel policy without treating an EP handle as a GPU binding."""
+    """按 Vulkan 可见类型优先选择独显，并为免校准和多卡会话绑定实际设备。"""
     if not devices:
         return None
     if sys.platform != "linux":
@@ -83,20 +97,31 @@ def select_webgpu_device(devices: tuple[WebGPUDevice, ...]) -> WebGPUDevice | No
     allowed = tuple(d for d in devices if supports_webgpu_architecture(d.vendor_id, d.device_id))
     if not allowed:
         return None
-    if len(allowed) == len(devices):
-        return devices[0]  # Preserve ordinary AMD/NVIDIA/modern-Intel selection.
-    from .vulkan import enumerate_vulkan_devices
+    from .vulkan import enumerate_vulkan_devices, vulkan_environment_lock
 
-    # ORT enumerates OS devices, even those hidden by VK_DRIVER_FILES. Query
-    # the loader before deciding which physical GPUs can actually be used.
-    with execution_lock():
-        visible = enumerate_vulkan_devices()
-    rank = {2: 0, 1: 1, 3: 2}  # Dawn high-performance: discrete before integrated.
-    for physical in sorted(visible, key=lambda d: rank[d.device_type]):
-        descriptor = next((d for d in allowed if (d.vendor_id, d.device_id) == (physical.vendor_id, physical.device_id)), None)
-        if descriptor is not None:
-            return replace(descriptor, vulkan_device=(physical.vendor_id, physical.device_id))
-    return None
+    # ORT 库存可能包含 ICD 已隐藏的设备；分类必须来自 Vulkan 实际可见的物理设备。
+    try:
+        with execution_lock(), vulkan_environment_lock():
+            visible = enumerate_vulkan_devices()
+    except (OSError, RuntimeError):
+        if len(allowed) != len(devices):
+            raise  # 有受限架构时无法确认物理绑定，不允许继续默认选卡。
+        return with_gpu_classification(devices[0], GpuClassification())
+    matches = match_gpu_identities([d.identity for d in allowed], [d.identity for d in visible])
+    candidates: list[tuple[int, WebGPUDevice]] = []
+    for descriptor, matched in zip(allowed, matches):
+        physical_indices = [
+            i for i, physical in enumerate(visible) if gpu_identities_match(descriptor.identity, physical.identity)
+        ]
+        if not physical_indices:
+            continue
+        # 物理型号存在但无法双向唯一关联时，仍可校准，不允许继承某张卡的独显分类。
+        candidate = with_gpu_classification(descriptor, visible[matched] if matched is not None else GpuClassification())
+        bind = is_discrete_gpu(candidate) or len(visible) > 1 or len(allowed) != len(devices)
+        identity = (candidate.vendor_id, candidate.device_id)
+        candidates.append((physical_indices[0], replace(candidate, vulkan_device=identity if bind else None)))
+    candidates.sort(key=lambda item: (gpu_kind_rank(item[1].kind), item[0]))
+    return candidates[0][1] if candidates else None
 
 
 @contextmanager
@@ -130,12 +155,11 @@ def webgpu_session_scope(device: WebGPUDevice) -> Iterator[None]:
 def attach_webgpu_provider(options: ort.SessionOptions, device: WebGPUDevice) -> None:
     """Resolve a fresh native handle and attach the production provider parameters."""
     with execution_lock():
-        identity = replace(device, vulkan_device=None)
+        identity = with_gpu_classification(replace(device, vulkan_device=None), GpuClassification())
         ep = next((ep for ep in _devices() if _describe(ep) == identity), None)
         if ep is None:
             raise RuntimeError("WebGPU hardware registration device is no longer available")
-        # The caller's webgpu_session_scope restricts mixed-architecture systems.
-        # This registration handle itself still does not bind a physical adapter.
+        # 物理约束由调用方 webgpu_session_scope 验证；EP 注册句柄本身不绑定显卡。
         options.add_provider_for_devices([ep], WEBGPU_OPTIONS)
 
 

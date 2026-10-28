@@ -22,6 +22,7 @@
 | 子命令 | 作用 | 文档 |
 |--------|------|------|
 | `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
+| `mineru-kit hardware` | 自动推荐档位及只读硬件/运行时诊断 | [mineru-kit hardware](mineru-kit-hardware.md) |
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
@@ -90,7 +91,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 - 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`。
 - `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
 - `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
-- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 默认 `standard`，`--worker-concurrency` 默认 `1`。
+- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 是包含较低档位的上限，可选 flash/basic/standard/advanced，默认 standard；`--worker-concurrency` 默认 `1`。
 - Router 提供 V1 health、models、tiers、usage、按 ID 操作 Files，以及 `/v1/tasks` JSON 创建、按 ID 查询/取消、逐文件上传和结果下载；不提供任务或文件列表。
 - Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
 - tasks 与 files 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。

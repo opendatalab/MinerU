@@ -19,7 +19,7 @@ from mineru.parser import api_client
 from mineru.tasks.contracts import CreateTaskRequest
 from mineru.parser.task_outputs import build_task_output
 from mineru.parser.base import ParseResult
-from mineru.types import MiddleJson, PageInfo
+from mineru.types import MiddleJson, PageInfo, Tier
 from mineru.integrations.docvortex import build_metadata
 from docvortex.schema import Producer
 
@@ -87,8 +87,9 @@ def parse(parser: MinerUApiParser, source: Path, asynchronous: bool, **kwargs: A
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("prefix", ["", "/gateway/api"])
+@pytest.mark.parametrize("tier", [None, "basic", "advanced"])
 def test_task_query_uses_configured_prefix_without_status_url(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, prefix: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, prefix: str, tier: Tier | None
 ) -> None:
     """响应不含查询链接时仍能轮询，代理前缀和编码后的任务 ID 均不丢失。"""
     source = tmp_path / "file.pdf"
@@ -103,6 +104,11 @@ def test_task_query_uses_configured_prefix_without_status_url(
         assert request.headers.get("authorization") == "Bearer secret"
         if request.method == "POST":
             assert request.url.path == prefix + "/v1/tasks"
+            body = json.loads(request.content)
+            if tier is None:
+                assert "tier" not in body
+            else:
+                assert body["tier"] == tier
             snapshot = task_snapshot("pending")
         else:
             queries.append(request.url.raw_path.decode())
@@ -113,7 +119,7 @@ def test_task_query_uses_configured_prefix_without_status_url(
         return httpx.Response(200, json=snapshot)
 
     bind_transport(monkeypatch, handle)
-    result = parse(MinerUApiParser(api_url="https://api.test" + prefix, api_key="secret"), source, asynchronous)
+    result = parse(MinerUApiParser(api_url="https://api.test" + prefix, api_key="secret", tier=tier), source, asynchronous)
     assert len(result.pages) == 1 and len(queries) == 1
 
 

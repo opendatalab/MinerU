@@ -12,6 +12,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import onnx_calibration as calibration
 from mineru.model.runtime.windows_gpu import GpuAdapter
 from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, WebGPUDevice
@@ -20,12 +21,13 @@ from scripts.benchmark_onnx_selection import derive_threshold
 
 
 def gpu() -> GpuAdapter:
-    return GpuAdapter(2, "id", "test", 0x8086, 1, True, 0)
+    return with_gpu_classification(GpuAdapter(2, "id", "test", 0x8086, 1, 0), classify_d3d12_gpu(True))
 
 
 @pytest.fixture(autouse=True)
-def fake_rec_preparation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Protocol tests mock sessions; real graph conversion is covered separately."""
+def fake_rec_preparation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """隔离模型准备和校准证据，避免协议测试触及用户配置。"""
+    monkeypatch.setattr("mineru.model.runtime.onnx_calibration_cache.calibration_record_path", lambda: tmp_path / "record.json")
     monkeypatch.setattr(calibration, "prepare_rec_model", lambda path: CompactRecModel("compact.onnx", 4, "raw", "compact"))
 
 
@@ -256,7 +258,9 @@ def test_invalid_calibration_set_is_rejected(failure: str) -> None:
         "threshold",
     ],
 )
-def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, failure: str | None) -> None:
+def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str | None) -> None:
+    """新校准必须替换旧证据，协议或输出验证失败时不可保留旧结论。"""
+    (tmp_path / "record.json").write_text('{"old": true}', encoding="utf-8")
     output = {
         "schema_version": 5,
         "backend": "webgpu",
@@ -269,6 +273,9 @@ def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, failure: str | 
         "gpu_elapsed": 0.4,
         "ratio": 0.4,
         "outputs_match": True,
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "model_sha256": "compact-model",
         "gpu": {"providers": [WEBGPU_PROVIDER, "CPUExecutionProvider"], "warmup_s": [2], "timed_s": [0.4] * 3, "median_s": 0.4},
         "cpu": {"providers": ["CPUExecutionProvider"], "warmup_s": [2], "timed_s": [1] * 3, "median_s": 1},
     }
@@ -298,8 +305,12 @@ def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, failure: str | 
     if failure:
         with pytest.raises(ValueError):
             calibration.run_calibration("rec.onnx", descriptor)
+        assert not (tmp_path / "record.json").exists()
     else:
         assert calibration.run_calibration("rec.onnx", descriptor)["backend"] == "webgpu"
+        saved = json.loads((tmp_path / "record.json").read_text(encoding="utf-8"))
+        assert saved["outputs_match"] is True and saved["decision_valid"] is True
+        assert saved["fingerprint"]["adapter"]["device_id"] == 2
     request = json.loads(runner.call_args.kwargs["input"])
     assert request["backend"] == "webgpu"
     assert request["adapter"]["metadata"] == [["pci_bus_id", "test"]]

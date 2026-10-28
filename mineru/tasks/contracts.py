@@ -80,7 +80,15 @@ class UploadTaskOptions(BaseModel):
     """解析选项仅来自 JSON 主体，文件元数据独立保存在 files 中。"""
 
     model_config = ConfigDict(extra="forbid")
-    tier: Tier | None = None
+    tier: Tier | None = Field(
+        default=None,
+        description=(
+            "PDF/image tier only. Omitted or null selects the highest supported tier in the order "
+            "standard, basic, flash; advanced requires an explicit request. Explicit unsupported tiers are rejected. "
+            "All servers support native document formats with flash, independently of /v1/tiers "
+            "and ignoring any valid tier value."
+        ),
+    )
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)

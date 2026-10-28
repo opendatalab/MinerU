@@ -519,7 +519,6 @@ class WorkerPool:
         required_sources: set[str] | None = None,
         preferred_worker_id: str | None = None,
         required_task_outputs: set[str] | None = None,
-        require_flash: bool = False,
         selection_kind: Literal["upload", "job"] = "job",
     ) -> WorkerState | None:
         """按能力和负载选取目标，文件归属仅在最低负载候选中优先。"""
@@ -527,7 +526,6 @@ class WorkerPool:
             tier=tier,
             required_sources=required_sources,
             required_task_outputs=required_task_outputs,
-            require_flash=require_flash,
         )
         if not eligible:
             return None
@@ -553,7 +551,6 @@ class WorkerPool:
         tier: Tier | None,
         required_sources: set[str] | None = None,
         required_task_outputs: set[str] | None = None,
-        require_flash: bool = False,
     ) -> list[WorkerState]:
         """只读过滤完整能力组合，供预检复用；不改变轮询游标或预占负载。"""
         return [
@@ -562,17 +559,15 @@ class WorkerPool:
             if (tier is None or tier in worker.tiers)
             and (required_sources or set()).issubset(set(worker.features.get("sources") or []))
             and (required_task_outputs or set()).issubset(set(worker.features.get("task_output_formats") or []))
-            and (not require_flash or "flash" in worker.tiers)
         ]
 
     def reserve_job(
         self,
         *,
-        tier: Tier,
+        tier: Tier | None,
         required_sources: set[str],
         preferred_worker_id: str | None = None,
         required_task_outputs: set[str] | None = None,
-        require_flash: bool = False,
     ) -> JobReservation | None:
         """在第一次网络等待前同步选择并预占解析 worker。"""
         worker = self.select(
@@ -580,7 +575,6 @@ class WorkerPool:
             required_sources=required_sources,
             preferred_worker_id=preferred_worker_id,
             required_task_outputs=required_task_outputs,
-            require_flash=require_flash,
         )
         if worker is None:
             return None

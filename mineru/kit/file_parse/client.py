@@ -15,6 +15,7 @@ import httpx
 from pydantic import ValidationError
 
 from ...task_types import task_status_url
+from ...tasks.contracts import ErrorResponse
 from .models import GatewayError, Record, RemoteCreatedTask, RemoteFile, RemoteTask
 from .settings import FileParseSettings, origin
 
@@ -22,6 +23,17 @@ CHUNK_BYTES = 1024 * 1024
 MAX_JSON_BYTES = 4 * 1024 * 1024
 RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 REDIRECTS = frozenset({301, 302, 303, 307, 308})
+
+
+def _is_task_creation_rejected(status: int, body: bytes) -> bool:
+    """仅识别 Tasks 明确未接单的档位错误，畸形或混入任务字段的响应仍视为未知。"""
+    if status != 503:
+        return False
+    try:
+        response = ErrorResponse.model_validate_json(body)
+    except ValidationError:
+        return False
+    return response.error.code == "quality_tier_unavailable"
 
 
 async def file_chunks(path: Path) -> AsyncIterator[bytes]:
@@ -178,7 +190,11 @@ class TaskClient:
                     body = await self._read_metadata(response)
                     if response.status_code not in ({202} if method == "POST" else {200}):
                         error = self._http_error(response.status_code, body)
-                        if method == "POST" and (response.status_code >= 500 or response.status_code == 408):
+                        if (
+                            method == "POST"
+                            and (response.status_code >= 500 or response.status_code == 408)
+                            and not _is_task_creation_rejected(response.status_code, body)
+                        ):
                             raise GatewayError("submission_unknown", "Task creation outcome is unknown; not resubmitting")
                         raise error
                 if method == "POST":

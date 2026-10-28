@@ -51,15 +51,16 @@ for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, e
     const ui = createUi();
     ui.step("tier", { position: 3 });
     const out = ui.step("file", { file: { path: `/source.${extension}` } });
-    assert.equal(out[7].value, 0);
+    assert.equal(out[7].value, 3);
     assert.equal(out[7].interactive, false);
+    assert.equal(out[7].visible, false);
     assert.equal(out[8], "解析等级：flash（极速）");
     assert.equal(out[5].interactive, true);
     assert.equal(out[3], "");
     assert.match(out[2], /data-range-visible="false"/);
     assert.deepEqual(ui.state.tierSelection, { tier: "advanced", locked: true });
     // 即使模拟一个已经排队的高档位 input，也不能改变锁定值或恢复偏好。
-    assert.equal(ui.step("tier", { position: 1 })[7].value, 0);
+    assert.equal(ui.step("tier", { position: 1 })[7].value, 3);
     ui.step("file", { file: `/another.${extension}` });
     assert.equal(ui.state.tierSelection.tier, "advanced");
     const cleared = ui.step("clear");
@@ -81,23 +82,21 @@ for (const extension of tieredExtensions.flatMap((extension) => [extension, exte
     assert.deepEqual(ui.state.tierSelection, { tier: "standard", locked: false });
 }
 
-// 缺少 Flash 不伪造滑杆位置，始终阻止提交；恢复可分档文件后沿用原先能力和选择。
-for (const availableTiers of [["basic", "standard", "advanced"], ["advanced"], ["flash"], ["flash", "advanced"]]) {
+// 原生文档独立于 PDF 档位集合，隐藏滑杆但允许提交；切回后恢复合法选择。
+for (const availableTiers of [["standard"], ["basic", "standard", "advanced"], ["advanced"], ["flash"], ["flash", "advanced"]]) {
     const ui = createUi(20, availableTiers);
     const originalPosition = ui.state.position;
-    const available = availableTiers.includes("flash");
     const out = ui.step("file", { file: "/source.csv" });
     assert.equal(out[7].interactive, false);
-    assert.equal(out[7].value, available ? availableTiers.indexOf("flash") : originalPosition);
-    assert.equal(out[5].interactive, available);
-    assert.equal(out[6].visible, !available);
-    if (!available) {
-        assert.equal(out[6].value, "该格式仅支持 Flash，当前服务不可用");
-        assert.match(out[8], /flash.*当前服务不可用/);
-    }
+    assert.equal(out[7].value, originalPosition);
+    assert.equal(out[7].visible, false);
+    assert.equal(out[5].interactive, true);
+    assert.equal(out[6].visible, false);
+    assert.equal(out[8], "解析等级：flash（极速）");
     const restored = ui.step("file", { file: "/source.png" });
     assert.equal(restored[7].value, originalPosition);
     assert.equal(restored[7].interactive, availableTiers.length > 1);
+    assert.equal(restored[7].visible, availableTiers.length > 1);
     assert.equal(restored[5].interactive, true);
     assert.equal(restored[6].visible, false);
 }
@@ -109,7 +108,7 @@ for (const availableTiers of [["basic", "standard", "advanced"], ["advanced"], [
     ui.step("tier", { position: 3 });
     ui.step("file", { file: "/source.csv" });
     ui.step("metadata", { metadata: { path: "/report.pdf", page_count: 100, error: "" } });
-    assert.equal(ui.state.position, 0);
+    assert.equal(ui.state.position, 3);
     assert.equal(ui.state.tierSelection.tier, "advanced");
     let out = ui.step("file", { file: "/new.pdf" });
     assert.equal(out[7].value, 3);

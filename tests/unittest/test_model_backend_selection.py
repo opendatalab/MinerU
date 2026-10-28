@@ -191,7 +191,7 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     assert "mineru[full]" in message
 
     with pytest.raises(api_server.ParseServerStartupError) as startup_error:
-        api_server.create_app(upload_dir=str(tmp_path), tier="standard", vlm_config=settings)
+        api_server.create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"), vlm_config=settings)
     assert str(startup_error.value) == message
 
     with pytest.raises(InvalidRequestError) as doclib_error:

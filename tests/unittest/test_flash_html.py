@@ -199,7 +199,7 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
         """跳过后台解析，仅验证 admission 已选择 Flash tier。"""
 
     monkeypatch.setattr(api_server, "_run_execution", fake_run_job)
-    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",))
 
     with TestClient(app) as client:
         response = client.post(
@@ -211,11 +211,11 @@ def test_html_parse_server_flash_only_admits_extensionless_url(
     assert app.state.task_store._records[response.json()["task_id"]].options.tier == "flash"
 
 
-def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
+def test_html_parse_server_normalizes_extensionless_text_html_after_fetch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证无扩展名 URL 下载为 HTML 后仍执行禁用 Flash 的后置策略检查。"""
+    """验证无扩展名 URL 识别为原生 HTML 后固定 Flash，不受原请求档位影响。"""
     url = "https://example.com/article"
     response = httpx.Response(
         200,
@@ -224,19 +224,18 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
         request=httpx.Request("GET", url),
     )
     client = _url_stream_client(response)
-    parse_async_mock = AsyncMock()
+    parse_async_mock = AsyncMock(wraps=api_server.parse_async)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     monkeypatch.setattr(api_server, "parse_async", parse_async_mock)
     file_store = FileStore(tmp_path / "api-files")
     request = execution_request(file_store, {"type": "url", "url": url}, tier="standard")
     record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True, flash_enabled=False))
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    assert record.status == "failed"
-    assert record.error is not None
-    assert record.error.message == ("Flash parsing is disabled in this server, but this input requires the Flash backend")
-    parse_async_mock.assert_not_awaited()
+    assert record.status == "completed"
+    parse_async_mock.assert_awaited_once()
+    assert parse_async_mock.call_args.kwargs["tier"] == "flash"
 
 
 def test_url_source_aborts_when_exceeding_max_url_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

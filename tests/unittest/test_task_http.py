@@ -33,6 +33,11 @@ from test_http_api_example_script import _Server
 from mineru.kit.router import RouterSettings
 from mineru.kit.router import create_app as create_router
 from mineru.parser import api_server
+from mineru.filetypes import batch_effective_parse_tier
+from mineru.tasks.contracts import TaskFileInput, UploadTaskOptions
+from mineru.tasks.errors import ApiServerError
+from mineru.tasks.service import resolve_task_tier
+from mineru.types import TIERS, Tier
 from mineru.utils.async_utils import run_sync
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "http_task_example.sh"
@@ -97,12 +102,12 @@ def live_service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_Li
     execution_apps: list[FastAPI] = []
     try:
         if request.param == "api":
-            app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash", api_key="test-key")
+            app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",), api_key="test-key")
             execution_apps.append(app)
         else:
             for index in range(2):
                 worker_app = api_server.create_app(
-                    upload_dir=str(tmp_path / f"worker-{index}"), tier="flash", api_key="test-key"
+                    upload_dir=str(tmp_path / f"worker-{index}"), tiers=("flash",), api_key="test-key"
                 )
                 execution_apps.append(worker_app)
                 worker = _Server(worker_app)
@@ -223,7 +228,7 @@ def test_pdf_without_file_id_keeps_metadata_and_cached_results(live_service: _Li
 def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -> None:
     """TLS 终止代理后的上传、hash 复用及下载保持可用，worker 不继承客户端来源头。"""
     calls: list[tuple[str, str, dict[str, str]]] = []
-    worker_app = api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash", api_key="test-key")
+    worker_app = api_server.create_app(upload_dir=str(tmp_path / "worker"), tiers=("flash",), api_key="test-key")
     worker_app.add_middleware(_WorkerRequests, calls=calls)
     worker = _Server(worker_app)
     servers = [worker]
@@ -621,6 +626,7 @@ class _CloudState:
 
     gateway_url: str = ""
     storage_url: str = ""
+    pdf_tiers: tuple[Tier, ...] = ("standard",)
     tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
     cache: dict[str, bytes] = field(default_factory=dict)
     requests: list[tuple[str, str, str, str | None]] = field(default_factory=list)
@@ -668,6 +674,11 @@ class _CloudState:
                     },
                     "status": status,
                     "result_url": result_url,
+                    "parse": {
+                        "tier": batch_effective_parse_tier(record["tier"], item["file_name"]),
+                        "duration_ms": 0,
+                        "parser_version": "test",
+                    } if status == "completed" else None,
                 }
             )
         states = [item["status"] for item in files]
@@ -706,6 +717,19 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
             return JSONResponse({"error": {"code": "invalid_api_key"}}, status_code=401)
         return await call_next(request)
 
+    @gateway.get("/v1/health")
+    async def health() -> dict[str, Any]:
+        """原生支持是共同契约，不增加格式能力字段。"""
+        return {
+            "status": "ok", "version": "test",
+            "features": {"webhook": False, "task_output_formats": ["default"], "sources": ["upload"]},
+        }
+
+    @gateway.get("/v1/tiers")
+    async def tiers() -> dict[str, Any]:
+        """SaaS 默认只发布 PDF/图片 Standard 档位。"""
+        return {"object": "list", "data": [{"id": tier, "description": tier} for tier in state.pdf_tiers]}
+
     @gateway.post("/v1/tasks")
     async def create_task(request: Request) -> Response:
         """只接收体积很小的 JSON 元数据，用 hash 判断哪些文件需要独立上传。"""
@@ -716,10 +740,19 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         assert len(body) < 4096
         submitted = await request.json()
         manifest = submitted["files"]
+        try:
+            selected_tier = resolve_task_tier(
+                UploadTaskOptions.model_validate({key: value for key, value in submitted.items() if key != "files"}),
+                [TaskFileInput.model_validate(item) for item in manifest], set(state.pdf_tiers),
+            )
+        except ApiServerError as error:
+            return JSONResponse({"error": error.error.model_dump()}, status_code=error.status_code)
         task_id = f"cloud_{len(state.tasks) + 1}"
         assert all({"client_file_id", "file_id"}.isdisjoint(item) for item in manifest)
         manifest = [{**item, "file_id": f"file-{task_id}-{index + 1}"} for index, item in enumerate(manifest)]
         state.tasks[task_id] = {
+            "request": submitted,
+            "tier": selected_tier,
             "files": manifest,
             "ready": {item["file_id"] for item in manifest if item.get("sha256sum") in state.cache},
             "upload_version": 0,
@@ -819,6 +852,26 @@ def cloud() -> Iterator[_CloudState]:
         storage_server.stop()
 
 
+@pytest.mark.parametrize("tier", [None, "basic", "advanced"])
+def test_example_script_forwards_optional_tier(cloud: _CloudState, tmp_path: Path, tier: str | None) -> None:
+    """执行真实示例脚本，验证缺省不发送 tier、显式选档不由客户端替换。"""
+    cloud.pdf_tiers = TIERS
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"%PDF-script-protocol")
+    env = _script_env(tmp_path, cloud.gateway_url)
+    if tier is None:
+        env.pop("MINERU_TIER")
+    else:
+        env["MINERU_TIER"] = tier
+    result = _run_script(env, source)
+    assert result.returncode == 0, result.stdout + result.stderr
+    body = cloud.tasks["cloud_1"]["request"]
+    if tier is None:
+        assert "tier" not in body
+    else:
+        assert body["tier"] == tier
+
+
 @pytest.mark.parametrize("cache_mode", ["none", "mixed", "all", "no_hash"])
 def test_same_client_works_with_saas_and_oss(cloud: _CloudState, tmp_path: Path, cache_mode: str) -> None:
     """通用客户端只向网关发送清单，文件和 ZIP 都直接走对象存储。"""
@@ -839,6 +892,32 @@ def test_same_client_works_with_saas_and_oss(cloud: _CloudState, tmp_path: Path,
     assert not any(path.endswith("/result") for _, _, path, _ in cloud.requests)
     assert all(auth is None for surface, _, _, auth in cloud.requests if surface == "storage")
     assert _members((tmp_path / "results/file-cloud_1-1/a.zip").read_bytes())["markdown.md"] == b"# OSS result file-cloud_1-1\n"
+
+
+def test_saas_standard_only_with_native_and_oss(cloud: _CloudState) -> None:
+    """SaaS 仅发布 Standard，混合请求仍逐文件返回 Standard/Flash 并从 OSS 下载。"""
+    with httpx.Client(base_url=cloud.gateway_url, headers={"Authorization": "Bearer test-key"}, trust_env=False) as client:
+        assert [item["id"] for item in client.get("/v1/tiers").json()["data"]] == ["standard"]
+        assert "native_extensions" not in client.get("/v1/health").json()["features"]
+        for tier in ("flash", "basic", "advanced"):
+            rejected = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], "tier": tier})
+            assert rejected.status_code == 400 and rejected.json()["error"]["param"] == "tier"
+        assert not cloud.tasks
+        receipt = client.post("/v1/tasks", json={
+            "files": [{"file_name": name, "bytes": 1} for name in ("test.pdf", "test.docx")],
+            "output_formats": ["default"],
+        })
+        assert receipt.status_code == 202, receipt.text
+        for item in receipt.json()["files"]:
+            upload = item["upload"]
+            response = httpx.put(upload["url"], content=b"x", headers=upload["headers"], trust_env=False)
+            assert response.status_code == 200
+        result = client.get("/v1/tasks/" + receipt.json()["task_id"]).json()
+        assert result["status"] == "completed"
+        assert [item["parse"]["tier"] for item in result["files"]] == ["standard", "flash"]
+        for item in result["files"]:
+            download = httpx.get(item["result_url"], trust_env=False)
+            assert download.status_code == 200 and "markdown.md" in _members(download.content)
 
 
 @pytest.mark.parametrize("failure", ["transient_upload", "lost_upload_response", "expired_download", "api_download_redirect"])

@@ -321,8 +321,8 @@ def test_v1_client_discovers_api_server_without_advanced(
     monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="standard",
-        no_advanced=True,
+        tiers=("flash", "basic", "standard"),
+
     )
     request_log: list[tuple[str, str, str | None]] = []
 
@@ -439,7 +439,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     monkeypatch.setattr(task_outputs, "build_task_output", export)
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
-        tier="flash",
+        tiers=("flash",),
         api_key="secret",
     )
     request_log: list[tuple[str, str, str | None]] = []
@@ -466,74 +466,54 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     assert parse_calls[0]["page_range"] == "1"
 
 
-def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """贯通两套真实 V1 路由，验证本地 Flash 不上传远程且环境密钥只用于远程任务。"""
+def test_gradio_routes_native_and_pdf_to_standard_only_server(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """仅发布 Standard 的同一服务接收原生与 PDF 请求，鉴权和逐文件档位一致。"""
+    from test_task_tiers import _stub_inference
+
     source = tmp_path / "report.pdf"
     source.write_bytes(_pdf_bytes())
+    native = tmp_path / "native.html"
+    native.write_text("<h1>Native on standard-only server</h1>", encoding="utf-8")
     monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
     monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
-
-    async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
-        """只替换模型推理，保留两套服务各自的上传、任务和 ZIP 打包流程。"""
-        return ParseResult(middle_json=_middle_json(with_image=False))
-
-    monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
+    _stub_inference(monkeypatch)
     remote_api = parser_api_server.create_app(
-        upload_dir=str(tmp_path / "remote"), tier="standard", no_flash=True, no_advanced=True, api_key="remote-secret"
+        upload_dir=str(tmp_path / "remote"), tiers=("standard",), api_key="remote-secret"
     )
-    local_api = parser_api_server.create_app(upload_dir=str(tmp_path / "local"), tier="flash")
     requests: list[tuple[str, str, str, str | None]] = []
+    submissions: list[dict[str, Any]] = []
     with TestClient(remote_api, base_url="http://remote.test") as remote_http:
-        with TestClient(local_api, base_url="http://local.test") as local_http:
-
-            async def handle(request: httpx.Request) -> httpx.Response:
-                """按目标主机转入对应 ASGI 服务，记录完整请求目的地和鉴权头。"""
-                host = request.url.host
-                requests.append((host, request.method, request.url.path, request.headers.get("authorization")))
-                target = {"remote.test": remote_http, "local.test": local_http}[host]
-                response = target.request(
-                    request.method,
-                    str(request.url),
-                    headers=dict(request.headers),
-                    content=request.content,
-                )
-                # TestClient 已解压响应，转交 MockTransport 时同步移除原压缩头。
-                headers = {
-                    key: value for key, value in response.headers.items() if key not in {"content-encoding", "content-length"}
-                }
-                return httpx.Response(response.status_code, headers=headers, content=response.content)
-
-            def async_client(**kwargs: Any) -> httpx.AsyncClient:
-                """为能力发现和 API parser 注入同一双服务传输层。"""
-                kwargs["transport"] = httpx.MockTransport(handle)
-                return httpx.AsyncClient(**kwargs)
-
-            proxy = SimpleNamespace(**{**vars(httpx), "AsyncClient": async_client})
-            monkeypatch.setattr(gradio_client, "httpx", proxy)
-            monkeypatch.setattr(parser_api_client, "httpx", proxy)
-            remote = V1ArtifactClient(api_url="http://remote.test")
-            local = V1ArtifactClient(api_url="http://local.test", api_key="")
-            remote_capabilities = asyncio.run(remote.discover())
-            local_capabilities = asyncio.run(local.discover())
-            routed = GradioArtifactClient(remote, local_flash=local)
-            assert routed.capabilities.tiers == ("flash", "basic", "standard")
-            assert remote.capabilities is remote_capabilities
-            assert remote_capabilities.tiers == ("basic", "standard")
-            assert local.capabilities is local_capabilities
-            requests.clear()
-
-            flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
-            assert not hasattr(flash_result, "_model_output")
-            assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
-            assert any(method == "POST" and path == "/v1/tasks" for _host, method, path, _auth in requests)
-            requests.clear()
-
-            remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
-            assert not hasattr(remote_result, "_model_output")
-            assert requests and all(
-                host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
+        async def handle(request: httpx.Request) -> httpx.Response:
+            """将能力发现、上传和下载都交给唯一远端服务，保留完整请求供断言。"""
+            requests.append((request.url.host, request.method, request.url.path, request.headers.get("authorization")))
+            if request.method == "POST" and request.url.path == "/v1/tasks":
+                submissions.append(json.loads(request.content))
+            response = remote_http.request(
+                request.method, str(request.url), headers=dict(request.headers), content=request.content
             )
-            assert any(method == "POST" and path == "/v1/tasks" for _host, method, path, _auth in requests)
+            headers = {
+                key: value for key, value in response.headers.items() if key not in {"content-encoding", "content-length"}
+            }
+            return httpx.Response(response.status_code, headers=headers, content=response.content)
+
+        def async_client(**kwargs: Any) -> httpx.AsyncClient:
+            """为能力发现和 SDK 注入同一服务传输层。"""
+            kwargs["transport"] = httpx.MockTransport(handle)
+            return httpx.AsyncClient(**kwargs)
+
+        proxy = SimpleNamespace(**{**vars(httpx), "AsyncClient": async_client})
+        monkeypatch.setattr(gradio_client, "httpx", proxy)
+        monkeypatch.setattr(parser_api_client, "httpx", proxy)
+        remote = V1ArtifactClient(api_url="http://remote.test")
+        asyncio.run(remote.discover())
+        routed = GradioArtifactClient(remote)
+        assert routed.capabilities.tiers == ("standard",)
+        native_result = asyncio.run(routed.parse_file(native, tier="flash", page_range=""))
+        pdf_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
+        assert native_result.middle_json.extensions["mineru"]["tier"] == "flash"
+        assert pdf_result.middle_json.extensions["mineru"]["tier"] == "standard"
+        assert "tier" not in submissions[0] and submissions[1]["tier"] == "standard"
+        assert requests and all(host == "remote.test" and auth == "Bearer remote-secret" for host, _, _, auth in requests)
 
 
 @pytest.mark.parametrize("failure", [None, V1ArtifactError("remote failed", code="parse_failed"), asyncio.CancelledError()])
@@ -543,8 +523,7 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
     primary = Mock(spec=V1ArtifactClient)
     primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard", "flash"), ("default",), ("upload",))
     primary.parse_file = AsyncMock(return_value=result, side_effect=failure)
-    local = Mock(spec=V1ArtifactClient)
-    routed = GradioArtifactClient(primary, local_flash=local)
+    routed = GradioArtifactClient(primary)
     callback = Mock()
     request = routed.parse_file(Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback)
 
@@ -561,23 +540,22 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
     primary.parse_file.assert_awaited_once_with(
         Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback
     )
-    local.parse_file.assert_not_called()
 
 
-@pytest.mark.parametrize(("tier", "code"), [("advanced", "tier_unavailable"), ("unknown", "invalid_request")])
-def test_gradio_router_rejects_unavailable_tiers(tier: str, code: str) -> None:
-    """验证路由层只补充 Flash，拒绝未声明的 Advanced 及未知档位。"""
-    primary = Mock(spec=V1ArtifactClient)
-    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("default",), ("upload",))
-    local = Mock(spec=V1ArtifactClient)
-    local.capabilities = V1ServerCapabilities("http://local.test", ("flash", "advanced"), ("default",), ("upload",))
-    routed = GradioArtifactClient(primary, local_flash=local)
-    assert routed.capabilities.tiers == ("flash", "standard")
+@pytest.mark.parametrize(
+    ("tier", "code"), [("flash", "tier_unavailable"), ("advanced", "tier_unavailable"), ("unknown", "invalid_request")]
+)
+def test_gradio_rejects_unavailable_pdf_tiers(tmp_path: Path, tier: str, code: str) -> None:
+    """原生 Flash 能力不能成为 PDF 绕过公开档位限制的路径。"""
+    source = tmp_path / "report.pdf"
+    source.write_bytes(_pdf_bytes())
+    primary = V1ArtifactClient(api_url="http://remote.test")
+    primary._capabilities = V1ServerCapabilities(primary.base_url, ("standard",), ("default",), ("upload",))
+    routed = GradioArtifactClient(primary)
+    assert routed.capabilities.tiers == ("standard",)
     with pytest.raises(V1ArtifactError) as error:
-        asyncio.run(routed.parse_file(Path("report.pdf"), tier=tier, page_range=""))
+        asyncio.run(routed.parse_file(source, tier=tier, page_range=""))
     assert error.value.code == code
-    primary.parse_file.assert_not_called()
-    local.parse_file.assert_not_called()
 
 
 def test_api_client_upload_auth_is_limited_to_same_origin() -> None:
@@ -624,7 +602,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
         return middle, model
 
     monkeypatch.setattr(mineru_parser, "aio_doc_analyze", fake_analyze)
-    api = parser_api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    api = parser_api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",))
     with TestClient(api, base_url="http://testserver") as test_client:
         request_log: list[tuple[str, str, str | None]] = []
         proxy = _httpx_proxy_for_test_client(test_client, request_log)
@@ -1210,6 +1188,7 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
     assert slider.value == default_position
     assert slider.interactive is (len(tiers) > 1)
+    assert slider.visible is (len(tiers) > 1)
     assert (
         label.value
         == "解析等级："
@@ -1262,11 +1241,11 @@ def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: st
 
 
 @pytest.mark.parametrize("tiers", [("standard",), ("advanced", "basic"), ("basic", "standard", "advanced")])
-def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers: tuple[str, ...]) -> None:
-    """服务缺少 Flash 时在事件入口报错，不发起解析请求，也不保留旧下载。"""
+def test_gradio_native_input_ignores_pdf_tier_list(tmp_path: Path, tiers: tuple[str, ...]) -> None:
+    """未发布 Flash 的服务仍可接收原生文件，不受 PDF/图片滑块约束。"""
     source = tmp_path / "source.csv"
     source.write_text("name,value\na,1\n", encoding="utf-8")
-    client = SimpleNamespace(parse_file=AsyncMock())
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
     handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
@@ -1276,11 +1255,9 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
         return [await handler(str(source), 0, "")]
 
     updates = asyncio.run(convert())
-    assert "tier_unavailable" in updates[-1][0]
-    assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
-    assert updates[-1][6] is None
-    assert all(item["interactive"] is False for item in updates[-1][8:15])
-    client.parse_file.assert_not_called()
+    assert "stop after request" in updates[-1][0]
+    client.parse_file.assert_awaited_once()
+    assert client.parse_file.call_args.kwargs["tier"] == "flash"
 
 
 @pytest.mark.parametrize(
@@ -1389,8 +1366,8 @@ def test_gradio_epub_conversion_preserves_source_preview(tmp_path: Path) -> None
 )
 def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: tuple[str, ...], position: int | float) -> None:
     """验证非法位置会清除结果且不会向解析服务提交请求，包括单档位的占位上界。"""
-    source = tmp_path / "demo.csv"
-    source.write_text("name,value\na,1\n", encoding="utf-8")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(_pdf_bytes())
     client = SimpleNamespace(parse_file=AsyncMock())
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path, enable_example=False)

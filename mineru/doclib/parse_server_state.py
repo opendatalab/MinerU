@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..types import DeploymentTier, Tier
+from ..types import ManagedServerTier, Tier
 
 if TYPE_CHECKING:
     from ..parser.process_control import ManagedProcessControl
@@ -45,15 +45,15 @@ class ParseServerHealth:
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
     managed_url: str = DEFAULT_MANAGED_URL
-    managed_tier: DeploymentTier | None = None
-    running_managed_tier: DeploymentTier | None = None
+    managed_tier: ManagedServerTier | None = None
+    running_managed_tier: ManagedServerTier | None = None
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
     managed_control: ManagedProcessControl | None = None
     managed_tier_transition: bool = False
     local_generation: int = 0
 
-    def begin_managed_tier_transition(self, tier: DeploymentTier) -> None:
+    def begin_managed_tier_transition(self, tier: ManagedServerTier) -> None:
         """立即撤销旧服务的可用状态；保留子进程真实启动状态以正确计算停止预算。"""
         self.managed_tier = tier
         self.managed_tier_transition = True

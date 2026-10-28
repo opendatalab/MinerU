@@ -5,29 +5,70 @@ from __future__ import annotations
 
 import ctypes as ct
 from contextlib import ExitStack
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import importlib.util
 import json
 import os
 from pathlib import Path
 import sys
 
-from .vulkan import enumerate_vulkan_devices
+from .gpu import GpuClassification, GpuIdentity, match_gpu_identities, with_gpu_classification
+from .vulkan import VulkanDevice, enumerate_vulkan_devices
 
 PROBE_MARKER = "MINERU_LLAMA_DEVICES="
 
 
 @dataclass(frozen=True)
-class LlamaDevice:
+class LlamaDevice(GpuClassification):
     """ggml 注册设备名称和经过唯一匹配的 Vulkan PCI 身份。"""
 
     name: str
     description: str
     backend: str
-    integrated: bool
     vendor_id: int | None = None
     device_id: int | None = None
     vulkan_index: int | None = None
+    luid: str | None = None
+
+    @property
+    def identity(self) -> GpuIdentity:
+        """提供原生唯一匹配得到的物理身份，不使用可变的 VulkanN 注册名称。"""
+        return GpuIdentity(self.vendor_id, self.device_id, luid=self.luid, name=self.description)
+
+
+def _classify_devices(devices: tuple[LlamaDevice, ...], physical: tuple[VulkanDevice, ...]) -> tuple[LlamaDevice, ...]:
+    """ggml 只确认可见性，分类来自 Linux Vulkan 或 Windows D3D12 的唯一原生匹配。"""
+    vulkan_indices = [index for index, device in enumerate(devices) if device.backend == "vulkan"]
+    matches = match_gpu_identities(
+        [devices[index].identity for index in vulkan_indices], [device.identity for device in physical], allow_name=True
+    )
+    result = list(devices)
+    for index, matched in zip(vulkan_indices, matches):
+        if matched is None:
+            continue
+        native = physical[matched]
+        result[index] = replace(
+            result[index], vendor_id=native.vendor_id, device_id=native.device_id, vulkan_index=native.index
+        )
+        if sys.platform == "linux":
+            result[index] = with_gpu_classification(result[index], native)
+    if sys.platform == "win32":
+        from .windows_gpu import discover_gpus
+
+        try:
+            adapters = discover_gpus()
+        except (OSError, RuntimeError):
+            adapters = ()
+        matches = match_gpu_identities(
+            [result[index].identity for index in vulkan_indices], [adapter.identity for adapter in adapters], allow_name=True
+        )
+        for index, matched in zip(vulkan_indices, matches):
+            if matched is not None:
+                adapter = adapters[matched]
+                result[index] = with_gpu_classification(
+                    replace(result[index], vendor_id=adapter.vendor_id, device_id=adapter.device_id, luid=adapter.luid), adapter
+                )
+    return tuple(result)
 
 
 def probe_devices() -> tuple[LlamaDevice, ...]:
@@ -80,20 +121,14 @@ def _probe_library(root: Path) -> tuple[LlamaDevice, ...]:
             continue
         label = description(device).decode()
         backend_name = backend(registry(device)).decode().lower()
-        matches = [p for p in physical if p.name == label] if backend_name == "vulkan" else []
-        identities = {(p.vendor_id, p.device_id) for p in matches}
-        identity = next(iter(identities)) if len(identities) == 1 else (None, None)
         result.append(
             LlamaDevice(
                 name(device).decode(),
                 label,
                 "metal" if backend_name == "mtl" else backend_name,
-                device_type == 2,
-                *identity,
-                matches[0].index if len(matches) == 1 else None,
             )
         )
-    return tuple(result)
+    return _classify_devices(tuple(result), physical)
 
 
 def main() -> None:

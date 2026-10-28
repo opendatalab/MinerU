@@ -174,7 +174,7 @@ def test_remote_clients_validate_before_network(tmp_path: Path, monkeypatch: pyt
 
 def test_api_rejects_bad_ranges_before_creating_jobs(tmp_path: Path) -> None:
     """直接 HTTP 请求校验共享语法，错误定位到批量请求的具体文件。"""
-    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",))
     with TestClient(app) as client:
         for raw in INVALID_RANGES:
             response = client.post(
@@ -262,7 +262,7 @@ def test_async_job_resolves_relative_ranges_and_reports_file_errors(tmp_path: Pa
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
     data = source.read_bytes()
-    app = api_server.create_app(upload_dir=str(tmp_path / "api-files"), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path / "api-files"), tiers=("flash",))
     with TestClient(app) as client:
         response = client.post(
             "/v1/tasks",
