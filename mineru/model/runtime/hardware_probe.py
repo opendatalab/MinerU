@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """隔离运行时导入和原生设备探测；不在模块导入时读取配置或初始化模型。"""
 
 from __future__ import annotations

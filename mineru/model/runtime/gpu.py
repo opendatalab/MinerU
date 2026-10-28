@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """共享 GPU 分类、已有身份匹配和候选优先级；不导入或初始化推理运行时。"""
 
 from __future__ import annotations

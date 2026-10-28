@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """只读聚合问题反馈所需的环境信息；不调用模型加载或自动校准。"""
 
 from __future__ import annotations

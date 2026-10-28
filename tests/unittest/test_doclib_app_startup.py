@@ -5,6 +5,7 @@ import tomllib
 import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -131,8 +132,14 @@ def test_config_set_rejects_invalid_known_config_values(key: str, value: str, mo
     assert config_response.json()["source"] == "default"
 
 
-def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(("tier", "model_tier"), [("basic", "basic"), ("standard", "standard"), ("advanced", "standard")])
+def test_config_set_managed_tier_rejects_missing_models(
+    tier: str, model_tier: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """托管档位缺少模型时拒绝保存，Advanced 提示下载共享的 Standard 模型。"""
+
     def _skip_background_task(*args, **kwargs):
+        """跳过后台任务，隔离配置接口与模型就绪检查。"""
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
@@ -140,10 +147,12 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
     # 无 torch 环境会把小模型后端解析为 onnx，显式固定以保持仓库名断言确定。
     monkeypatch.setattr(model_download.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(model_download.get_config().model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(model_download.get_config().model.vlm, "server_url", "")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "basic"})
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": tier})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
     assert response.status_code == 400
@@ -151,27 +160,36 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
     assert "MinerU-4_models_torch" in payload["error"]["message"]
-    assert "mineru-kit models download --tier basic" in payload["error"]["message"]
+    assert f"mineru-kit models download --tier {model_tier}" in payload["error"]["message"]
     assert config_response.json()["value"] == "standard"
     assert config_response.json()["source"] == "default"
 
 
-def test_config_set_managed_advanced_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def _skip_background_task(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
+def test_config_set_managed_advanced_accepts_ready_standard_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Advanced 使用 Standard 依赖和模型，通过检查后保存为显式托管上限。"""
+    check_dependencies = Mock(return_value=None)
+    verify_models = Mock(return_value=model_download.ModelReadyResult(ready=True, root=tmp_path / "models"))
+    monkeypatch.setattr(doclib_app, "_create_background_task", Mock(return_value=None))
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", check_dependencies)
+    monkeypatch.setattr("mineru.doclib.server.verify_model_repo", verify_models)
+    monkeypatch.setattr(model_download.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(model_download.get_config().model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(model_download.get_config().model.vlm, "server_url", "")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
         response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "advanced"})
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
-    assert response.status_code == 400
-    payload = response.json()
-    assert payload["error"]["code"] == "invalid_config_value"
-    assert "basic, standard" in payload["error"]["message"]
+    assert response.status_code == 200
+    assert response.json()["value"] == "advanced"
+    assert config_response.json()["value"] == "advanced"
+    assert config_response.json()["source"] == "override"
+    check_dependencies.assert_called_once_with("standard")
+    assert [call.args[0].name for call in verify_models.call_args_list] == [
+        "MinerU-4_models_torch",
+        "MinerU2.5-Pro-2605-1.2B-GGUF",
+    ]
 
 
 def test_config_set_managed_mode_rejects_missing_models_for_current_tier(

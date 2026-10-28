@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """标准库与平台原生工具实现的只读 CPU、内存和系统显卡库存采集。"""
 
 from __future__ import annotations

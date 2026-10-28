@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """保存可验证的 OCR 校准证据，供服务启动推荐和只读诊断复用。"""
 
 from __future__ import annotations

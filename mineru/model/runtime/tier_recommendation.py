@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """通过硬件初选与启动阶段的 OCR 设备校准，确定 API 服务开放档位。"""
 
 from __future__ import annotations

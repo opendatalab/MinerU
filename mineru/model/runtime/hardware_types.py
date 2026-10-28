@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """硬件诊断的可序列化报告类型，不导入推理运行时。"""
 
 from __future__ import annotations
