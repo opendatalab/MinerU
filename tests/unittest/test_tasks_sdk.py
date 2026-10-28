@@ -302,18 +302,37 @@ def test_tasks_sdk_rejects_changed_identity(
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("state", ["failed", "canceled"])
+@pytest.mark.parametrize("fields", [{}, {"param": None}, {"param": "tier"}])
 def test_tasks_sdk_preserves_file_errors(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, state: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, state: str, fields: dict[str, Any]
 ) -> None:
     """优先保留逐文件错误码与字段，不统一改写为 parse_failed。"""
     source = tmp_path / "file.pdf"
     source.write_bytes(b"pdf")
     snapshot = task_snapshot(state)
     if state == "failed":
-        snapshot["files"][0]["error"] = {"code": "engine_dead", "message": "engine stopped", "param": "tier"}
+        snapshot["files"][0]["error"] = {"code": "engine_dead", "message": "engine stopped", **fields}
     bind_transport(monkeypatch, lambda _: httpx.Response(202, json=snapshot))
-    with pytest.raises(api_client._V1APIError, match="engine_dead" if state == "failed" else "canceled"):
+    with pytest.raises(api_client._V1APIError, match="engine_dead" if state == "failed" else "canceled") as error:
         parse(MinerUApiParser(api_url="https://api.test"), source, asynchronous)
+    assert error.value.param == (fields.get("param") if state == "failed" else None)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("fields", [{}, {"param": None}, {"param": "api_key"}])
+def test_tasks_sdk_preserves_http_errors_without_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool, fields: dict[str, Any]
+) -> None:
+    """同步和异步入口都只依赖错误码和说明，可选字段缺省或为空时保持可用。"""
+    source = tmp_path / "file.pdf"
+    source.write_bytes(b"pdf")
+    detail = {"code": "invalid_api_key", "message": "Invalid API key", **fields}
+    bind_transport(monkeypatch, lambda _: httpx.Response(401, json={"error": detail}))
+    with pytest.raises(api_client._V1APIError) as error:
+        parse(MinerUApiParser(api_url="https://api.test"), source, asynchronous)
+    assert error.value.code == detail["code"]
+    assert error.value.message == detail["message"]
+    assert error.value.param == fields.get("param")
 
 
 def test_task_output_preserves_middle_without_model_output(tmp_path: Path) -> None:

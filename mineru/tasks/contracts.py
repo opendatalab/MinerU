@@ -15,9 +15,10 @@ _PYDANTIC_CONFIG = ConfigDict(extra="forbid")
 
 
 class ErrorDetail(BaseModel):
+    """公共错误只使用稳定错误码和说明，可选参数路径用于精确定位输入。"""
+
     model_config = _PYDANTIC_CONFIG
-    type: str
-    code: str | None = None
+    code: str = Field(min_length=1)
     message: str
     param: str | None = None
 

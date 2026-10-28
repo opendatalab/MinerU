@@ -123,18 +123,8 @@ _PYDANTIC_CONFIG = ConfigDict(extra="forbid")
 def _error_response(status_code: int, error: ErrorDetail) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content=ErrorResponse(error=error).model_dump(by_alias=True),
+        content=ErrorResponse(error=error).model_dump(by_alias=True, exclude_none=True),
     )
-
-
-def _error_type_for_status(status_code: int) -> str:
-    if status_code == 401:
-        return "authentication_error"
-    if status_code == 403:
-        return "permission_error"
-    if 400 <= status_code < 500:
-        return "invalid_request_error"
-    return "api_error"
 
 
 def _validation_error_param(exc: RequestValidationError) -> str | None:
@@ -179,7 +169,6 @@ def _http_exception_error(exc: HTTPException) -> ErrorDetail:
             return ErrorDetail.model_validate(nested["error"])
     message = str(detail) if detail else "HTTP error"
     return ErrorDetail(
-        type=_error_type_for_status(exc.status_code),
         code="api_error" if exc.status_code >= 500 else "invalid_request",
         message=message,
     )
@@ -621,12 +610,11 @@ class FileStore:
             if rec.purpose != "parse_output":
                 raise_api_error(
                     403,
-                    error_type="permission_error",
                     code="feature_requires_api_key",
                     message="Source files cannot be downloaded",
                 )
             if rec.sha256sum is None or not self._blob_abs(rec.sha256sum).is_file():
-                raise_api_error(404, error_type="invalid_request_error", code="file_not_found", message="Output expired")
+                raise_api_error(404, code="file_not_found", message="Output expired")
             self._pins[rec.sha256sum] = self._pins.get(rec.sha256sum, 0) + 1
             return self._blob_abs(rec.sha256sum), rec.filename, rec.sha256sum
 
@@ -669,7 +657,6 @@ class FileStore:
             if rec is None or (rec.expires_at is not None and rec.expires_at <= int(time.time())):
                 raise_api_error(
                     404,
-                    error_type="invalid_request_error",
                     code="file_not_found",
                     message=f"File {file_id} not found",
                 )
@@ -693,14 +680,12 @@ class FileStore:
             if rec.purpose != "parse_output":
                 raise_api_error(
                     403,
-                    error_type="permission_error",
                     code="feature_requires_api_key",
                     message="Source files cannot be downloaded",
                 )
             if rec.sha256sum is None:
                 raise_api_error(
                     500,
-                    error_type="api_error",
                     code="internal_error",
                     message="File has no sha256sum",
                 )
@@ -711,7 +696,6 @@ class FileStore:
             if file_id not in self._files:
                 raise_api_error(
                     404,
-                    error_type="invalid_request_error",
                     code="file_not_found",
                     message=f"File {file_id} not found",
                 )
@@ -767,7 +751,7 @@ def _validate_execution_source_policy(req: _ExecutionRequest, *, allow_http_sour
     except ValueError as exc:
         message = str(exc)
         code = "unsupported_source" if "source" in message else "invalid_request"
-        raise_api_error(400, error_type="invalid_request_error", code=code, message=message, param="files.0.source")
+        raise_api_error(400, code=code, message=message, param="files.0.source")
 
 
 @dataclass
@@ -828,7 +812,7 @@ class ExecutionStore:
             if task.done() or rec.status == "canceled":
                 continue
             rec.status = "failed"
-            rec.error = ErrorDetail(type="engine_error", code="engine_dead", message=message)
+            rec.error = ErrorDetail(code="engine_dead", message=message)
             _discard_unfinished_output(rec)
             if task is not current and not task.cancelling():
                 task.cancel()
@@ -838,7 +822,7 @@ class ExecutionStore:
         message = self.runtime_owner.engine_error
         if message is not None:
             self.fail_engine(message)
-            raise_api_error(503, error_type="engine_error", code="engine_dead", message=message)
+            raise_api_error(503, code="engine_dead", message=message)
 
     def start_task(
         self,
@@ -850,7 +834,7 @@ class ExecutionStore:
         """保存真实后台任务及所属应用租约，排队取消也不会开始解析。"""
         self.require_ready()
         if self._closing:
-            raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
+            raise_api_error(503, code="server_shutting_down", message="Server is shutting down")
         self._completion_events[rec.id] = asyncio.Event()
 
         async def run_owned() -> None:
@@ -939,7 +923,7 @@ class ExecutionStore:
             raise ValueError("_ExecutionRequest.tier must be resolved before execution creation")
         execution_id = execution_id or new_execution_id()
         if execution_id in self._executions:
-            raise_api_error(409, error_type="invalid_request_error", code="job_already_exists", message="Job already exists")
+            raise_api_error(409, code="job_already_exists", message="Job already exists")
         rec = _ExecutionRecord(
             id=execution_id,
             request=req,
@@ -984,7 +968,6 @@ class ExecutionStore:
         if rec is None:
             raise_api_error(
                 404,
-                error_type="invalid_request_error",
                 code="job_not_found",
                 message=f"Job {job_id} not found",
             )
@@ -996,7 +979,6 @@ class ExecutionStore:
         if rec.status in ("completed", "failed", "canceled"):
             raise_api_error(
                 409,
-                error_type="invalid_request_error",
                 code="job_already_terminal",
                 message=f"Job is {rec.status}",
             )
@@ -1141,9 +1123,9 @@ async def _prepare_execution_input(
             return
         rec.status = "failed"
         rec.error = (
-            ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+            ErrorDetail(code=exc.code, message=str(exc), param=exc.param)
             if isinstance(exc, MineruError)
-            else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+            else ErrorDetail(code="parse_failed", message=str(exc))
         )
 
 
@@ -1309,9 +1291,9 @@ async def _run_execution(
             )
             rec.status = "failed"
             rec.error = (
-                ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+                ErrorDetail(code=exc.code, message=str(exc), param=exc.param)
                 if isinstance(exc, MineruError)
-                else ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+                else ErrorDetail(code="parse_failed", message=str(exc))
             )
         finally:
             rec.finished_at = execution_timestamp()
@@ -1370,7 +1352,6 @@ def _require_model_preload_ready(request: Request) -> None:
         return
     raise_api_error(
         503,
-        error_type="engine_error",
         code=preload_error.code,
         message=preload_error.message,
     )
@@ -1429,7 +1410,6 @@ async def get_model(
     if model not in model_ids:
         raise_api_error(
             404,
-            error_type="invalid_request_error",
             code="model_not_found",
             message=f"Model '{model}' not found",
         )
@@ -1538,7 +1518,7 @@ async def submit_execution(
     try:
         body.page_range = normalize_page_range_input(body.page_range) or None
     except MineruError as exc:
-        raise_api_error(400, error_type=exc.type, code=exc.code, message=str(exc), param="files.0.page_range")
+        raise_api_error(400, code=exc.code, message=str(exc), param="files.0.page_range")
     _require_model_preload_ready(request)
     default_tier: Tier | None = request.app.state.default_tier
     can_default_to_flash = _execution_can_default_to_flash(body)
@@ -1551,7 +1531,6 @@ async def submit_execution(
         else:
             raise_api_error(
                 503,
-                error_type="engine_error",
                 code="quality_tier_unavailable",
                 message=(
                     "No basic, standard, or advanced tier available in this server. "
@@ -1568,13 +1547,12 @@ async def submit_execution(
     if runtime is None:
         raise_api_error(
             400,
-            error_type="invalid_request_error",
             code="invalid_request",
             message=f"Tier '{body.tier}' not available in this server",
         )
     _validate_execution_source_policy(body, allow_http_source=request.app.state.allow_http_source)
     if execution_store._closing:
-        raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
+        raise_api_error(503, code="server_shutting_down", message="Server is shutting down")
     rec = execution_store.create(body, file_store, execution_id=execution_id)
     rec.retention_held = True
     url_timeout_val: int = request.app.state.url_timeout
@@ -2012,7 +1990,6 @@ def create_app(
         return _error_response(
             400,
             ErrorDetail(
-                type="invalid_request_error",
                 code=_validation_error_code(exc),
                 message=_validation_error_message(exc),
                 param=_validation_error_param(exc),
@@ -2029,7 +2006,6 @@ def create_app(
         return _error_response(
             500,
             ErrorDetail(
-                type="api_error",
                 code="internal_error",
                 message="Internal server error",
             ),
@@ -2053,7 +2029,6 @@ def create_app(
             return _error_response(
                 401,
                 ErrorDetail(
-                    type="authentication_error",
                     code="invalid_api_key",
                     message="Invalid or missing API key",
                 ),

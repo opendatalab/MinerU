@@ -497,7 +497,6 @@ def test_api_client_preserves_structured_error_body_on_http_error() -> None:
         401,
         {
             "error": {
-                "type": "authentication_error",
                 "code": "invalid_api_key",
                 "message": "Invalid or missing API key",
                 "param": "api_key",
@@ -588,7 +587,7 @@ def test_api_server_validation_errors_use_error_envelope(tmp_path: Path, monkeyp
     assert response.status_code == 400
     body = response.json()
     assert "detail" not in body
-    assert body.get("error")["type"] == "invalid_request_error"
+    assert "type" not in body["error"]
     assert body.get("error")["code"] == "invalid_request"
     assert "Invalid request" in body.get("error")["message"]
 
@@ -609,10 +608,8 @@ def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monk
     body = response.json()
     assert "detail" not in body
     assert body.get("error") == {
-        "type": "api_error",
         "code": "internal_error",
         "message": "Internal server error",
-        "param": None,
     }
 
 
@@ -892,6 +889,8 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
     assert tiers_response.json().get("error")["code"] == "model_preload_device_unavailable"
     assert models_response.status_code == 503
     assert models_response.json().get("error")["code"] == "model_preload_device_unavailable"
+    for response in (health_response, tiers_response, models_response):
+        assert set(response.json()["error"]) == {"code", "message"}
 
 
 def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

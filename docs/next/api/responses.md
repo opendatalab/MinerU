@@ -51,28 +51,25 @@ JSON 正文使用 UTF-8。Tasks 成功响应省略无值可选字段，保留 0�
 
 ## 错误响应
 
-主 API Server 和 Router 的错误响应采用下面的 OpenAI-compatible 结构。
+本地 API Server、Router 和 SaaS 的公共错误响应采用下面的统一结构。
 独立 file_parse 使用 `error.code/message/upstream_status`，已有恢复记录时还返回状态字段；其错误格式以 [file_parse 错误响应](file-parse.md#错误响应) 为准。
 
 ```json
 {
   "error": {
-    "type": "invalid_request_error",
     "code": "task_already_terminal",
-    "message": "Task is canceled",
-    "param": null
+    "message": "Task is canceled"
   }
 }
 ```
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `type` | string | 是 | 错误大类。 |
-| `code` | string 或 null | 是 | 机器可读的细分错误码，无具体错误码时为 `null`。 |
+| `code` | string | 是 | 稳定的非空错误码，供程序判断错误原因；不能省略或为 `null`。 |
 | `message` | string | 是 | 人类可读描述，应包含必要上下文和修复建议。 |
-| `param` | string 或 null | 否 | 导致错误的参数名；本地 API 无具体参数时返回 `null`，Router 代理层自身错误也可能省略此字段。 |
+| `param` | string 或 null | 否 | 出错参数路径，例如 `files.0.page_range`；有明确对应参数时返回，无值时省略。接收端允许缺省或 `null`。 |
 
-上例对应 `409 Conflict`；HTTP 错误的正文类型为 `application/json`。当前 Python API Server 和 Router 的错误对象均包含 `type/code/message`，客户端将缺省的 `param` 按 `null` 处理。
+上例对应 `409 Conflict`；HTTP 错误的正文类型为 `application/json`。错误对象只包含必填 `code/message` 和可选 `param`，不再输出或接受 `type`。客户端依据 HTTP 状态与 `code` 处理请求失败，不解析 `message` 判断错误类别。
 请求级错误位于顶层 `error`；异步解析失败则通常通过查询接口的 `200` 响应及 `files[].error` 表达，详见 [Tasks 错误响应](tasks.md#各接口错误响应)。
 
 ## 请求追踪
@@ -97,49 +94,40 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 
 如果同一 key 被用于不同请求体，服务端应返回 `400 invalid_request`，避免客户端误以为复用了同一操作。
 
-## 错误类型
-
-| `type` | 含义 |
-|--------|------|
-| `invalid_request_error` | 请求参数非法、资源不存在或状态不允许。 |
-| `authentication_error` | API Key 无效或过期。 |
-| `permission_error` | 权限不足、配额耗尽或功能需要更高 access level。 |
-| `rate_limit_error` | 请求触发限流。 |
-| `engine_error` | 解析引擎不可用、崩溃或解析失败。 |
-| `timeout_error` | 请求等待或处理超时。 |
-| `internal_error` | 未归类异常的服务端内部错误；作为 `api_error` type 下的 code 出现（兜底 handler `api_server.py:2295-2305`），不是独立 type。 |
-| `api_error` | 服务端 API 层错误（存储、元数据、远端依赖等副作用失败），同时也是未归类异常兜底 handler 返回的 type。 |
-
 ## 常用错误码
 
-| HTTP | `type` | `code` |
-|------|--------|--------|
-| 400 | `invalid_request_error` | `invalid_request` |
-| 400 | `invalid_request_error` | `invalid_sha256sum` |
-| 400 | `invalid_request_error` | `file_hash_mismatch` |
-| 400 | `invalid_request_error` | `bytes_mismatch` |
-| 400 | `invalid_request_error` | `unsupported_parameter` |
-| 400 | `invalid_request_error` | `unsupported_output_format` |
-| 400 | `invalid_request_error` | `unsupported_source` |
-| 401 | `authentication_error` | `invalid_api_key` |
-| 403 | `permission_error` | `quota_exceeded` |
-| 403 | `permission_error` | `feature_requires_api_key` |
-| 403 | `permission_error` | `list_requires_api_key` |
-| 404 | `invalid_request_error` | `task_not_found`、`file_not_found`、`upload_not_found`、`model_not_found` |
-| 409 | `invalid_request_error` | `task_already_terminal`、`file_already_terminal` |
-| 410 | `invalid_request_error` | `upload_expired` |
-| 413 | `invalid_request_error` | `file_too_large` |
-| 429 | `rate_limit_error` | `rate_limit_exceeded` |
-| 500 | `api_error` | `internal_error` |
-| 503 | `api_error` | `service_unavailable` |
-| 503 | `api_error` 或 `engine_error` | `quality_tier_unavailable`，以具体入口返回的错误大类为准。 |
+| HTTP | `code` |
+|------|--------|
+| 400 | `invalid_request` |
+| 400 | `invalid_sha256sum` |
+| 400 | `file_hash_mismatch` |
+| 400 | `bytes_mismatch` |
+| 400 | `unsupported_parameter` |
+| 400 | `unsupported_output_format` |
+| 400 | `unsupported_source` |
+| 401 | `invalid_api_key` |
+| 403 | `quota_exceeded` |
+| 403 | `feature_requires_api_key` |
+| 403 | `list_requires_api_key` |
+| 404 | `task_not_found`、`file_not_found`、`upload_not_found`、`model_not_found` |
+| 409 | `task_already_terminal`、`file_already_terminal` |
+| 410 | `upload_expired` |
+| 413 | `file_too_large` |
+| 429 | `rate_limit_exceeded` |
+| 500 | `internal_error` |
+| 503 | `service_unavailable` |
+| 503 | `quality_tier_unavailable` |
 
-完整错误分类见 [错误码体系](../errors.md)。
+内部 CLI/Doclib 的错误分类见 [错误码体系](../errors.md)，其中的 `type` 分类不属于公共解析 API 协议。
 
 ## 本地 Server 差异
 
-Local Parse Server 使用同一套错误 envelope。差异主要体现在错误来源:
+Local Parse Server 使用同一套错误结构。差异主要体现在错误来源:
 
 - 未启用 API Key 时，不会产生 `invalid_api_key`。
 - PDF/image 省略 `tier` 或传 `null` 且无法解析到非 `flash` 质量 tier 时，应返回 tier 相关错误，不能降级到 `flash`。OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`，其它 text 不作为解析输入。
-- 解析能力缺失时，应优先返回可操作的 `engine_error`，而不是泛化为 `internal_error`。
+- 解析能力缺失时，应返回具体的模型预加载或档位错误码，而不是泛化为 `internal_error`。
+
+## 协议升级
+
+本次是一次性协议升级：API、worker、Router、file_parse 和 SaaS 需协调切换，不支持新旧错误协议混用。切换前先收尾已受理任务。公共错误删除 `type`、要求非空 `code`，并统一省略空 `param`；内部 CLI/Doclib 分类与 file_parse 的历史恢复记录不随本次升级改写。

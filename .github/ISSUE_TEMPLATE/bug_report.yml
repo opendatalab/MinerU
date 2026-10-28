@@ -163,11 +163,19 @@ body:
   - type: textarea
     id: device_mode
     attributes:
-      label: Device and inference environment (optional) | 设备与推理环境（可选）
+      label: Hardware diagnostics | 硬件与运行环境诊断
       description: |
-        For local inference, include the device (cpu, cuda, mps, npu, xpu, etc.), GPU model and memory, and relevant driver versions.
-        本地推理请填写设备（cpu、cuda、mps、npu、xpu 等）、GPU 型号和显存，以及相关驱动版本。
-        Include the small model backend (onnx / torch) and VLM engine (llama-cpp / vllm / lmdeploy / mlx) when applicable.
-        如涉及模型，请填写小模型后端（onnx / torch）与 VLM 引擎（llama-cpp / vllm / lmdeploy / mlx）。
-        For remote inference, state the service/deployment and server environment if known.
-        远程推理请说明服务或部署方式，以及已知的服务端环境。
+        Run `mineru-kit hardware info` in the environment where the issue occurs and paste the complete text output below.
+        请在出现问题的环境中运行 `mineru-kit hardware info`，并在下方粘贴完整文本输出。
+        For Docker, WSL, or remote deployments, run the command where MinerU actually runs.
+        使用 Docker、WSL 或远程部署时，请在实际运行 MinerU 的环境中执行该命令。
+        If installation failed, your version does not support the command, or you cannot access the server, explain why.
+        如果安装失败、旧版本不支持该命令或无法访问服务端，请说明原因。
+        Include any available error output and known environment details (OS, Python/MinerU versions, device, and backend).
+        同时提供可获得的错误输出及已知环境信息（操作系统、Python/MinerU 版本、设备和推理后端）。
+      placeholder: |
+        Paste the complete output of mineru-kit hardware info here.
+        请在此粘贴 mineru-kit hardware info 的完整输出。
+      render: text
+    validations:
+      required: true

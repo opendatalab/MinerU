@@ -180,7 +180,21 @@ def test_issue_form_accepts_installation_and_current_product_reports() -> None:
     assert fields["tier"]["attributes"]["options"][:4] == ["flash", "basic", "standard", "advanced"]
     assert fields["parse_mode"]["attributes"]["options"][:3] == ["auto", "txt", "ocr"]
     assert not fields["parse_mode"].get("validations", {}).get("required", False)
-    assert not fields["device_mode"].get("validations", {}).get("required", False)
+    assert fields["device_mode"]["type"] == "textarea"
+    assert fields["device_mode"]["validations"]["required"] is True
+    diagnostics = fields["device_mode"]["attributes"]
+    assert diagnostics["render"] == "text"
+    assert "value" not in diagnostics
+    assert "mineru-kit hardware info" in diagnostics["placeholder"]
+    assert "mineru-kit hardware info" in diagnostics["description"]
+    for guidance in (
+        "installation failed",
+        "does not support the command",
+        "cannot access the server",
+        "error output",
+        "known environment",
+    ):
+        assert guidance in diagnostics["description"]
     assert "Installation / build | 安装或构建" in fields["usage_entry"]["attributes"]["options"]
     ai_field = next(field for field in form["body"] if "🤖" in field["attributes"].get("label", ""))
     assert all(option.get("required", False) is False for option in ai_field["attributes"]["options"])

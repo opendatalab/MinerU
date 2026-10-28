@@ -198,7 +198,7 @@ X-Task-ID: job_0123456789abcdef01234567
 
 ## 错误响应
 
-file_parse 使用自己的错误结构，不能按主 Tasks 接口的 `ErrorDetail` 要求 `type/param` 必带。
+file_parse 使用自己的 `code/message/upstream_status` 错误结构；主 Tasks 接口的 `ErrorDetail` 为必填 `code/message` 和可选 `param`，不包含 `type`。
 包装层直接返回的 `error` 包含以下三个字段，JSON 值中的 `upstream_status` 不省略：
 
 | 字段 | JSON 类型 | 可为 null | 含义 |
@@ -251,7 +251,7 @@ Content-Type: application/json
 
 当前错误响应不保证附加 `X-Request-ID/X-Task-ID` 或 `Location`，恢复信息从 JSON 正文读取。只取得了客户端预先指定的 ID、但没有对应恢复记录时，仍使用前一种仅含 `error` 的结构。
 
-状态查询成功响应中的 `error` 是持久化的错误快照：它可能是上述三字段结构并额外含 `http_status`，也可能保留上游逐文件错误的 `type/code/message/param` 或其他字段。
+状态查询成功响应中的 `error` 是持久化的错误快照：它可能是上述三字段结构并额外含 `http_status`，也可能保留上游逐文件错误的 `code/message` 和可选 `param`。历史恢复记录保持原样，可能仍含旧的 `type` 或其他字段；这不代表新 Tasks 协议接受旧字段。
 其中 `http_status` 是包装层保存的错误响应状态，不是 `upstream_status`；客户端应容忍错误对象的扩展字段。
 例如创建结果未知后，状态查询仍可返回 `200 OK` 和以下完整状态，不自动再次创建任务：
 

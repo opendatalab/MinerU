@@ -224,7 +224,11 @@ def test_task_tier_preflight_and_schema(
                 record = app.state.task_store._records[response.json()["task_id"]]
                 assert record.options.tier == ("standard" if "standard" in tiers else "flash")
             else:
-                assert response.json()["error"]["param"] == param
+                assert "type" not in response.json()["error"]
+                if param is None:
+                    assert "param" not in response.json()["error"]
+                else:
+                    assert response.json()["error"]["param"] == param
                 assert response.json()["error"]["code"] == ("quality_tier_unavailable" if status == 503 else "invalid_request")
                 assert all(not service.state.task_store._records for service in apps)
                 assert not submissions

@@ -61,7 +61,6 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
                     401,
                     json={
                         "error": {
-                            "type": "authentication_error",
                             "code": "invalid_api_key",
                             "message": "Invalid key",
                         }
