@@ -2,7 +2,7 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
-## 4.1.0 (Upcoming)
+## 4.1.0
 
 - **Automatic acceleration across major platforms and GPUs:** The default installation supports CPU inference on Windows, Linux, and macOS, plus accelerated inference on compatible Intel, AMD, NVIDIA, and Apple Silicon GPUs, including integrated graphics. MinerU automatically selects suitable GPU or CPU execution; representative core inference workloads run at approximately **2–3× CPU speed**.
 - **A unified asynchronous Tasks API:** `/v1/tasks` replaces the previous `/v1/uploads` and `/v1/parse/jobs` workflow, supporting file manifests, URL inputs, cached-upload reuse, per-file execution and downloads, status queries, and cancellation. See the [Tasks API reference](../usage/tasks.md).

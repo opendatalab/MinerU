@@ -14,7 +14,7 @@ For unresolved problems, join our [Discord](https://discord.gg/Tdedn9GTXq) or [W
 
 ??? question "What changed in commands, APIs, and configuration?"
 
-    The 4.x WebUI uses `mineru-kit webui` / `mineru-webui`, parsing APIs use `/v1/*`, and configuration uses `config.yaml`. Old `/file_parse`, `/tasks`, and `model.stack` cannot be reused directly. See [3.x migration](../reference/migration_4.md). The upcoming 4.1 release also replaces standalone uploads/jobs with Tasks; see [4.1 migration](../reference/migration_4_1.md) and the standalone [file-parse API](../usage/file_parse.md).
+    The 4.x WebUI uses `mineru-kit webui` / `mineru-webui`, parsing APIs use `/v1/*`, and configuration uses `config.yaml`. Old `/file_parse`, `/tasks`, and `model.stack` cannot be reused directly. See [3.x migration](../reference/migration_4.md). The 4.1 release also replaces standalone uploads/jobs with Tasks; see [4.1 migration](../reference/migration_4_1.md) and the standalone [file-parse API](../usage/file_parse.md).
 
 ??? question "Encountered the error `ImportError: libGL.so.1: cannot open shared object file: No such file or directory` in Ubuntu 22.04 on WSL2"
 

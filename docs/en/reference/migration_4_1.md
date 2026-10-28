@@ -1,12 +1,12 @@
 # Migrating from 4.0.x to 4.1
 
-**4.1.0 is an upcoming release.** This guide covers API and runtime changes since 4.0.12. HTTP paths still use `/v1`, but this is a breaking protocol update: old clients and new servers cannot be mixed directly.
+This guide covers API and runtime changes since 4.0.12. HTTP paths still use `/v1`, but this is a breaking protocol update: old clients and new servers cannot be mixed directly.
 
 ## Python and installation
 
 Supported Python versions are `>=3.11,<3.15`; Python 3.10 is no longer supported. Create a new environment, preferably with Python 3.12, reinstall the required dependencies, and update interpreter paths in service startup configuration.
 
-After 4.1 is released, stop the old services and drain their tasks before running:
+Stop the old services and drain their tasks before running:
 
 ```bash
 uv venv --python 3.12 .mineru-4.1

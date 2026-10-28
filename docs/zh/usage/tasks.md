@@ -1,6 +1,6 @@
 # Tasks API
 
-本文描述即将发布的 **4.1.0** 契约。`/v1/tasks` 是 API Server、Router 和兼容 SaaS 的共同异步解析入口：提交 JSON 清单、上传缺失文件、查询状态，再按文件下载结果。旧客户端请先阅读 [4.1 迁移说明](../reference/migration_4_1.md)。单文件同步调用见 [file-parse API](file_parse.md)。
+本文描述 **4.1.0** 契约。`/v1/tasks` 是 API Server、Router 和兼容 SaaS 的共同异步解析入口：提交 JSON 清单、上传缺失文件、查询状态，再按文件下载结果。旧客户端请先阅读 [4.1 迁移说明](../reference/migration_4_1.md)。单文件同步调用见 [file-parse API](file_parse.md)。
 
 ## 启动与认证
 

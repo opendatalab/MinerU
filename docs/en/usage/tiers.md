@@ -2,7 +2,7 @@
 
 Tiers express parsing quality and cost. Small-model backends and VLM engines are configured independently; they are not tier names.
 
-This page includes upcoming 4.1 device-selection and service-tier behavior. Existing deployments should follow the [4.1 migration guide](../reference/migration_4_1.md).
+This page includes 4.1 device-selection and service-tier behavior. Existing deployments should follow the [4.1 migration guide](../reference/migration_4_1.md).
 
 | Tier | Purpose | Local execution |
 | --- | --- | --- |

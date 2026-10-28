@@ -1,6 +1,6 @@
 # file-parse API: Synchronous Single-File Parsing
 
-This page describes the upcoming **4.1.0** interface. `mineru-kit file-parse-server` is a standalone HTTP wrapper: it accepts one file, creates and uploads a [Task](tasks.md), waits, and returns a ZIP, DOCX, or HTML attachment. It connects to a local API, Router, or compatible SaaS without loading parsing models.
+This page describes the **4.1.0** interface. `mineru-kit file-parse-server` is a standalone HTTP wrapper: it accepts one file, creates and uploads a [Task](tasks.md), waits, and returns a ZIP, DOCX, or HTML attachment. It connects to a local API, Router, or compatible SaaS without loading parsing models.
 
 ## Startup
 

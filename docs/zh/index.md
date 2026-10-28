@@ -4,8 +4,6 @@
 
 ## MinerU 4.1.0：自动加速与解析接口升级
 
-**即将发布**
-
 - **主流平台与 GPU 自动加速**：Windows、Linux 新增面向 Intel、AMD、NVIDIA 兼容 GPU 的 ONNX 自动加速，结合 macOS 已有的 MPS/Metal 路径，进一步简化跨平台部署。自动识别设备、优先选择独显，并根据集显性能与兼容性选择 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
 - **统一 Tasks 异步接口**：以 `/v1/tasks` 替换旧 `/v1/uploads`、`/v1/parse/jobs` 工作流，支持文件清单、URL 输入、缓存免传、逐文件执行与结果下载，并统一状态查询和取消操作。此次包含破坏性接口变更，升级前请查阅 [4.1 迁移说明](reference/migration_4_1.md)和 [Tasks 接口详情](usage/tasks.md)。
 - **新增可恢复的同步解析服务**：独立的 `file-parse-server` 提供 `/v1/file_parse`，上传单个文件即可等待并获取附件；等待超时后可继续查询，并通过请求 ID 恢复已知任务。详见 [file-parse 接口说明](usage/file_parse.md)。

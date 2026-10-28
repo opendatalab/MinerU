@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide targets **MinerU 4.x**, including upcoming 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy AMD-specific software-stack and vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
+This guide targets **MinerU 4.x**, including 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy AMD-specific software-stack and vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
 
 ## Install MinerU
 
@@ -22,7 +22,7 @@ Activate in Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-Install the latest published 4.x base package (4.1 features require its release or the corresponding source checkout):
+Install the latest published 4.x base package:
 
 ```bash
 uv pip install -U "mineru>=4.0,<5"

@@ -1,6 +1,6 @@
 # V1 HTTP API
 
-即将发布的 4.1 使用 Tasks 作为唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](tasks.md)。
+4.1 使用 Tasks 作为唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](tasks.md)。
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard

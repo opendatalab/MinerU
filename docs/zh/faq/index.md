@@ -14,7 +14,7 @@
 
 ??? question "升级后旧命令、API 或配置不再工作怎么办？"
 
-    4.x WebUI 使用 `mineru-kit webui` / `mineru-webui`，解析 API 使用 `/v1/*`，配置使用 `config.yaml`。旧 `/file_parse`、`/tasks` 和 `model.stack` 不能直接沿用，见 [3.x 迁移指南](../reference/migration_4.md)。即将发布的 4.1 还将独立 uploads/jobs 替换为 Tasks，见 [4.1 迁移说明](../reference/migration_4_1.md)和独立 [file-parse 接口](../usage/file_parse.md)。
+    4.x WebUI 使用 `mineru-kit webui` / `mineru-webui`，解析 API 使用 `/v1/*`，配置使用 `config.yaml`。旧 `/file_parse`、`/tasks` 和 `model.stack` 不能直接沿用，见 [3.x 迁移指南](../reference/migration_4.md)。4.1 将独立 uploads/jobs 替换为 Tasks，见 [4.1 迁移说明](../reference/migration_4_1.md)和独立 [file-parse 接口](../usage/file_parse.md)。
 
 ??? question "在WSL2的Ubuntu22.04中遇到报错`ImportError: libGL.so.1: cannot open shared object file: No such file or directory`"
 

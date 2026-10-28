@@ -4,8 +4,6 @@
 
 ## MinerU 4.1.0: Automatic Acceleration and Updated Parsing APIs
 
-**Upcoming release**
-
 - **Automatic acceleration across major platforms and GPUs:** Windows and Linux gain automatic ONNX acceleration for compatible Intel, AMD, and NVIDIA GPUs, alongside existing MPS/Metal support on macOS. MinerU detects devices, prioritizes discrete GPUs, and selects GPU or CPU execution for integrated graphics based on performance and compatibility. Representative core inference workloads run at approximately **2–3× CPU speed**.
 - **A unified asynchronous Tasks API:** `/v1/tasks` replaces the previous `/v1/uploads` and `/v1/parse/jobs` workflow, with file manifests, URL inputs, cached-upload reuse, per-file execution and downloads, status queries, and cancellation. This is a breaking API update; review the [4.1 migration guide](reference/migration_4_1.md) and [Tasks API reference](usage/tasks.md) before upgrading.
 - **Recoverable synchronous file parsing:** The standalone `file-parse-server` provides `/v1/file_parse` for single-file uploads and attachment responses. Requests remain queryable after a wait timeout, and request IDs support recovery of known tasks. See the [file-parse API reference](usage/file_parse.md).

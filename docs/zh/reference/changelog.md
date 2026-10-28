@@ -2,7 +2,7 @@
 
 本文档记录 MinerU 项目的版本更新历史、主要能力演进和重要兼容性变动。
 
-## 4.1.0（即将发布）
+## 4.1.0
 
 - **主流平台与 GPU 自动加速**：默认安装支持 Windows、Linux 和 macOS 上的 CPU 运行，以及 Intel、AMD、NVIDIA 和 Apple Silicon 兼容独显或集显的推理加速。自动选择合适的 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
 - **统一 Tasks 异步接口**：以 `/v1/tasks` 替换旧 `/v1/uploads`、`/v1/parse/jobs` 工作流，支持文件清单、URL 输入、缓存免传、逐文件执行与结果下载，以及统一的状态查询和取消操作。详见 [Tasks 接口说明](../usage/tasks.md)。

@@ -1,6 +1,6 @@
 # file-parse API：单文件同步解析
 
-本文描述即将发布的 **4.1.0** 接口。`mineru-kit file-parse-server` 是独立的 HTTP 包装服务：接收一个文件，通过 [Tasks](tasks.md) 创建、上传、等待，成功后直接返回 ZIP、DOCX 或 HTML 附件。它可连接本地 API、Router 或兼容 SaaS，不加载解析模型。
+本文描述 **4.1.0** 接口。`mineru-kit file-parse-server` 是独立的 HTTP 包装服务：接收一个文件，通过 [Tasks](tasks.md) 创建、上传、等待，成功后直接返回 ZIP、DOCX 或 HTML 附件。它可连接本地 API、Router 或兼容 SaaS，不加载解析模型。
 
 ## 启动
 

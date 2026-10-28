@@ -1,6 +1,6 @@
 # Tasks API
 
-This page describes the upcoming **4.1.0** contract. `/v1/tasks` is the shared asynchronous parsing API for API Server, Router, and compatible SaaS: submit a JSON manifest, upload missing files, poll, and download results per file. Existing clients should read the [4.1 migration guide](../reference/migration_4_1.md). For synchronous single-file requests, see the [file-parse API](file_parse.md).
+This page describes the **4.1.0** contract. `/v1/tasks` is the shared asynchronous parsing API for API Server, Router, and compatible SaaS: submit a JSON manifest, upload missing files, poll, and download results per file. Existing clients should read the [4.1 migration guide](../reference/migration_4_1.md). For synchronous single-file requests, see the [file-parse API](file_parse.md).
 
 ## Startup and authentication
 

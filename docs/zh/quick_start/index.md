@@ -1,6 +1,6 @@
 # 快速入门
 
-本指南面向 MinerU **4.x**，包含即将发布的 4.1 自动设备选择与 API 更新。已有部署请阅读 [4.1 迁移说明](../reference/migration_4_1.md)。AMD 专用软件栈和国产卡的旧适配教程仍适用于 `<4`，见[旧平台指南](../usage/compatibility.md)。
+本指南面向 MinerU **4.x**，包含 4.1 自动设备选择与 API 更新。已有部署请阅读 [4.1 迁移说明](../reference/migration_4_1.md)。AMD 专用软件栈和国产卡的旧适配教程仍适用于 `<4`，见[旧平台指南](../usage/compatibility.md)。
 
 ## 安装 MinerU
 
@@ -22,7 +22,7 @@ Windows PowerShell 激活环境：
 .venv\Scripts\Activate.ps1
 ```
 
-安装最新已发布的 4.x 基础包（4.1 新功能需待正式发布或使用对应源码）：
+安装最新已发布的 4.x 基础包：
 
 ```bash
 uv pip install -U "mineru>=4.0,<5"

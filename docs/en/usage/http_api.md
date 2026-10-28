@@ -1,6 +1,6 @@
 # V1 HTTP API
 
-In the upcoming 4.1 release, Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON `files` array, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](tasks.md) and [Python SDK](sdk_api.md).
+In 4.1, Tasks is the single asynchronous parsing API. API Server, Router, the SDK and WebUI use a JSON `files` array, upload only missing files, poll task metadata and download each file's result. See the [Tasks contract](tasks.md) and [Python SDK](sdk_api.md).
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
