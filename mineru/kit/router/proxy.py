@@ -11,6 +11,7 @@ import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from ...tasks.contracts import ErrorResponse
 from .resources import ResourceRegistry
 from .workers import WorkerPool, WorkerState
 
@@ -47,7 +48,6 @@ class RouterProxyError(RuntimeError):
 def router_error_response(exc: RouterProxyError) -> JSONResponse:
     """把 RouterProxyError 转成统一 V1 error response。"""
     error: dict[str, Any] = {
-        "type": "api_error" if exc.status_code >= 500 else "invalid_request_error",
         "code": exc.code,
         "message": exc.message,
     }
@@ -120,7 +120,7 @@ async def stream_upstream(
     path: str,
     *,
     request: Request,
-) -> StreamingResponse:
+) -> Response:
     """以流式方式代理 upstream 文件内容并在完成后关闭响应。"""
     upstream_request = pool.client.build_request(
         method,
@@ -129,6 +129,12 @@ async def stream_upstream(
     )
     try:
         upstream = await pool.client.send(upstream_request, stream=True)
+        if upstream.status_code >= 400:
+            try:
+                await upstream.aread()
+                return passthrough_response(upstream)
+            finally:
+                await upstream.aclose()
     except httpx.TimeoutException as exc:
         raise RouterProxyError(504, "upstream_timeout", f"Upstream {worker.worker_id} timed out") from exc
     except httpx.HTTPError as exc:
@@ -154,7 +160,17 @@ async def stream_upstream(
 
 
 def passthrough_response(upstream: httpx.Response) -> Response:
-    """保留 upstream 状态、body 与安全响应头生成普通响应。"""
+    """保留成功响应，严格校验上游错误并省略空参数，避免转发旧协议或畸形错误。"""
+    if upstream.status_code >= 400:
+        try:
+            error = ErrorResponse.model_validate_json(upstream.content)
+        except ValueError as exc:
+            raise RouterProxyError(502, "invalid_upstream_response", "Upstream returned an invalid error response") from exc
+        headers = response_headers(upstream.headers)
+        # 错误正文已经解码并重新序列化，不能沿用上游的内容编码和媒体类型。
+        headers.pop("content-encoding", None)
+        headers.pop("content-type", None)
+        return JSONResponse(error.model_dump(exclude_none=True), status_code=upstream.status_code, headers=headers)
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,

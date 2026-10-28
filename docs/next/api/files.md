@@ -76,7 +76,7 @@ JSON 字段使用 `file_name`；HTTP 附件头的标准参数仍是 `filename` �
 
 ## 错误与保留期
 
-请求失败使用非 2xx 状态码和 JSON 错误对象，其字段为 `error.type/code/message/param`，详见 [响应与错误](responses.md)。
+请求失败使用非 2xx 状态码和 JSON 错误对象，`error.code/message` 必带，`error.param` 可选，不包含 `type`，详见 [响应与错误](responses.md)。
 常见情况为 `401 invalid_api_key`、`404 file_not_found`；尝试通过 `/content` 下载源文件返回 `403 feature_requires_api_key`，源文件下载不属于公共能力。
 
 源文件通过 Tasks 的 JSON 清单和返回的上传链接创建。相同 hash 的有效缓存免传；不同文件名可以共享一份源字节，文件名和解析参数仍属于各自任务。

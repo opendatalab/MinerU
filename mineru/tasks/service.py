@@ -199,7 +199,7 @@ class TaskStore:
             if item.url is None and file.upload is None and file.status == "waiting-file" and not file.upload_active:
                 file.expired = True
                 file.status = "failed"
-                file.error = ErrorDetail(type="invalid_request_error", code="upload_expired", message="Upload expired")
+                file.error = ErrorDetail(code="upload_expired", message="Upload expired")
         self._aggregate(record)
 
     def collect_expired(self) -> None:
@@ -345,7 +345,7 @@ class TaskStore:
                         file.error = (
                             result.error
                             if isinstance(result, ApiServerError)
-                            else ErrorDetail(type="api_error", code="task_refresh_failed", message=str(result))
+                            else ErrorDetail(code="task_refresh_failed", message=str(result))
                         )
                         if file.operation is not None:
                             file.operation.cancel()
@@ -387,7 +387,7 @@ class TaskStore:
                 file.error = (
                     exc.error
                     if isinstance(exc, ApiServerError)
-                    else ErrorDetail(type="api_error", code="task_submission_failed", message=str(exc))
+                    else ErrorDetail(code="task_submission_failed", message=str(exc))
                 )
             if file.status != "completed":
                 file.backend.discard_file_id(file.file_id)

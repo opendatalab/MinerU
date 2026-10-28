@@ -20,16 +20,14 @@ class ApiServerError(Exception):
 def raise_api_error(
     status_code: int,
     *,
-    error_type: str,
-    code: str | None,
+    code: str,
     message: str,
     param: str | None = None,
 ) -> NoReturn:
-    """统一构造并抛出已有错误信封，不改变字段或状态码。"""
+    """使用稳定错误码、说明和可选参数路径构造公共错误，保留 HTTP 状态。"""
     raise ApiServerError(
         status_code,
         ErrorDetail(
-            type=error_type,
             code=code,
             message=message,
             param=param,
@@ -43,7 +41,6 @@ def invalid_task_request(
     """把协议校验错误转换成两类服务共用的 V1 error envelope。"""
     raise_api_error(
         status_code,
-        error_type="api_error" if status_code >= 500 else "invalid_request_error",
         code=code,
         message=message,
         param=param,

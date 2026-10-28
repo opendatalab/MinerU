@@ -76,7 +76,7 @@ Local Parse Server 默认监听 loopback 且不启用鉴权。启用 `--api-key`
 ## 通用约定
 
 - 成功响应直接返回资源对象，没有外层 envelope。
-- 错误响应使用 OpenAI-compatible envelope，详见 [响应与错误](responses.md)。
+- 错误响应使用统一结构：必填 `code/message`，可选 `param`，详见 [响应与错误](responses.md)。
 - 资源级接口及 `POST /v1/tasks` 使用 JSON，上传字节使用返回链接要求的内容类型。
 - 时间字段按 endpoint 语义选择 ISO-8601 UTC 字符串或 Unix 秒级时间戳。
 - 请求追踪属于部署扩展；当前 Python API Server 和 Router 不统一提供 `X-Request-Id`，详见 [请求追踪](responses.md#请求追踪)。

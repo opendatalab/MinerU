@@ -44,7 +44,7 @@ GET /v1/health HTTP/1.1
 
 | HTTP | code | 场景 |
 |------|------|------|
-| 503 | `engine_error` 类模型预加载错误码 | 模型预加载未成功，服务尚不能处理请求。本地实现返回 `model_preload_dependency_missing`、`model_preload_files_missing`、`model_preload_device_unavailable` 或 `model_preload_failed`，`type` 固定为 `engine_error`。 |
+| 503 | 模型预加载错误码 | 模型预加载未成功，服务尚不能处理请求。本地实现返回 `model_preload_dependency_missing`、`model_preload_files_missing`、`model_preload_device_unavailable` 或 `model_preload_failed`，使用统一的 `error.code/message` 结构。 |
 
 ## GET `/v1/models`
 

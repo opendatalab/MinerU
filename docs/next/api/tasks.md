@@ -290,13 +290,12 @@ SaaS 的上传目标可能是独立对象存储：通用客户端接受成功的
 
 | 字段 | JSON 类型 | 必带 | 含义 |
 |---|---|---|---|
-| `type` | string | 是 | 错误类型。 |
 | `message` | string | 是 | 错误说明。 |
-| `code` | string | 否 | 具体错误码，有值时返回。 |
-| `param` | string | 否 | 关联参数，有值时返回。 |
+| `code` | string | 是 | 稳定的非空错误码，供程序判断错误原因。 |
+| `param` | string 或 null | 否 | 关联参数路径，例如 `files.0.page_range`；有值时返回，无值时省略。接收端允许缺省或 `null`。 |
 
-上表按成功快照说明，`code/param` 无值时省略。缺少顶层 `error` 不代表所有文件成功，`partial/failed` 的原因可能只在逐文件 `error` 中。
-HTTP 非成功响应也使用 `ErrorDetail`，但外层为 `{"error": ...}`，并保留各自的空值规则（`code/param` 可以为 `null`）；完整示例及错误码见 [各接口错误响应](#各接口错误响应)。
+缺少顶层 `error` 不代表所有文件成功，`partial/failed` 的原因可能只在逐文件 `error` 中。
+HTTP 非成功响应也使用相同的 `ErrorDetail`，外层为 `{"error": ...}`。所有错误均不包含 `type`，`code/message` 必带，`param` 无值时省略；完整示例及错误码见 [各接口错误响应](#各接口错误响应)。
 
 ## 各接口成功响应
 
@@ -468,10 +467,8 @@ SaaS 的上传目标可能是独立对象存储：通用客户端接受成功的
 ```json
 {
   "error": {
-    "type": "invalid_request_error",
     "code": "task_already_terminal",
-    "message": "Task is canceled",
-    "param": null
+    "message": "Task is canceled"
   }
 }
 ```
@@ -490,7 +487,7 @@ SaaS 的上传目标可能是独立对象存储：通用客户端接受成功的
 | 所有受保护接口 | 401 | `invalid_api_key` | 服务启用认证，但调用方未提供有效凭据。 |
 
 Router 或网关还可能返回远端依赖相关的 5xx 错误；错误格式及部署扩展见 [响应与错误](responses.md)。
-本地 API 和上述任务错误示例包含 `param: null`；Router 代理层自身产生的错误也可能省略 `param`，客户端按 `null` 处理。
+本地 API、Router 和 SaaS 使用同一错误结构。`param` 只用于定位具体参数；没有对应参数时省略，客户端也接受 `null`。
 异步文件下载、解析或导出失败通常通过查询接口的 **`200` 快照和 `files[].error`** 表达；不要把 HTTP `200` 等同于任务成功，也不要仅凭顶层 `error` 判断全部文件是否成功。
 
 ## URL、缓存与独立上传

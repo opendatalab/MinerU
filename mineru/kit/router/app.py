@@ -189,7 +189,7 @@ def create_app(
             for file in payload.get("files") or []:
                 if file.get("status") != "completed":
                     file["status"] = "failed"
-                    file["error"] = {"type": "engine_error", "code": "engine_dead", "message": "Worker engine was replaced"}
+                    file["error"] = {"code": "engine_dead", "message": "Worker engine was replaced"}
             progress = payload.get("progress")
             if isinstance(progress, dict):
                 progress["failed"] = progress.get("total", 0) - progress.get("completed", 0)

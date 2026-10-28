@@ -387,14 +387,18 @@ def test_real_task_tier_rejection_is_failed_and_not_replayed(
     "status,payload",
     [
         (503, b"<html>Service unavailable</html>"),
-        (503, {"error": {"type": "api_error", "code": "temporary", "message": "Try later"}}),
-        (503, {"error": {"code": "quality_tier_unavailable", "message": "Missing required error type"}}),
+        (503, {"error": {"code": "temporary", "message": "Try later"}}),
+        (503, {"error": {"code": "quality_tier_unavailable"}}),
+        (503, {"error": {"message": "Missing error code"}}),
+        (503, {"error": {"code": None, "message": "Null error code"}}),
+        (503, {"error": {"code": "", "message": "Empty error code"}}),
+        (503, {"error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "Legacy error type"}}),
         (
             503,
-            {"task_id": "maybe-created", "error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "x"}},
+            {"task_id": "maybe-created", "error": {"code": "quality_tier_unavailable", "message": "x"}},
         ),
-        (500, {"error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "Unexpected status"}}),
-        (408, {"error": {"type": "api_error", "code": "quality_tier_unavailable", "message": "Timed out"}}),
+        (500, {"error": {"code": "quality_tier_unavailable", "message": "Unexpected status"}}),
+        (408, {"error": {"code": "quality_tier_unavailable", "message": "Timed out"}}),
     ],
 )
 def test_ambiguous_creation_errors_remain_unknown(tmp_path: Path, status: int, payload: bytes | dict[str, Any]) -> None:

@@ -56,10 +56,8 @@ Header 说明:
 ```json
 {
   "error": {
-    "type": "rate_limit_error",
     "code": "rate_limit_exceeded",
-    "message": "Parse rate limit (5/min) exceeded. Retry in 12s.",
-    "param": null
+    "message": "Parse rate limit (5/min) exceeded. Retry in 12s."
   }
 }
 ```
