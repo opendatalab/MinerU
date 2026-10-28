@@ -66,7 +66,13 @@ def verify_wheels(resolution: str, platform: str, python: str, cache: Path, *, c
             with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{version}/json", timeout=30) as response:
                 temporary = cached.with_suffix(f".{os.getpid()}.tmp")
                 temporary.write_bytes(response.read())
-                temporary.replace(cached)
+                try:
+                    temporary.replace(cached)
+                except PermissionError:
+                    # Another checker may have published the cache and opened it for reading on Windows.
+                    if not cached.is_file():
+                        raise
+                    temporary.unlink()
         data = json.loads(cached.read_text())
         requires_python = data["info"].get("requires_python")
         if requires_python and python not in SpecifierSet(requires_python):
@@ -85,7 +91,13 @@ def check_backend_dependencies(selected: set[str], package: str, extra: str, pla
     checks = []
     if package == "mineru":
         # lxml 由 DocVortex 管理，不属于 MinerU 平台后端依赖。
-        required = {"gradio", "onnxruntime", "mineru-llama-cpp"}
+        runtime = "onnxruntime-directml" if platform == "windows" else "onnxruntime"
+        required = {"gradio", runtime, "mineru-llama-cpp", "mineru-magika"}
+        other_runtime = "onnxruntime" if platform == "windows" else "onnxruntime-directml"
+        if other_runtime in selected:
+            checks.append(f"conflicting {other_runtime} dependency on {platform}")
+        if "magika" in selected:
+            checks.append("upstream magika conflicts with the mineru-magika module namespace")
         if platform == "macos" or extra in {"torch", "full", "all"}:
             required.update({"torch", "torchvision", "transformers", "accelerate", "safetensors"})
         if extra in {"full", "all"} and platform in {"linux", "windows"}:
@@ -104,7 +116,7 @@ def main() -> None:
     parser.add_argument("--utils-wheel", type=Path, required=True)
     parser.add_argument("--docvortex-wheel", type=Path, required=True)
     parser.add_argument("--platform", choices=tuple(PLATFORMS), required=True)
-    parser.add_argument("--python", nargs="+", default=["3.10", "3.11", "3.12", "3.13", "3.14"])
+    parser.add_argument("--python", nargs="+", default=["3.11", "3.12", "3.13", "3.14"])
     parser.add_argument("--transformers", choices=["5.10.1", "5.14.0", "5.16.1"])
     parser.add_argument("--extras", nargs="+", default=["base", "torch", "full", "all"])
     parser.add_argument("--utils-matrix", action="store_true")

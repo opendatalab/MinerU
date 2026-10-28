@@ -259,16 +259,19 @@ class DoclibClient(DoclibInterface):
         self,
         locator: str,
         *,
+        after: str | None = None,
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
         image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
+        """传递页范围定位与可选续读游标，单点调用保持原有语义。"""
         return self._request_model(
             DocContentResponse,
             params={
                 "locator": locator,
+                "after": after,
                 "context": context,
                 "limit": limit,
                 "format": format,
@@ -306,8 +309,9 @@ class DoclibClient(DoclibInterface):
         )
 
     @route("GET", "/find", tags=("search",))
-    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
-        return self._request_model(FindResponse, params={"query": query, "ext": ext, "limit": limit})
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
+        """将文件名查询和分页参数传给统一 Doclib 服务。"""
+        return self._request_model(FindResponse, params={"query": query, "ext": ext, "limit": limit, "offset": offset})
 
     @route("GET", "/files/by-path", tags=("files",))
     def get_file_by_path(self, path: str) -> FileInfoResponse:

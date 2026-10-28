@@ -13,11 +13,9 @@
     })[char]);
     const path = (typeof file === "string" ? file : file?.path) || "";
     const flashOnly = flashOnlyExtensions.some((extension) => path.toLowerCase().endsWith(`.${extension}`));
-    const flashPosition = tiers.indexOf("flash");
-    const flashUnavailable = flashOnly && flashPosition < 0;
     // 只记住未锁定时的用户选择；文件切换和晚到元数据不能把临时 Flash 写回偏好。
-    if (!tierSelection.locked) tierSelection.tier = tiers[position];
-    const effectivePosition = flashOnly && !flashUnavailable ? flashPosition : tiers.indexOf(tierSelection.tier);
+    if (!tierSelection.locked && tiers[position] !== undefined) tierSelection.tier = tiers[position];
+    const effectivePosition = Math.max(0, tiers.indexOf(tierSelection.tier));
     const selectedTier = flashOnly ? "flash" : tiers[effectivePosition];
     tierSelection.locked = flashOnly;
     const isPdf = path.toLowerCase().endsWith(".pdf");
@@ -74,8 +72,7 @@
         + `<span class="mineru-page-selection">${selectionText}</span>`
         + `</div>`
         + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count || "–"}</span></div>`;
-    const notice = flashUnavailable ? text("flash_unavailable")
-        : needsRange && !count ? message(state.error) : "";
+    const notice = needsRange && !count ? message(state.error) : "";
     const range = count ? (start === end ? String(start) : `${start}-${end}`) : "";
     // 新版 Gradio 要求非零跨度；单页时禁用滑块，实际页数和提交范围仍为 1。
     const slider = (value, label) => update({ minimum: 1, maximum: Math.max(2, count), value, interactive, label });
@@ -83,11 +80,11 @@
         slider(state.handle_a, state.start_handle === "a" ? text("start_page") : text("end_page")),
         slider(state.handle_b, state.start_handle === "b" ? text("start_page") : text("end_page")),
         summary, range, JSON.stringify(state),
-        update({ interactive: Boolean(path) && !flashUnavailable && (!needsRange || count > 0) }),
+        update({ interactive: Boolean(path) && (!needsRange || count > 0) }),
         update({ value: escapeHtml(notice), visible: Boolean(notice) }),
         // 同一事件同时更新值、标签和页码，程序赋值无需再触发 tier.input。
-        update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1 }),
-        text("tier_value", { tier: text(`tier_${selectedTier}`), notice: flashUnavailable ? text("tier_unavailable_suffix") : "" }),
+        update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1, visible: !flashOnly && tiers.length > 1 }),
+        text("tier_value", { tier: text(`tier_${selectedTier}`), notice: "" }),
         JSON.stringify(tierSelection),
     ];
 }

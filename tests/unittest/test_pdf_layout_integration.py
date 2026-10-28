@@ -22,7 +22,7 @@ from mineru.backend import analyze
 from mineru.backend.analysis.pdf import pipeline
 from mineru.backend.postprocess import document as postprocess
 from mineru.doclib.background.compaction import Compaction
-from mineru.doclib.services.parse_svc import parse_batch_json_path
+from mineru.doclib.core.parse_artifacts import parse_batch_json_path
 from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render, render_pdf
 
 

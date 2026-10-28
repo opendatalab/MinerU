@@ -12,7 +12,7 @@ from mineru.parser import api_server
 def test_offline_docs_resources_and_proxy_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, root: str) -> None:
     """断言 Swagger/ReDoc 全部使用本地资源，授权回调遵守代理前缀。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",), api_key="secret")
     with TestClient(app, root_path=root) as client:
         for page in ("/docs", "/redoc"):
             response = client.get(root + page)
@@ -33,15 +33,17 @@ def test_offline_docs_resources_and_proxy_paths(tmp_path: Path, monkeypatch: pyt
             )
         schema = client.get(root + "/openapi.json").json()
         assert schema["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
-        assert client.get(root + "/v1/files").status_code == 401
-        assert client.get(root + "/v1/files", headers={"Authorization": "Bearer secret"}).status_code == 200
+        assert client.get(root + "/v1/usage").status_code == 401
+        assert client.get(root + "/v1/usage", headers={"Authorization": "Bearer secret"}).status_code == 200
+        for path, status_code in (("/v1/tasks", 405), ("/v1/files", 404)):
+            assert client.get(root + path, headers={"Authorization": "Bearer secret"}).status_code == status_code
 
 
 def test_disabled_docs_mount_no_resources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """关闭文档时不挂载静态资源，三个既有文档入口全部不可访问。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
     monkeypatch.setenv("MINERU_API_ENABLE_FASTAPI_DOCS", "false")
-    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     with TestClient(app) as client:
         for path in ("/docs", "/redoc", "/openapi.json", "/docs/assets/vendor/favicon.png"):
             assert client.get(path).status_code == 404

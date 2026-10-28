@@ -1,7 +1,7 @@
+from mineru.doclib.services.ingest_svc import ensure_doc_record
 import asyncio
 
 from mineru.doclib.core.db import DatabaseManager
-from mineru.doclib.services.parse_svc import ensure_doc_record
 
 
 def test_ensure_doc_record_extends_short_id_on_prefix_conflict(tmp_path) -> None:

@@ -15,9 +15,11 @@ from reportlab.pdfgen.canvas import Canvas
 from docvortex.analyzers.native.models import PdfModel
 from docvortex.document.pdf import PDFDocument, images
 from mineru.backend.analysis.pdf import window
+from mineru.backend.postprocess import document as postprocess_document
 from mineru.backend.postprocess import llm_aided
-from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig, config
+from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig, get_config
 from mineru.parser import parse, parse_async
+from mineru.types import MiddleJson, ModelJson
 
 
 def _source(path: Path) -> Path:
@@ -105,30 +107,41 @@ def test_flash_sparse_render_keeps_page_mapping_and_title_gate(
     monkeypatch.setattr(llm_aided, "LLMAidedClient", MagicMock(return_value=client))
     monkeypatch.setattr(llm_aided, "apply_llm_title_leveling", title)
     monkeypatch.setattr(
-        config,
+        get_config(),
         "llm_aided",
         LLMAidedConfig(
             api_key="isolated-test",
             features=LLMAidedFeaturesConfig(title_leveling=True),
         ),
     )
+    models: list[ModelJson] = []
+    original_postprocess = postprocess_document.model_json_to_middle_json
+
+    def capture_internal_model(model: ModelJson, *, llm_aided_config: LLMAidedConfig) -> MiddleJson:
+        """在内部后处理边界检查页映射和素材，不通过公开结果暴露模型对象。"""
+        models.append(model)
+        return original_postprocess(model, llm_aided_config=llm_aided_config)
+
+    monkeypatch.setattr(postprocess_document, "model_json_to_middle_json", capture_internal_model)
     source = _source(tmp_path / "pages.pdf")
     options = {"tier": "flash", "ocr_mode": "txt", "image_analysis": False, "page_range": page_range}
     result = asyncio.run(parse_async(source, **options)) if asynchronous else parse(source, **options)
 
+    assert len(models) == 1 and not hasattr(result, "_model_output")
+    model = models[0]
     full = page_range == "all"
     assert document_sizes == [len(indices)]
     assert rendered == list(range(1, len(indices), 2))
     assert [page.page_idx for page in result.pages] == indices
-    assert result._model_output.page_index_map == ([] if full else indices)
+    assert model.page_index_map == ([] if full else indices)
     assert result.middle_json.is_full_document is full
-    assert result._model_output.metadata.producer.name == "mineru"
-    assert result.middle_json.extensions == result._model_output.extensions
+    assert model.metadata.producer.name == "mineru"
+    assert result.middle_json.extensions == model.extensions
     assert title.await_count == int(full)
     if full:
         assert title.await_args.args[0] is result.pages
     for index in rendered:
-        assert result._model_output.pages[index][1]["image_base64"].startswith("data:image/jpeg;base64,")
+        assert model.pages[index][1]["image_base64"].startswith("data:image/jpeg;base64,")
     for image in created:
         with pytest.raises(ValueError):
             image.getpixel((0, 0))

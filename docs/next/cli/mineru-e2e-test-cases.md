@@ -2463,7 +2463,7 @@ mineru find "sample" --limit 1 --json
 - exit code = 0
 - stdout 为可直接解析的 JSON
 - limit 生效，单次返回结果数量不超过 1
-- `find` 当前只承诺文件名查询、扩展名过滤、limit 和 JSON 输出；offset 契约单独由 SEARCH-013 覆盖
+- `total` 为过滤及状态刷新后的全部有效匹配数，不因 limit=1 缩小；offset 契约由 SEARCH-013 覆盖
 
 ### SEARCH-008 search type filter
 
@@ -3326,8 +3326,9 @@ mineru find "sample" --limit 1 --offset 1 --json
 
 预期:
 
-- 如果 CLI 设计支持 find offset，exit code = 0，stdout 为可直接解析的 JSON，返回数量不超过 1
-- 如果 CLI 设计不支持 find offset，exit code != 0，输出包含 no such option、unknown option 或等价错误
+- exit code = 0，stdout 为可直接解析的 JSON，返回数量不超过 1
+- 结果对应稳定排序中的第二条有效匹配；`total` 与 offset=0 时一致
+- 超过末尾的 offset 返回空列表及正确总数；负 offset 或非正 limit 返回校验错误
 - 不包含 Python traceback
 
 ### PARSE-016 page range 边界

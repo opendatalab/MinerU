@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-import asyncio
 import atexit
 import gc
 import hashlib
@@ -9,10 +8,12 @@ import json
 import os
 import threading
 import time
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Callable
+from contextvars import ContextVar, copy_context
+from dataclasses import dataclass, field
 from pathlib import Path
 from functools import partial
-from typing import Any, AsyncIterator, Generator, Iterator, Literal
+from typing import Any, Literal
 
 from loguru import logger
 from mineru_vl_utils import MinerUClient
@@ -20,7 +21,10 @@ from mineru_vl_utils import MinerUClient
 from ..registry import MINERU_2_5_PRO_2605_1_2B, vlm_model_repo
 from ..runtime.device import get_device
 from ..runtime.platform import is_mac_os_version_supported
-from .async_runtime import AsyncVlmPredictor, RuntimeOwner, runtime_owner
+from ..runtime.closing import in_runtime_close_scope, runtime_close_scope
+from ..runtime.ownership import RuntimeOwner, current_runtime_owner, runtime_initialization_scope
+from .async_runtime import AsyncVlmPredictor
+from .handles import RuntimeHandle
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -30,9 +34,21 @@ from .engine_utils import (
 )
 
 
+@dataclass(eq=False)
+class _RuntimeInitialization:
+    """保存同键初始化屏障，直到构造发布或失败清理完整结束。"""
+
+    finished: threading.Event = field(default_factory=threading.Event)
+
+
+_initializing_runtime: ContextVar[_RuntimeInitialization | None] = ContextVar("mineru_initializing_vlm", default=None)
+
+
 class ModelSingleton:
     _instance = None
-    _models = {}
+    _models: dict[tuple[object, ...], RuntimeHandle | AsyncVlmPredictor] = {}
+    _closing: dict[tuple[object, ...], threading.Event] = {}
+    _initializing: dict[tuple[object, ...], _RuntimeInitialization] = {}
     _lock = threading.RLock()
     _shutdown_registered = False
 
@@ -58,64 +74,154 @@ class ModelSingleton:
         *,
         model_name: str | None = None,
         **kwargs: Any,
-    ) -> MinerUClient | AsyncVlmPredictor:
-        """缓存模型实例，远程客户端按模型、凭据与连接选项隔离。"""
-        # 文档同步与异步入口统一使用一个原生异步 vLLM 实例。
-        if backend == "vllm-engine":
-            backend = "vllm-async-engine"
-        native_async = backend in {"http-client", "vllm-async-engine"}
-        options = {"model_name": model_name, **kwargs}
-        if backend == "vllm-async-engine":
-            options["device"] = get_device()
-            model_path = str(Path(model_path).expanduser().resolve()) if model_path else str(MINERU_2_5_PRO_2605_1_2B.ensure())
-        fingerprint = hashlib.sha256(json.dumps(options, sort_keys=True, default=str).encode()).hexdigest()
-        cache_key = (backend, model_path, server_url, fingerprint)
-        owner = runtime_owner.get()
-        with self._lock:
-            if owner is not None and owner.closed:
-                raise RuntimeError("VLM runtime owner is closed")
-            if not self._shutdown_registered:
-                atexit.register(shutdown_cached_models)
-                type(self)._shutdown_registered = True
-            cached = self._models.get(cache_key)
-            if isinstance(cached, AsyncVlmPredictor) and cached.is_closed:
-                cached.shutdown()
-                del self._models[cache_key]
-            if cache_key not in self._models:
-                factory = partial(
-                    self._create_model,
-                    backend,
-                    model_path,
-                    server_url,
-                    model_name=model_name,
-                    **kwargs,
+    ) -> RuntimeHandle | AsyncVlmPredictor:
+        """先接纳应用操作，再沿原缓存键复用运行时；路径解析和构造都不持有缓存锁。"""
+        with runtime_initialization_scope():
+            if backend == "vllm-engine":
+                backend = "vllm-async-engine"
+            native_async = backend in {"http-client", "vllm-async-engine"}
+            options = {"model_name": model_name, **kwargs}
+            if backend == "vllm-async-engine":
+                options["device"] = get_device()
+                model_path = (
+                    str(Path(model_path).expanduser().resolve()) if model_path else str(MINERU_2_5_PRO_2605_1_2B.ensure())
                 )
-                self._models[cache_key] = (
-                    AsyncVlmPredictor(
-                        factory,
-                        _shutdown_predictor_runtime,
-                        backend=backend,
-                        max_concurrency=kwargs.get("max_concurrency", 100),
-                    )
-                    if native_async
-                    else factory()
-                )
-            predictor = self._models[cache_key]
-            if isinstance(predictor, AsyncVlmPredictor):
-                if owner is None:
-                    predictor.pinned = True
+            fingerprint = hashlib.sha256(json.dumps(options, sort_keys=True, default=str).encode()).hexdigest()
+            cache_key = (backend, model_path, server_url, fingerprint)
+            factory = partial(self._create_model, backend, model_path, server_url, model_name=model_name, **kwargs)
+            return self._get_or_initialize(
+                cache_key,
+                factory,
+                native_async=native_async,
+                backend=backend,
+                max_concurrency=kwargs.get("max_concurrency", 100),
+            )
+
+    def _retain(self, predictor: RuntimeHandle | AsyncVlmPredictor) -> None:
+        """发布或复用前重新校验应用，防止关闭后的预热结果进入缓存。"""
+        owner = current_runtime_owner()
+        if owner is None:
+            predictor.pinned = True
+        else:
+            predictor.owners.add(owner)
+
+    def _get_or_initialize(
+        self,
+        key: tuple[object, ...],
+        factory: Callable[[], RuntimeHandle],
+        *,
+        native_async: bool,
+        backend: str,
+        max_concurrency: int,
+    ) -> RuntimeHandle | AsyncVlmPredictor:
+        """同键共享初始化或关闭屏障，外部构造和关闭动作始终在全局锁之外。"""
+        while True:
+            detached = []
+            reservation = None
+            with self._lock:
+                current_runtime_owner()
+                closing = self._closing.get(key)
+                initializing = self._initializing.get(key)
+                cached = self._models.get(key)
+                if in_runtime_close_scope() and (
+                    closing is not None or initializing is not None or (cached is not None and cached.is_closed)
+                ):
+                    raise RuntimeError("Cannot acquire a closing VLM runtime from a close callback")
+                if initializing is not None and initializing is _initializing_runtime.get():
+                    raise RuntimeError("Cannot recursively acquire a VLM runtime during its initialization")
+                if closing is not None:
+                    pending = closing
+                elif initializing is not None:
+                    pending = initializing.finished
+                elif cached is not None and cached.is_closed:
+                    pending = None
+                    detached.append(self._detach(key, cached))
+                elif cached is not None:
+                    self._retain(cached)
+                    return cached
                 else:
-                    predictor.owners.add(owner)
-        if isinstance(predictor, AsyncVlmPredictor):
-            try:
+                    pending = None
+                    reservation = _RuntimeInitialization()
+                    self._initializing[key] = reservation
+                    if not self._shutdown_registered:
+                        atexit.register(shutdown_cached_models)
+                        type(self)._shutdown_registered = True
+            if pending is not None:
+                pending.wait()
+            elif detached:
+                self._close_detached(detached)
+            elif reservation is not None:
+                return self._initialize_model(
+                    key, reservation, factory, native_async=native_async, backend=backend, max_concurrency=max_concurrency
+                )
+
+    def _initialize_model(
+        self,
+        key: tuple[object, ...],
+        reservation: _RuntimeInitialization,
+        factory: Callable[[], RuntimeHandle],
+        *,
+        native_async: bool,
+        backend: str,
+        max_concurrency: int,
+    ) -> RuntimeHandle | AsyncVlmPredictor:
+        """锁外构造并等待就绪，失效应用或失败构造完整清理后才解除同键屏障。"""
+        predictor: RuntimeHandle | AsyncVlmPredictor | None = None
+        token = _initializing_runtime.set(reservation)
+        try:
+            if native_async:
+                factory_context = copy_context()
+                predictor = AsyncVlmPredictor(
+                    partial(factory_context.run, factory), backend=backend, max_concurrency=max_concurrency
+                )
                 predictor.wait_ready()
-            except BaseException:
-                with self._lock:
-                    if self._models.get(cache_key) is predictor:
-                        del self._models[cache_key]
+            else:
+                predictor = factory()
+            with self._lock:
+                self._retain(predictor)
+                self._models[key] = predictor
+            return predictor
+        except BaseException as initialization_error:
+            if predictor is not None:
+                try:
+                    with runtime_close_scope():
+                        predictor.shutdown()
+                except BaseException as cleanup_error:
+                    raise initialization_error from cleanup_error
+            raise
+        finally:
+            _initializing_runtime.reset(token)
+            with self._lock:
+                self._initializing.pop(key, None)
+                reservation.finished.set()
+
+    def _detach(
+        self, key: tuple[object, ...], predictor: RuntimeHandle | AsyncVlmPredictor
+    ) -> tuple[tuple[object, ...], RuntimeHandle | AsyncVlmPredictor, threading.Event]:
+        """在缓存锁内撤销条目并保留关闭屏障，防止相同权重在关闭完成前重新创建。"""
+        del self._models[key]
+        finished = threading.Event()
+        self._closing[key] = finished
+        return key, predictor, finished
+
+    def _close_detached(
+        self, entries: list[tuple[tuple[object, ...], RuntimeHandle | AsyncVlmPredictor, threading.Event]]
+    ) -> None:
+        """锁外逐个关闭已撤销条目，某个后端失败也释放其余条目和等待屏障。"""
+        first_error: BaseException | None = None
+        for key, predictor, finished in entries:
+            try:
+                with runtime_close_scope():
                     predictor.shutdown()
-                raise
-        return predictor
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+            finally:
+                with self._lock:
+                    self._closing.pop(key, None)
+                    finished.set()
+        if first_error is not None:
+            raise first_error
 
     def _create_model(
         self,
@@ -125,7 +231,7 @@ class ModelSingleton:
         *,
         model_name: str | None = None,
         **kwargs: Any,
-    ) -> MinerUClient:
+    ) -> RuntimeHandle:
         """只构造一个底层客户端，不操作缓存；原生异步引擎由所属运行时调用。"""
         start_time = time.time()
         model = None
@@ -133,6 +239,7 @@ class ModelSingleton:
         vllm_llm = None
         lmdeploy_engine = None
         vllm_async_llm = None
+        close_engine = None
         llama_cpp_engine = None
         batch_size = kwargs.get("batch_size", 0)  # 本地引擎批次大小；MLX 的 0 由客户端解析为保守默认值。
         max_concurrency = kwargs.get("max_concurrency", 100)  # 原生异步运行时在所有文档间共用该额度。
@@ -155,11 +262,6 @@ class ModelSingleton:
             model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
 
         if backend == "llama-cpp-engine":
-            try:
-                from mineru_llama_cpp import Engine
-            except ImportError:
-                raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
-
             # The GGUF repo carries two files: the main model and its
             # multi-modal projector (mmproj). ModelRepo.paths is
             # {"main": "...", "mmproj": "..."} — resolve each to its
@@ -177,7 +279,18 @@ class ModelSingleton:
                 if key in kwargs:
                     engine_kwargs[key] = kwargs.pop(key)
 
-            llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
+            from ..runtime.llama_device import llama_engine_scope, resolve_llama_device
+
+            selection = resolve_llama_device(n_gpu_layers=engine_kwargs.get("n_gpu_layers"))
+            if selection.device == "cpu":
+                engine_kwargs["n_gpu_layers"] = 0
+            try:
+                from mineru_llama_cpp import Engine
+            except ImportError:
+                raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
+            with llama_engine_scope(selection):
+                llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
+            close_engine = llama_cpp_engine.close
 
         elif backend == "transformers":
             from ..runtime.cpu_threads import initialize_torch_threads
@@ -206,32 +319,7 @@ class ModelSingleton:
             if os.getenv("OMP_NUM_THREADS") is None:
                 os.environ["OMP_NUM_THREADS"] = "1"
 
-            if backend == "vllm-engine":
-                try:
-                    import vllm
-                except ImportError:
-                    raise ImportError("Please install vllm to use the vllm-engine backend.")
-
-                kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="sync_engine")
-
-                if "compilation_config" in kwargs:
-                    if isinstance(kwargs["compilation_config"], str):
-                        try:
-                            kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
-                        except json.JSONDecodeError:
-                            logger.warning(f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
-                            del kwargs["compilation_config"]
-                if "gpu_memory_utilization" not in kwargs:
-                    kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                if "model" not in kwargs:
-                    kwargs["model"] = model_path
-                if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                    from mineru_vl_utils import MinerULogitsProcessor
-
-                    kwargs["logits_processors"] = [MinerULogitsProcessor]
-                # 使用kwargs为 vllm初始化参数
-                vllm_llm = vllm.LLM(**kwargs)
-            elif backend == "vllm-async-engine":
+            if backend == "vllm-async-engine":
                 try:
                     from vllm.config import CompilationConfig
                     from vllm.engine.arg_utils import AsyncEngineArgs
@@ -263,6 +351,7 @@ class ModelSingleton:
                     kwargs["logits_processors"] = [MinerULogitsProcessor]
                 # 使用kwargs为 vllm初始化参数
                 vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+                close_engine = vllm_async_llm.shutdown
             elif backend == "lmdeploy-engine":
                 try:
                     from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
@@ -310,6 +399,7 @@ class ModelSingleton:
                     backend_config=backend_config,
                     log_level=log_level,
                 )
+                close_engine = lmdeploy_engine.close
         try:
             predictor = MinerUClient(
                 backend=backend,
@@ -331,49 +421,46 @@ class ModelSingleton:
                 image_analysis=True,
                 enable_cross_page_table_merge=False,
             )
-        except BaseException:
-            # 客户端或分词器构造失败时，已经成功创建的引擎仍由 MinerU 负责关闭。
-            for handle in (vllm_async_llm, vllm_llm, lmdeploy_engine, llama_cpp_engine):
-                if handle is not None:
-                    _shutdown_runtime_handle(handle)
+        except BaseException as initialization_error:
+            # 客户端构造失败后，宿主仍负责关闭已经成功创建的引擎。
+            if close_engine is not None:
+                try:
+                    with runtime_close_scope():
+                        close_engine()
+                except BaseException as cleanup_error:
+                    raise initialization_error from cleanup_error
             raise
-        predictor._mineru_runtime_handles = {
-            "backend": backend,
-            "model": model,
-            "processor": processor,
-            "vllm_llm": vllm_llm,
-            "vllm_async_llm": vllm_async_llm,
-            "lmdeploy_engine": lmdeploy_engine,
-            "llama_cpp_engine": llama_cpp_engine,
-        }
-        _maybe_enable_serial_execution(predictor, backend)
         elapsed = round(time.time() - start_time, 2)
         logger.info(f"get {backend} predictor cost: {elapsed}s")
-        return predictor
+        return RuntimeHandle(predictor, backend=backend, close_engine=close_engine)
 
     def release_owner(self, owner: RuntimeOwner) -> None:
-        """释放应用租约，只关闭未被其他应用或独立解析持有的原生运行时。"""
+        """排空该应用文档后撤销全部后端租约，保留其它应用和独立解析持有的实例。"""
+        owner.close()
         with self._lock:
-            owner.closed = True
             closing = []
-            for key, predictor in list(self._models.items()):
-                if not isinstance(predictor, AsyncVlmPredictor):
-                    continue
+            for key, predictor in tuple(self._models.items()):
                 predictor.owners.discard(owner)
                 if not predictor.owners and not predictor.pinned:
-                    del self._models[key]
-                    closing.append(predictor)
-            _shutdown_predictors(closing)
+                    closing.append(self._detach(key, predictor))
+        self._close_detached(closing)
 
     def shutdown(self) -> None:
-        """阻止关闭期间创建第二份权重，逐个等待缓存运行时完整退出。"""
-        with self._lock:
-            predictors = list(self._models.values())
-            self._models.clear()
-            try:
-                _shutdown_predictors(predictors)
-            finally:
-                gc.collect()
+        """等待已开始的初始化收尾，撤销缓存后在锁外排空运行时。"""
+        while True:
+            with self._lock:
+                pending = tuple(self._initializing.values())
+                if not pending:
+                    closing = [self._detach(key, predictor) for key, predictor in tuple(self._models.items())]
+                    break
+                if _initializing_runtime.get() in pending or in_runtime_close_scope():
+                    raise RuntimeError("Cannot wait for VLM initialization from its cleanup callback")
+            for item in pending:
+                item.finished.wait()
+        try:
+            self._close_detached(closing)
+        finally:
+            gc.collect()
 
 
 async def _get_model_async(
@@ -389,7 +476,7 @@ async def _get_model_async(
     model_path: str | None,
     server_url: str | None,
     **kwargs: Any,
-) -> MinerUClient:
+) -> RuntimeHandle | AsyncVlmPredictor:
     """模型初始化被取消时等待后台加载结束，防止清理后又写入迟到的模型句柄。"""
     from mineru_vl_utils.vlm_client.utils import run_in_thread_until_complete
 
@@ -402,148 +489,9 @@ async def _get_model_async(
     )
 
 
-def _iter_shutdown_candidates(predictor: MinerUClient) -> Generator[object, None, None]:
-    runtime_handles = getattr(predictor, "_mineru_runtime_handles", {})
-    client = getattr(predictor, "client", None)
-
-    seen_ids = set()
-
-    def _yield_candidate(candidate: Any) -> Iterator[Any]:
-        if candidate is None:
-            return
-        candidate_id = id(candidate)
-        if candidate_id in seen_ids:
-            return
-        seen_ids.add(candidate_id)
-        yield candidate
-
-    for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model"):
-        yield from _yield_candidate(runtime_handles.get(key))
-
-    if client is not None:
-        for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model"):
-            yield from _yield_candidate(getattr(client, key, None))
-
-
-def _call_nested_shutdown(target: object, method_path: str, label: str) -> bool:
-    current = target
-    for attr in method_path.split("."):
-        current = getattr(current, attr, None)
-        if current is None:
-            return False
-
-    if not callable(current):
-        return False
-
-    try:
-        current()
-        logger.debug(f"Shutdown {label} via `{method_path}`")
-        return True
-    except TypeError:
-        logger.debug(f"Skip unsupported shutdown call {label}.{method_path}")
-        return False
-    except Exception as exc:
-        logger.debug(f"Failed to shutdown {label} via `{method_path}`: {exc}")
-        return False
-
-
-def _shutdown_runtime_handle(handle: object) -> None:
-    for method_path in (
-        "shutdown",
-        "close",
-        "stop",
-        "terminate",
-        "destroy",
-        "engine.shutdown",
-        "engine.close",
-        "engine_core.shutdown",
-        "engine_core.close",
-        "llm_engine.shutdown",
-        "llm_engine.close",
-        "llm_engine.model_executor.shutdown",
-        "llm_engine.model_executor.close",
-        "model_executor.shutdown",
-        "model_executor.close",
-    ):
-        if _call_nested_shutdown(handle, method_path, type(handle).__name__):
-            return
-
-
-def _clear_predictor_references(predictor: MinerUClient) -> None:
-    runtime_handles = getattr(predictor, "_mineru_runtime_handles", {})
-    for key in tuple(runtime_handles.keys()):
-        runtime_handles[key] = None
-
-    client = getattr(predictor, "client", None)
-    if client is not None:
-        for attr in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model", "processor"):
-            if hasattr(client, attr):
-                setattr(client, attr, None)
-
-
-def _shutdown_predictor_runtime(predictor: MinerUClient | AsyncVlmPredictor) -> None:
-    """关闭托管运行时或其拥有的底层模型句柄。"""
-    if isinstance(predictor, AsyncVlmPredictor):
-        predictor.shutdown()
-        return
-    for handle in _iter_shutdown_candidates(predictor):
-        _shutdown_runtime_handle(handle)
-    _clear_predictor_references(predictor)
-
-
-def _shutdown_predictors(predictors: list[MinerUClient | AsyncVlmPredictor]) -> None:
-    """某个客户端关闭失败时仍关闭其余实例，最后再传播最初的异常。"""
-    first_error: BaseException | None = None
-    for predictor in predictors:
-        try:
-            _shutdown_predictor_runtime(predictor)
-        except BaseException as exc:
-            if first_error is None:
-                first_error = exc
-    if first_error is not None:
-        raise first_error
-
-
 def shutdown_cached_models() -> None:
+    """进程结束时关闭包含独立解析固定租约在内的全部 VLM 运行时。"""
     ModelSingleton().shutdown()
 
 
-def _predictor_uses_mlx(predictor: MinerUClient, backend: str | None = None) -> bool:
-    if backend == "mlx-engine":
-        return True
-    client = getattr(predictor, "client", None)
-    return type(client).__module__.endswith(".mlx_client")
-
-
-def _maybe_enable_serial_execution(predictor: MinerUClient, backend: str | None = None) -> MinerUClient:
-    if _predictor_uses_mlx(predictor, backend) and not hasattr(predictor, "_mineru_execution_lock"):
-        setattr(predictor, "_mineru_execution_lock", threading.Lock())
-    return predictor
-
-
-@contextmanager
-def predictor_execution_guard(predictor: MinerUClient) -> Iterator[None]:
-    lock = getattr(predictor, "_mineru_execution_lock", None)
-    if lock is None:
-        yield
-        return
-    with lock:
-        yield
-
-
-@asynccontextmanager
-async def aio_predictor_execution_guard(predictor: MinerUClient) -> AsyncIterator[None]:
-    """可取消地等待串行模型锁，避免被取消的后台 acquire 在线程中遗留持锁者。"""
-    lock = getattr(predictor, "_mineru_execution_lock", None)
-    if lock is None:
-        yield
-        return
-    while not lock.acquire(blocking=False):
-        await asyncio.sleep(0.01)
-    try:
-        yield
-    finally:
-        lock.release()
-
-
-__all__ = ["ModelSingleton", "shutdown_cached_models", "predictor_execution_guard", "aio_predictor_execution_guard"]
+__all__ = ["ModelSingleton", "shutdown_cached_models"]

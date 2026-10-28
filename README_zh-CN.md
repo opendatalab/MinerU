@@ -26,7 +26,7 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
 [![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
+[![Ask DeepWiki](https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docs/images/deepwiki.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -68,7 +68,7 @@ Install or update the global `mineru` skill. First, run `npx skills add opendata
 
 ### 手动安装
 
-Python `>=3.10,<3.15`，在虚拟环境中安装 4.0 正式版：
+Python `>=3.11,<3.15`，在虚拟环境中安装 4.0 正式版：
 
 ```bash
 pip install uv
@@ -226,9 +226,11 @@ mineru version --json
 
 If `mineru version --json` fails, try `mineru --version` for older CLIs. If the detected version does not meet this requirement, tell the user which version was found and ask before upgrading it. If approved, upgrade with the same installer and environment, then check the version again. If declined, stop and do not run this skill's commands. Never assume compatibility when the version cannot be determined.
 
-MinerU requires Python `>=3.10,<3.15`.
+MinerU requires Python `>=3.11,<3.15`.
 
 ### Upgrade An Existing Installation
+
+If the existing environment uses Python older than 3.11, stop MinerU services and recreate the environment with Python 3.11–3.14 using the same environment manager before reinstalling MinerU. Update interpreter paths in service startup configuration and verify the result with `mineru version --json`. Python 3.12 remains the recommended starting point.
 
 Before upgrading, determine which tool owns the resolved `mineru` executable. Check `uv tool list`, then `pipx list --short`; otherwise, identify the Python environment containing the executable. Do not use an unrelated `pip` or install a second copy.
 
@@ -262,7 +264,6 @@ uv python find 3.12
 uv python find 3.13
 uv python find 3.14
 uv python find 3.11
-uv python find 3.10
 ```
 
 If all `uv python find` commands failed, download Python 3.12 with `uv`:
@@ -288,13 +289,13 @@ PIPX_DEFAULT_PYTHON="$(pipx environment --value PIPX_DEFAULT_PYTHON)"
 "$PIPX_DEFAULT_PYTHON" --version
 ```
 
-Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.15`, install with `pipx`:
+Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.11,<3.15`, install with `pipx`:
 
 ```bash
 pipx install "mineru>=4.0,<5"
 ```
 
-If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.15`.
+If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.11,<3.15`.
 
 ```bash
 command -v python3.12
@@ -313,11 +314,11 @@ pipx install --python 3.12 --fetch-python=missing "mineru>=4.0,<5"
 If neither `uv` nor `pipx` is available, but `pip` or `pip3` is available, check the Python version of the `pip` command, and ask the user before installing into the global python environment:
 
 ```bash
-which -a pip pip3 pip3.10 pip3.11 pip3.12 pip3.13 pip3.14  # find all available pips
+which -a pip pip3 pip3.11 pip3.12 pip3.13 pip3.14  # find all available pips
 pip --version
 ```
 
-If a `pip` command reports Python `>=3.10,<3.15`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
+If a `pip` command reports Python `>=3.11,<3.15`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
 
 ```bash
 pip install "mineru>=4.0,<5"
@@ -325,7 +326,7 @@ pip install "mineru>=4.0,<5"
 
 ### If No Supported Installer Is Available
 
-If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.10,<3.15`, recommend that the user install `uv` first.
+If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.11,<3.15`, recommend that the user install `uv` first.
 
 ### After Installation
 

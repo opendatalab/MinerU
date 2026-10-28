@@ -28,7 +28,9 @@ def router_cmd(
     ),
     local_gpus: str = typer.Option("auto", "--local-gpus", help=t("Local workers: auto, none, or GPU CSV")),
     worker_host: str = typer.Option("127.0.0.1", "--worker-host", help=t("Host for managed api-server workers")),
-    worker_tier: str = typer.Option("standard", "--worker-tier", help=t("Managed worker tier: flash, basic, standard")),
+    worker_tier: str = typer.Option(
+        "standard", "--worker-tier", help=t("Managed worker tier ceiling: flash, basic, standard, advanced")
+    ),
     worker_concurrency: int = typer.Option(1, "--worker-concurrency", help=t("Concurrency per managed worker")),
     retention_seconds: int | None = typer.Option(
         None,

@@ -21,13 +21,13 @@ def capture(args: argparse.Namespace) -> None:
 
     import mineru
     from mineru.backend.analyze import doc_analyze
-    from mineru.config import config
+    from mineru.config import get_config
     from mineru.render import RenderFormat, render
     from mineru.utils.logger import configure_global_log_level
 
     configure_global_log_level()
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
     args.output.mkdir(parents=True, exist_ok=True)
     manifest = {"imports": {"mineru": mineru.__file__, "docvortex": docvortex.__file__}, "documents": []}
     for name in args.documents:

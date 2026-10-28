@@ -72,6 +72,9 @@ class PPDocLayoutV2LayoutModel(PPDocLayoutV2PostProcessor):
         )
         self.rescale_factor = float(self.preprocess_config.get("rescale_factor", DEFAULT_RESCALE_FACTOR))
         self.config = PPDocLayoutV2Config.from_pretrained(self.model_dir)
+        # 仅提高行内公式阈值，让模型阅读顺序与最终检测筛选使用同一门槛。
+        inline_formula_id = PP_DOCLAYOUT_V2_LABEL_TO_ID["inline_formula"]
+        self.config.class_thresholds[inline_formula_id] = DEFAULT_CLASS_THRESHOLDS[inline_formula_id]
         # 保留原有 FP32 推理精度，直接加载到目标设备以减少 CPU 权重中转。
         self.model = PPDocLayoutV2ForObjectDetection.from_pretrained(
             self.model_dir,

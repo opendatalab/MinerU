@@ -1,5 +1,8 @@
 """同步和异步 V1 parser 的状态观察回调合同。"""
 
+from task_test_utils import build_default_zip
+
+
 from docvortex.schema import Producer
 from mineru.integrations.docvortex import build_metadata
 
@@ -20,12 +23,13 @@ from mineru.types import MiddleJson
 @pytest.mark.parametrize(
     "statuses",
     [
-        ("queued", "running", "running", "completed"),
+        ("waiting-file", "pending", "running", "completed"),
+        ("pending", "running", "running", "completed"),
         ("completed",),
-        ("queued", "completed"),
-        ("queued", "partial"),
-        ("queued", "running", "failed"),
-        ("queued", "canceled"),
+        ("pending", "completed"),
+        ("pending", "partial"),
+        ("pending", "running", "failed"),
+        ("pending", "canceled"),
     ],
 )
 def test_parse_notifies_submission_and_polls_before_result_building(
@@ -41,7 +45,6 @@ def test_parse_notifies_submission_and_polls_before_result_building(
     source = tmp_path / "source.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="flash")
-    parser._source_features = {"local"}
     notifications: list[ApiJobStatus] = []
     durations: list[float] = []
     delays: list[float] = []
@@ -61,9 +64,30 @@ def test_parse_notifies_submission_and_polls_before_result_building(
 
     def respond(request: httpx.Request) -> httpx.Response:
         """只模拟创建和轮询任务，保留正式 HTTP 调用及状态传播路径。"""
+        if request.url.path == "/result":
+            assert notifications == list(statuses)
+            assert durations == [250.0]
+            return httpx.Response(200, content=build_default_zip(result))
         methods.append(request.method)
+        status = next(replies, statuses[-1])
         return httpx.Response(
-            200, json={"job_id": "job_test", "status": next(replies), "files": [{"parse": {"duration_ms": 250}}]}
+            200,
+            json={
+                "task_id": "task_test",
+                "status": status,
+                "output_formats": ["default"],
+                "files": [
+                    {
+                        "file_id": "file-one",
+                        "file_name": source.name,
+                        "bytes": source.stat().st_size,
+                        "upload": None,
+                        "status": "completed" if status == "partial" else status,
+                        "parse": {"duration_ms": 250},
+                        "result_url": "/result",
+                    }
+                ],
+            },
         )
 
     transport = httpx.MockTransport(respond)
@@ -87,24 +111,10 @@ def test_parse_notifies_submission_and_polls_before_result_building(
         if callback_raises:
             raise RuntimeError("observer failed")
 
-    def build_result(job: dict[str, Any], file_name: str) -> ParseResult:
-        """确认所有状态在开始下载/构建结果之前已经通知。"""
-        assert notifications == list(statuses)
-        assert durations == ([250.0] if statuses[-1] in {"completed", "partial"} else [])
-        assert file_name == source.name
-        api_client._raise_for_terminal_job_error(job)
-        return result
-
-    async def build_result_async(job: dict[str, Any], file_name: str) -> ParseResult:
-        """为异步解析复用相同的终态和通知时序断言。"""
-        return build_result(job, file_name)
-
     monkeypatch.setattr(httpx, "Client", create_sync_client)
     monkeypatch.setattr(httpx, "AsyncClient", create_async_client)
     monkeypatch.setattr(api_client.time, "sleep", delays.append)
     monkeypatch.setattr(api_client.asyncio, "sleep", sleep_async)
-    monkeypatch.setattr(parser, "_build_result", build_result)
-    monkeypatch.setattr(parser, "_async_build_result", build_result_async)
 
     def parse() -> ParseResult:
         """统一执行两个公共入口，确保回调参数一路透传。"""
@@ -116,10 +126,10 @@ def test_parse_notifies_submission_and_polls_before_result_building(
         with pytest.raises(Exception, match=f"ended with status {statuses[-1]}"):
             parse()
     else:
-        assert parse() is result
+        assert parse().middle_json == result.middle_json
     assert notifications == list(statuses)
-    assert methods == ["POST", *(["GET"] * (len(statuses) - 1))]
-    assert delays == [1] * (len(statuses) - 1)
+    assert methods == ["POST", *(["GET"] * max(1, len(statuses) - 1))]
+    assert delays == [1] * max(0, len(statuses) - 2)
     assert callback_errors == (["Parse job status callback failed"] * len(statuses) if callback_raises else [])
 
 

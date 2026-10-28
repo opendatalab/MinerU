@@ -10,6 +10,10 @@
 
 ## 1. 定位
 
+ONNX 小模型新增 `model.onnx_device: auto | cpu | gpu`，环境变量为
+`MINERU_MODEL_ONNX_DEVICE`。首次实际使用时自动选择并保存，独显优先；
+集显测速、重新选择及 DirectML 厂商预设见 [ONNX 设备选择](onnx-device.md)。
+
 配置体系定义 MinerU 如何在不同启动阶段得到最终行为。
 
 MinerU 有两类配置：
@@ -23,6 +27,22 @@ MinerU 有两类配置：
 - 默认配置文件路径是 `$MINERU_HOME/config.yaml`。
 - 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/doclib`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
+
+Python 模块导入不装载启动配置。默认调用路径使用 `get_config()`：第一次访问时读取
+文件和环境并校验，之后复用进程默认配置；配置文件路径、存在状态和字段来源查询也使用
+同一份首次装载结果。环境和文件变更不会自动刷新这份配置。
+
+```python
+from mineru.config import get_config, load_config
+
+settings = get_config()  # 读取并缓存进程默认配置
+loaded = load_config()  # 按当前环境独立装载，不替换进程默认配置
+```
+
+原来的模块级 `config` 实例已移除，内部调用统一使用显式访问函数。`load_config()`
+返回配置对象及其来源信息；`Config()` 只构造模型默认值，不读取 YAML 或应用环境覆盖。
+依赖 `MINERU_HOME` 的默认路径在每次构造对象时解析。Doclib 的
+`create_app(cfg)` 会保存传入配置的独立副本，并使用其中的全局日志级别补全服务日志设置。
 
 ### 远程 VLM
 
@@ -230,7 +250,7 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
-| `parse_server.local.managed_tier` | `standard` | managed 模式启动能力上限，只接受 `basic` 或 `standard`；Standard 同时提供 Advanced 请求能力 |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动能力上限，接受 `basic`、`standard`、`advanced`，包含自身及较低档位；Advanced 复用 Standard 模型配置 |
 | `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
 
 ## 5. Parse-server 配置

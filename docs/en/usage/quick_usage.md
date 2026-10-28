@@ -56,7 +56,7 @@ When an output reaches its budget, follow `next_request` or the returned continu
   mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
   ```
   >[!TIP]
-  >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, uploads, files, parse jobs, and usage.
+  >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, Tasks creation and operations by ID, per-file uploads, result downloads, and usage. Task and file lists are not exposed.
   >
   >Native document parsing example: [Python SDK](sdk_api.md); plain HTTP: [V1 HTTP API](http_api.md)
 

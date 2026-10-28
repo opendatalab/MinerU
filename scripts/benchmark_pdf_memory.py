@@ -75,7 +75,6 @@ def _worker(args: argparse.Namespace) -> None:
                 }
                 if args.fingerprints:
                     record["middle_sha256"] = _fingerprint(result.middle_json)
-                    record["model_sha256"] = _fingerprint(result._model_output)
                 del result
                 record["released"] = time.monotonic()
                 stream.write(json.dumps(record) + "\n")

@@ -8,6 +8,13 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from mineru.kit.vlm_server import llama_cpp_server
+from mineru.model.runtime.llama_device import LlamaSelection
+
+
+@pytest.fixture(autouse=True)
+def no_hardware_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """参数转发测试不访问真实显卡；设备策略在专门用例中显式构造。"""
+    monkeypatch.setattr(llama_cpp_server, "_device_policy", lambda args: LlamaSelection())
 
 
 @pytest.mark.parametrize(

@@ -48,12 +48,13 @@ def find_cmd(
     query: str = typer.Argument(..., help=t("Filename search query")),
     ext: str | None = typer.Option(None, "--ext", help=t("File extension filter: {exts}", exts=FILE_EXTS)),
     limit: int = typer.Option(50, "--limit", "-n", help=t("Max results")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
     json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
-    """Search filenames only (not document content)."""
+    """按文件名前缀搜索，并按有效匹配的顺序分页。"""
     run_cli(
         CliContext(json_mode=json_mode),
-        lambda: DoclibClient(timeout=10).find(query, ext=ext, limit=limit),
+        lambda: DoclibClient(timeout=10).find(query, ext=ext, limit=limit, offset=offset),
         render=_render_find_results,
     )
 

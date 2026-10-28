@@ -80,13 +80,13 @@ def main() -> None:
     if not args.pdf.is_file():
         parser.error("PDF does not exist")
     os.environ["MINERU_DEVICE_MODE"] = "cpu"
-    from mineru.config import config
+    from mineru.config import get_config
     import mineru
     import docvortex
     from mineru import version
     import torch
 
-    config.model.small_backend = "torch"
+    get_config().model.small_backend = "torch"
     warmup = parse_once(args.pdf, args.tier)
     rounds = [measure_round(args.pdf, args.tier, concurrency) for _ in range(args.rounds) for concurrency in (1, 3)]
     report = {

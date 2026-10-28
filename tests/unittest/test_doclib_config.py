@@ -14,6 +14,7 @@ from mineru.config import (
     _interpolate_env,
     _load_config,
     _load_effective_config,
+    get_config,
     update_config_file,
 )
 from mineru.doclib.config_defaults import CONFIG_DEFAULTS
@@ -69,7 +70,7 @@ doclib:
     assert data["doclib"]["data_dir"] == str(tmp_path / "data")
     assert data["doclib"]["tcp"]["enabled"] is True
     assert data["doclib"]["tcp"]["port"] == 18080
-    assert data["doclib"]["sqlite"]["path"] == str(tmp_path / "data" / "doclib.db")
+    assert Path(data["doclib"]["sqlite"]["path"]) == tmp_path / "data" / "doclib.db"
 
 
 def test_collect_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -327,13 +328,13 @@ def test_global_log_level_rejects_invalid_values(level: str) -> None:
 def test_default_doclib_data_dir_uses_doclib_directory() -> None:
     cfg = Config()
 
-    assert cfg.doclib.data_dir.endswith(".mineru/doclib")
+    assert Path(cfg.doclib.data_dir).as_posix().endswith(".mineru/doclib")
 
 
 def test_default_model_config_uses_mineru_model_directory() -> None:
     cfg = Config()
 
-    assert cfg.model.base_dir.endswith(".mineru/models")
+    assert Path(cfg.model.base_dir).as_posix().endswith(".mineru/models")
     assert cfg.model.source == "auto"
 
 
@@ -438,10 +439,15 @@ def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch
 
 
 def test_patched_config_returns_validated_deep_patch() -> None:
+    """验证局部覆盖经过类型校验，且不会修改默认配置中的嵌套对象。"""
+    default = get_config()
+    original = default.model_dump()
     cfg = PatchedConfig(doclib={"tcp": {"port": "16000"}, "sqlite": {"cache_size": "-1"}})
 
     assert cfg.doclib.tcp.port == 16000
     assert cfg.doclib.sqlite.cache_size == -1
+    assert cfg.doclib is not default.doclib
+    assert default.model_dump() == original
 
 
 def test_tcp_config_exposes_port_probe_count() -> None:
@@ -483,12 +489,12 @@ def test_log_config_exposes_separate_log_paths() -> None:
     assert defaults.stderr_path is None
     assert defaults.parse_server_stdout_path is None
     assert defaults.parse_server_stderr_path is None
-    assert defaults.resolved_app_path.endswith("logs/doclib.log")
-    assert defaults.resolved_access_path.endswith("logs/doclib.access.log")
-    assert defaults.resolved_stdout_path.endswith("logs/doclib.stdout.log")
-    assert defaults.resolved_stderr_path.endswith("logs/doclib.stderr.log")
-    assert defaults.resolved_parse_server_stdout_path.endswith("logs/doclib.parse-server.stdout.log")
-    assert defaults.resolved_parse_server_stderr_path.endswith("logs/doclib.parse-server.stderr.log")
+    assert Path(defaults.resolved_app_path).as_posix().endswith("logs/doclib.log")
+    assert Path(defaults.resolved_access_path).as_posix().endswith("logs/doclib.access.log")
+    assert Path(defaults.resolved_stdout_path).as_posix().endswith("logs/doclib.stdout.log")
+    assert Path(defaults.resolved_stderr_path).as_posix().endswith("logs/doclib.stderr.log")
+    assert Path(defaults.resolved_parse_server_stdout_path).as_posix().endswith("logs/doclib.parse-server.stdout.log")
+    assert Path(defaults.resolved_parse_server_stderr_path).as_posix().endswith("logs/doclib.parse-server.stderr.log")
 
     cfg = Config(
         doclib={
@@ -511,12 +517,12 @@ def test_log_config_exposes_separate_log_paths() -> None:
     assert cfg.doclib.log.stderr_path == "/tmp/stderr.log"
     assert cfg.doclib.log.parse_server_stdout_path == "/tmp/parse-server.stdout.log"
     assert cfg.doclib.log.parse_server_stderr_path == "/tmp/parse-server.stderr.log"
-    assert cfg.doclib.log.resolved_app_path == "/tmp/app.log"
-    assert cfg.doclib.log.resolved_access_path == "/tmp/access.log"
-    assert cfg.doclib.log.resolved_stdout_path == "/tmp/stdout.log"
-    assert cfg.doclib.log.resolved_stderr_path == "/tmp/stderr.log"
-    assert cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/parse-server.stdout.log"
-    assert cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/parse-server.stderr.log"
+    assert Path(cfg.doclib.log.resolved_app_path).as_posix() == "/tmp/app.log"
+    assert Path(cfg.doclib.log.resolved_access_path).as_posix() == "/tmp/access.log"
+    assert Path(cfg.doclib.log.resolved_stdout_path).as_posix() == "/tmp/stdout.log"
+    assert Path(cfg.doclib.log.resolved_stderr_path).as_posix() == "/tmp/stderr.log"
+    assert Path(cfg.doclib.log.resolved_parse_server_stdout_path).as_posix() == "/tmp/parse-server.stdout.log"
+    assert Path(cfg.doclib.log.resolved_parse_server_stderr_path).as_posix() == "/tmp/parse-server.stderr.log"
 
 
 def test_log_config_dir_derives_unspecified_log_paths() -> None:
@@ -526,12 +532,12 @@ def test_log_config_dir_derives_unspecified_log_paths() -> None:
     assert cfg.access_path is None
     assert cfg.stdout_path is None
     assert cfg.stderr_path == "/tmp/custom-stderr.log"
-    assert cfg.resolved_app_path == "/tmp/mineru-logs/doclib.log"
-    assert cfg.resolved_access_path == "/tmp/mineru-logs/doclib.access.log"
-    assert cfg.resolved_stdout_path == "/tmp/mineru-logs/doclib.stdout.log"
-    assert cfg.resolved_stderr_path == "/tmp/custom-stderr.log"
-    assert cfg.resolved_parse_server_stdout_path == "/tmp/mineru-logs/doclib.parse-server.stdout.log"
-    assert cfg.resolved_parse_server_stderr_path == "/tmp/mineru-logs/doclib.parse-server.stderr.log"
+    assert Path(cfg.resolved_app_path).as_posix() == "/tmp/mineru-logs/doclib.log"
+    assert Path(cfg.resolved_access_path).as_posix() == "/tmp/mineru-logs/doclib.access.log"
+    assert Path(cfg.resolved_stdout_path).as_posix() == "/tmp/mineru-logs/doclib.stdout.log"
+    assert Path(cfg.resolved_stderr_path).as_posix() == "/tmp/custom-stderr.log"
+    assert Path(cfg.resolved_parse_server_stdout_path).as_posix() == "/tmp/mineru-logs/doclib.parse-server.stdout.log"
+    assert Path(cfg.resolved_parse_server_stderr_path).as_posix() == "/tmp/mineru-logs/doclib.parse-server.stderr.log"
 
 
 def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -548,24 +554,34 @@ def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pyte
     assert env_cfg.doclib.log.stderr_path is None
     assert env_cfg.doclib.log.parse_server_stdout_path is None
     assert env_cfg.doclib.log.parse_server_stderr_path is None
-    assert env_cfg.doclib.log.resolved_app_path == "/tmp/env-logs/doclib.log"
-    assert env_cfg.doclib.log.resolved_access_path == "/tmp/env-logs/doclib.access.log"
-    assert env_cfg.doclib.log.resolved_stdout_path == "/tmp/env-logs/doclib.stdout.log"
-    assert env_cfg.doclib.log.resolved_stderr_path == "/tmp/env-logs/doclib.stderr.log"
-    assert env_cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/env-logs/doclib.parse-server.stdout.log"
-    assert env_cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/env-logs/doclib.parse-server.stderr.log"
+    assert Path(env_cfg.doclib.log.resolved_app_path).as_posix() == "/tmp/env-logs/doclib.log"
+    assert Path(env_cfg.doclib.log.resolved_access_path).as_posix() == "/tmp/env-logs/doclib.access.log"
+    assert Path(env_cfg.doclib.log.resolved_stdout_path).as_posix() == "/tmp/env-logs/doclib.stdout.log"
+    assert Path(env_cfg.doclib.log.resolved_stderr_path).as_posix() == "/tmp/env-logs/doclib.stderr.log"
+    assert (
+        Path(env_cfg.doclib.log.resolved_parse_server_stdout_path).as_posix() == "/tmp/env-logs/doclib.parse-server.stdout.log"
+    )
+    assert (
+        Path(env_cfg.doclib.log.resolved_parse_server_stderr_path).as_posix() == "/tmp/env-logs/doclib.parse-server.stderr.log"
+    )
     assert patched_cfg.doclib.log.app_path is None
     assert patched_cfg.doclib.log.access_path is None
     assert patched_cfg.doclib.log.stdout_path is None
     assert patched_cfg.doclib.log.stderr_path is None
     assert patched_cfg.doclib.log.parse_server_stdout_path is None
     assert patched_cfg.doclib.log.parse_server_stderr_path is None
-    assert patched_cfg.doclib.log.resolved_app_path == "/tmp/patched-logs/doclib.log"
-    assert patched_cfg.doclib.log.resolved_access_path == "/tmp/patched-logs/doclib.access.log"
-    assert patched_cfg.doclib.log.resolved_stdout_path == "/tmp/patched-logs/doclib.stdout.log"
-    assert patched_cfg.doclib.log.resolved_stderr_path == "/tmp/patched-logs/doclib.stderr.log"
-    assert patched_cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/patched-logs/doclib.parse-server.stdout.log"
-    assert patched_cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/patched-logs/doclib.parse-server.stderr.log"
+    assert Path(patched_cfg.doclib.log.resolved_app_path).as_posix() == "/tmp/patched-logs/doclib.log"
+    assert Path(patched_cfg.doclib.log.resolved_access_path).as_posix() == "/tmp/patched-logs/doclib.access.log"
+    assert Path(patched_cfg.doclib.log.resolved_stdout_path).as_posix() == "/tmp/patched-logs/doclib.stdout.log"
+    assert Path(patched_cfg.doclib.log.resolved_stderr_path).as_posix() == "/tmp/patched-logs/doclib.stderr.log"
+    assert (
+        Path(patched_cfg.doclib.log.resolved_parse_server_stdout_path).as_posix()
+        == "/tmp/patched-logs/doclib.parse-server.stdout.log"
+    )
+    assert (
+        Path(patched_cfg.doclib.log.resolved_parse_server_stderr_path).as_posix()
+        == "/tmp/patched-logs/doclib.parse-server.stderr.log"
+    )
 
 
 def test_interval_and_timeout_config_is_startup_config_not_runtime_kv() -> None:

@@ -60,11 +60,16 @@ def get_ocr_result_list(
         else:
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
+            # 公式遮罩拆框可能产生零宽或窄残片；沿用既有过滤条件，先过滤再裁图。
+            if (p3[0] - p1[0]) < OcrConfidence.min_width:
+                continue
             if ocr_enable:
                 if ori_im is None:
                     ori_im = bgr_image.copy()
                 tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype("float32"))
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
+                if img_crop is None:
+                    continue
                 need_ocr_rec = True
 
         poly = [p1, p2, p3, p4]

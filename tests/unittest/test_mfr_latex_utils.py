@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-# 可选依赖检测必须先于模型模块导入。
-# ruff: noqa: E402
-
-import pytest
-import numpy as np
 from types import SimpleNamespace
 
-torch = pytest.importorskip("torch")
-pytest.importorskip("transformers", minversion="5.10.1")
+import numpy as np
+import pytest
 
 from mineru.model.mfr import utils as mfr_utils
 from mineru.model.mfr.pp_formulanet.processors import UniMERNetDecode
-from mineru.model.mfr.unimernet.unimernet_hf.modeling_unimernet import UnimernetModel
 
 
 @pytest.mark.parametrize(
@@ -42,22 +36,17 @@ def test_fix_mathring_font_arguments_repairs_multiple_occurrences() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source", "pp_expected", "unimernet_expected"),
+    ("source", "expected"),
     [
-        (r"\left x \right y", r"\left x \right y", r"\left. x \right. y"),
-        (r"\Dot{x}", r"\Dot{x}", r"\dot{x}"),
-        (r"{x", r"{x", r"x"),
-        (r"\upalpha + \emph{x}", r"\alpha + {x}", r"\alpha + {x}"),
+        (r"\left x \right y", r"\left x \right y"),
+        (r"\Dot{x}", r"\Dot{x}"),
+        (r"{x", r"{x"),
+        (r"\upalpha + \emph{x}", r"\alpha + {x}"),
     ],
 )
-def test_model_specific_latex_repairs_keep_existing_differences(
-    source: str,
-    pp_expected: str,
-    unimernet_expected: str,
-) -> None:
-    """验证共享重构不会把任一模型的专属修复带入另一模型。"""
-    assert mfr_utils.fix_pp_formulanet_latex(source) == pp_expected
-    assert mfr_utils.fix_unimernet_latex(source) == unimernet_expected
+def test_pp_formulanet_latex_repairs_preserve_current_output(source: str, expected: str) -> None:
+    """验证 PP-FormulaNet 保留分隔符、命令和大括号的既有修复行为。"""
+    assert mfr_utils.fix_pp_formulanet_latex(source) == expected
 
 
 def test_pp_formulanet_fix_latex_uses_shared_mathring_repair() -> None:
@@ -67,31 +56,6 @@ def test_pp_formulanet_fix_latex_uses_shared_mathring_repair() -> None:
     tokenizer = SimpleNamespace(decode=lambda token_ids, skip_special_tokens: source)
     processor = SimpleNamespace(tokenizer=tokenizer)
     assert UniMERNetDecode.token2str(processor, [np.array([0, 7, 2, 1])]) == [r"R , { \mathring{\mathrm { A }} }"]
-
-
-def test_unimernet_decode_entry_uses_renamed_latex_repair() -> None:
-    """验证 UniMERNet 解码入口通过新名称应用共享修复。"""
-
-    class _TokenizerStub:
-        """为轻量解码入口返回固定 LaTeX 文本。"""
-
-        @staticmethod
-        def token2str(_token_ids: object) -> list[str]:
-            """返回含未分组 mathring 参数的模型文本。"""
-            return [r"R , { \mathring \mathrm { A } }"]
-
-    class _ModelStub:
-        """仅提供解码方法实际访问的 tokenizer。"""
-
-        tokenizer = _TokenizerStub()
-
-    result = UnimernetModel._decode_generate_outputs(
-        _ModelStub(),
-        torch.tensor([[0, 1, 2]]),
-        return_full_result=False,
-    )
-
-    assert result == {"fixed_str": [r"R , { \mathring{\mathrm { A }} }"]}
 
 
 def test_latex_rm_whitespace_name_is_removed() -> None:

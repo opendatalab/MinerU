@@ -14,6 +14,7 @@ import pytest
 
 from mineru.filetypes import OFFICE_EXTENSIONS
 from mineru.kit.gradio import app as app_module
+from mineru.kit.gradio import document_io
 from mineru.kit.gradio.client import V1ServerCapabilities
 from mineru.kit.gradio.i18n import MESSAGES
 from mineru.parser.base import ParseResult
@@ -115,7 +116,7 @@ def test_office_conversion_never_replaces_uploaded_preview(
         raise OSError("output unavailable")
 
     if outcome == "output_failure":
-        monkeypatch.setattr(app_module, "persist_parse_result", fail_output)
+        monkeypatch.setattr(document_io.artifacts, "persist_parse_result", fail_output)
     demo = app_module.build_gradio_app(
         SimpleNamespace(parse_file=parse),
         V1ServerCapabilities("http://localhost:1", ("flash",), ("zip",), ("file_id",)),

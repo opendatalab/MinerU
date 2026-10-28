@@ -14,6 +14,7 @@ DEFAULT_STATUS = "Upload a file and start conversion."
 STATUS_PREPARING_REQUEST = "Preparing request..."
 STATUS_CHECKING_SERVER = "Checking server status..."
 STATUS_SUBMITTING_TASK = "Submitting task..."
+STATUS_PREPARING_FILE = "Preparing file..."
 STATUS_QUEUED_LOCALLY = "Queued locally"
 STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server..."
@@ -26,6 +27,7 @@ _MESSAGE_STEPS = {
     STATUS_PREPARING_REQUEST: 0,
     STATUS_CHECKING_SERVER: 1,
     STATUS_SUBMITTING_TASK: 2,
+    STATUS_PREPARING_FILE: 2,
     STATUS_QUEUED_LOCALLY: 3,
     STATUS_QUEUED_ON_SERVER: 3,
     STATUS_PROCESSING_ON_SERVER: 4,
@@ -157,6 +159,7 @@ __all__ = [
     "STATUS_QUEUED_LOCALLY",
     "STATUS_QUEUED_ON_SERVER",
     "STATUS_SUBMITTING_TASK",
+    "STATUS_PREPARING_FILE",
     "ParseStatusUpdate",
     "StatusPanelState",
     "status_html",

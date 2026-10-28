@@ -30,12 +30,25 @@ mineru-kit parse input.pdf --tier basic -o output.md
 ```
 
 `MINERU_MODEL_BASE_DIR` 可指定独立模型根目录。`--small-backend`、`--vlm-engine` 只覆盖当前模型管理命令；解析和服务运行时读取环境变量或配置文件。
-Layout、OCR 和公式的 ONNX 会话固定使用 CPU，最低版本为 ONNX Runtime 1.20.1，支持资源包所需的 ONNX IR 10。
+Layout、OCR-det/rec、公式主批次和 UNet 通过 `model.onnx_device=auto/cpu/gpu` 共享 Windows DirectML／Linux WebGPU 设备选择。
+环境变量为 `MINERU_MODEL_ONNX_DEVICE`。自动模式复用六图 rec 校准与输出检查；Linux 还执行 Intel 架构策略。
+其他 ONNX 会话及规定的公式尾批次保持 CPU 路线，具体以日志中的实际 provider 为准。
+CPU 算子线程读取 `MINERU_INTRA_OP_NUM_THREADS` 和 `MINERU_INTER_OP_NUM_THREADS`，默认 4/1。
+llama.cpp 自动模式优先使用原生 ggml 实际可见的独显；没有可用独显时，Windows 复用 DirectML、Linux 复用 WebGPU 的 ONNX 设备决策，
+包括已保存的 CPU/GPU 选择、输出一致性检查失败及架构回退。ONNX 决策涉及的 GPU 必须与 llama.cpp 的设备身份匹配，不能用另一张卡的成绩替集显决策。
+因此 Linux 上 Xe-LP 及以前的 Intel 默认随现有 WebGPU 架构策略走 CPU；显式 `MINERU_LLAMA_CPP_BACKEND=vulkan`、GPU 层数或 server `--device` 仍可强制使用 GPU。
 
-表格分类、SLANet 和 UNet 共用独立的设备策略：`MINERU_TABLE_DEVICE=auto`（默认）根据 ONNX Runtime 的可用 provider 选择设备。安装 CPU 版 `onnxruntime` 时使用 CPU；替换为与 CUDA/cuDNN 环境兼容的 `onnxruntime-gpu` 后优先使用 CUDA，CUDA 会话初始化失败则记录原因并回退 CPU。不要同时安装两个发行包，它们共享同一个 Python 模块。日志中的实际 providers 表示最终加载结果。
+解析与 `mineru-kit vlm-server` 的 llama 入口共用设备策略。仅当 Linux Vulkan 实际选中明确 PCI 映射中的 Intel Xe-LP/更早架构，
+或 Xe-LPG（`7dxx`、`b6xx`，包含 `8086:7d51`）时，自动启用 `GGML_VK_SERIALIZE_SUBMISSIONS=1`，
+规避已复现的 i915 请求取消、设备丢失及异常视觉结果。该规则对 standard、advanced 等档位统一生效。
+Xe-HPG、Xe2/Xe3 LPG 和其他后续架构、AMD、NVIDIA 及 Windows 不自动开启该开关。Xe-LPG 的 ONNX WebGPU 自适应校准策略不变。
+多卡机器先确认原生设备，再隔离所选 GPU 并复核身份；不能仅因机器里存在 Intel 集显就给独显开启串行提交。
+自动选择也不会混用需要串行提交的设备和其他设备；显式要求此类混合设备组会报错，因为 ggml 的环境开关无法逐卡设置。
 
-设置 `MINERU_TABLE_DEVICE=cpu` 可固定表格在 CPU 执行（ZeroGPU Space 默认采用此配置）；设置 `cuda` 可显式尝试 CUDA，仍保留故障回退。该选项不影响 Layout、OCR 和公式的 ONNX 后端，也不影响 Torch 设备选择。所有表格会话均读取 `MINERU_INTRA_OP_NUM_THREADS` 和 `MINERU_INTER_OP_NUM_THREADS`，限制 CPU 算子及回退路径的线程数。
-llama.cpp 的设备参数独立于 ONNX provider；Torch 和 VLM 仍沿用各自设备策略。
+已有的显式 `GGML_VK_SERIALIZE_SUBMISSIONS` 环境值保持不变：该开关检查变量是否存在，设为 `0` 同样会开启，撤销须 `unset`。
+进程内初始化结束后会恢复临时环境；ggml 已缓存设备状态时，变更可见显卡或提交策略须使用新进程。
+server 的 `--offline` 同样约束新增的 ONNX 校准模型读取，缺少本地模型时回退 CPU，不发起下载。
+Torch、其他 VLM 引擎和远程 VLM 不使用这套 llama.cpp 设备策略。
 
 ## 资源结构
 

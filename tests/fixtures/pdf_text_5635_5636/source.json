@@ -1,0 +1,27 @@
+{
+  "issues": [
+    "https://github.com/opendatalab/MinerU/issues/5635",
+    "https://github.com/opendatalab/MinerU/issues/5636"
+  ],
+  "attachment_url": "https://github.com/user-attachments/files/33325966/bug_repro_sample_p7_p8_p63.pdf",
+  "sha256": "1a61d515a91fdda973a10c08e3a99083920235adafaa2659fc4ef42bad756620",
+  "original_pages": [
+    7,
+    8,
+    63
+  ],
+  "render_scale": 2.7777777777777777,
+  "baseline": {
+    "mineru": "4.0.12",
+    "tier": "standard",
+    "ocr_mode": "auto",
+    "resolved_parse_mode": "txt",
+    "platform": "macOS arm64"
+  },
+  "failure_counts": {
+    "missing_initial_T": 1,
+    "fi nancial": 5,
+    "mo mentum": 1
+  },
+  "description": "三页原件、原始布局和 OCR 检测结果用于固定推理输入；before 文件记录修改前实际输出。"
+}

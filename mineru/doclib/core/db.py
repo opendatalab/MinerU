@@ -19,9 +19,6 @@ _MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 _T = TypeVar("_T")
 _CREATE_TABLES_SQL: list[str] = []  # filled by _load_init_sql()
-_DEFAULT_BUSY_TIMEOUT_MS = 5000
-_DEFAULT_LOCK_RETRY_ATTEMPTS = 3
-_DEFAULT_LOCK_RETRY_BASE_DELAY_MS = 50
 
 
 def _load_init_sql() -> list[str]:
@@ -58,7 +55,7 @@ class DatabaseManager:
 
     def __init__(self, db_path: str, sqlite_cfg: SQLiteConfig | None = None) -> None:
         self.db_path = db_path
-        self.sqlite_cfg = sqlite_cfg  # SQLiteConfig or None
+        self.sqlite_cfg = sqlite_cfg if sqlite_cfg is not None else SQLiteConfig(path=db_path)
         self._write_lock = asyncio.Lock()
 
     # ── lifecycle ──────────────────────────────────────────────────
@@ -68,22 +65,8 @@ class DatabaseManager:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = await self._connect()
         try:
+            # WAL 是数据库持久设置，仅在初始化时切换，避免运行期连接重复争抢模式锁。
             await conn.execute("PRAGMA journal_mode=WAL")
-
-            if self.sqlite_cfg:
-                await conn.execute(f"PRAGMA synchronous={self.sqlite_cfg.synchronous}")
-                await conn.execute(f"PRAGMA mmap_size={self.sqlite_cfg.mmap_size}")
-                await conn.execute(f"PRAGMA cache_size={self.sqlite_cfg.cache_size}")
-                await conn.execute(f"PRAGMA temp_store={self.sqlite_cfg.temp_store}")
-                await conn.execute(f"PRAGMA wal_autocheckpoint={self.sqlite_cfg.wal_autocheckpoint}")
-                await conn.execute(f"PRAGMA journal_size_limit={self.sqlite_cfg.journal_size_limit}")
-            else:
-                await conn.execute("PRAGMA synchronous=NORMAL")
-                await conn.execute("PRAGMA mmap_size=268435456")
-                await conn.execute("PRAGMA cache_size=-20000")
-                await conn.execute("PRAGMA temp_store=MEMORY")
-                await conn.execute("PRAGMA wal_autocheckpoint=1000")
-                await conn.execute("PRAGMA journal_size_limit=33554432")
 
             for sql in _CREATE_TABLES_SQL:
                 await conn.execute(sql)
@@ -121,11 +104,18 @@ class DatabaseManager:
             await conn.close()
 
     async def _connect(self) -> aiosqlite.Connection:
-        busy_timeout_ms = self.sqlite_cfg.busy_timeout_ms if self.sqlite_cfg else _DEFAULT_BUSY_TIMEOUT_MS
+        """为每个新连接应用运行参数，确保初始化、普通操作和重试使用相同配置。"""
+        busy_timeout_ms = self.sqlite_cfg.busy_timeout_ms
         conn = await aiosqlite.connect(self.db_path, timeout=busy_timeout_ms / 1000)
         try:
             await conn.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
             await conn.execute("PRAGMA foreign_keys=ON")
+            await conn.execute(f"PRAGMA synchronous={self.sqlite_cfg.synchronous}")
+            await conn.execute(f"PRAGMA mmap_size={self.sqlite_cfg.mmap_size}")
+            await conn.execute(f"PRAGMA cache_size={self.sqlite_cfg.cache_size}")
+            await conn.execute(f"PRAGMA temp_store={self.sqlite_cfg.temp_store}")
+            await conn.execute(f"PRAGMA wal_autocheckpoint={self.sqlite_cfg.wal_autocheckpoint}")
+            await conn.execute(f"PRAGMA journal_size_limit={self.sqlite_cfg.journal_size_limit}")
             conn.row_factory = aiosqlite.Row
             return conn
         except Exception:
@@ -149,8 +139,8 @@ class DatabaseManager:
         return await self._run_with_retry(operation)
 
     async def _run_with_retry(self, operation: Callable[[aiosqlite.Connection], Awaitable[_T]]) -> _T:
-        retry_attempts = self.sqlite_cfg.lock_retry_attempts if self.sqlite_cfg else _DEFAULT_LOCK_RETRY_ATTEMPTS
-        base_delay_ms = self.sqlite_cfg.lock_retry_base_delay_ms if self.sqlite_cfg else _DEFAULT_LOCK_RETRY_BASE_DELAY_MS
+        retry_attempts = self.sqlite_cfg.lock_retry_attempts
+        base_delay_ms = self.sqlite_cfg.lock_retry_base_delay_ms
 
         for attempt in range(retry_attempts + 1):
             conn: aiosqlite.Connection | None = None

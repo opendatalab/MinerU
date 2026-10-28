@@ -27,9 +27,9 @@ VLM_REQUIRED_MODULES: dict[VlmEngineName, tuple[str, ...]] = {
 
 def resolve_vlm_engine(engine: str | None = None) -> VlmEngineName:
     """按显式配置或平台能力选择引擎；显式名称不要求下载端安装引擎。"""
-    from ...config import config
+    from ...config import get_config
 
-    selected = config.model.vlm.engine if engine is None else engine
+    selected = get_config().model.vlm.engine if engine is None else engine
     if selected == "llama-cpp":
         return "llama-cpp"
     if selected == "vllm":

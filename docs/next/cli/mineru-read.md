@@ -30,7 +30,7 @@ mineru read <locator> [flags]
 当前 P0 支持：
 
 ```bash
-mineru read <locator> [--format markdown|image] [--limit 30000] [--context N] [--output PATH] [--json] [--no-marker]
+mineru read <locator> [--after CURSOR] [--format markdown|image] [--limit 30000] [--context N] [--output PATH] [--json] [--no-marker]
 ```
 
 ## 3. Locator 输入
@@ -40,7 +40,7 @@ mineru read <locator> [--format markdown|image] [--limit 30000] [--context N] [-
 ```text
 doc:{short_id}
 doc:{short_id}/tier:{tier}
-doc:{short_id}/tier:{tier}/page:{page_no}
+doc:{short_id}/tier:{tier}/page:{page_selection}
 doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}
 doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 ```
@@ -50,7 +50,16 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 - `short_id` 是 doclib 为文档生成的稳定短 ID。
 - `tier` 取值为 `flash`、`basic`、`standard`、`advanced`。
 - `page_no` 和 `block_no` 使用 1-based 编号。
+- `page_selection` 与解析输入页范围共用语法：数字、`rN`、区间、逗号组合和 `all`。`r1` 为最后一页；倒数页和 `all` 必须有可靠的文档总页数。
+- 页选择排序、去重并裁剪越界页；返回的规范定位器和块引用使用实际页码。带 block/char 时必须解析为单页。
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
+
+```bash
+mineru read doc:ab12cd3/tier:flash/page:r1
+mineru read doc:ab12cd3/tier:flash/page:r3-r1
+mineru read doc:ab12cd3/tier:flash/page:1,3,r1
+mineru read doc:ab12cd3/tier:flash/page:all
+```
 
 当只给出 `doc:{short_id}` 时，系统不会创建新解析，而是在当前已缓存的非 `flash` 质量 tier 中选择最高质量结果，顺序为 `advanced` -> `standard` -> `basic`。如果不存在非 `flash` 质量 tier 结果，则返回错误，不静默降级到 `flash`。
 
@@ -61,6 +70,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 | `--format`, `-f` | `markdown` / `image` | `markdown` | 输出 content format |
 | `--json` | bool | false | 将整个 CLI 响应包装为 JSON |
 | `--limit` | int | `30000` | 文本输出软字符上限 |
+| `--after` | locator | 不传 | 使用范围读取返回的实际页码游标继续读取；要求 Markdown 页选择且 context=0 |
 | `--context` | int | `0` | 按 locator 周围扩展上下文 |
 | `--output`, `-o` | path | 不传 | 将返回内容或 image asset 写入本地路径；image 只支持 `.png`、`.jpg`、`.jpeg`、`.webp` |
 | `--no-marker` | bool | false | 关闭 continuation marker |
@@ -106,6 +116,7 @@ Markdown 继续优先输出 table、chart 和 formula 的结构化内容。需�
 | char locator | 按 block locator 处理上下文，char 只影响起点 |
 | doc locator | 返回 `context_not_applicable` |
 | doc/tier locator | 返回 `context_not_applicable` |
+| 多页选择 | 非零 context 返回 `context_not_applicable` |
 
 ## 6. Image 读取
 
@@ -148,7 +159,8 @@ locator-first 读取时：
 
 - `request_scope.locator` 为规范化 locator。
 - `request_scope.context` 为实际生效的 context。
-- `next_request` 只写 `locator`。
+- 单点读取的 `next_request` 使用 `locator`；范围内截断时同时返回 `locator` 和 `after`。
+- 多页选择只读取范围内的已缓存内容，读完后 `next_request=null`；不会创建新解析或继续推荐范围外页面。
 
 ## 8. Continuation
 
@@ -161,6 +173,14 @@ locator-first 读取时：
 ```
 
 `--json` 时，通过 `next_request.locator` 表示下一次建议读取的位置。
+
+范围读取的续读保留原选择，并以实际页码的块/字符游标推进。例如：
+
+```text
+<!-- Next: mineru read doc:ab12cd3/tier:flash/page:1,3 --after doc:ab12cd3/tier:flash/page:1/block:2/char:1000 -->
+```
+
+可以直接执行该命令；第 2 页不会因续读被加入。图片读取要求页选择解析为单页，多页选择返回 `multi_page_image_not_supported`。
 
 ## 9. 与 mineru parse 的关系
 

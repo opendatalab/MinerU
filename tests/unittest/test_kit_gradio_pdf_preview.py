@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from unittest.mock import Mock
 from urllib.parse import quote
@@ -16,6 +17,7 @@ import typer
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from gradio.data_classes import FileData
+from packaging.requirements import Requirement
 
 from mineru.kit.commands import webui as webui_command
 from mineru.kit.gradio.app import build_gradio_app
@@ -108,13 +110,28 @@ def test_pdfjs_manifest_matches_bundled_files() -> None:
     assert "Apache License" in (root / "LICENSE").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("version", ["5.49.1", "5.50.0", "6.7.0", "7.0.0"])
+@pytest.mark.parametrize("version", ["5.49.1", "5.50.0", "6.7.0", "6.8.0", "6.20.0", "7.0.0"])
 def test_webui_command_rejects_unsupported_version(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
     """即使用户跳过安装器检查，启动时仍明确拒绝旧版或未支持的主版本。"""
     monkeypatch.setattr(webui_command, "version", Mock(return_value=version))
     with pytest.raises(typer.Exit) as error:
         webui_command._require_gradio_dependencies()
     assert getattr(error.value, "exit_code", None) == 1
+
+
+@pytest.mark.parametrize("version", ["6.20.0", "6.21.0", "6.27.0", "6.30.0", "7.0.0"])
+def test_webui_version_check_matches_package_requirement(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
+    """发行依赖与启动校验接受相同的版本区间，覆盖最低支持版本及两个边界。"""
+    project = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    requirement = next(Requirement(item) for item in project["dependencies"] if item.startswith("gradio"))
+    supported = version in requirement.specifier
+    assert supported == (version in {"6.21.0", "6.27.0", "6.30.0"})
+    monkeypatch.setattr(webui_command, "version", Mock(return_value=version))
+    if supported:
+        webui_command._require_gradio_dependencies()
+    else:
+        with pytest.raises(typer.Exit):
+            webui_command._require_gradio_dependencies()
 
 
 def test_pdf_preview_frontend_lifecycle() -> None:

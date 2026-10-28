@@ -22,7 +22,7 @@ from mineru.kit.gradio.artifacts import (
     persist_parse_result,
     render_download,
 )
-from mineru.parser.api_server import _build_self_contained_zip_output
+from task_test_utils import build_default_zip
 from mineru.parser.base import ParseResult
 from mineru.types import (
     AlgorithmBodyBlock,
@@ -140,16 +140,24 @@ def test_parent_names_table_images_and_repeated_materialization(tmp_path: Path) 
     assert {path.name: path.read_bytes() for path in (artifacts.root / "images").iterdir()} == before
     for format_name in ("markdown", "json", "latex"):
         with zipfile.ZipFile(render_download(artifacts.as_state(), format_name)) as archive:
-            images = {Path(name).name: archive.read(name) for name in archive.namelist() if name.startswith("images/")}
+            images = {
+                Path(name).name: archive.read(name)
+                for name in archive.namelist()
+                if name.startswith("images/") and not name.endswith("/")
+            }
             assert images == before
     structured = json.loads(artifacts.structured_content_path.read_text())
     assert structured["pages"][0]["blocks"][2]["image_source"] == "images/page_0_table_2.png"
     # 同一份解析结果经 CLI/API 保存，图片名称、字节和对应正文必须与 Gradio 一致。
     cli_zip = tmp_path / "cli.zip"
     save_parse_result(ParseResult(middle), cli_zip, "zip")
-    for archive_source in (cli_zip, BytesIO(_build_self_contained_zip_output(ParseResult(middle)))):
+    for archive_source in (cli_zip, BytesIO(build_default_zip(ParseResult(middle)))):
         with zipfile.ZipFile(archive_source) as archive:
-            assert {Path(name).name: archive.read(name) for name in archive.namelist() if name.startswith("images/")} == before
+            assert {
+                Path(name).name: archive.read(name)
+                for name in archive.namelist()
+                if name.startswith("images/") and not name.endswith("/")
+            } == before
             assert archive.read("markdown.md").decode() == artifacts.markdown_path.read_text(encoding="utf-8")
             assert json.loads(archive.read("structured_content.json")) == structured
             assert json.loads(archive.read("middle_json.json")) == json.loads(artifacts.middle_json_path.read_text())

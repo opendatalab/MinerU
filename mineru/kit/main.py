@@ -10,15 +10,17 @@ from ..cli.version_command import show_version, version_cmd
 from ..utils.i18n import t
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
-from .commands import api_server, models, parse, router, vlm_server, webui
+from .commands import api_server, file_parse_server, hardware, models, parse, router, vlm_server, webui
 
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
     "webui",
     "api-server",
+    "file-parse-server",
     "vlm-server",
     "router",
     "models",
+    "hardware",
     "version",
 ]
 
@@ -52,17 +54,19 @@ def root(
 
 
 app.add_typer(models.app, name="models")
+app.add_typer(hardware.app, name="hardware")
 app.command("parse", help=t("Parse files or directories into markdown, middle JSON, or zip outputs."))(parse.parse_cmd)
 app.command("webui", help=t("Start the Gradio document parsing web UI backed by the MinerU V1 API."))(webui.webui_cmd)
-app.command("api-server", help=t("Start the self-hosted MinerU parsing API service."))(
-    api_server.api_server_cmd
-)
+app.command("api-server", help=t("Start the self-hosted MinerU parsing API service."))(api_server.api_server_cmd)
 app.command(
     "vlm-server",
     context_settings=vlm_server.FORWARD_CONTEXT_SETTINGS,
     help=t("Start the local VLM server with OpenAI-compatible chat completions."),
 )(vlm_server.vlm_server_cmd)
 app.command("router", help=t("Start a standalone Router service exposing only the MinerU V1 API."))(router.router_cmd)
+app.command("file-parse-server", help=t("Start the synchronous single-file Tasks wrapper service."))(
+    file_parse_server.file_parse_server_cmd
+)
 app.command("version", help=t("Print MinerU and Python versions."))(version_cmd)
 
 

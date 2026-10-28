@@ -13,7 +13,7 @@
 | 旧 API 调用 | V1 上传 → 解析任务 → 文件产物 |
 | `mineru[core]`、`mineru[pipeline]` 等 extras | 基础包、`mineru[torch]` 或 `mineru[full]` |
 
-正式版安装使用 `"mineru>=4.0,<5"`（需要 extras 时加在包名后）。Python 包要求 `>=3.10,<3.15`；可选引擎按实际 wheel 和驱动选择版本。升级前停止原环境中的服务，升级后检查 `mineru version --json`。不要把旧平台的镜像和安装命令替换成主线 4.0。
+正式版安装使用 `"mineru>=4.0,<5"`（需要 extras 时加在包名后）。Python 包要求 `>=3.11,<3.15`；可选引擎按实际 wheel 和驱动选择版本。升级前停止原环境中的服务，升级后检查 `mineru version --json`。不要把旧平台的镜像和安装命令替换成主线 4.0。
 
 ## 档位、页码与输出
 
@@ -60,7 +60,7 @@ model:
 
 ## API 与 WebUI
 
-V1 API 使用 `/v1/health`、`/v1/tiers`、`/v1/uploads`、`/v1/parse/jobs` 和 `/v1/files`；旧 `/file_parse`、`/tasks` 不再提供。SDK 客户端和 WebUI 必须连接 V1 服务。文档解析 API 与 OpenAI 兼容 VLM 服务是不同接口，地址不可互换。 自部署 API server 和 Router 新增 `/v1/file_parse` 同步包装和 `/v1/tasks` 便捷异步接口；使用当前 tier、ocr_mode 与输出协议，不恢复旧参数。详见[HTTP API](../usage/http_api.md)。
+异步解析统一使用 `/v1/tasks` 的 JSON 清单、按需上传和逐文件结果链接。SDK 与 WebUI 同步迁移，Files 下载及独立同步包装服务保留。同机也先做 hash 预检；详见 [HTTP API](../usage/http_api.md)。
 
 原 Gradio 客户端也需按新版事件接口调整，不能仅替换命令名称。第三方插件的旧适配文档保留历史说明，不表示已支持 V1 API。
 

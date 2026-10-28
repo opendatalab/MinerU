@@ -244,8 +244,6 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
                 save_parse_result(result, document_dir / "result.zip", "zip")
                 save_parse_result(result, document_dir / "markdown.md", "markdown")
                 save_parse_result(result, document_dir / "middle_json.json", "middle_json")
-                if result._model_output is not None:
-                    write_json(document_dir / "model_output.json", result._model_output.to_dict())
         report["documents"].append(
             {
                 "input": str(path),
@@ -263,7 +261,7 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> None:
     """配置隔离的模型目录和本地来源，运行指定验证场景并写出报告。"""
-    from mineru.config import config
+    from mineru.config import get_config
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=["ocr", "seal", "mfr", "layout", "parse"])
@@ -277,12 +275,12 @@ def main() -> None:
     parser.add_argument("--rounds", type=int, default=1)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    config.model.base_dir = str(args.models_dir.resolve())
-    config.model.source = "local"
+    get_config().model.base_dir = str(args.models_dir.resolve())
+    get_config().model.source = "local"
     # 组件对照需要同时加载 Torch；完整 Light 解析则严格使用 Light 配置。
-    config.model.small_backend = args.small_backend if args.kind == "parse" else "torch"
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().model.small_backend = args.small_backend if args.kind == "parse" else "torch"
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
     operations = {
         "ocr": ocr_comparison,
         "seal": ocr_comparison,

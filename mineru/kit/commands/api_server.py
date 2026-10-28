@@ -1,46 +1,22 @@
 from __future__ import annotations
 
-from typing import cast
-
 import click
 import typer
 
 from ...parser import api_server as parser_api_server
-from ...types import SERVER_TIERS, ServerTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 
 
-def _normalize_tier_option(tier: str | None) -> ServerTier | None:
-    """规范化 mineru-kit 传入的单个 server tier。"""
-    if tier is None:
-        return None
-    if tier not in SERVER_TIERS:
-        exit_with_message(
-            "invalid_request",
-            t(
-                "Unsupported server tier '{tier}'. Supported server tiers: {tiers}",
-                tier=tier,
-                tiers=", ".join(SERVER_TIERS),
-            ),
-            "tier",
-        )
-    return cast(ServerTier, tier)
-
-
 def api_server_cmd(
     host: str = typer.Option("127.0.0.1", "--host", help=t("Server host")),
     port: int = typer.Option(8000, "--port", help=t("Server port")),
     upload_dir: str = typer.Option("", "--upload-dir", help=t("Upload directory")),
-    tier: str | None = typer.Option(
-        None,
-        "--tier",
-        help=t("Server capability tier: flash, basic, or standard"),
+    tier: str = typer.Option(
+        "auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")
     ),
-    no_flash: bool = typer.Option(False, "--no-flash", help=t("Disable Flash tier advertisement and execution")),
-    no_advanced: bool = typer.Option(False, "--no-advanced", help=t("Disable Advanced tier advertisement and execution")),
     retention_seconds: int | None = typer.Option(
         None,
         "--retention-seconds",
@@ -50,8 +26,6 @@ def api_server_cmd(
     ),
     concurrency: int = typer.Option(1, "--concurrency", help=t("Maximum concurrent parse jobs")),
     url_timeout: int = typer.Option(60, "--url-timeout", help=t("Timeout for URL source downloads")),
-    allow_local_source: bool = typer.Option(False, "--allow-local-source", help=t("Allow local source paths")),
-    max_inline_bytes: int = typer.Option(1024 * 1024, "--max-inline-bytes", help=t("Maximum decoded bytes for inline sources")),
     allow_http_source: bool = typer.Option(False, "--allow-http-source", help=t("Allow URL sources to use plain HTTP")),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
     preload_models: bool = typer.Option(
@@ -80,8 +54,6 @@ def api_server_cmd(
     ),
 ) -> None:
     """转发显式启动参数，启动 self-hosted MinerU 解析 API 服务。"""
-    tier_value = _normalize_tier_option(tier)
-    tier_args = ["--tier", tier_value] if tier_value is not None else []
     vlm_args: list[str] = []
     for option, value in (
         ("--vlm-server-url", vlm_server_url),
@@ -105,13 +77,9 @@ def api_server_cmd(
                 str(concurrency),
                 "--url-timeout",
                 str(url_timeout),
-                "--max-inline-bytes",
-                str(max_inline_bytes),
-                *tier_args,
+                "--tier",
+                tier,
                 *vlm_args,
-                *(["--no-flash"] if no_flash else []),
-                *(["--no-advanced"] if no_advanced else []),
-                *(["--allow-local-source"] if allow_local_source else []),
                 *(["--allow-http-source"] if allow_http_source else []),
                 *(["--upload-dir", upload_dir] if upload_dir else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),

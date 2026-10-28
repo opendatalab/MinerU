@@ -1,11 +1,29 @@
 """验证解析 API 任务取消、排队和关闭的真实生命周期。"""
 
+from task_test_utils import execution_request
+from task_test_utils import stored_source
+
+
 import asyncio
 from pathlib import Path
 
 import pytest
 
-from mineru.parser.api_server import ApiServerError, JobStore, _JobRecord
+from mineru.parser.api_server import ExecutionStore, _ExecutionRecord, _ExecutionRequest
+from mineru.tasks.errors import ApiServerError
+
+
+def _record(execution_id: str) -> _ExecutionRecord:
+    """为纯生命周期场景构造一个具有独立公开身份的单文件执行。"""
+    return _ExecutionRecord(
+        execution_id,
+        _ExecutionRequest(
+            source={"type": "url", "url": f"https://example.test/{execution_id}.pdf"},
+            file_id=f"file-{execution_id}",
+            file_name=f"{execution_id}.pdf",
+            tier="flash",
+        ),
+    )
 
 
 def test_queued_job_cancel_never_starts_and_does_not_cancel_other_job() -> None:
@@ -13,9 +31,9 @@ def test_queued_job_cancel_never_starts_and_does_not_cancel_other_job() -> None:
 
     async def run() -> None:
         """在一个并发名额下验证队列取消和状态不可被覆盖。"""
-        store = JobStore(concurrency=1)
-        first, queued = _JobRecord("first"), _JobRecord("queued")
-        store._jobs = {first.id: first, queued.id: queued}
+        store = ExecutionStore(concurrency=1)
+        first, queued = _record("first"), _record("queued")
+        store._executions = {first.id: first, queued.id: queued}
         entered, release = asyncio.Event(), asyncio.Event()
         queued_started = False
 
@@ -54,9 +72,9 @@ def test_running_cancel_keeps_slot_until_cleanup_and_shutdown_waits() -> None:
 
     async def run() -> None:
         """用受控清理阶段验证取消、排队和服务关闭顺序。"""
-        store = JobStore(1)
-        first, second = _JobRecord("first"), _JobRecord("second")
-        store._jobs = {first.id: first, second.id: second}
+        store = ExecutionStore(1)
+        first, second = _record("first"), _record("second")
+        store._executions = {first.id: first, second.id: second}
         entered, cleaning, finish_cleanup, second_started = (asyncio.Event() for _ in range(4))
 
         async def work() -> None:
@@ -147,7 +165,7 @@ def test_late_parser_result_is_not_published_after_cancel(tmp_path: Path, monkey
             return {"pages": []}
 
     async def run() -> None:
-        """取消实际 JobStore 任务，并通过真实文件处理逻辑检查结果发布边界。"""
+        """取消实际 ExecutionStore 任务，并通过真实文件处理逻辑检查结果发布边界。"""
         entered = asyncio.Event()
 
         async def parse(*args: object, **kwargs: object) -> Result:
@@ -159,20 +177,14 @@ def test_late_parser_result_is_not_published_after_cancel(tmp_path: Path, monkey
                 return Result()
 
         monkeypatch.setattr(api_server, "parse_async", parse)
-        store = JobStore()
+        store = ExecutionStore()
         files = api_server.FileStore(tmp_path / "storage")
-        request = api_server.CreateJobRequest.model_validate(
-            {
-                "tier": "standard",
-                "output_formats": ["middle_json"],
-                "files": [{"source": {"type": "local", "path": str(source)}}],
-            }
-        )
+        request = execution_request(files, stored_source(files, source), tier="standard", output_formats=["default"])
         rec = store.create(request, files)
 
         async def work() -> None:
             """执行真实任务循环，避免只测试状态赋值。"""
-            await api_server._run_job(rec, request, files, image_analysis=True, allow_local_source=True)
+            await api_server._run_execution(rec, files, image_analysis=True)
 
         store.start_task(rec, work)
         await entered.wait()
@@ -180,8 +192,8 @@ def test_late_parser_result_is_not_published_after_cancel(tmp_path: Path, monkey
         store.cancel(rec.id)
         await task
         assert rec.status == "canceled"
-        assert rec.files[0].output_files is None
-        assert rec.progress.completed == 0
+        assert rec.result_file_id is None
+        assert rec.parse is None
         assert not rendered
         await store.shutdown()
 

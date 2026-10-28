@@ -266,11 +266,13 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
 
 
 @pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
+@pytest.mark.parametrize("script_case", ["single", "fragment-conflict", "ambiguous-source"])
 def test_hybrid_txt_efforts_apply_shared_script_sidecar(
     monkeypatch: pytest.MonkeyPatch,
     effort: str,
+    script_case: str,
 ) -> None:
-    """验证 Medium、High 与 XHigh 的 TXT 文本统一应用整行脚本 sidecar。"""
+    """验证各档位通过共享 sidecar 保留单一样式，并裁决 VLM 正文上的上下标冲突。"""
 
     page_geometry = PDFPageTextGeometry([], {}, {})
     script_line = PDFTextScriptLine(
@@ -280,7 +282,47 @@ def test_hybrid_txt_efforts_apply_shared_script_sidecar(
         source_index=0,
         angle=0,
     )
-    build_evidence = MagicMock(return_value=PDFTextEvidence((100.0, 100.0), page_geometry, scripts=(script_line,)))
+    script_lines = [script_line]
+    content = "x2"
+    expected = [
+        {"type": "text", "content": "x"},
+        {"type": "text", "content": "2", "styles": ["superscript"]},
+    ]
+    if script_case == "ambiguous-source":
+        script_lines.append(
+            PDFTextScriptLine(
+                bbox=(10.0, 30.0, 90.0, 40.0),
+                text="x2",
+                script_ranges=(PDFTextScriptRange(1, 2, "subscript", (20.0, 30.0, 25.0, 35.0), 1, False),),
+                source_index=1,
+                angle=0,
+            )
+        )
+        expected = [{"type": "text", "content": "x2"}]
+    elif script_case == "fragment-conflict":
+        content = "new123text"
+        script_lines = [
+            PDFTextScriptLine(
+                bbox=(10.0, 10.0, 90.0, 20.0),
+                text="old123text",
+                script_ranges=(PDFTextScriptRange(3, 6, "superscript", (20.0, 10.0, 30.0, 15.0), 1, False),),
+                source_index=0,
+                angle=0,
+            ),
+            PDFTextScriptLine(
+                bbox=(10.0, 30.0, 90.0, 40.0),
+                text="new123text",
+                script_ranges=(PDFTextScriptRange(3, 6, "subscript", (20.0, 30.0, 30.0, 35.0), 1, False),),
+                source_index=1,
+                angle=0,
+            ),
+        ]
+        expected = [
+            {"type": "text", "content": "new"},
+            {"type": "text", "content": "123", "styles": ["subscript"]},
+            {"type": "text", "content": "text"},
+        ]
+    build_evidence = MagicMock(return_value=PDFTextEvidence((100.0, 100.0), page_geometry, scripts=tuple(script_lines)))
     monkeypatch.setattr(text_content, "prepare_text_evidence", build_evidence)
     monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
 
@@ -306,7 +348,10 @@ def test_hybrid_txt_efforts_apply_shared_script_sidecar(
     monkeypatch.setattr(text_content, "_apply_window_post_ocr", lambda *_args: None)
     pdf_page = MagicMock(size=(100.0, 100.0))
     pdf_page.get_char_count.return_value = 2
-    model_list = [[{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.3, 0.2], "content": ""}]]
+    # 冲突场景保留非空 VLM 正文，由真实回填调用消费共享证据；普通场景继续覆盖空正文回填。
+    model_list = [
+        [{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.9, 0.4], "content": "" if script_case == "single" else content}]
+    ]
 
     text_content._fill_window_block_content_and_lines(
         [{"img_pil": object(), "scale": 1.0}],
@@ -320,10 +365,7 @@ def test_hybrid_txt_efforts_apply_shared_script_sidecar(
         MagicMock(),
     )
 
-    assert model_list[0][0]["content"] == [
-        {"type": "text", "content": "x"},
-        {"type": "text", "content": "2", "styles": ["superscript"]},
-    ]
+    assert model_list[0][0]["content"] == expected
 
 
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(

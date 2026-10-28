@@ -10,7 +10,7 @@ from mineru.model.registry import MODEL_COMPLETE_MARKER, MINERU_2_5_PRO_2605_1_2
 
 
 def test_resolve_model_source_does_not_persist_env_auto(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(models_download_utils.config.model, "source", "auto")
+    monkeypatch.setattr(models_download_utils.get_config().model, "source", "auto")
     monkeypatch.setattr(models_download_utils, "get_config_source", lambda path: "env")
     monkeypatch.setattr(models_download_utils, "_resolve_auto_model_source", lambda: "modelscope")
 
@@ -25,7 +25,7 @@ def test_resolve_model_source_does_not_persist_env_auto(monkeypatch: pytest.Monk
 def test_resolve_model_source_can_treat_config_local_as_auto_for_explicit_download(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(models_download_utils.config.model, "source", "local")
+    monkeypatch.setattr(models_download_utils.get_config().model, "source", "local")
     monkeypatch.setattr(models_download_utils, "_resolve_auto_model_source", lambda: "huggingface")
 
     assert models_download_utils.resolve_model_source(allow_auto=True) == "local"
@@ -50,7 +50,7 @@ def test_download_model_repo_uses_required_path_patterns(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     monkeypatch.setattr(models_download_utils, "resolve_model_source", lambda *args, **kwargs: "modelscope")
 
     def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
@@ -87,7 +87,7 @@ def test_download_model_repo_keeps_full_download_as_default(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     monkeypatch.setattr(models_download_utils, "resolve_model_source", lambda *args, **kwargs: "huggingface")
 
     def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
@@ -113,7 +113,7 @@ def test_download_model_repo_keeps_full_download_as_default(
 
 
 def test_vlm_repo_verify_requires_root_completion_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
 
     repo_dir = MINERU_2_5_PRO_2605_1_2B.local_dir()
     repo_dir.mkdir(parents=True)
@@ -142,7 +142,7 @@ def test_model_path_exists_requires_completion_marker_for_directory(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights", "config": "config.json"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
 
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
@@ -172,7 +172,7 @@ def test_model_path_ensure_reuses_completed_directory_without_resolving_source(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
     (weights_dir / "model.bin").write_bytes(b"weights")
@@ -196,7 +196,7 @@ def test_model_repo_ensure_reuses_completed_full_repo_without_resolving_source(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"config": "config.json", "weights": "model.bin"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     repo.local_dir().mkdir(parents=True)
     repo.config.local_path().write_text("{}", encoding="utf-8")
     repo.weights.local_path().write_bytes(b"weights")
@@ -220,7 +220,7 @@ def test_model_path_ensure_repairs_unmarked_directory_and_writes_marker(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
     (weights_dir / "existing.bin").write_bytes(b"existing")
@@ -251,8 +251,8 @@ def test_local_source_rejects_unmarked_directory(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
-    monkeypatch.setattr(models_download_utils.config.model, "source", "local")
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "source", "local")
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
     (weights_dir / "partial.bin").write_bytes(b"partial")
@@ -274,7 +274,7 @@ def test_download_failure_removes_stale_directory_marker(
         paths={"weights": "models/weights"},
         download_mode="required_paths",
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
     marker = weights_dir / MODEL_COMPLETE_MARKER
@@ -301,7 +301,7 @@ def test_full_download_failure_removes_root_marker(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"config": "config.json"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     repo.local_dir().mkdir(parents=True)
     marker = repo.local_dir() / MODEL_COMPLETE_MARKER
     marker.touch()
@@ -327,7 +327,7 @@ def test_nested_download_failure_invalidates_parent_directory_marker(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     nested_weights = repo.weights.path("det")
     nested_weights.local_path().mkdir(parents=True)
     parent_marker = repo.weights.local_path() / MODEL_COMPLETE_MARKER
@@ -354,7 +354,7 @@ def test_nested_download_success_restores_parent_directory_marker(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     nested_weights = repo.weights.path("det")
     nested_weights.local_path().mkdir(parents=True)
     parent_marker = repo.weights.local_path() / MODEL_COMPLETE_MARKER
@@ -386,7 +386,7 @@ def test_download_does_not_mark_metadata_only_directory(
         paths={"weights": "models/weights"},
         download_mode="required_paths",
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     weights_dir = repo.weights.local_path()
 
     def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
@@ -416,7 +416,7 @@ def test_huggingface_snapshot_rejects_missing_expected_files(
         repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
         paths={"weights": "models/weights"},
     )
-    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
 
     class FakeApi:
         def list_repo_files(self, repo_id: str) -> list[str]:
@@ -453,9 +453,9 @@ def test_resolve_small_model_backend_explicit() -> None:
 def test_resolve_small_model_backend_auto(monkeypatch: pytest.MonkeyPatch) -> None:
     """自动模式同时检查小模型依赖和可用设备。"""
     from mineru.model.runtime import device
-    from mineru.config import config
+    from mineru.config import get_config
 
-    monkeypatch.setattr(config.model, "small_backend", "auto")
+    monkeypatch.setattr(get_config().model, "small_backend", "auto")
     monkeypatch.setattr(device, "module_available", lambda name: True)
     monkeypatch.setattr(device, "get_device", lambda: "cpu")
     assert device.resolve_small_model_backend() == "onnx"

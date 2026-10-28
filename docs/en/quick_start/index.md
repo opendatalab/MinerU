@@ -4,7 +4,7 @@ This guide targets the **MinerU 4.0 stable release**. Existing AMD and vendor ac
 
 ## Install MinerU
 
-The MinerU package supports Python `>=3.10,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
+The MinerU package supports Python `>=3.11,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
 
 ```bash
 uv venv --python 3.12 .venv

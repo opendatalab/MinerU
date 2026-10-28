@@ -1,12 +1,14 @@
 from docvortex.schema import Producer
 from mineru.integrations.docvortex import build_metadata
 from copy import deepcopy
+import json
+from pathlib import Path
 
 import pytest
 
 from mineru.backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
 from docvortex.postprocess.pages import model_json_to_pages
-from mineru.doclib.background.compaction import _normalize_batch_pages
+from mineru.doclib.core.middle_json import read_cached_middle_json
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 
@@ -341,7 +343,7 @@ def test_legacy_adapter_separates_office_blocks_with_synthetic_bbox_groups() -> 
     assert pages[0].blocks[2].content[0].content == "after"
 
 
-def test_doclib_compaction_converts_schema_v1_pages_with_current_adapter() -> None:
+def test_doclib_cache_converts_schema_v1_pages_with_current_adapter(tmp_path: Path) -> None:
     """验证 Doclib 历史调用点重新通过宿主适配器生成 2.0 page 字典。"""
     payload = {
         "schema_version": "1.0",
@@ -361,19 +363,23 @@ def test_doclib_compaction_converts_schema_v1_pages_with_current_adapter() -> No
         ],
     }
 
-    pages = _normalize_batch_pages(payload)
+    cache_path = tmp_path / "legacy.json"
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+    pages = [page.to_dict() for page in read_cached_middle_json(cache_path).pages]
 
     assert pages[0]["page_idx"] == 3
     assert pages[0]["blocks"][0]["content"] == [{"type": "text", "content": "cached"}]
 
 
-def test_doclib_compaction_rejects_unknown_legacy_schema() -> None:
+def test_doclib_cache_rejects_unknown_legacy_schema(tmp_path: Path) -> None:
     """验证未知 schema 不会被误当成 3.4.5 页面吞掉。"""
+    cache_path = tmp_path / "unknown.json"
+    cache_path.write_text(json.dumps({"schema_version": "99.0", "pages": [{"page_idx": 0, "blocks": []}]}), encoding="utf-8")
     with pytest.raises(ValueError, match="source reparse"):
-        _normalize_batch_pages({"schema_version": "99.0", "pages": [{"page_idx": 0, "blocks": []}]})
+        read_cached_middle_json(cache_path)
 
 
-def test_doclib_compaction_accepts_current_schema_without_legacy_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_doclib_cache_accepts_current_schema_without_legacy_conversion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """验证当前 2.0 缓存直接读取页面，不进入旧版转换。"""
     from mineru.backend.postprocess import legacy_schema_adapter
 
@@ -388,4 +394,6 @@ def test_doclib_compaction_accepts_current_schema_without_legacy_conversion(monk
         is_full_document=True,
         metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="test")},
     )
-    assert _normalize_batch_pages(document.to_dict()) == document.to_dict()["pages"]
+    cache_path = tmp_path / "current.json"
+    cache_path.write_text(json.dumps(document.to_dict()), encoding="utf-8")
+    assert [page.to_dict() for page in read_cached_middle_json(cache_path).pages] == document.to_dict()["pages"]

@@ -25,10 +25,11 @@ from loguru import logger
 from tqdm import tqdm
 
 from ..runtime.onnx import ort_session
+from ..runtime.onnx_rec import REC_IDS_OUTPUT, REC_SCORES_OUTPUT, prepare_rec_model, validate_rec_outputs
 from .._internal.pytorchocr.data.imaug.operators import DetResizeForTest, NormalizeImage
 from .db_postprocess import DBPostProcess
 from .resources import PPOCRV6_DICT_PATH
-from .seal_crop import CropByPolys, SortPolyBoxes
+from .seal_crop import CropByPolys, SortPolyBoxes, filter_valid_seal_crops
 from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
 from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image, resize_text_recognition_image
 
@@ -81,9 +82,10 @@ class TextDetectorONNX:
         use_dilation: bool = False,
         box_type: Literal["quad", "poly"] = "quad",
         intra_op_num_threads: int = 0,
+        model_kind: Literal["ocr_det", "seal_det"] = "ocr_det",
     ) -> None:
-        """加载 CPU ONNX 会话并设置推理参数。"""
-        self.session = ort_session(model_path, device, intra_op_num_threads)
+        """按检测类别选择 ONNX 会话并设置推理参数。"""
+        self.session = ort_session(model_path, device, intra_op_num_threads, model_kind=model_kind)
         self.input_name = self.session.get_inputs()[0].name
 
         self.limit_side_len = limit_side_len
@@ -261,8 +263,9 @@ class TextRecognizerONNX:
         drop_score: float = 0.5,
         intra_op_num_threads: int = 0,
     ) -> None:
-        """加载 CPU ONNX 会话并设置推理参数。"""
-        self.session = ort_session(model_path, device, intra_op_num_threads)
+        """CPU、DML、WebGPU 共享精简 CTC 输出图，保持原始权重不变。"""
+        compact = prepare_rec_model(model_path)
+        self.session = ort_session(compact.path, device, intra_op_num_threads, model_kind="ocr_rec")
         self.input_name = self.session.get_inputs()[0].name
 
         self.img_c, self.img_h, self.img_w = rec_image_shape
@@ -273,21 +276,15 @@ class TextRecognizerONNX:
         # dict_path 可以是 txt 文件（每行一个字符）或 inference.yml（含 character_dict 列表）
         chars = _load_character_dict(dict_path)
         self.character = ["blank"] + chars + [" "]
-        outputs = self.session.get_outputs()
-        classes = outputs[0].shape[-1]
-        if isinstance(classes, int) and classes != len(self.character):
-            raise ValueError(f"OCR CTC output has {classes} classes but dictionary requires {len(self.character)}")
+        if compact.num_classes != len(self.character):
+            raise ValueError(f"OCR CTC output has {compact.num_classes} classes but dictionary requires {len(self.character)}")
 
     def _resize_norm_img(self, img: np.ndarray, max_wh_ratio: float) -> np.ndarray:
         """复用标准识别输入处理，包含最小宽度与超长文字宽度上限。"""
         return resize_text_recognition_image(img, max_wh_ratio, (self.img_c, self.img_h, self.img_w))
 
-    def _decode(self, pred: np.ndarray) -> Tuple[str, float]:
-        """CTC 解码单个 prediction。"""
-        if pred.ndim != 2 or pred.shape[1] != len(self.character):
-            raise ValueError(f"Unexpected OCR CTC output shape: {pred.shape}; expected (*, {len(self.character)})")
-        idx = pred.argmax(axis=1)
-        prob = pred.max(axis=1)
+    def _decode(self, idx: np.ndarray, prob: np.ndarray) -> Tuple[str, float]:
+        """解码已在 ONNX 图内归约的 ID/置信度，保留 CTC 和空行语义。"""
         # collapse consecutive duplicates
         selection = np.ones(len(idx), dtype=bool)
         selection[1:] = idx[1:] != idx[:-1]
@@ -336,11 +333,11 @@ class TextRecognizerONNX:
                     norm_img_batch.append(norm_img[np.newaxis, ...])
                 batch_tensor = np.concatenate(norm_img_batch, axis=0).astype(np.float32)
 
-                preds = self.session.run(None, {self.input_name: batch_tensor})[0]
-                # preds shape: [B, T, C]
+                outputs = self.session.run([REC_IDS_OUTPUT, REC_SCORES_OUTPUT], {self.input_name: batch_tensor})
+                ids, scores = validate_rec_outputs(outputs, batch_size=len(batch_indices), num_classes=len(self.character))
 
                 for i, idx in enumerate(batch_indices):
-                    text, conf = self._decode(preds[i])
+                    text, conf = self._decode(ids[i], scores[i])
                     rec_res[idx] = (text, conf)
                 pbar.update(end - beg)
         finally:
@@ -374,7 +371,7 @@ class PPOCRv6ONNX:
         intra_op_num_threads: int = 0,
         lang: Literal["ch", "seal"] = "ch",
     ) -> None:
-        """按普通文字或印章模式初始化 CPU 检测与识别模型。"""
+        """按普通文字或印章模式初始化检测与识别模型。"""
         if lang not in {"ch", "seal"}:
             raise ValueError(f"Unsupported ONNX OCR mode: {lang}")
         self.lang = lang
@@ -389,6 +386,7 @@ class PPOCRv6ONNX:
             box_thresh=0.6 if self.is_seal else det_db_box_thresh,
             unclip_ratio=0.5 if self.is_seal else det_db_unclip_ratio,
             box_type="poly" if self.is_seal else "quad",
+            model_kind="seal_det" if self.is_seal else "ocr_det",
             use_dilation=False,
             intra_op_num_threads=intra_op_num_threads,
         )
@@ -496,6 +494,7 @@ class PPOCRv6ONNX:
         if self.is_seal:
             dt_boxes = self._seal_sort_boxes(dt_boxes)
             img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+            dt_boxes, img_crop_list = filter_valid_seal_crops(dt_boxes, img_crop_list)
         else:
             dt_boxes = sorted_boxes(dt_boxes)
             if self.enable_merge_det_boxes:

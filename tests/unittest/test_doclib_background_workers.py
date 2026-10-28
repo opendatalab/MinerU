@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+from types import SimpleNamespace
 
 from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_worker import ParseWorkerPool
@@ -19,7 +20,7 @@ def test_parse_worker_survives_acquire_error() -> None:
                 return 0
 
         service = _ParseService()
-        pool = ParseWorkerPool(service, num_workers=1)  # type: ignore[arg-type]
+        pool = ParseWorkerPool(service, SimpleNamespace(), num_workers=1)  # type: ignore[arg-type]
         service.pool = pool
         pool.running = True
 

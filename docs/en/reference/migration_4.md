@@ -13,7 +13,7 @@
 | Old HTTP parsing calls | V1 uploads → parse jobs → output files |
 | Extras such as `mineru[core]` and `mineru[pipeline]` | Base package, `mineru[torch]`, or `mineru[full]` |
 
-Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name when needed. The package requires Python `>=3.10,<3.15`; optional engines also require suitable wheels and drivers. Stop services in the original environment before upgrading and check `mineru version --json` afterwards. Do not replace legacy platform images or installation commands with mainline 4.0 instructions.
+Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name when needed. The package requires Python `>=3.11,<3.15`; optional engines also require suitable wheels and drivers. Stop services in the original environment before upgrading and check `mineru version --json` afterwards. Do not replace legacy platform images or installation commands with mainline 4.0 instructions.
 
 ## Tiers, pages, and outputs
 
@@ -60,7 +60,7 @@ Restart relevant services after configuration changes, and download and verify m
 
 ## API and WebUI
 
-V1 uses `/v1/health`, `/v1/tiers`, `/v1/uploads`, `/v1/parse/jobs`, and `/v1/files`. Legacy `/file_parse` and `/tasks` are not provided. SDK clients and the WebUI must connect to a V1 service. The parsing API and OpenAI-compatible VLM server are different interfaces; their addresses are not interchangeable. Self-hosted API servers and Routers now provide `/v1/file_parse` synchronous wrapping and `/v1/tasks` convenience submission, using current tier, ocr_mode and output contracts. Legacy parameters are not restored; see [HTTP API](../usage/http_api.md).
+Asynchronous parsing uses `/v1/tasks` JSON manifests, optional uploads and per-file result URLs. Upgrade the SDK and WebUI together with the service. Files downloads and the separate synchronous wrapper remain available; loopback callers also use hash preflight. See [HTTP API](../usage/http_api.md).
 
 Existing Gradio clients also need to follow the new event interface; renaming the command alone is insufficient. Retained third-party integration guides describe their original adaptations and do not imply V1 compatibility.
 

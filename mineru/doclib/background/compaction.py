@@ -11,20 +11,19 @@ import time
 from collections.abc import Sequence
 from typing import Any, cast
 
-from ...parser.page_range import format_page_range
+from ...parser.page_range import format_page_range, parse_page_range_set
 from ...types import Tier
 from ..core.db import DatabaseManager
-from ...backend.postprocess.legacy_middle_json import read_legacy_middle_json
+from ..core.middle_json import read_cached_middle_json
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
-from ..services.parse_svc import parse_batch_json_path, parse_page_range_set
+from ..core.parse_artifacts import (
+    parse_artifact_directory,
+    parse_batch_json_path,
+    write_parse_payload,
+)
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
 
 logger = logging.getLogger("mineru.compaction")
-
-
-def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """读取当前和受支持的历史批次，仅在内存中统一页面结构。"""
-    return [page.to_dict() for page in read_legacy_middle_json(batch_payload).pages]
 
 
 class Compaction:
@@ -148,9 +147,7 @@ class Compaction:
             if not os.path.isfile(fpath):
                 return None
             try:
-                with open(fpath, encoding="utf-8") as f:
-                    batch_payload = json.load(f)
-                middle_json = read_legacy_middle_json(batch_payload)
+                middle_json = read_cached_middle_json(fpath)
                 batch_pages = [page.to_dict() for page in middle_json.pages]
             except Exception:
                 return None
@@ -202,8 +199,7 @@ class Compaction:
                 final_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
                 temp_path = f"{final_path}.tmp-{time.time_ns()}"
                 payload = ParseResult.from_dict({**envelope, "pages": json_pages}).to_dict()
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, ensure_ascii=False, indent=2)
+                write_parse_payload(temp_path, payload)
                 prepared.append((temp_path, final_path))
             for temp_path, final_path in prepared:
                 os.replace(temp_path, final_path)
@@ -218,7 +214,7 @@ class Compaction:
 
     def _delete_obsolete_json_files(self, sha256: str, tier: Tier, keep_paths: set[str]) -> None:
         """仅在新缓存和数据库均就绪后删除已被替代的 JSON。"""
-        tier_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
+        tier_dir = parse_artifact_directory(self.data_dir, sha256, tier)
         for fname in os.listdir(tier_dir):
             path = os.path.join(tier_dir, fname)
             if fname.endswith(".json") and path not in keep_paths:

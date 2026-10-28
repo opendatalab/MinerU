@@ -23,10 +23,10 @@ def _require_gradio_dependencies() -> None:
             "dependency_missing",
             t("Gradio is a base dependency; repair the installation with `pip install 'mineru'`."),
         )
-    if version("gradio") not in SpecifierSet(">=6.8,<7"):
+    if version("gradio") not in SpecifierSet(">=6.21,<7"):
         exit_with_message(
             "dependency_incompatible",
-            t("Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
+            t("Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
         )
 
 
@@ -71,7 +71,7 @@ def webui_cmd(
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
     api_server_tier: str = typer.Option(
-        "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
+        "standard", "--api-server-tier", "--tier", help=t("Managed API server tier ceiling")
     ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")

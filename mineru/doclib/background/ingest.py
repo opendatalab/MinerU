@@ -9,15 +9,16 @@ from typing import cast
 
 from ...errors import MineruError
 from ..rows import CountRow, FileRow, IngestTaskRow
-from ..services.parse_svc import ParseService
+from ..services.ingest_svc import IngestService
 from ..types import FILE_STATUS_ACTIVE
 
 logger = logging.getLogger("mineru.ingest")
 
 
 class IngestWorkerPool:
-    def __init__(self, parse_svc: ParseService, *, num_workers: int, lock_timeout_sec: int) -> None:
-        self.parse_svc = parse_svc
+    def __init__(self, ingest_svc: IngestService, *, num_workers: int, lock_timeout_sec: int) -> None:
+        """保存入库服务与原有工作池数量、抢占超时设置。"""
+        self.ingest_svc = ingest_svc
         self.num_workers = num_workers
         self.lock_timeout_ms = lock_timeout_sec * 1000
         self.running = False
@@ -42,7 +43,7 @@ class IngestWorkerPool:
                     if no_task_count == 1 or no_task_count % 20 == 0:
                         q = cast(
                             CountRow | None,
-                            await self.parse_svc.db.fetchone(
+                            await self.ingest_svc.db.fetchone(
                                 "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND status=? AND error_code IS NULL",
                                 (FILE_STATUS_ACTIVE,),
                             ),
@@ -63,7 +64,7 @@ class IngestWorkerPool:
 
             no_task_count = 0
             try:
-                await self.parse_svc.ingest_file(task["path"], watch_id=task.get("watch_id"), trigger="background")
+                await self.ingest_svc.ingest_file(task["path"], watch_id=task.get("watch_id"), trigger="background")
                 processed += 1
                 if processed % 100 == 0:
                     logger.info(f"Ingest worker {worker_id} ingested {processed} files")
@@ -84,7 +85,7 @@ class IngestWorkerPool:
         timeout = now - self.lock_timeout_ms
         return cast(
             FileRow | None,
-            await self.parse_svc.db.fetchone_write(
+            await self.ingest_svc.db.fetchone_write(
                 "UPDATE files SET locked_at=? "
                 "WHERE id = ("
                 "  SELECT id FROM files "
@@ -101,7 +102,7 @@ class IngestWorkerPool:
         try:
             if isinstance(exc, FileNotFoundError):
                 watch_id = task.get("watch_id")
-                await self.parse_svc.refresh_file(
+                await self.ingest_svc.refresh_file(
                     str(task["path"]),
                     watch_id=watch_id if isinstance(watch_id, int) else None,
                 )
@@ -118,7 +119,7 @@ class IngestWorkerPool:
                 error_code = "stat_failed"
 
             now = int(time.time() * 1000)
-            await self.parse_svc.db.execute(
+            await self.ingest_svc.db.execute(
                 "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE id=?",
                 (error_code, error_msg, now, task["id"]),
             )

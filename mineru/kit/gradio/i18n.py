@@ -122,6 +122,7 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "status_step_failed": ("Failed", "失败"),
     "preparing_request": ("Preparing request...", "正在准备请求…"),
     "checking_server": ("Checking server status...", "正在检查服务状态…"),
+    "preparing_file": ("Preparing file...", "正在准备文件…"),
     "submitting_task": ("Submitting task...", "正在提交任务…"),
     "queued_locally": ("Queued locally", "本地排队中"),
     "queued_on_server": ("Queued on server", "服务端排队中"),

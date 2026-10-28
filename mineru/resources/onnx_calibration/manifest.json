@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "source": "Original MinerU calibration sentences, rendered by scripts/make_onnx_calibration_samples.py",
+  "font": "msyh.ttc",
+  "font_sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f",
+  "font_size": 32,
+  "preprocessing": {
+    "color": "BGR",
+    "image_shape": [
+      3,
+      48,
+      320
+    ],
+    "batch": 6,
+    "normalization": "production rec"
+  },
+  "samples": [
+    {
+      "file": "line-1.png",
+      "text": "文档解析与智能识别 2026",
+      "sha256": "1e88f7e0a666403730db4bf96504ec07cde338c9633e71df407a1d65656613a0"
+    },
+    {
+      "file": "line-2.png",
+      "text": "文字、公式和表格转换为结构化内容，支持检索与分析。",
+      "sha256": "2be97b59d7f7d034a9655622961f91b1686da8a6e2686ce2c034e3479231f7a6"
+    },
+    {
+      "file": "line-3.png",
+      "text": "Document recognition and structured content",
+      "sha256": "c43bb9868537fa3e3b58bed9e30bfad0ba9405ad16773b6be7c2f60ce0f3d1a2"
+    },
+    {
+      "file": "line-4.png",
+      "text": "The quick brown fox jumps over the lazy dog. Page 123 of 456.",
+      "sha256": "0100ddf30393caf6bebca3bb0d574ec09165952ca0352f4d429631b13cdb5b17"
+    },
+    {
+      "file": "line-5.png",
+      "text": "0123456789 9876543210 2026-10-18",
+      "sha256": "ae5f25e5185ed9e1c3a8c757325fd01613393685def2ff31fe0559fa1d458689"
+    },
+    {
+      "file": "line-6.png",
+      "text": "Invoice 12345678: 3 x 128.50 = 385.50; Total 1,234.56",
+      "sha256": "87f4e84ee377bffdd330d8da092446eb9aa57763b047746fa820f39e03c7d83e"
+    }
+  ]
+}

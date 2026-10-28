@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_doclib_server
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -12,7 +14,6 @@ from mineru.cli import guidance
 from mineru.cli.commands import usage
 from mineru.cli.main import app
 from mineru.doclib.remote_api import ResolvedRemoteApiKey, resolve_remote_api_key
-from mineru.doclib.server import DoclibServer
 from mineru.doclib.types import ConfigResponse, ConfigValueResponse, RemoteUsageResponse
 from mineru.errors import MineruError
 from mineru.parser.api_client import MinerUApiParser
@@ -172,7 +173,7 @@ def test_doclib_remote_usage_maps_remote_error(monkeypatch: pytest.MonkeyPatch) 
         raise _V1APIError("invalid_api_key", "Invalid API Key.", "parse_server.remote.api_key")
 
     monkeypatch.setattr(MinerUApiParser, "get_usage_async", fail_usage)
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     with pytest.raises(MineruError) as exc_info:
         asyncio.run(server.get_remote_usage())
@@ -197,7 +198,7 @@ def test_doclib_remote_usage_uses_resolved_environment_api_key(monkeypatch: pyte
 
     monkeypatch.setenv("MINERU_API_KEY", "environment-key")
     monkeypatch.setattr(MinerUApiParser, "get_usage_async", get_usage)
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     response = asyncio.run(server.get_remote_usage())
 
@@ -216,7 +217,7 @@ def test_doclib_config_key_reports_environment_api_key_without_exposing_it(monke
             return "default"
 
     monkeypatch.setenv("MINERU_API_KEY", "environment-secret")
-    server = DoclibServer(SimpleNamespace(config_svc=_ConfigService()))
+    server = create_doclib_server(SimpleNamespace(config_svc=_ConfigService()))
 
     response = asyncio.run(server.get_config_key("parse_server.remote.api_key"))
 
@@ -277,6 +278,29 @@ def test_usage_human_output_shows_complete_remote_usage(monkeypatch: pytest.Monk
     assert "Max file size: 200 MiB" in result.stdout
     assert "File retention: 30 days" in result.stdout
     assert guidance.OFFICIAL_API_KEY_URL in result.stdout
+
+
+def test_usage_preserves_unlimited_local_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """本地 API 的 null 上限经过 Doclib 校验、CLI JSON 与文本展示都不丢失语义。"""
+    payload = _usage_response("registered").model_dump()
+    payload["limits"].update(max_pages_per_file=None, max_file_size_bytes=None)
+    validated = RemoteUsageResponse.model_validate(payload)
+
+    class _LocalClient(_UsageClient):
+        """提供真实可空字段形状，保留已有客户端的调用方式。"""
+
+        remote_url = "http://127.0.0.1:8000"
+        response = validated
+
+    monkeypatch.setattr(usage, "DoclibClient", _LocalClient)
+    result = runner.invoke(app, ["usage"])
+    assert result.exit_code == 0, result.output
+    assert "Max pages per file: unlimited" in result.stdout
+    assert "Max file size: unlimited" in result.stdout
+    machine = runner.invoke(app, ["usage", "--json"])
+    assert machine.exit_code == 0, machine.output
+    limits = json.loads(machine.output)["usage"]["limits"]
+    assert limits["max_pages_per_file"] is None and limits["max_file_size_bytes"] is None
 
 
 def test_usage_invalid_api_key_keeps_error_and_adds_required_guidance(monkeypatch: pytest.MonkeyPatch) -> None:

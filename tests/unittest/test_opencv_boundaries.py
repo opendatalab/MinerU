@@ -86,13 +86,13 @@ def test_real_flash_pdf_parse_and_all_renderers_without_opencv(tmp_path: Path, a
 import asyncio
 from pathlib import Path
 from typing import Any
-from mineru.config import config
+from mineru.config import get_config
 from mineru.parser import parse, parse_async
 from mineru.parser.writer import FileBasedDataWriter
 from mineru.render import RenderFormat, render
 
-config.llm_aided.features.title_leveling = False
-config.llm_aided.features.cross_page_table_cell_merge = False
+get_config().llm_aided.features.title_leveling = False
+get_config().llm_aided.features.cross_page_table_cell_merge = False
 options = dict(tier="flash", ocr_mode=sys.argv[2], page_range="1,3")
 result = asyncio.run(parse_async(sys.argv[1], **options)) if sys.argv[3] == "True" else parse(sys.argv[1], **options)
 assert len(result.pages) == 2
@@ -216,22 +216,6 @@ def test_table_classifier_tensor_keeps_channel_calculation_order() -> None:
     _assert_model_reference(classifier.batch_preprocess([image]), "table_classifier", 1)
 
 
-@pytest.mark.parametrize("channels", [None, 1, 3])
-def test_unimer_crop_and_zero_padding_keep_shape(channels: int | None) -> None:
-    """单通道和 RGB 公式图沿用冻结裁边、缩放和零填充像素。"""
-    pytest.importorskip("torch")
-    pytest.importorskip("torchvision")
-    pytest.importorskip("transformers")
-    from mineru.model.mfr.unimernet.unimernet_hf.unimer_swin.image_processing_unimer_swin import UnimerSwinImageProcessor
-
-    shape = (17, 29) if channels is None else (17, 29, channels)
-    image = np.full(shape, 255, dtype=np.uint8)
-    image[3:15, 5:24] = 0
-    _assert_model_reference(UnimerSwinImageProcessor.crop_margin_numpy(image), f"unimer:{channels}", 0)
-    processor = UnimerSwinImageProcessor(image_size=(32, 64))
-    _assert_model_reference(processor.prepare_input(image), f"unimer:{channels}", 1)
-
-
 def test_unet_input_tensor_keeps_inplace_channel_exchange() -> None:
     """UNet 预处理使用独立冻结输入，验证通道交换和浮点减乘顺序。"""
     from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet
@@ -245,28 +229,21 @@ def test_unet_input_tensor_keeps_inplace_channel_exchange() -> None:
 
 
 @pytest.mark.parametrize("case", _REFERENCE["seal_cases"], ids=lambda case: case["name"] + "-" + case["interpolation"])
-@pytest.mark.parametrize("backend", ["python", "rust"])
-def test_seal_homography_keeps_frozen_pixels(case: dict[str, Any], backend: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """两个后端验证横竖曲线、四边形、短多边形和退化回退的既有像素。"""
-    from docvortex._compute_backend import get_native
+def test_seal_homography_keeps_frozen_pixels(case: dict[str, Any]) -> None:
+    """原生内核验证横竖曲线、四边形、短多边形和退化处理的既有像素。"""
     from mineru.model.ocr.seal_det_warp import AutoRectifier
 
-    monkeypatch.setenv("DOCVORTEX_COMPUTE_BACKEND", backend)
-    get_native.cache_clear()
-    try:
-        image = np.random.default_rng(29).integers(0, 256, (96, 96, 3), dtype=np.uint8)
-        original = image.copy()
-        points = np.float32(case["points"])
-        rectifier = AutoRectifier()
-        actual = rectifier(image, points, interpolation=case["interpolation"])
-        _assert_array_reference(actual, case["crop"])
-        outputs, visual = rectifier.run(image, [points.reshape(-1).tolist()], interpolation=case["interpolation"])
-        _assert_array_reference(outputs[0], case["crop"])
-        _assert_array_reference(visual, case["visual"])
-        np.testing.assert_array_equal(image, original)
-        assert not np.shares_memory(actual, image)
-    finally:
-        get_native.cache_clear()
+    image = np.random.default_rng(29).integers(0, 256, (96, 96, 3), dtype=np.uint8)
+    original = image.copy()
+    points = np.float32(case["points"])
+    rectifier = AutoRectifier()
+    actual = rectifier(image, points, interpolation=case["interpolation"])
+    _assert_array_reference(actual, case["crop"])
+    outputs, visual = rectifier.run(image, [points.reshape(-1).tolist()], interpolation=case["interpolation"])
+    _assert_array_reference(outputs[0], case["crop"])
+    _assert_array_reference(visual, case["visual"])
+    np.testing.assert_array_equal(image, original)
+    assert not np.shares_memory(actual, image)
 
 
 def test_default_seal_rectification_runs_without_opencv() -> None:
@@ -315,10 +292,7 @@ def test_seal_rejects_removed_mode(mode: str) -> None:
 
 def test_base_dependencies_exclude_opencv_and_keep_product_extras() -> None:
     """基础声明移除 OpenCV，ONNX、llama.cpp、Torch/full 和苹果自动 extra 保持原样。"""
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
     from packaging.requirements import Requirement
 
     project = tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]

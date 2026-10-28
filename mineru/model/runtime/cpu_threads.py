@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""在首次 Torch 模型初始化和工作线程执行前限制 CPU 算子线程。"""
+"""在首次 Torch 初始化关闭 CPU NNPACK，并限制后续工作线程的 CPU 算子线程。"""
 
 from __future__ import annotations
 
@@ -43,12 +43,14 @@ def _positive_env(name: str) -> int | None:
 
 
 def initialize_torch_threads() -> int:
-    """仅在 Torch 模型边界加载 Torch，不调高调用方已有的更低线程数。"""
+    """惰性初始化 Torch 的 CPU 默认后端与线程，不调高调用方已有的更低线程数。"""
     global _limit
     import torch
 
     with _lock:
         if _limit is None:
+            # NNPACK 只参与 CPU 卷积；首次默认关闭，后续线程准备保留调用方显式设置。
+            torch.backends.nnpack.set_flags(False)
             explicit = [_positive_env(name) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS")]
             configured = (
                 min(value for value in explicit if value is not None)

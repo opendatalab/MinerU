@@ -1,11 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """Parse-server 健康探测的失败退避节奏。"""
 
+from doclib_test_utils import create_health_check
+
 from mineru.doclib.background.parse_server_health import ParseServerHealthCheck
 
 
 def _checker(interval_sec: int = 30) -> ParseServerHealthCheck:
-    return ParseServerHealthCheck(
+    return create_health_check(
         config_svc=None,
         interval_sec=interval_sec,
         probe_timeout_sec=10,

@@ -286,13 +286,14 @@ class DoclibInterface(ABC):
         self,
         locator: str,
         *,
+        after: str | None = None,
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
         image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        """Render stored doc content from a stable content locator.
+        """按定位器读取内容；范围定位可携带实际页码游标继续读取。
 
         Raises:
             NotFoundError: when the document or requested parsed content is not cached.
@@ -334,11 +335,11 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
-        """Search filenames.
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
+        """按文件名前缀搜索，在有效文件过滤后按 limit/offset 分页。
 
         Raises:
-            InvalidRequestError: when query, ext, or limit is invalid.
+            InvalidRequestError: when query, ext, limit, or offset is invalid.
             MineruError: for search backend failures.
         """
         raise NotImplementedError()
@@ -676,13 +677,14 @@ class AsyncDoclibInterface(ABC):
         self,
         locator: str,
         *,
+        after: str | None = None,
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
         image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        """Async version of ``DoclibInterface.read_content``."""
+        """异步按定位器读取内容，并使用实际页码游标在范围内续读。"""
         raise NotImplementedError()
 
     @abstractmethod
@@ -705,8 +707,8 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
-        """Async version of ``DoclibInterface.find``."""
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
+        """异步执行与同步接口一致的文件名前缀搜索和分页。"""
         raise NotImplementedError()
 
     @abstractmethod

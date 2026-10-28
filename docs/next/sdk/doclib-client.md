@@ -123,7 +123,7 @@ class ParseResponse:
 | `list_parses(*, ids=None, doc_ref=None, tier=None, status=None, page_range=None, include_superseded=False, limit=50, offset=0)` | 对应 `GET /parses`，按 ids、`doc_ref`、tier、status 或 page_range 查询 parse records 和覆盖状态；`include_superseded` 控制是否返回已被覆盖的 parse。 |
 | `get_parse(parse_id)` | 对应 `GET /parses/{id}`，查询单条 parse record。 |
 | `get_doc_content(doc_ref, *, tier, page_range=None, after=None, limit=30000, format="markdown", no_marker=False)` | 对应 `GET /docs/{doc_ref}/content`，从保存的 JSON 结果读取时转换。 |
-| `read_content(locator, *, context=0, limit=30000, format="markdown", image_format="jpeg", no_marker=False)` | 对应 `GET /content`，按 Agent locator 读取内容或图片。 |
+| `read_content(locator, *, after=None, context=0, limit=30000, format="markdown", image_format="jpeg", no_marker=False)` | 对应 `GET /content`，按单点或页范围 locator 读取内容或图片。 |
 | `export_doc_content(doc_ref, request)` | 对应 `POST /docs/{doc_ref}/exports`，导出结构化内容。 |
 | `invalidate(request)` | 对应 `POST /invalidate`，将已有解析结果标记为失效；不自动触发重新解析。 |
 
@@ -132,6 +132,16 @@ class ParseResponse:
 `force=True` 与 `invalidate()` 不等价。`force=True` 跳过 done cache，并通过 `wait_parse_ids` 等待复用或新建的 active parse；旧结果仍然有效。`invalidate()` 会让旧结果退出缓存命中、读取合并、搜索刷新和 compaction 选择。
 
 Markdown 响应中的 visual block 图片使用 `doc:.../page:.../block:...` locator。非空图片 locator 可以原样传给 `read_content(..., format="image")`；空 locator 表示该 block 没有可用图片。SDK 调用方不应依赖或拼接 Middle JSON 内部的 `image_path`。
+
+请求定位器的 `page:` 复用输入页范围语法：数字、`rN`、`1-5`、`r3-r1`、`1,3,r1`、`all`。`r1` 表示最后一页，`rN` 和 `all` 需要文档总页数；返回定位器及块引用使用实际页码。带 block/char、图片读取和非零 context 都要求选中单页。
+
+范围读取结束后 `next_request=null`。范围内截断时，同时返回规范化 `locator` 和实际页码 `after`；两者可直接传给下一次 `read_content()`，不会读入未选择的页面：
+
+```python
+result = client.read_content("doc:ab12cd3/tier:flash/page:1,3", limit=1000)
+if result.next_request is not None:
+    result = client.read_content(result.next_request.locator, after=result.next_request.after, limit=1000)
+```
 
 ## Search 与文件信息
 
@@ -147,7 +157,7 @@ def search(
     offset: int = 0,
 ) -> SearchResponse: ...
 
-def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse: ...
+def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse: ...
 
 def get_file_by_path(self, path: str) -> FileInfoResponse: ...
 ```
@@ -159,10 +169,12 @@ def get_file_by_path(self, path: str) -> FileInfoResponse: ...
 | 方法 | 响应 |
 |------|------|
 | `search()` | `SearchResponse`，包含全文结果、snippet、files、可空 tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
-| `find()` | `FindResponse`，包含文件名搜索结果；支持 `ext` 过滤。 |
+| `find()` | `FindResponse`，包含文件名前缀搜索结果；支持 `ext` 过滤及 `limit/offset` 分页。 |
 | `get_file_by_path()` | `FileInfoResponse`，包含文件元信息、doc metadata 和 parse tiers。 |
 
 `search()` 的 `files` 返回与文档 SHA 关联的全部 file aliases，按 file id 降序排列；每项包含 path、filename、ext 和 status。已索引的 orphan 文档使用空列表。active 优先只属于非 JSON CLI 展示策略，不改变 SDK 响应。解析内容的 `tier` 表示索引来源 tier；直接索引的 text 源内容为 `null`。传入 `tier` 或 `min_tier` 时，`tier=null` 的结果不参与匹配。
+
+`find()` 默认仅对最后一个分词应用前缀匹配，显式尾部 `*` 等价。结果按相关性及 file id 排序，在扩展名过滤和文件状态刷新后计算 `total` 并分页。`limit` 必须为正整数，`offset` 必须为非负整数；偏移超过末尾时仍返回完整有效匹配数。HTTP `GET /api/v1/find` 接受同名参数，同步与异步接口保持一致。
 
 ## Remote API 方法
 

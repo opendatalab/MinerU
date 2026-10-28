@@ -1,7 +1,8 @@
+from docvortex.options import LatexDelimitersConfig
 from _span_test_utils import inline as _inline
 import pytest
 
-from mineru.doclib.server import (
+from mineru.doclib.services.content_read_svc import (
     _next_content_request,
     _normalize_content_page_range,
     _page_markdown_blocks,
@@ -45,7 +46,15 @@ def test_content_page_range_rejects_empty_available_subset() -> None:
 
 def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
     pages = [_page(index, f"page {index + 1}") for index in range(10)]
-    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
+    rendered = _render_progressive_markdown(
+        pages,
+        short_id="ab12cd3",
+        tier="standard",
+        after=None,
+        limit=40,
+        add_markers=False,
+        latex_delimiters=LatexDelimitersConfig(),
+    )
     next_request = _next_content_request(
         rendered=rendered,
         request_page_range="1-10",
@@ -63,7 +72,15 @@ def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
 
 def test_paginated_long_single_page_truncation_keeps_pages_with_after() -> None:
     pages = [_page(6, "word " * 100)]
-    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
+    rendered = _render_progressive_markdown(
+        pages,
+        short_id="ab12cd3",
+        tier="standard",
+        after=None,
+        limit=40,
+        add_markers=False,
+        latex_delimiters=LatexDelimitersConfig(),
+    )
     next_request = _next_content_request(
         rendered=rendered,
         request_page_range="7-10",
@@ -87,6 +104,7 @@ def test_non_paginated_truncation_can_use_after_only() -> None:
         after=None,
         limit=15,
         add_markers=False,
+        latex_delimiters=LatexDelimitersConfig(),
     )
     next_request = _next_content_request(
         rendered=rendered,
@@ -110,6 +128,7 @@ def test_non_contiguous_pages_suggest_after_last_requested_page() -> None:
         after=None,
         limit=30000,
         add_markers=False,
+        latex_delimiters=LatexDelimitersConfig(),
     )
     next_request = _next_content_request(
         rendered=rendered,
@@ -131,6 +150,7 @@ def test_truncated_false_can_still_have_next_request() -> None:
         after=None,
         limit=30000,
         add_markers=False,
+        latex_delimiters=LatexDelimitersConfig(),
     )
     next_request = _next_content_request(
         rendered=rendered,
@@ -191,6 +211,7 @@ def test_paginated_empty_page_renders_page_marker_and_content_range(
         limit=30000,
         add_markers=True,
         page_count=page_count,
+        latex_delimiters=LatexDelimitersConfig(),
     )
 
     assert rendered.content == expected_marker
@@ -224,7 +245,7 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
         ],
     )
 
-    assert _page_markdown_blocks(page) == [
+    assert _page_markdown_blocks(page, latex_delimiters=LatexDelimitersConfig()) == [
         (
             0,
             "\n".join(
@@ -258,4 +279,6 @@ def test_page_markdown_blocks_preserves_remote_only_image() -> None:
         ],
     )
 
-    assert _page_markdown_blocks(page) == [(0, "![Image block](https://cdn.example.com/remote%20image%281%29.png)")]
+    assert _page_markdown_blocks(page, latex_delimiters=LatexDelimitersConfig()) == [
+        (0, "![Image block](https://cdn.example.com/remote%20image%281%29.png)")
+    ]

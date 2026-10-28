@@ -7,30 +7,18 @@ import asyncio
 import concurrent.futures
 import threading
 from collections.abc import Awaitable, Callable, Sequence
-from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from ...utils.async_utils import drain_future, run_sync
+from ..runtime import ownership
 from .errors import EngineDeadError, is_fatal_engine_error
+from .handles import RuntimeHandle
 
 if TYPE_CHECKING:
-    from mineru_vl_utils import MinerUClient
     from mineru_vl_utils.structs import ContentBlock, ExtractResult
     from PIL.Image import Image
 
 T = TypeVar("T")
-
-
-class RuntimeOwner:
-    """标识应用持有的模型租约；独立解析使用进程级缓存租约。"""
-
-    def __init__(self) -> None:
-        """记录关闭状态，阻止已关闭应用重新取得模型。"""
-        self.closed = False
-        self.engine_error: str | None = None
-
-
-runtime_owner: ContextVar[RuntimeOwner | None] = ContextVar("mineru_vlm_runtime_owner", default=None)
 
 
 class _Submission:
@@ -56,8 +44,7 @@ class AsyncVlmPredictor:
 
     def __init__(
         self,
-        factory: Callable[[], MinerUClient],
-        dispose: Callable[[MinerUClient], None],
+        factory: Callable[[], RuntimeHandle],
         *,
         backend: str,
         max_concurrency: int,
@@ -67,10 +54,9 @@ class AsyncVlmPredictor:
             raise ValueError("VLM max_concurrency must be positive")
         self.backend = backend
         self.max_concurrency = max_concurrency
-        self.owners: set[RuntimeOwner] = set()
+        self.owners: set[ownership.RuntimeOwner] = set()
         self.pinned = False
         self._factory = factory
-        self._dispose = dispose
         self._ready: concurrent.futures.Future[None] = concurrent.futures.Future()
         self._state_lock = threading.Lock()
         self._closing = False
@@ -82,8 +68,13 @@ class AsyncVlmPredictor:
 
     async def _initialize(self) -> None:
         """在固定循环创建引擎和共享请求信号量。"""
-        self._predictor = self._factory()
-        self._semaphore = asyncio.Semaphore(self.max_concurrency)
+        self._runtime_handle = self._factory()
+        try:
+            self._predictor = self._runtime_handle.predictor
+            self._semaphore = asyncio.Semaphore(self.max_concurrency)
+        except BaseException:
+            await self._runtime_handle.aclose()
+            raise
 
     def _serve(self) -> None:
         """运行独立事件循环，退出前回收异步生成器及线程池工作。"""
@@ -136,7 +127,7 @@ class AsyncVlmPredictor:
                             self._fatal_error = exc
                         for owner in tuple(self.owners):
                             owner.engine_error = str(exc)
-                        owner = runtime_owner.get()
+                        owner = ownership.runtime_owner.get()
                         if owner is not None:
                             owner.engine_error = str(exc)
                 raise
@@ -281,9 +272,10 @@ class AsyncVlmPredictor:
             submission.cancel()
         await asyncio.gather(*(asyncio.wrap_future(item.finished) for item in submissions))
         try:
-            await self._predictor.aclose()
+            await self._runtime_handle.aclose()
         finally:
-            self._dispose(self._predictor)
+            self._predictor = None
+            self._runtime_handle = None
 
     def shutdown(self) -> None:
         """幂等关闭运行时，等待线程退出后允许重新初始化。"""
@@ -311,4 +303,4 @@ class AsyncVlmPredictor:
         await run_sync(self.shutdown)
 
 
-__all__ = ["AsyncVlmPredictor", "RuntimeOwner", "runtime_owner"]
+__all__ = ["AsyncVlmPredictor"]
