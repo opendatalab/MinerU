@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Literal, TypeAlias
 
 from ..filetypes import PARSEABLE_EXTENSIONS
@@ -105,6 +106,7 @@ def build_remote_api_url(remote: bool, remote_url: str | None) -> str | None:
 
 
 def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> None:
+    """保存解析结果，ZIP 使用独立临时目录并在成功或异常退出时清理。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
     if format == "markdown":
         _write_utf8_text(dest, result.markdown())
@@ -113,20 +115,15 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
         _write_utf8_text(dest, result.to_json())
         return
     if format == "zip":
-        tmp_dir = dest.parent / f".{dest.stem}"
-        writer = FileBasedDataWriter(str(tmp_dir))
-        result.save(writer)
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
-            for child in sorted(tmp_dir.rglob("*")):
-                if child.is_file():
-                    zf.write(child, arcname=child.relative_to(tmp_dir).as_posix())
-        for child in sorted(tmp_dir.rglob("*"), reverse=True):
-            if child.is_file():
-                child.unlink()
-            else:
-                child.rmdir()
-        if tmp_dir.exists():
-            tmp_dir.rmdir()
+        # 临时素材沿用输出盘，避免大文档占满系统临时盘；只清理本次导出创建的独立目录。
+        with TemporaryDirectory(prefix=".mineru-kit-", dir=dest.parent) as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            writer = FileBasedDataWriter(tmp_dir_name)
+            result.save(writer)
+            with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+                for child in sorted(tmp_dir.rglob("*")):
+                    if child.is_file():
+                        zf.write(child, arcname=child.relative_to(tmp_dir).as_posix())
         return
     raise ValueError(t("Unsupported format: {format}", format=format))
 
