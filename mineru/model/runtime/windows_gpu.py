@@ -66,6 +66,29 @@ class _Architecture(C.Structure):
     ]
 
 
+class _VideoMemoryInfo(C.Structure):
+    _fields_ = [
+        ("budget", C.c_uint64),
+        ("usage", C.c_uint64),
+        ("available_for_reservation", C.c_uint64),
+        ("reservation", C.c_uint64),
+    ]
+
+
+def _memory_budget(adapter: C.c_void_p) -> int:
+    """读取同一 UMA 适配器的本地内存预算，查询接口始终成对释放。"""
+    adapter3 = C.c_void_p()
+    query = _method(adapter, 0, C.c_int32, C.POINTER(_Guid), C.POINTER(C.c_void_p))
+    _check(query(adapter, C.byref(_guid("645967a4-1392-4310-a798-8053ce3e93fd")), C.byref(adapter3)))
+    try:
+        memory = _VideoMemoryInfo()
+        read = _method(adapter3, 14, C.c_int32, C.c_uint32, C.c_int32, C.POINTER(_VideoMemoryInfo))
+        _check(read(adapter3, 0, 0, C.byref(memory)))
+        return memory.budget
+    finally:
+        _release(adapter3)
+
+
 def _guid(value: str) -> _Guid:
     return _Guid.from_buffer_copy(uuid.UUID(value).bytes_le)
 
@@ -184,7 +207,7 @@ def preferred_gpu(adapters: tuple[GpuAdapter, ...]) -> GpuAdapter | None:
     return min(adapters, key=lambda item: (gpu_kind_rank(item.kind), item.preference, item.index), default=None)
 
 
-def inspect_gpus() -> list[dict[str, Any]]:
+def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]:
     """诊断库存保留不支持 D3D12 的硬件，并读取 DXGI 的 64 位显存容量。"""
     if sys.platform != "win32":
         return []
@@ -212,6 +235,12 @@ def inspect_gpus() -> list[dict[str, Any]]:
                 if desc.flags & 2:
                     continue
                 supported, uma = _architecture(adapter, create_device)
+                budget, memory_error = None, None
+                if include_memory_budget and uma is True:
+                    try:
+                        budget = _memory_budget(adapter)
+                    except Exception as error:
+                        memory_error = str(error)
                 result.append(
                     {
                         "name": desc.name,
@@ -222,6 +251,8 @@ def inspect_gpus() -> list[dict[str, Any]]:
                         **asdict(classify_d3d12_gpu(uma)),
                         "dedicated_memory_bytes": desc.video_memory,
                         "shared_memory_bytes": desc.shared_memory,
+                        "memory_budget_bytes": budget,
+                        "memory_error": memory_error,
                     }
                 )
             finally:

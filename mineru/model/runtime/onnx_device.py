@@ -147,7 +147,7 @@ def _select_and_save(
 def resolve_onnx_device(
     *, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0, allow_download: bool = True
 ) -> OnnxSelection:
-    """在首次模型使用或达到 Basic 的 API 自动推荐时选型；导入和诊断命令不调用。"""
+    """在首次模型使用或 CPU/GPU 候选达标的 API 自动推荐时选型；导入和只读诊断不调用。"""
     from ...config import get_config, get_config_file_path, get_config_source
 
     requested = get_config().model.onnx_device

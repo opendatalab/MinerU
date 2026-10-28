@@ -59,22 +59,24 @@ Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `nul
 | 硬件条件 | 启动上限 | PDF/图片公开集合 |
 |----------|----------|------------------|
 | 进程可用 CPU 数不足 4，且无达标 GPU | flash | `flash` |
-| 进程可用 CPU 数至少 4，且无达标 GPU | standard | `flash,basic,standard` |
-| 有可用独显、OCR 校准达标的集显，或 Metal 可用的 Apple Silicon | advanced | 全部四档 |
+| 进程可用 CPU 数至少 4，且无达标 GPU | basic | `flash,basic` |
+| GPU 已确认可用，且选定设备显存／预算至少 5.5 GiB（CPU 核数不限） | advanced | 全部四档 |
 
 CPU 数按逻辑 CPU 计算，并考虑进程亲和性和 Linux cgroup 配额。集显沿用有效 OCR 校准的 GPU 时间不高于 CPU 时间 0.8 倍的判定。探测失败或设备身份不明确时按 CPU 条件推荐。显式上限可以覆盖推荐，随后仍执行正常依赖预检。
 
-GPU 类型与 OCR、llama.cpp 和硬件诊断使用共享分类；只有目标运行后端可见且原生身份确认的独显，才凭类型开放 Advanced。ggml 的通用 GPU 标志、未知类型及虚拟 GPU 均不直接视为独显；同型号多卡无法唯一关联时保持保守结果。各后端可以选择不同 GPU，共用分类和优先级，不强制跨后端同卡。
+5.5 GiB 按 `5_905_580_032` 字节比较，不四舍五入、不累加多卡，也不使用 `MINERU_VIRTUAL_VRAM_SIZE`。独显读取专用显存总量；Apple 统一内存使用 Metal 推荐工作集，Windows/Linux 集显分别使用 DXGI 本地预算与 Vulkan `heapBudget`。预算比较使用上限，不减去当前用量；未知预算不以系统总内存替代。容量证据可通过 `mineru-kit hardware detect --json` 的 `gpu_memory` 查看。
 
-自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）只验证实际设备可用性：可用 CUDA/MPS/XPU 等加速设备推荐 advanced；显式 CPU 或设备不可用时按 CPU 条件推荐，不下载 ONNX 校准模型或改写其配置/记录。Torch 推荐不依赖 llama.cpp 库存。
+GPU 类型与 OCR、llama.cpp 和硬件诊断使用共享分类；目标运行后端可见且原生身份确认的独显可以免测速，但仍须满足 5.5 GiB 内存门槛才能开放 Standard/Advanced。ggml 的通用 GPU 标志、未知类型及虚拟 GPU 均不直接视为独显；同型号多卡无法唯一关联时保持保守结果。各后端可以选择不同 GPU，共用分类和优先级，不强制跨后端同卡。
 
-ONNX 分支先探测硬件并读取已有校准记录。如果初选达到 Basic 或更高档位，Windows/Linux 会在发布服务能力前同步执行现有 ONNX 设备选择流程，再根据最新证据确定最终上限。初选只有 Flash、macOS 及其他平台跳过这一步；显式 `--tier` 和 Python 精确集合也不触发这项启动校准。
+自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）验证实际设备可用性及容量：选中 CUDA/MPS/XPU 等设备的显存／预算至少 5.5 GiB 时推荐 advanced；显式 CPU 或设备不可用时按 CPU 条件推荐，不下载 ONNX 校准模型或改写其配置/记录。Torch 推荐不依赖 llama.cpp 库存。
+
+ONNX 分支先探测硬件并读取已有校准记录。如果 CPU 至少 4 核或存在内存达标的兼容 GPU 候选，Windows/Linux 会在发布服务能力前同步执行现有 ONNX 设备选择流程，再根据实际选择和容量确定最终上限。CPU 不足 4 核且无内存达标候选、macOS 及其他平台跳过这一步；显式 `--tier` 和 Python 精确集合也不触发这项启动校准。
 
 启动选型继续遵守 `model.onnx_device`：`auto` 才按设备策略决定是否测速，显式或已保存的 `cpu/gpu` 不强制重新校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均跳过 OCR 校准；首次真实 GPU 会话成功后才保存设备偏好。集显或类型无法确认的候选继续按 0.8 阈值测速。需要测速时会按正常模型生命周期准备或下载 OCR rec 权重，并复用已有进程缓存、文件锁、采样阈值及失败回退。下载和模型准备不计入 15 秒校准子进程超时。校准失败或结果不稳定不会阻止后续推荐，但不作为 GPU 胜出证据。
 
 实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`，仅复用设备、运行时版本与 CPU 配置匹配的有效结果；旧 cpu/gpu 偏好及手动 GPU 设置不视为校准证据。启动阶段产生的新证据在本次最终推荐中生效，之后 `/v1/tiers` 在服务生命周期内固定。
 
-远程 VLM 配置不自动扩大推荐上限，也不增加 VLM 性能测试或内存分级门槛。上述 OCR 选型不要求 `--preload-models`；该参数仍另外控制完整模型或 VLM 客户端的提前初始化。
+远程 VLM 配置不自动扩大推荐上限或放宽本机内存门槛，也不增加 VLM 性能测试。上述 OCR 选型不要求 `--preload-models`；该参数仍另外控制完整模型或 VLM 客户端的提前初始化。
 
 `mineru-kit hardware detect` 使用同一结构化推荐流程；`hardware info` 只读输出诊断报告，详见 [hardware 命令](mineru-kit-hardware.md)。API 工厂的 VLM 配置覆盖也参与推荐，避免与实际运行配置不一致。
 

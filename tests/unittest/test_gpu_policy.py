@@ -13,6 +13,7 @@ from unittest.mock import Mock
 import pytest
 
 from mineru.model.runtime import hardware, llama_device, llama_probe, tier_recommendation, vulkan, webgpu, windows_gpu
+from mineru.model.runtime.gpu_memory import GpuMemory
 from mineru.model.runtime.gpu import (
     GPU_KIND_ORDER,
     GpuClassification,
@@ -50,6 +51,12 @@ def test_native_classification_agrees_across_runtime_and_report(
         monkeypatch.setattr(module, "sys", SimpleNamespace(platform=platform))
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: 4)
+    from mineru.config import get_config
+
+    monkeypatch.setattr(get_config().model, "onnx_device", "auto")
+    monkeypatch.setattr(
+        tier_recommendation, "native_gpu_memory", lambda identity, *, device: GpuMemory(device, identity, 8 * 1024**3)
+    )
     monkeypatch.setattr(onnx_calibration_cache, "calibrated_gpu_is_faster", lambda *args: False)
     native = vulkan.VulkanDevice(0x1002, 1, "GPU", 0)
     # Windows 故意提供相反的 Vulkan 类型，确认分类权威仍是 D3D12。

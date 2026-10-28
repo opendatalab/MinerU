@@ -19,9 +19,13 @@ mineru-kit hardware info --json > hardware-info.json
 
 | 有效后端 | 行为 |
 |----------|------|
-| Torch + 可用 CUDA/MPS/XPU 等加速设备 | 跳过 OCR 测速，推荐 advanced |
-| Torch + 显式 CPU 或加速设备不可用 | 跳过测速，进程可用 CPU 至少 4 时推荐 standard，否则 flash |
-| ONNX | 沿用既有硬件初选；初选至少 Basic 时在 Windows/Linux 同步完成适用的 OCR 选型，再确定最终上限 |
+| Torch + 可用 CUDA/MPS/XPU 等加速设备 | 跳过 OCR 测速；选定设备的显存／预算至少 5.5 GiB 时推荐 advanced，否则按 CPU 条件推荐 |
+| Torch + 显式 CPU 或加速设备不可用 | 跳过测速，进程可用逻辑 CPU 至少 4 时推荐 basic，否则 flash |
+| ONNX | CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，在 Windows/Linux 同步完成适用的 OCR 选型，再确定最终上限 |
+
+自动推荐的 CPU 条件只开放 Basic：进程可用逻辑核数至少 4 时开放 `flash,basic`，默认请求 Basic，否则只开放 Flash。计数遵守进程亲和性和容器 CPU 配额。GPU 经现有选型确认可用且显存／预算至少 `5_905_580_032` 字节时，独立于 CPU 核数开放全部四档；默认请求仍为 Standard，Advanced 必须显式请求。
+
+内存检查只使用确认设备的原始字节值，不四舍五入、不累加多卡，也不读取 `MINERU_VIRTUAL_VRAM_SIZE`。独显按专用显存总量判断；Apple Metal 按推荐工作集预算，Windows 集显按 DXGI 本地预算，Linux 集显按 Vulkan `heapBudget` 判断。预算比较使用上限，不减去当前用量。不能唯一关联设备、容量未知、预算扩展不可用或查询失败时按 CPU 条件推荐；系统总内存和共享内存理论上限不能替代 GPU 预算。
 
 `small_backend=auto` 最终选择 Torch 时同样免校准。显式设备字符串必须经过实际可用性检查；检查失败会给出保守结果及原因，不修改设备配置。Torch 推荐不依赖 llama.cpp 库存，不下载 ONNX 校准权重，也不写入 `model.onnx_device` 或 OCR 校准记录。
 
@@ -31,7 +35,9 @@ llama.cpp 自动集显路径同样按有效小模型后端分流：Torch 使用�
 
 OCR、llama.cpp、档位推荐与诊断共用 GPU 分类和双向唯一身份匹配。先按各后端的实际可见性和兼容性过滤，再按独显、集显、虚拟 GPU、未知类型排序；后端之间无需选择同一张卡。ggml 的 GPU/IGPU 标志不再直接作为独显判据，Windows 使用 D3D12 UMA、Linux 使用 Vulkan 原生分类。无法唯一关联的设备保留未知类型，不授予独显免校准或仅凭类型开放 Advanced。
 
-JSON 报告 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default_request_tier`、`reason`、`cpu_count`、`small_backend`、`vlm_engine`、`device`、`calibration` 和 `warnings`。校准状态来自执行结果；Torch 使用 `status=skipped, reason=torch_backend`，不将可用性结论标成性能实测通过。
+JSON 报告保留 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default_request_tier`、`reason`、`cpu_count`、`small_backend`、`vlm_engine`、`device`、`calibration` 和 `warnings`，并增补 `gpu_memory`。内存证据包含 `device`、`identity`、`memory_bytes`、`kind`（`dedicated`／`budget`／`unknown`）、`source`、`warning`；没有候选设备时为 `null`。校准状态来自执行结果；Torch 使用 `status=skipped, reason=torch_backend`，不将可用性结论标成性能实测通过。
+
+本次实际选型落在 CPU、校准失败或证据失效时，不会凭静态显卡库存重新开放高档位。设备容量信息不进入 OCR 校准指纹，既有有效测速记录可以继续复用。每个服务在启动阶段形成一次最终开放集合，运行过程中不动态升降档位。
 
 开放 Advanced 后，请求省略 tier 仍默认 Standard。推荐不代表模型已准备好，API 服务继续执行依赖预检；显式启动上限和 Python 精确集合不进入自动推荐。API 工厂的 VLM 配置覆盖参与共享推荐，远程 VLM 显示为 `http-client`，不自动扩大本机上限。
 

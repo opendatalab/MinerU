@@ -97,7 +97,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 
 本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
 
-通常在首次实际使用 ONNX 模型时选型。API 使用 `--tier auto`（或省略），有效小模型后端为 ONNX 且硬件初选达到 Basic 时，Windows/Linux 会提前同步调用相同的设备选择流程，校准证据在本次最终档位推荐中生效，不依赖 `--preload-models`。初选仅 Flash、显式启动档位或 macOS 不增加这项启动选型。有效小模型后端为 Torch 时采用实际设备可用性结果并跳过 OCR 校准，不修改 ONNX 设备偏好或证据；llama.cpp 自动集显路径也遵循这处分流。
+通常在首次实际使用 ONNX 模型时选型。API 使用 `--tier auto`（或省略），有效小模型后端为 ONNX，且可用逻辑 CPU 至少 4 核或存在显存／预算达到 5.5 GiB 的兼容 GPU 候选时，Windows/Linux 会提前同步调用相同的设备选择流程，校准证据在本次最终档位推荐中生效，不依赖 `--preload-models`。CPU 不足 4 核且无内存达标 GPU 候选、显式启动档位或 macOS 不增加这项启动选型。有效小模型后端为 Torch 时采用实际设备可用性和内存证据并跳过 OCR 校准，不修改 ONNX 设备偏好或证据；llama.cpp 自动集显路径也遵循这处分流。
 
 `mineru-kit hardware detect` 与 API 自动启动共享推荐逻辑；`hardware info` 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
