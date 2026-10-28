@@ -106,7 +106,7 @@ def build_remote_api_url(remote: bool, remote_url: str | None) -> str | None:
 
 
 def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> None:
-    """Write a result, staging ZIP contents in an isolated directory cleaned up on errors."""
+    """保存解析结果，ZIP 使用独立临时目录并在成功或异常退出时清理。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
     if format == "markdown":
         _write_utf8_text(dest, result.markdown())
@@ -115,6 +115,7 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
         _write_utf8_text(dest, result.to_json())
         return
     if format == "zip":
+        # 临时素材沿用输出盘，避免大文档占满系统临时盘；只清理本次导出创建的独立目录。
         with TemporaryDirectory(prefix=".mineru-kit-", dir=dest.parent) as tmp_dir_name:
             tmp_dir = Path(tmp_dir_name)
             writer = FileBasedDataWriter(tmp_dir_name)
