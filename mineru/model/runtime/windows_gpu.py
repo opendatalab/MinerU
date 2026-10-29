@@ -9,7 +9,7 @@ import sys
 from typing import Any
 import uuid
 
-from .gpu import GpuClassification, GpuIdentity, classify_d3d12_gpu, gpu_kind_rank, with_gpu_classification
+from .gpu import GpuClassification, GpuIdentity, PciAddress, classify_d3d12_gpu, gpu_kind_rank, with_gpu_classification
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,48 @@ class _Guid(C.Structure):
 
 class _Luid(C.Structure):
     _fields_ = [("low", C.c_uint32), ("high", C.c_int32)]
+
+
+class _OpenAdapterFromLuid(C.Structure):
+    _fields_ = [("luid", _Luid), ("handle", C.c_uint32)]
+
+
+class _QueryAdapterInfo(C.Structure):
+    _fields_ = [("handle", C.c_uint32), ("type", C.c_int32), ("data", C.c_void_p), ("size", C.c_uint32)]
+
+
+class _AdapterAddress(C.Structure):
+    _fields_ = [("bus", C.c_uint32), ("device", C.c_uint32), ("function", C.c_uint32)]
+
+
+class _CloseAdapter(C.Structure):
+    _fields_ = [("handle", C.c_uint32)]
+
+
+def _pci_address(luid: _Luid) -> PciAddress:
+    """以 DXGI LUID 查询同一适配器的物理 PCI 地址，不加载任何推理后端。"""
+    library = C.WinDLL("gdi32", use_last_error=True)
+    open_adapter = library.D3DKMTOpenAdapterFromLuid
+    open_adapter.argtypes, open_adapter.restype = [C.POINTER(_OpenAdapterFromLuid)], C.c_int32
+    query_adapter = library.D3DKMTQueryAdapterInfo
+    query_adapter.argtypes, query_adapter.restype = [C.POINTER(_QueryAdapterInfo)], C.c_int32
+    close_adapter = library.D3DKMTCloseAdapter
+    close_adapter.argtypes, close_adapter.restype = [C.POINTER(_CloseAdapter)], C.c_int32
+
+    def check_status(status: int) -> None:
+        if status < 0:
+            raise OSError(f"Windows GPU PCI query failed: NTSTATUS=0x{status & 0xFFFFFFFF:08x}")
+
+    opened = _OpenAdapterFromLuid(luid, 0)
+    check_status(open_adapter(C.byref(opened)))
+    try:
+        address = _AdapterAddress()
+        # KMTQAITYPE_ADAPTERADDRESS = 6; Windows 不提供 PCI domain，不能自行补零。
+        query = _QueryAdapterInfo(opened.handle, 6, C.addressof(address), C.sizeof(address))
+        check_status(query_adapter(C.byref(query)))
+        return PciAddress(address.bus, address.device, function=address.function)
+    finally:
+        check_status(close_adapter(C.byref(_CloseAdapter(opened.handle))))
 
 
 class _Description(C.Structure):
@@ -235,6 +277,11 @@ def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]
                 if desc.flags & 2:
                     continue
                 supported, uma = _architecture(adapter, create_device)
+                pci_address, pci_error = None, None
+                try:
+                    pci_address = _pci_address(desc.luid)
+                except Exception as error:
+                    pci_error = str(error)
                 budget, memory_error = None, None
                 if include_memory_budget and uma is True:
                     try:
@@ -247,6 +294,8 @@ def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]
                         "vendor_id": desc.vendor,
                         "device_id": desc.device,
                         "luid": _luid(desc),
+                        "pci_address": asdict(pci_address) if pci_address is not None else None,
+                        "pci_error": pci_error,
                         "d3d12_available": supported,
                         **asdict(classify_d3d12_gpu(uma)),
                         "dedicated_memory_bytes": desc.video_memory,

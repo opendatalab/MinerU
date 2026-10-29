@@ -100,11 +100,11 @@ advanced 仅在它是服务唯一可用档位时自动选择。显式指定的 P
 
 ### 3.4 API 服务启动推荐
 
-`--tier auto` 或省略启动参数时，进程可用逻辑 CPU 至少 4 核默认开放 flash、basic，否则只开放 flash；计数遵守亲和性和容器配额。只有实际 GPU 已经确认可用，并且选中设备的专用显存总量或 GPU 内存预算至少 5.5 GiB，才开放 standard、advanced。GPU 达标不要求 CPU 同时达到 4 核；开放全部四档时请求默认仍为 standard。
+`--tier auto` 或省略启动参数时，推荐直接采用小模型后端的 GPU/CPU 结论：GPU 开放全部四档，默认请求 Standard；CPU 可用逻辑核至少 10 时开放到 Standard，4–9 核开放到 Basic，不足 4 核只开放 Flash。CPU 默认请求该集合中的最高档位，不自动开放 Advanced。计数沿用亲和性和容器配额限制，读取失败回退 1 核并保留警告，不影响已确认的 GPU 结果。
 
-自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）、Apple Metal 和符合既有确认与绑定规则的独显保留免 OCR 测速路径。CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，Windows/Linux 在本次启动内完成现有 ONNX 设备选型：`onnx_device=auto` 保留适用的性能校准，`onnx_device=gpu` 无论来自手动配置还是先前自动选型都不测速。auto tier 直接采用实际选型结果，GPU 内存达标即开放全部四档，不再额外要求独显类型或校准胜出记录；历史记录缺失、损坏、过期或 GPU 较慢均不影响已选 GPU 的档位判断。最终选中 CPU、选型失败、设备身份不明确或内存未知时按 CPU 条件推荐，静态 GPU 库存不能覆盖最终结果。
+Torch 使用已验证的加速设备可用性，包括 CUDA/ROCm、MPS、XPU 等，不调用 ONNX 校准。ONNX 在所有 CPU 核数下完成现有设备选型，复用缓存、显式配置和独显免校准策略；`onnx_device=auto` 保留适用的性能校准，显式或已保存的 `cpu/gpu` 不强制测速。推荐不增加独立测速或历史性能证据门槛。最终选中 CPU 或选型失败时按 CPU 核数推荐，静态 GPU 库存不能覆盖结果。
 
-显存按原始字节比较，不取整、不累加多卡，不使用虚拟显存覆盖。统一／共享内存使用 Metal 推荐工作集、DXGI 本地预算或 Vulkan `heapBudget`，不以系统总内存替代。最终集合在启动时固定；`mineru-kit hardware detect` 共享推荐与内存证据，`hardware info` 只读收集环境信息。
+自动推荐不查询显存容量或预算，不额外探测 Apple Metal；Torch/MPS 正常按加速设备处理。最终集合在启动时固定；`mineru-kit hardware detect` 共享推荐结果，JSON 保留 `schema_version=1` 和 `gpu_memory: null`。`hardware info` 继续只读收集环境信息，独立显存采集能力保留。
 
 `--tier standard` 等显式上限开放自身和全部较低档位，允许覆盖硬件推荐。`/v1/tiers` 只约束 PDF/图片，原生文档在任何正常可用服务上均固定使用 flash。请求默认仍优先 standard；仅开放 advanced 的精确集合以 advanced 为默认档位。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
 

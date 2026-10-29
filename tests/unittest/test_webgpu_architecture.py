@@ -368,8 +368,10 @@ def test_bound_descriptor_roundtrips_through_worker_json(monkeypatch: pytest.Mon
 
 @pytest.mark.parametrize("error", [False, True])
 @pytest.mark.parametrize("native_type", [0, 1, 2, 3])
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+@pytest.mark.parametrize("luid_valid", [False, True])
 def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cleans_up(
-    monkeypatch: pytest.MonkeyPatch, error: bool, native_type: int
+    monkeypatch: pytest.MonkeyPatch, error: bool, native_type: int, platform: str, luid_valid: bool
 ) -> None:
     """原生类型在适配边界统一转换，未知硬件仍保留，而软件 CPU 不进入 GPU 库存。"""
 
@@ -391,19 +393,35 @@ def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cle
             (0x10DE, 0x2489, native_type, b"NVIDIA") if handle == 100 else (0x10005, 0, 4, b"llvmpipe")
         )
 
+    def properties2(handle: object, storage: object) -> None:
+        assert handle == 100
+        assert storage._obj.sType == 1000059001
+        identity = ct.cast(storage._obj.pNext, ct.POINTER(vulkan._DeviceIDProperties)).contents
+        assert identity.sType == 1000071004
+        identity.deviceLUID[:] = bytes.fromhex("67452301efcdab89")
+        identity.deviceLUIDValid = int(luid_valid)
+
     lib = SimpleNamespace(
         vkCreateInstance=Mock(side_effect=create),
         vkDestroyInstance=Mock(),
         vkEnumeratePhysicalDevices=Mock(side_effect=enumerate_devices),
         vkGetPhysicalDeviceProperties=Mock(side_effect=properties),
+        vkGetPhysicalDeviceProperties2=Mock(side_effect=properties2),
     )
-    monkeypatch.setattr(vulkan.ct, "CDLL", lambda name: lib)
+    monkeypatch.setattr(vulkan, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(vulkan.ct, "WinDLL" if platform == "win32" else "CDLL", lambda name: lib, raising=False)
     if error:
         with pytest.raises(RuntimeError, match="count devices"):
             vulkan.enumerate_vulkan_devices()
     else:
-        assert vulkan.enumerate_vulkan_devices() == (
-            with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA", 0), classify_vulkan_gpu(native_type)),
+        luid = "89abcdef:01234567" if platform == "win32" and luid_valid else None
+        result = vulkan.enumerate_vulkan_devices()
+        assert result == (
+            with_gpu_classification(
+                vulkan.VulkanDevice(0x10DE, 0x2489, "NVIDIA", 0, luid=luid), classify_vulkan_gpu(native_type)
+            ),
         )
+        assert result[0].identity.luid == luid
+    assert lib.vkGetPhysicalDeviceProperties2.call_count == int(platform == "win32" and not error)
     lib.vkDestroyInstance.assert_called_once()
     assert ct.sizeof(vulkan._PropertiesStorage) >= 824

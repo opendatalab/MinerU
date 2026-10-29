@@ -24,8 +24,7 @@ from ..images import get_crop_img
 from .models import _AnalyzeSpan
 
 MAX_NATIVE_TEXT_CHARS_PER_PAGE = 65535
-PRIVATE_USE_AREA_START = 0xE000
-PRIVATE_USE_AREA_END = 0xF8FF
+PRIVATE_USE_RANGES = ((0xE000, 0xF8FF), (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD))
 PRIVATE_USE_TEXT_COUNT_THRESHOLD = 2
 PRIVATE_USE_TEXT_RATIO_THRESHOLD = 0.05
 PRIVATE_USE_TEXT_RUN_THRESHOLD = 2
@@ -597,7 +596,7 @@ def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: floa
     threshold = SPACING_DIACRITIC_MIN_OVERLAP_RATIO
     if type(threshold) not in (int, float) or not math.isfinite(threshold):
         return None
-    if any(type(value) is not int or not 0 <= value <= 0x10FFFF for value in (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END)):
+    if any(type(value) is not int or not 0 <= value <= 0x10FFFF for pair in PRIVATE_USE_RANGES for value in pair):
         return None
     inputs = _owned_span_inputs(owner, spans, median_height)
     if inputs is None:
@@ -607,7 +606,7 @@ def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: floa
         list(CONTROL_LINE_BREAK_CHARS),
         _SPACING_DIACRITIC_TO_COMBINING,
         threshold,
-        ((PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),),
+        PRIVATE_USE_RANGES,
         [span.metadata.get("_native_tight_spacing", True) for span in spans],
     )
 
@@ -821,7 +820,12 @@ _ScriptRole = ScriptRole
 
 def _is_private_use_char(char: str) -> bool:
     """判断单个字符是否落在 Unicode 私用区，用于识别字体映射异常。"""
-    return len(char) == 1 and PRIVATE_USE_AREA_START <= ord(char) <= PRIVATE_USE_AREA_END
+    return len(char) == 1 and any(start <= ord(char) <= end for start, end in PRIVATE_USE_RANGES)
+
+
+def _replace_private_use_chars(text: str) -> str:
+    """仅在原生正文最终回填时逐个替换残留 PUA，保留已有空白和其他 Unicode 字符。"""
+    return "".join(" " if _is_private_use_char(char) else char for char in text)
 
 
 def _get_private_use_text_signal(chars: list[Char]) -> dict[str, float | int]:

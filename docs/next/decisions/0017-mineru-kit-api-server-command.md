@@ -46,7 +46,7 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 一个 API 服务进程使用 `--tier auto|flash|basic|standard|advanced` 表示 PDF/图片的最高开放档位，上限包含自身及全部较低档位；省略等价于 auto，取硬件推荐集合的最高档。Standard 上限不再隐含 Advanced。`--tiers`、`--no-flash`、`--no-advanced` 均直接移除。
 
-自动推荐先按有效小模型后端分流：CPU 可用逻辑核至少 4 时开放到 Basic，否则只开放 Flash。GPU 经既有选型确认可用且选定设备显存／预算至少 5.5 GiB 时，独立于 CPU 核数开放全部四档。Torch、Apple Metal 和符合既有绑定规则的独显保留免测速路径；其他 ONNX GPU 仍须校准胜出。CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，Windows/Linux 在本次启动内完成适用选型；最终 CPU 回退不能被静态库存覆盖。显式启动上限跳过推荐。不引入新的采样阈值或 VLM 实测，依赖预检与可选预加载仍执行。Advanced 复用 Standard 模型配置，请求默认仍优先 Standard。`hardware detect` 与服务使用相同结构化推荐及设备内存证据。
+自动推荐直接消费有效小模型后端的设备结论：GPU 开放全部四档；CPU 可用逻辑核至少 10 时开放到 Standard，4–9 核开放到 Basic，否则只开放 Flash。计数沿用亲和性和容器配额，失败回退 1 核，不影响已确认的 GPU 结果。Torch 验证加速设备可用性且不调用 ONNX；ONNX 在所有核数下完成现有选型，复用缓存、显式配置、独显免校准和适用的 OCR 校准。推荐不查询显存、不增加独立测速或历史性能证据门槛；最终 CPU 结果不能被静态库存覆盖。显式启动上限跳过推荐，依赖预检与可选预加载继续执行。Advanced 复用 Standard 模型配置，请求默认仍优先 Standard。`hardware detect` 共享结构化推荐，保持 `schema_version=1`，兼容保留 `gpu_memory: null`。
 
 `/v1/tiers` 仅发布 PDF/图片可选档位。所有服务都支持现有原生文档格式，固定使用 flash；原生支持不再从公开 flash 档位推断，不新增原生能力声明。Tasks 请求 tier 继续可选，PDF/图片按 `standard -> basic -> flash` 默认选择，advanced 仅显式使用。
 
