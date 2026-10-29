@@ -89,7 +89,7 @@ body:
   - type: dropdown
     id: tier
     attributes:
-      label: 解析档位（可选）
+      label: 解析档位
       options:
         - flash
         - basic
@@ -97,6 +97,9 @@ body:
         - advanced
         - 未显式指定
         - 不适用或不清楚
+      default: 5
+    validations:
+      required: true
 
   - type: markdown
     attributes:
