@@ -53,11 +53,11 @@ def onnx_recommendation_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
     forbidden.assert_not_called()
 
 
-@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 32])
+@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 11, 12, 32])
 @pytest.mark.parametrize("gpu", [False, True])
 def test_recommendation_matrix(cores: int, gpu: bool) -> None:
     """验证 CPU 边界及 GPU 对全部档位的开放规则。"""
-    expected = TIERS if gpu else TIERS[:3] if cores >= 10 else TIERS[:2] if cores >= 4 else TIERS[:1]
+    expected = TIERS if gpu else TIERS[:3] if cores >= 12 else TIERS[:2] if cores >= 4 else TIERS[:1]
     assert recommendation.tiers_for_hardware(recommendation.TierHardware(cores, gpu)) == frozenset(expected)
 
 
@@ -69,6 +69,8 @@ def test_recommendation_matrix(cores: int, gpu: bool) -> None:
         (8, "400000 100000", 4),
         (16, "900000 100000", 9),
         (16, "1000000 100000", 10),
+        (16, "1100000 100000", 11),
+        (16, "1200000 100000", 12),
     ],
 )
 def test_recommendation_respects_affinity_and_quota(
@@ -90,7 +92,7 @@ def test_recommendation_respects_affinity_and_quota(
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", lambda: onnx_device.OnnxSelection())
     report = recommendation.recommend_tiers()
     assert report.cpu_count == expected
-    assert report.pdf_image_tiers == (TIERS[:3] if expected >= 10 else TIERS[:2] if expected >= 4 else TIERS[:1])
+    assert report.pdf_image_tiers == (TIERS[:3] if expected >= 12 else TIERS[:2] if expected >= 4 else TIERS[:1])
 
 
 @pytest.fixture
@@ -190,7 +192,7 @@ def test_onnx_unsupported_platform_uses_cpu_without_torch(
     monkeypatch.setattr(onnx_device, "sys", SimpleNamespace(platform=platform))
     monkeypatch.setattr(onnx_device, "_selections", {})
     monkeypatch.setitem(sys.modules, "torch", None)
-    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 10)
+    monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 12)
     report = recommendation.recommend_tiers()
     assert report.device == "cpu" and report.pdf_image_tiers == TIERS[:3]
     assert report.reason == "unsupported_platform"
@@ -310,7 +312,7 @@ def test_auto_startup_calibrates_before_publishing(
 
 
 @pytest.mark.parametrize("gpu_wins", [False, True])
-@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 32])
+@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 11, 12, 32])
 def test_startup_calibrates_at_every_cpu_threshold(
     startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, gpu_wins: bool, cores: int
 ) -> None:
@@ -324,7 +326,7 @@ def test_startup_calibrates_at_every_cpu_threshold(
     monkeypatch.setattr(get_config().model, "small_backend", "onnx")
     startup_calibration[1].return_value = _measurement(gpu_elapsed=1.0 if gpu_wins else 3.0)
     report = recommendation.recommend_tiers()
-    expected = TIERS if gpu_wins else TIERS[:3] if cores >= 10 else TIERS[:2] if cores >= 4 else TIERS[:1]
+    expected = TIERS if gpu_wins else TIERS[:3] if cores >= 12 else TIERS[:2] if cores >= 4 else TIERS[:1]
     assert report.pdf_image_tiers == expected
     assert report.default_request_tier == ("standard" if "standard" in expected else expected[-1])
     assert report.calibration.status == "completed"
@@ -521,7 +523,7 @@ def test_failed_recalibration_revokes_previous_fast_evidence(startup_calibration
     assert not cache.calibration_record_path().exists()
 
 
-@pytest.mark.parametrize("cores", [3, 4, 10])
+@pytest.mark.parametrize("cores", [3, 4, 10, 11, 12])
 @pytest.mark.parametrize(
     "failure", ["configured_cpu", "selection_failed", "no_hardware_gpu", "webgpu_architecture_policy", "raise"]
 )
@@ -541,7 +543,7 @@ def test_final_cpu_result_cannot_be_upgraded_by_discrete_inventory(
     )
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", selection)
     report = recommendation.recommend_tiers()
-    expected = TIERS[:3] if cores >= 10 else TIERS[:2] if cores >= 4 else TIERS[:1]
+    expected = TIERS[:3] if cores >= 12 else TIERS[:2] if cores >= 4 else TIERS[:1]
     assert report.pdf_image_tiers == expected and report.default_request_tier == expected[-1]
     assert report.device == "cpu"
     if failure in {"raise", "selection_failed"}:

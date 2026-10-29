@@ -20,8 +20,8 @@ mineru-kit hardware info --json > hardware-info.json
 | 设备结论 | 进程可用逻辑核数 | PDF/图片开放档位 | 请求默认档位 |
 |----------|------------------|------------------|--------------|
 | GPU | 不限 | flash、basic、standard、advanced | standard |
-| CPU | 至少 10 | flash、basic、standard | standard |
-| CPU | 4–9 | flash、basic | basic |
+| CPU | 至少 12 | flash、basic、standard | standard |
+| CPU | 4–11 | flash、basic | basic |
 | CPU | 不足 4 | flash | flash |
 
 CPU 计数沿用进程亲和性和 Linux cgroup 配额限制。读取失败回退为 1 核并记录警告，不影响已确认的 GPU 结果。CPU 核数再多也不自动开放 Advanced。

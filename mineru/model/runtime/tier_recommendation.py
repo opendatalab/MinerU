@@ -55,10 +55,10 @@ class TierHardware:
 
 
 def tiers_for_hardware(hardware: TierHardware) -> frozenset[Tier]:
-    """GPU 开放全部档位；CPU 至少 4 核开放 Basic，至少 10 核开放 Standard。"""
+    """GPU 开放全部档位；CPU 至少 4 核开放 Basic，至少 12 核开放 Standard。"""
     if hardware.advanced_gpu:
         return frozenset(TIERS)
-    if hardware.cpu_count >= 10:
+    if hardware.cpu_count >= 12:
         return frozenset(TIERS[:3])
     if hardware.cpu_count >= 4:
         return frozenset(TIERS[:2])
