@@ -6,8 +6,7 @@
 非目标: 完整 Parse API；通用聊天能力说明；底层 engine 私有参数表
 来源: 由根目录旧 CLI 底稿迁移整理而来
 
-自动服务引擎仅选择 vLLM/LMDeploy；MLX 必须显式使用 `--engine mlx`。
-本命令不提供 llama HTTP server；ARM Mac 的默认文档解析在进程内使用 llama。
+服务启动入口保留 vLLM、LMDeploy、llama.cpp 和 MLX；MLX 必须显式选择。
 
 ## 1. 定位
 
@@ -76,10 +75,11 @@ API 服务通过 `--vlm-server-url` 或全局 `model.vlm.server_url` 连接它�
 mineru-kit vlm-server --engine auto
 mineru-kit vlm-server --engine vllm
 mineru-kit vlm-server --engine lmdeploy
+mineru-kit vlm-server --engine llama-cpp
 mineru-kit vlm-server --engine mlx
 ```
 
-`--engine` 决定使用哪类底层 serving engine。当前合法值为 `auto`、`vllm`、`lmdeploy`、`mlx`；`auto` 按 vLLM、LMDeploy 的顺序选择已安装且可用的 engine；MLX 仅接受显式选择。
+`--engine` 决定使用哪类底层 serving engine。当前合法值为 `auto`、`vllm`、`lmdeploy`、`llama-cpp`、`mlx`；`auto` 按 vLLM、LMDeploy、llama.cpp 的顺序选择已安装且可用的 engine；MLX 仅接受显式选择。
 
 除统一参数外，其余参数原样透传到底层 engine server。
 
