@@ -1,6 +1,6 @@
 # 从 3.x 迁移到 4.0
 
-4.0 调整了命令入口、依赖组合、配置和 API。先使用独立环境验证，再迁移生产调用。升级到 4.1 时，还需应用 [4.1 迁移说明](migration_4_1.md)中的 HTTP 协议和环境调整。AMD 专用软件栈及国产卡的[旧平台指南](../usage/compatibility.md)仍限制 `mineru<4`；4.1 新增的 Windows/Linux ONNX 设备支持见[档位与运行环境](../usage/tiers.md)。
+4.0 调整了命令入口、依赖组合、配置和 API。先使用独立环境验证，再迁移生产调用。升级到 4.1 时，还需应用 [4.1 迁移说明](migration_4_1.md)中的 HTTP 协议和环境调整。国产卡的[旧平台指南](../usage/compatibility.md)仍限制 `mineru<4`；4.1 新增的 Windows/Linux ONNX 设备支持见[档位与运行环境](../usage/tiers.md)。
 
 ## 入口与安装
 

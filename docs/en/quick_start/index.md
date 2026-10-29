@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide targets **MinerU 4.x**, including 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy AMD-specific software-stack and vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
+This guide targets **MinerU 4.x**, including 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
 
 ## Install MinerU
 
@@ -100,4 +100,4 @@ Confirm a 4.x version; a development checkout may report a prerelease. For NVIDI
 - [Model downloads and configuration](../usage/model_source.md)
 - [3.x → 4.0 migration](../reference/migration_4.md)
 - [4.0.x → 4.1 migration](../reference/migration_4_1.md)
-- [Official application](https://mineru.net/) and [online demos](../demo/index.md)
+- [Official application](https://mineru.net/) and [online demos](https://huggingface.co/spaces/opendatalab/MinerU)

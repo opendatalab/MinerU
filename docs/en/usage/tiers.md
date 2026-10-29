@@ -70,6 +70,6 @@ detect shares API startup recommendations and may perform applicable ONNX calibr
 
 Native text parsing needs no inference models. Basic can run on CPU. Standard / Advanced speed and memory depend on the VLM engine, input size, and concurrency. Plan for at least 16 GB of system memory for higher-throughput local deployment. NVIDIA deployments also need an engine-supported GPU, driver, and sufficient free VRAM; 8 GB is only a planning starting point, not a guarantee for every workload.
 
-For Apple Silicon, at least 16 GB of unified memory and a direct macOS installation are recommended. The 4.1 Windows/Linux ONNX path supports compatible Intel, AMD, and NVIDIA GPUs; legacy AMD-specific software-stack and vendor-accelerator guides remain scoped to [MinerU <4](compatibility.md).
+For Apple Silicon, at least 16 GB of unified memory and a direct macOS installation are recommended. The 4.1 Windows/Linux ONNX path supports compatible Intel, AMD, and NVIDIA GPUs; legacy vendor-accelerator guides remain scoped to [MinerU <4](compatibility.md).
 
 See [extension modules](../quick_start/extension_modules.md) for installation and [Model Source](model_source.md) for downloads and configuration.

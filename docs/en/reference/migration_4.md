@@ -1,6 +1,6 @@
 # Migrating from 3.x to 4.0
 
-4.0 changes command entrypoints, dependency groups, configuration, and APIs. Validate in an isolated environment before migrating production callers. For 4.1, also apply its [HTTP and runtime migration steps](migration_4_1.md). [Legacy guides](../usage/compatibility.md) for AMD-specific software stacks and vendor accelerators remain scoped to `mineru<4`; see [Tiers and runtimes](../usage/tiers.md) for new 4.1 Windows/Linux ONNX support.
+4.0 changes command entrypoints, dependency groups, configuration, and APIs. Validate in an isolated environment before migrating production callers. For 4.1, also apply its [HTTP and runtime migration steps](migration_4_1.md). [Legacy guides](../usage/compatibility.md) for vendor accelerators remain scoped to `mineru<4`; see [Tiers and runtimes](../usage/tiers.md) for new 4.1 Windows/Linux ONNX support.
 
 ## Entrypoints and installation
 
