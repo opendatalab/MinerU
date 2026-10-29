@@ -1,0 +1,120 @@
+name: 🐛 Bug 反馈（中文）
+description: 反馈安装、运行或解析结果问题
+labels: bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        [使用文档](https://opendatalab.github.io/MinerU/zh/) · [交流讨论](https://github.com/opendatalab/MinerU/discussions) · [AI 助手（可选）](https://deepwiki.com/opendatalab/MinerU)
+
+  - type: checkboxes
+    id: precheck
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 [Issues](https://github.com/opendatalab/MinerU/issues) 和 [Discussions](https://github.com/opendatalab/MinerU/discussions)，未找到相同问题。
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 请说明预期结果与实际结果，并附上相关报错或截图。
+      placeholder: |
+        预期结果：
+        实际结果：
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        解析问题请附原始文件，并注明问题页码或区域；也可提供仍能复现问题的最小脱敏样例。
+        安装或构建问题只需提供完整命令和输出，无需文档样例。
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 如何复现
+      description: 请提供命令或代码、相关配置（如已知请注明 OCR 模式）和复现步骤。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: usage_entry
+    attributes:
+      label: 使用入口
+      options:
+        - mineru CLI
+        - mineru-kit CLI
+        - Python SDK
+        - API / Router
+        - WebUI
+        - 安装或构建
+        - 其他或不清楚
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os_mode
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - 其他或不清楚
+    validations:
+      required: true
+
+  - type: dropdown
+    id: software_version
+    attributes:
+      label: MinerU 版本
+      description: 请选择实际版本，安装失败时选择目标版本；其他版本请在环境诊断中说明。
+      # BEGIN MINERU_RECENT_RELEASES
+      options:
+        - "4.1.1"
+        - "4.1.0"
+        - "4.0.12"
+        - "4.0.11"
+        - "4.0.10"
+        - 其他 / 开发版 / 不清楚
+      default: 5
+      # END MINERU_RECENT_RELEASES
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: 解析档位（可选）
+      options:
+        - flash
+        - basic
+        - standard
+        - advanced
+        - 未显式指定
+        - 不适用或不清楚
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 环境诊断
+        请在 MinerU 实际运行的环境中执行；Docker、WSL 或远程部署应在容器、子系统或服务端执行：
+        ```shell
+        mineru-kit hardware info
+        ```
+        若安装失败、命令不可用或无法访问服务端，请说明原因，并提供已知的系统、Python、设备、推理后端和部署方式。
+        版本选择“其他 / 开发版 / 不清楚”时，请在此补充具体版本。
+
+  - type: textarea
+    id: device_mode
+    attributes:
+      label: 诊断输出
+      description: 请粘贴完整文本输出，或说明无法执行的原因并补充已知环境信息。
+      placeholder: mineru-kit hardware info 的完整输出，或无法执行的原因。
+      render: text
+    validations:
+      required: true

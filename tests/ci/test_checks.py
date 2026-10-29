@@ -10,6 +10,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+import yaml
 from packaging.version import Version
 
 from scripts.ci.changes import changed_paths, classify_paths
@@ -42,24 +43,32 @@ def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("paths", "code", "docs"),
+    ("paths", "code", "docs", "issue_templates"),
     [
-        (["docs/next/api/tasks.md"], False, True),
-        (["docs/requirements.txt"], False, True),
-        (["docs/images/example.png"], False, True),
-        (["README_zh-CN.md"], False, True),
-        (["mkdocs.yml"], False, True),
-        (["mineru/parser/base.py"], True, False),
-        (["scripts/http_task_example.py"], True, False),
-        (["scripts/ci/changes.py"], True, True),
-        ([".github/workflows/cli.yml"], True, False),
-        (["docs/index.md", "mineru/config.py"], True, True),
-        ([], False, False),
+        (["docs/next/api/tasks.md"], False, True, False),
+        (["docs/requirements.txt"], False, True, False),
+        (["docs/images/example.png"], False, True, False),
+        (["README_zh-CN.md"], False, True, False),
+        (["mkdocs.yml"], False, True, False),
+        (["mineru/parser/base.py"], True, False, False),
+        (["scripts/http_task_example.py"], True, False, False),
+        (["scripts/ci/changes.py"], True, True, False),
+        ([".github/workflows/cli.yml"], True, False, False),
+        ([".github/workflows/python-package.yml"], True, False, False),
+        (["docs/index.md", "mineru/config.py"], True, True, False),
+        ([".github/ISSUE_TEMPLATE/bug_report.yml"], False, False, True),
+        ([".github/ISSUE_TEMPLATE/bug_report_zh.yml", ".github/ISSUE_TEMPLATE/config.yml"], False, False, True),
+        (["scripts/sync_issue_template_version.py"], False, False, True),
+        (["tests/ci/test_issue_template_release_sync.py"], False, False, True),
+        ([".github/ISSUE_TEMPLATE/bug_report.yml", "mineru/config.py"], True, False, True),
+        ([".github/ISSUE_TEMPLATE/bug_report.yml", "docs/index.md"], False, True, True),
+        ([".github/ISSUE_TEMPLATE/bug_report.yml", ".github/workflows/cli.yml"], True, False, True),
+        ([], False, False, False),
     ],
 )
-def test_change_classification(paths: list[str], code: bool, docs: bool) -> None:
+def test_change_classification(paths: list[str], code: bool, docs: bool, issue_templates: bool) -> None:
     """真实产品、文档资源和公共分流脚本分别触发所需检查。"""
-    assert classify_paths(paths) == {"code": code, "docs": docs}
+    assert classify_paths(paths) == {"code": code, "docs": docs, "issue_templates": issue_templates}
 
 
 def test_rename_out_of_code_is_not_misclassified_as_docs_only(repository: Path) -> None:
@@ -71,7 +80,7 @@ def test_rename_out_of_code_is_not_misclassified_as_docs_only(repository: Path) 
     head = git(repository, "rev-parse", "HEAD")
     paths = changed_paths("pull_request", {"pull_request": {"base": {"sha": base}}}, head)
     assert paths == ["docs/version.md", "mineru/version.py"]
-    assert classify_paths(paths) == {"code": True, "docs": True}
+    assert classify_paths(paths) == {"code": True, "docs": True, "issue_templates": False}
 
 
 @pytest.mark.parametrize("event", [{"before": "0" * 40}, {"ref": "refs/tags/mineru-4.0.12-released"}])
@@ -101,7 +110,7 @@ def test_changes_script_writes_outputs_for_docs_only_push(repository: Path, tmp_
             "GITHUB_OUTPUT": str(output),
         },
     )
-    assert output.read_text() == "code=false\ndocs=true\n"
+    assert output.read_text() == "code=false\ndocs=true\nissue_templates=false\n"
 
 
 @pytest.mark.parametrize("tag", ["mineru-4.0.13-released", "mineru-4.0.11-released", "v4.0.12", "mineru-bad-released"])
@@ -167,3 +176,101 @@ def test_release_cli_records_exact_commit_and_rejects_dirty_source(repository: P
     (repository / "mineru/version.py").write_text('__version__ = "4.0.13"\n', encoding="utf-8")
     assert subprocess.run(command, capture_output=True).returncode != 0
     assert json.loads((repository / "release.json").read_text()) == record
+
+
+@pytest.mark.parametrize(
+    ("event_name", "event"),
+    [
+        ("workflow_dispatch", {}),
+        ("workflow_call", {}),
+        ("push", {"before": "0" * 40, "ref": "refs/heads/new"}),
+        ("push", {"ref": "refs/tags/mineru-4.1.1-released"}),
+        ("push", {"before": "1" * 40, "ref": "refs/heads/main"}),
+    ],
+)
+def test_unknown_differences_and_release_events_enable_all_checks(
+    repository: Path, tmp_path: Path, event_name: str, event: dict[str, str]
+) -> None:
+    """真实 CLI 对首次推送、发布、手动调用和取不到基点的提交保持完整验证。"""
+    payload = tmp_path / "event.json"
+    payload.write_text(json.dumps(event), encoding="utf-8")
+    output = tmp_path / "outputs"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/ci/changes.py")],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={
+            **os.environ,
+            "GITHUB_EVENT_NAME": event_name,
+            "GITHUB_EVENT_PATH": str(payload),
+            "GITHUB_SHA": git(repository, "rev-parse", "HEAD"),
+            "GITHUB_OUTPUT": str(output),
+        },
+    )
+    assert json.loads(result.stdout) == {"code": True, "docs": True, "issue_templates": True}
+
+
+def test_real_template_version_push_only_selects_lightweight_checks(repository: Path, tmp_path: Path) -> None:
+    """以真实版本选项提交验证自动发布后的 push 分流，而非仅匹配提交名称或作者。"""
+    template = repository / ".github/ISSUE_TEMPLATE/bug_report.yml"
+    template.parent.mkdir(parents=True)
+    template.write_text('options: ["4.1.0"]\n', encoding="utf-8")
+    git(repository, "add", ".")
+    git(repository, "commit", "-m", "seed form")
+    base = git(repository, "rev-parse", "HEAD")
+    template.write_text('options: ["4.1.1", "4.1.0"]\n', encoding="utf-8")
+    git(repository, "add", ".")
+    git(repository, "commit", "-m", "sync recent releases")
+    paths = changed_paths("push", {"before": base, "ref": "refs/heads/master"}, git(repository, "rev-parse", "HEAD"))
+    assert paths == [".github/ISSUE_TEMPLATE/bug_report.yml"]
+    assert classify_paths(paths) == {"code": False, "docs": False, "issue_templates": True}
+
+
+@pytest.mark.parametrize(
+    ("code", "forms", "lint", "tests", "torch", "success"),
+    [
+        ("false", "true", "success", "skipped", "skipped", True),
+        ("false", "true", "failure", "skipped", "skipped", False),
+        ("false", "true", "cancelled", "skipped", "skipped", False),
+        ("false", "true", "skipped", "skipped", "skipped", False),
+        ("true", "true", "success", "success", "success", True),
+        ("true", "false", "success", "failure", "success", False),
+        ("true", "false", "success", "success", "failure", False),
+        ("false", "false", "skipped", "skipped", "skipped", True),
+        ("false", "", "skipped", "skipped", "skipped", False),
+    ],
+)
+def test_ci_result_requires_lightweight_and_applicable_full_checks(
+    code: str, forms: str, lint: str, tests: str, torch: str, success: bool
+) -> None:
+    """执行真实汇总脚本，模板校验失败或取消也不能被矩阵跳过状态掩盖。"""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/cli.yml").read_text(encoding="utf-8"))
+    script = workflow["jobs"]["ci-result"]["steps"][0]["run"]
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", script],
+        capture_output=True,
+        check=False,
+        env={
+            **os.environ,
+            "CHANGES_RESULT": "success",
+            "CODE_CHANGED": code,
+            "ISSUE_TEMPLATES_CHANGED": forms,
+            "LINT_RESULT": lint,
+            "TEST_RESULT": tests,
+            "TORCH_RESULT": torch,
+        },
+    )
+    assert (result.returncode == 0) is success
+
+
+def test_template_checks_have_no_product_dependency_installation() -> None:
+    """轻量入口使用独立测试目录；产品扫描和两个推理测试任务仍受 code 标记约束。"""
+    jobs = yaml.safe_load((ROOT / ".github/workflows/cli.yml").read_text(encoding="utf-8"))["jobs"]
+    assert jobs["lint"]["if"] == "needs.changes.outputs.code == 'true' || needs.changes.outputs.issue_templates == 'true'"
+    assert jobs["cli-test"]["if"] == jobs["torch-test"]["if"] == "needs.changes.outputs.code == 'true'"
+    product = next(step for step in jobs["lint"]["steps"] if step.get("name") == "Check product Python")
+    assert product["if"] == "needs.changes.outputs.code == 'true'"
+    lightweight = "\n".join(step.get("run", "") for step in jobs["lint"]["steps"] if "if" not in step)
+    assert "--confcutdir=tests/ci tests/ci" in lightweight
+    assert "PyYAML" in lightweight and "'.[test]'" not in lightweight and "compileall" not in lightweight
