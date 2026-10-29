@@ -8,7 +8,7 @@ API 启动改为 `--tier auto|flash|basic|standard|advanced`，移除 `--tiers`�
 
 Python `create_app(tiers=...)` 保留精确 PDF/图片集合，模型依赖及预加载仍按实际需求合并。HTTP 请求默认、逐文件实际档位和产物协议保持原规则。
 
-`--tier auto`（包括省略参数）直接消费小模型后端的设备结论，取消显存容量门槛。GPU 开放全部四档；CPU 可用逻辑核至少 10 开放到 Standard，4–9 核开放到 Basic，不足 4 核只开放 Flash。Torch 使用经过验证的加速设备可用性；ONNX 在所有核数下同步完成现有设备选型，复用缓存、显式配置、独显免校准和适用的 OCR 校准。推荐不额外扫描显卡库存或要求历史性能证据。无需启用 `--preload-models`，首次校准可能准备或下载 OCR rec 模型。显式启动档位跳过推荐，模型依赖预检、可选预加载及请求默认选档顺序保持原规则。
+`--tier auto`（包括省略参数）直接消费小模型后端的设备结论，取消显存容量门槛。GPU 开放全部四档；CPU 可用逻辑核至少 12 开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。Torch 使用经过验证的加速设备可用性；ONNX 在所有核数下同步完成现有设备选型，复用缓存、显式配置、独显免校准和适用的 OCR 校准。推荐不额外扫描显卡库存或要求历史性能证据。无需启用 `--preload-models`，首次校准可能准备或下载 OCR rec 模型。显式启动档位跳过推荐，模型依赖预检、可选预加载及请求默认选档顺序保持原规则。
 
 新增 `mineru-kit hardware detect [--json]` 和 `hardware info [--json]`，分别用于同源推荐与只读问题反馈诊断。软件版本只展示指定清单内已安装的包；没有 `--quiet` 或 `auto-tier` 别名。
 

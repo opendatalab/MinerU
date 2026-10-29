@@ -66,7 +66,7 @@ mineru-kit hardware info --json
 
 detect shares API startup recommendations and may perform applicable ONNX calibration. info reads hardware, installed runtimes, effective configuration, and calibration records without benchmarking, downloading weights, or writing configuration.
 
-Automatic API/WebUI tiers use the small-model backend’s device decision: GPU enables all four tiers; CPU with at least 10 available logical cores enables up to Standard, 4–9 cores up to Basic, and fewer than 4 cores only Flash. Recommendations do not query GPU memory capacity. Standard is the default request tier when available; CPU does not automatically enable Advanced. An explicit startup ceiling bypasses automatic recommendation.
+Automatic API/WebUI tiers use the small-model backend’s device decision: GPU enables all four tiers; CPU with at least 12 available logical cores enables up to Standard, 4–11 cores up to Basic, and fewer than 4 cores only Flash. Recommendations do not query GPU memory capacity. Standard is the default request tier when available; CPU does not automatically enable Advanced. An explicit startup ceiling bypasses automatic recommendation.
 
 ## Resources and platform boundaries
 

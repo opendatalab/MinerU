@@ -80,7 +80,7 @@ def test_torch_accelerator_skips_onnx_for_every_engine(
     ("requested", "available", "expected_warning"),
     [("cpu", True, False), ("cuda", False, True), ("cuda:2", True, True), ("xpu:-1", True, True)],
 )
-@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 32])
+@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 11, 12, 32])
 def test_torch_cpu_and_invalid_explicit_device_are_conservative(
     torch_environment: Mock,
     monkeypatch: pytest.MonkeyPatch,
@@ -95,7 +95,7 @@ def test_torch_cpu_and_invalid_explicit_device_are_conservative(
     _fake_torch(monkeypatch, requested.split(":")[0], available)
     report = tier_recommendation.recommend_tiers()
     assert report.device == "cpu"
-    assert report.ceiling == ("standard" if cores >= 10 else "basic" if cores >= 4 else "flash")
+    assert report.ceiling == ("standard" if cores >= 12 else "basic" if cores >= 4 else "flash")
     assert bool(report.warnings) == expected_warning
     assert get_config().model.small_backend == "torch"
     assert os.environ["MINERU_DEVICE_MODE"] == requested
@@ -135,7 +135,7 @@ def test_torch_memory_does_not_affect_recommendation(
     torch_environment.assert_not_called()
 
 
-@pytest.mark.parametrize(("cores", "expected"), [(4, TIERS[:2]), (10, TIERS[:3])])
+@pytest.mark.parametrize(("cores", "expected"), [(4, TIERS[:2]), (10, TIERS[:2]), (11, TIERS[:2]), (12, TIERS[:3])])
 def test_auto_cpu_api_defaults_and_rejects_higher_tiers(
     torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cores: int, expected: tuple[str, ...]
 ) -> None:

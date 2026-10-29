@@ -59,8 +59,8 @@ Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `nul
 | 设备结论 | 进程可用逻辑核数 | 启动上限 | PDF/图片公开集合 | 请求默认档位 |
 |----------|------------------|----------|------------------|--------------|
 | GPU | 不限 | advanced | 全部四档 | standard |
-| CPU | 至少 10 | standard | `flash,basic,standard` | standard |
-| CPU | 4–9 | basic | `flash,basic` | basic |
+| CPU | 至少 12 | standard | `flash,basic,standard` | standard |
+| CPU | 4–11 | basic | `flash,basic` | basic |
 | CPU | 不足 4 | flash | `flash` | flash |
 
 CPU 数沿用进程可用逻辑核数，考虑亲和性和 Linux cgroup 配额。计数失败回退 1 核并给出警告，不影响已确认的 GPU 结果。CPU 不自动开放 Advanced。显式上限可以覆盖推荐，随后仍执行正常依赖预检。

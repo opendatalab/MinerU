@@ -99,7 +99,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 
 本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
 
-通常在首次实际使用 ONNX 模型时选型。API/WebUI 使用自动 tier 且有效小模型后端为 ONNX 时，会在所有 CPU 核数下提前同步调用相同的设备选择流程，不依赖 `--preload-models`。选中 GPU 就开放全部四档；选中 CPU 时，可用逻辑核至少 10 开放到 Standard，4–9 核开放到 Basic，不足 4 核只开放 Flash。推荐不查询显存、不增加独立测速，也不额外要求历史校准证据。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均不强制测速。显式启动档位和 Python 精确集合跳过推荐。有效小模型后端为 Torch 时采用已验证的加速设备结论，不调用 ONNX 或修改其配置/证据。llama.cpp 自动模式也复用相同的小模型设备选择入口。
+通常在首次实际使用 ONNX 模型时选型。API/WebUI 使用自动 tier 且有效小模型后端为 ONNX 时，会在所有 CPU 核数下提前同步调用相同的设备选择流程，不依赖 `--preload-models`。选中 GPU 就开放全部四档；选中 CPU 时，可用逻辑核至少 12 开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。推荐不查询显存、不增加独立测速，也不额外要求历史校准证据。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均不强制测速。显式启动档位和 Python 精确集合跳过推荐。有效小模型后端为 Torch 时采用已验证的加速设备结论，不调用 ONNX 或修改其配置/证据。llama.cpp 自动模式也复用相同的小模型设备选择入口。
 
 `mineru-kit hardware detect` 与 API 自动启动共享推荐逻辑；`hardware info` 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
@@ -136,7 +136,7 @@ MinerU 才在初始化期间补充 `GGML_VK_SERIALIZE_SUBMISSIONS=1`。依据来
 离线 server 仍禁止为自动选型下载校准模型，缺少本地权重时沿用现有 ONNX CPU 回退。
 
 档位推荐只消费小模型后端的 GPU/CPU 结论和进程可用逻辑核数，不受 llama 专用后端参数或诊断失败影响。
-GPU 开放全部四档；CPU 至少 10 核开放到 Standard，至少 4 核开放到 Basic，否则只开放 Flash。存在 Standard 时请求默认仍为 Standard。
+GPU 开放全部四档；CPU 至少 12 核开放到 Standard，至少 4 核开放到 Basic，否则只开放 Flash。存在 Standard 时请求默认仍为 Standard。
 
 ## 模型预设
 
