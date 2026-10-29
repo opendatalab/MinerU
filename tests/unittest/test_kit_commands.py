@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import sys
 import tomllib
@@ -32,9 +33,16 @@ _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
 
 
 def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    """控制台入口先设置编码，再把日志初始化标记交给实际命令。"""
     calls: list[str] = []
+
+    def run_app(*, obj: kit_main.KitContext) -> None:
+        """检查仅控制台入口启用进程日志初始化。"""
+        assert obj.configure_logging
+        calls.append("app")
+
     monkeypatch.setattr(kit_main, "configure_standard_streams", lambda: calls.append("configure"))
-    monkeypatch.setattr(kit_main, "app", lambda: calls.append("app"))
+    monkeypatch.setattr(kit_main, "app", run_app)
 
     kit_main.main()
 
@@ -153,7 +161,8 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
     monkeypatch.setattr(vlm_server, "configure_standard_streams", lambda: calls.append("configure"))
     monkeypatch.setattr(vlm_server, "vlm_server_cmd", _record_command)
     code = _invoke_standalone_command(monkeypatch, vlm_server.main, "mineru-openai-server", ["--port", "30000"])
-    kit_command = next(command for command in app.registered_commands if command.name == "vlm-server")
+    root_command = get_command(app)
+    _, kit_command, _ = root_command.resolve_command(typer.Context(root_command), ["vlm-server"])
 
     assert code == 0
     assert calls == ["configure", ["--port", "30000"]]
@@ -352,15 +361,21 @@ def test_kit_root_and_models_help() -> None:
     assert "version" in result.output
 
 
-def test_top_level_commands_register_implementation_callbacks_directly() -> None:
-    callbacks = {command.name: command.callback for command in app.registered_commands}
-
-    assert callbacks["parse"] is parse.parse_cmd
-    assert callbacks["webui"] is webui.webui_cmd
-    assert callbacks["api-server"] is api_server.api_server_cmd
-    assert callbacks["vlm-server"] is vlm_server.vlm_server_cmd
-    assert callbacks["router"] is router.router_cmd
-    assert callbacks["version"] is version_cmd
+def test_selected_commands_use_original_implementation_callbacks() -> None:
+    """惰性加载后仍直接使用原始函数签名和回调，不以通用参数透传替代。"""
+    root_command = get_command(app)
+    callbacks = {
+        "parse": parse.parse_cmd,
+        "webui": webui.webui_cmd,
+        "api-server": api_server.api_server_cmd,
+        "vlm-server": vlm_server.vlm_server_cmd,
+        "router": router.router_cmd,
+        "version": version_cmd,
+    }
+    for name, callback in callbacks.items():
+        _, selected, remaining = root_command.resolve_command(typer.Context(root_command), [name])
+        assert remaining == []
+        assert inspect.unwrap(selected.callback) is callback
 
 
 @pytest.mark.parametrize(
@@ -1310,3 +1325,34 @@ def test_models_verify_rejects_invalid_small_backend() -> None:
 
     assert result.exit_code == 1
     assert "Unsupported small backend 'invalid'" in " ".join(result.output.split())
+
+
+@pytest.mark.parametrize(
+    "arguments, expected_calls",
+    [
+        (["--help"], 0),
+        (["hardware", "--help"], 0),
+        (["hardware", "info", "--help"], 0),
+        (["hardware", "detect", "--help"], 0),
+        (["models", "--help"], 0),
+        (["version"], 1),
+        (["hardware", "info"], 1),
+    ],
+)
+def test_kit_logging_only_initializes_for_execution(
+    monkeypatch: pytest.MonkeyPatch, arguments: list[str], expected_calls: int
+) -> None:
+    """控制台上下文的日志初始化只发生在叶子执行阶段，帮助和嵌入调用没有副作用。"""
+    from mineru.kit.commands import hardware
+    from mineru.utils import logger
+
+    calls: list[str] = []
+    monkeypatch.setattr(logger, "configure_global_log_level", lambda: calls.append("logging"))
+    monkeypatch.setattr(hardware, "_info_data", lambda **kwargs: None)
+    result = runner.invoke(app, arguments, obj=kit_main.KitContext(configure_logging=True))
+    assert result.exit_code == 0, result.output
+    assert len(calls) == expected_calls
+    calls.clear()
+    embedded = runner.invoke(app, arguments)
+    assert embedded.exit_code == 0
+    assert calls == []

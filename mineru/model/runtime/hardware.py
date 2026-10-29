@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from importlib import metadata
 import os
 from pathlib import Path
@@ -12,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from .hardware_probe import run_probe
 from .hardware_system import collect_system_hardware
-from .hardware_types import GpuInfo, HardwareInfo, PackageInfo, RuntimeProbe
+from .hardware_types import GpuInfo, HardwareInfo, HardwareInfoSection, PackageInfo, RuntimeProbe
 from .onnx_calibration_cache import inspect_calibration_record
 from .gpu import GPU_KIND_ORDER, GpuIdentity, gpu_identities_match, match_gpu_identities
 
@@ -147,11 +150,33 @@ def _calibration_adapters(probes: list[RuntimeProbe]) -> tuple[GpuAdapter | WebG
     return tuple(WebGPUDevice(**row) for row in rows)
 
 
-def collect_hardware_info() -> HardwareInfo:
-    """汇总静态信息及有界运行时探测，单项失败保留其余诊断内容。"""
+def collect_hardware_info(*, on_section: Callable[[HardwareInfoSection, dict[str, Any]], None] | None = None) -> HardwareInfo:
+    """并行采集隔离探测，并按固定顺序通知已完成分节，仍返回完整原始报告。"""
     from ...version import __version__
 
-    native = collect_system_hardware()
+    distribution = ""
+    if sys.platform == "linux":
+        try:
+            distribution = platform.freedesktop_os_release().get("PRETTY_NAME", "")
+        except OSError:
+            pass
+    system = {
+        "name": platform.system(),
+        "release": platform.release(),
+        "version": platform.version(),
+        "os_version": platform.mac_ver()[0]
+        if sys.platform == "darwin"
+        else platform.win32_ver()[1]
+        if sys.platform == "win32"
+        else platform.release(),
+        "distribution": distribution,
+        "architecture": platform.machine(),
+    }
+    python = {"version": platform.python_version(), "executable": sys.executable}
+    mineru = {"version": __version__, "module_path": str(Path(__file__).resolve().parents[2] / "__init__.py")}
+    if on_section:
+        on_section("environment", {"system": system, "python": python, "mineru": mineru})
+
     packages = installed_packages()
     names = {package.name for package in packages}
     runtime_names = ["selection", "torch", "onnx"]
@@ -160,39 +185,47 @@ def collect_hardware_info() -> HardwareInfo:
     runtime_names.extend(name for name in ("vllm", "lmdeploy", "mlx-vlm") if name in names)
     if sys.platform in {"win32", "linux"}:
         runtime_names.append("dxgi" if sys.platform == "win32" else "vulkan")
-    probes = [run_probe(name) for name in runtime_names]
-    for probe in probes:
-        if probe.name in {"vulkan", "dxgi"}:
-            merge_gpu_inventory(native.gpus, probe)
-        if probe.status in {"error", "timeout"}:
-            native.warnings.append(f"{probe.name}: {probe.error}")
-        if probe.data.get("adapter_error"):
-            native.warnings.append(f"ONNX adapter inventory is incomplete: {probe.data['adapter_error']}")
+    # 线程只调度隔离子进程；推理库与驱动仍不在报告进程内加载。
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="hardware-probe") as executor:
+        futures = {name: executor.submit(run_probe, name) for name in runtime_names}
+        native = collect_system_hardware()
+        if on_section:
+            on_section("cpu_memory", {"cpu": asdict(native.cpu), "memory": asdict(native.memory)})
+            on_section("packages", {"packages": [asdict(package) for package in packages]})
+        for name in ("vulkan", "dxgi"):
+            if name in futures:
+                merge_gpu_inventory(native.gpus, futures[name].result())
+        if on_section:
+            on_section("gpus", {"gpus": [asdict(gpu) for gpu in native.gpus]})
+
+        probes = []
+        for index, name in enumerate(runtime_names):
+            probe = futures[name].result()
+            probes.append(probe)
+            if probe.status in {"error", "timeout"}:
+                native.warnings.append(f"{probe.name}: {probe.error}")
+            if probe.data.get("adapter_error"):
+                native.warnings.append(f"ONNX adapter inventory is incomplete: {probe.data['adapter_error']}")
+            if on_section:
+                on_section("runtimes", {"runtimes": [asdict(probe)], "runtime_header": index == 0})
     config = config_summary()
     selection = next(probe for probe in probes if probe.name == "selection")
     config["resolved"] = selection.data if selection.status == "ok" else None
     calibration = inspect_calibration_record(_calibration_adapters(probes))
-    distribution = ""
-    if sys.platform == "linux":
-        try:
-            distribution = platform.freedesktop_os_release().get("PRETTY_NAME", "")
-        except OSError:
-            pass
+    if on_section:
+        on_section(
+            "configuration",
+            {
+                "effective_config": config,
+                "calibration": asdict(calibration),
+                "runtimes": [asdict(probe) for probe in probes],
+                "warnings": native.warnings,
+            },
+        )
     return HardwareInfo(
-        system={
-            "name": platform.system(),
-            "release": platform.release(),
-            "version": platform.version(),
-            "os_version": platform.mac_ver()[0]
-            if sys.platform == "darwin"
-            else platform.win32_ver()[1]
-            if sys.platform == "win32"
-            else platform.release(),
-            "distribution": distribution,
-            "architecture": platform.machine(),
-        },
-        python={"version": platform.python_version(), "executable": sys.executable},
-        mineru={"version": __version__, "module_path": str(Path(__file__).resolve().parents[2] / "__init__.py")},
+        system=system,
+        python=python,
+        mineru=mineru,
         cpu=native.cpu,
         memory=native.memory,
         gpus=native.gpus,
