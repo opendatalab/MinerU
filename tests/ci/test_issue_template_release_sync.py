@@ -334,12 +334,12 @@ def test_issue_forms_are_equivalent_and_keep_unavailable_environment_fallbacks()
             attrs = field["attributes"]
             required = field.get("validations", {}).get("required", False)
             if field_id != "precheck":
-                assert required == (field_id != "tier")
+                assert required
             assert "value" not in attrs and "\n" not in attrs.get("description", "")
             if field["type"] == "dropdown":
                 options = attrs["options"]
                 assert len(options) == len(set(options)) and all(isinstance(value, str) for value in options)
-                if field_id == "software_version":
+                if field_id in {"software_version", "tier"}:
                     assert attrs["default"] == len(options) - 1
                 else:
                     assert "default" not in attrs
@@ -348,6 +348,11 @@ def test_issue_forms_are_equivalent_and_keep_unavailable_environment_fallbacks()
         assert fields["software_version"]["type"] == "dropdown"
         assert len(fields["software_version"]["attributes"]["options"]) == 6
         assert fields["tier"]["attributes"]["options"][:4] == ["flash", "basic", "standard", "advanced"]
+        # GitHub 对可选下拉自动添加 None，非空约束配合兜底默认值保留免填写体验。
+        tier = fields["tier"]
+        assert tier["attributes"]["options"][tier["attributes"]["default"]] == (
+            "Not applicable / unknown" if template == TEMPLATE else "不适用或不清楚"
+        )
         assert fields["device_mode"]["attributes"]["render"] == "text"
         assert "mineru-kit hardware info" in fields["device_mode"]["attributes"]["placeholder"]
         markdown = "\n".join(field["attributes"]["value"] for field in form["body"] if field["type"] == "markdown")
