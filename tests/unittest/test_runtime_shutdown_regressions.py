@@ -272,7 +272,8 @@ def test_failed_real_factory_closes_engine_outside_global_cache_lock() -> None:
                 worker.start()
                 waited.append(finished.wait(2))
 
-        llama_device.resolve_llama_device = lambda **kwargs: SimpleNamespace(device="cpu")
+        # 使用完整设备计划，让真实线程策略通过后继续验证失败构造的清理与锁边界。
+        llama_device.resolve_llama_device = lambda **kwargs: llama_device.LlamaSelection(device="cpu")
         llama_device.llama_engine_scope = engine_scope
         runtime.MinerUClient = client_factory
         sys.modules["mineru_llama_cpp"] = SimpleNamespace(Engine=Engine)
