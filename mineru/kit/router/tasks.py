@@ -552,6 +552,8 @@ def install_task_error_handlers(app: FastAPI) -> None:
 
 
 _TASK_LEASE_REFRESH_TIMEOUT_SECONDS = 10.0
+# 单个慢任务只占用部分 worker 预算，为同组其他任务留出续租机会。
+_TASK_LEASE_REQUEST_TIMEOUT_SECONDS = 2.0
 
 
 async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPool, *, release: bool = False) -> None:
@@ -563,9 +565,9 @@ async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPo
             groups.setdefault(route.worker_id, []).append(route)
 
     async def maintain_worker(worker_id: str, routes: list[ExecutionRoute]) -> None:
-        """单个 worker 超时不拖延其他 worker；优先处理最久未续租的任务，避免队尾饥饿。"""
+        """按最近尝试时间公平轮转；单请求和整轮分别限时，慢任务不会持续占据队首。"""
         worker = pool.get(worker_id)
-        routes.sort(key=lambda route: route.lease.refreshed_at)
+        routes.sort(key=lambda route: route.lease.attempted_at)
         try:
             async with asyncio.timeout(_TASK_LEASE_REFRESH_TIMEOUT_SECONDS):
                 for route in routes:
@@ -573,11 +575,15 @@ async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPo
                     ended = release or (until is not None and until <= time.time())
                     headers = dict(route.state.upstream_headers)
                     headers["x-mineru-task-lease-seconds"] = "0" if ended else "120"
+                    route.lease.attempted_at = time.monotonic()
                     try:
-                        response = await _worker_request(pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers)
+                        async with asyncio.timeout(_TASK_LEASE_REQUEST_TIMEOUT_SECONDS):
+                            response = await _worker_request(
+                                pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers
+                            )
                         if response.status_code < 400:
                             route.lease.refreshed_at = time.monotonic()
-                    except ApiServerError:
+                    except (ApiServerError, TimeoutError):
                         continue
         except TimeoutError:
             pass

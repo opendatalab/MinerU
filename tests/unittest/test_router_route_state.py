@@ -141,3 +141,87 @@ def test_lease_timeout_releases_expired_state_without_affecting_other_workers(
             await pool.client.aclose()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["timeout", "http_error", "transport_error"])
+def test_failed_lease_refresh_does_not_block_other_tasks_on_same_worker(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+    """同一 worker 的单个请求超时或失败时，健康任务每轮仍能续租，失败不记为成功。"""
+    monkeypatch.setattr(tasks, "_TASK_LEASE_REFRESH_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(tasks, "_TASK_LEASE_REQUEST_TIMEOUT_SECONDS", 0.02)
+
+    async def scenario() -> None:
+        """通过真实请求路径连续维护四轮，覆盖超时、HTTP 错误和传输异常。"""
+        seen: list[str] = []
+        blocked = asyncio.Event()
+
+        async def request_upstream(request: httpx.Request) -> httpx.Response:
+            """首个任务持续失败，后续任务立即响应并保留请求记录。"""
+            seen.append(request.url.path)
+            if request.url.path.endswith("/slow-task"):
+                if failure == "timeout":
+                    await blocked.wait()
+                elif failure == "transport_error":
+                    raise httpx.ConnectError("worker unavailable", request=request)
+                return httpx.Response(503, json={})
+            return httpx.Response(200, json={})
+
+        pool = WorkerPool(RouterSettings(local_gpus="none"), transport=httpx.MockTransport(request_upstream))
+        worker = WorkerState("worker", "http://worker", "remote")
+        pool._workers = {worker.worker_id: worker}
+        registry = ResourceRegistry(retention_seconds=60)
+        slow = router_execution(registry, worker_id=worker.worker_id, upstream_id="slow-task")
+        healthy = router_execution(registry, worker_id=worker.worker_id, upstream_id="healthy-task")
+        for route in (slow, healthy):
+            route.lease.held = True
+            route.lease.retain_until = time.time() + 60
+        try:
+            for round_number in range(1, 5):
+                previous_refresh = healthy.lease.refreshed_at
+                await tasks.maintain_task_result_leases(registry, pool)
+                assert seen.count("/v1/tasks/healthy-task") == round_number
+                assert healthy.lease.refreshed_at > previous_refresh
+                assert slow.lease.refreshed_at == 0
+        finally:
+            await pool.client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_lease_refresh_rotates_after_worker_budget_expires(monkeypatch: pytest.MonkeyPatch) -> None:
+    """整轮预算耗尽时保留尝试顺序，多条阻塞路由不能在后续轮次持续抢占健康任务。"""
+    monkeypatch.setattr(tasks, "_TASK_LEASE_REFRESH_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(tasks, "_TASK_LEASE_REQUEST_TIMEOUT_SECONDS", 0.5)
+
+    async def scenario() -> None:
+        """每轮只容纳一条阻塞请求，验证尚未尝试的队尾任务最终得到续租。"""
+        seen: list[str] = []
+        blocked = asyncio.Event()
+
+        async def request_upstream(request: httpx.Request) -> httpx.Response:
+            """让两条慢路由一直等待，健康路由则立即成功。"""
+            seen.append(request.url.path)
+            if not request.url.path.endswith("/healthy-task"):
+                await blocked.wait()
+            return httpx.Response(200, json={})
+
+        pool = WorkerPool(RouterSettings(local_gpus="none"), transport=httpx.MockTransport(request_upstream))
+        worker = WorkerState("worker", "http://worker", "remote")
+        pool._workers = {worker.worker_id: worker}
+        registry = ResourceRegistry(retention_seconds=60)
+        routes = [
+            router_execution(registry, worker_id=worker.worker_id, upstream_id=name)
+            for name in ("slow-first", "slow-second", "healthy-task")
+        ]
+        for route in routes:
+            route.lease.held = True
+            route.lease.retain_until = time.time() + 60
+        try:
+            for _ in range(3):
+                await tasks.maintain_task_result_leases(registry, pool)
+            assert seen[:3] == ["/v1/tasks/slow-first", "/v1/tasks/slow-second", "/v1/tasks/healthy-task"]
+            assert routes[-1].lease.refreshed_at > 0
+            assert all(route.lease.refreshed_at == 0 for route in routes[:-1])
+        finally:
+            await pool.client.aclose()
+
+    asyncio.run(scenario())

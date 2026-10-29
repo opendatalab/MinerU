@@ -18,6 +18,8 @@ class ResultLease:
     held: bool = False
     retain_until: float | None = None
     refreshed_at: float = 0.0
+    # 调度按尝试时间轮转，失败或被整轮超时中断也不能长期占据队首。
+    attempted_at: float = 0.0
 
 
 @dataclass
