@@ -117,15 +117,24 @@ class _CopyCountingImage(np.ndarray):
 
 
 @pytest.mark.parametrize("recognize", [False, True])
-def test_ocr_image_is_copied_only_when_recognition_needs_it(recognize: bool) -> None:
-    """检测回填不复制全图；多个识别框共享一次独立副本，源图保持不变。"""
+def test_ocr_result_crops_do_not_copy_full_image(recognize: bool) -> None:
+    """检测和识别均不复制全图；识别裁片像素正确且不共享只读源图存储。"""
     image = np.arange(40 * 40 * 3, dtype=np.uint8).reshape(40, 40, 3).view(_CopyCountingImage)
     before = image.tobytes()
+    image.flags.writeable = False
     _CopyCountingImage.copies = 0
     boxes = [[[1, 1], [20, 1], [20, 10], [1, 10]], [[1, 12], [20, 12], [20, 22], [1, 22]]]
     output = results.get_ocr_result_list(boxes, [0, 0, 0, 0, 40, 40, 40, 40], recognize, image)
-    assert _CopyCountingImage.copies == int(recognize)
+    assert _CopyCountingImage.copies == 0
+    assert len(output) == len(boxes)
     assert all(("np_img" in entry) is recognize for entry in output)
+    if recognize:
+        for entry, box in zip(output, boxes, strict=True):
+            x0, y0 = box[0]
+            x1, y1 = box[2]
+            crop = entry["np_img"]
+            assert not np.shares_memory(crop, image)
+            np.testing.assert_array_equal(crop, image[y0:y1, x0:x1])
     assert image.tobytes() == before
 
 
