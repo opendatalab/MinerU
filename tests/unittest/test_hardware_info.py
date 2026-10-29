@@ -375,7 +375,8 @@ def test_info_memory_and_runtime_paths(amount: int | None, expected: str) -> Non
             "error": None,
             "data": {
                 "module_path": "/runtime/torch.py",
-                "backends": {"cuda": {"devices": [{"total_memory_bytes": amount, "module_path": "/nested/path"}]}},
+                "selected_device": {"device": "cuda", "reason": "torch_accelerator"},
+                "backends": {"cuda": {"devices": [{"index": 0, "total_memory_bytes": amount, "module_path": "/nested/path"}]}},
             },
         }
     ]
@@ -383,7 +384,10 @@ def test_info_memory_and_runtime_paths(amount: int | None, expected: str) -> Non
     rendered = command.render_info(data)
     assert f"总量 {expected}" in rendered
     assert f"共享内存 {expected}" in rendered
-    assert f"total_memory: {expected}" in rendered
+    if amount is None:
+        assert "当前设备：cuda:0\n" in rendered
+    else:
+        assert f"当前设备：cuda:0（{expected}）" in rendered
     assert "独立显存 未知，" in rendered and "未知 bytes" not in rendered
     assert "module_path" not in rendered and "/runtime" not in rendered and "/nested" not in rendered
     assert "/env" not in rendered and "/source" not in rendered
@@ -479,7 +483,7 @@ def test_info_parallel_probes_stream_in_order(monkeypatch: pytest.MonkeyPatch) -
     gpu_section = next(data for section, data in sections if section == "gpus")
     assert gpu_section["gpus"][0]["kind"] == "discrete"
     assert gpu_section["gpus"][0]["dedicated_memory_bytes"] == 8 * 1024**3
-    streamed = "\n".join(command._render_info_section(section, data) for section, data in sections)
+    streamed = "\n".join(filter(None, (command._render_info_section(section, data) for section, data in sections)))
     assert streamed == command.render_info(asdict(report))
 
 

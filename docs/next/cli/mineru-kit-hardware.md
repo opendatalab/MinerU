@@ -49,8 +49,12 @@ JSON 报告保持 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`d
 - 系统可探测到的全部独显、集显和虚拟 GPU，以及当前进程运行时可用设备。保留名称、身份、驱动及可获得的显存/共享内存信息。
 - GPU 的 `kind` 与选型共用同一套分类；`kind_source` 标识分类来源，`source` 保留硬件资料的采集来源，`unified_memory` 单独记录已知的统一内存属性。
 - 已安装的软件包版本：MinerU、DocVortex、mineru-llama-cpp、mineru-vl-utils、torch、transformers、ONNX Runtime及EP、vLLM、LMDeploy、mlx-vlm、pypdfium2。JSON 额外保留安装位置，未安装的包不列入软件版本列表。
-- Torch 导入、编译使用的 CUDA/ROCm 版本和后端可用性；ORT provider 与相关引擎的探测结果。
+- 运行时摘要：实际小模型后端与 VLM 引擎、各运行时状态和版本；Torch 只展示选中设备及其型号/容量，ONNX 展示可用 provider 和选中候选，llama.cpp 展示可见设备名称。
 - 后端、设备、线程及可见设备限制的有效配置与来源；OCR 校准记录的存在状态、环境匹配、稳定性、耗时和阈值。
+
+运行时文本不直接展开内部 `selection`、`backends` 或适配器字典。Torch 的 CUDA/ROCm 构建版本仅在选中相应设备且版本已知时展示；CPU、MPS 及 NPU/GCU/MUSA/MLU/SDAA 等扩展设备直接显示实际设备名，不列出其他不可用后端，也不套用无关构建字段。这些构建版本来自 Torch 自身，不代表系统驱动或另行安装的工具链版本。
+
+Windows DXGI 和 Linux Vulkan 的原生库存用于补充“系统显卡”，不在运行时文本中重复展开；macOS 使用系统工具采集，不执行 DXGI/Vulkan 这两项库存探测。采集错误仍进入提示，完整后端矩阵、所有适配器及 LUID/PCI/厂商标识等诊断字段继续保留在 `--json` 中。
 
 “设备选择与校准”展示当前小模型后端、设备及选择依据。Torch 直接使用运行时的设备检查结果，并说明不适用 ONNX OCR 校准；ONNX 复用实际选型的候选规则，解释显式 CPU/GPU、独显免校准、不可用或待校准的情况。只读检查不会初始化 GPU 推理会话；需要测速时，设备显示“待校准”（JSON `selected_device.device` 为 `null`），不预先声称 CPU 或 GPU 胜出。
 

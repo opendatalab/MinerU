@@ -55,20 +55,97 @@ def _memory(value: int | None) -> str:
     return "未知" if value is None else f"{value / 1024**3:.3f} GiB"
 
 
-def _runtime_value(value: Any) -> str:
-    """递归隐藏运行时模块路径并格式化容量，不修改原始探测数据。"""
-    if isinstance(value, dict):
-        fields = []
-        for key, item in value.items():
-            if key == "module_path":
-                continue
-            label = key.removesuffix("_bytes")
-            rendered = _memory(item) if key.endswith("_bytes") else _runtime_value(item)
-            fields.append(f"{label}: {rendered}")
-        return "{" + ", ".join(fields) + "}"
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_runtime_value(item) for item in value) + "]"
-    return _value(value)
+def _torch_device_summary(data: dict[str, Any]) -> str:
+    """仅展示选中的 Torch 设备及其型号、容量，严格匹配设备索引而不猜测其他卡。"""
+    device = (data.get("selected_device") or {}).get("device")
+    if not device:
+        return "未知"
+    kind, _, index_text = device.partition(":")
+    try:
+        index = int(index_text) if index_text else 0
+    except ValueError:
+        return device
+    rows = data.get("backends", {}).get(kind, {}).get("devices", [])
+    selected = next((row for row in rows if row.get("index") == index), None)
+    if selected is None:
+        return device
+    details = [selected["name"]] if selected.get("name") else []
+    if selected.get("total_memory_bytes") is not None:
+        details.append(_memory(selected["total_memory_bytes"]))
+    label = f"{kind}:{index}"
+    return f"{label}（{'，'.join(details)}）" if details else label
+
+
+def _render_runtime_probe(probe: dict[str, Any]) -> list[str]:
+    """将各运行时转成重点摘要，完整适配器身份和原生库存只保留在 JSON 中。"""
+    name, status, data = probe["name"], probe["status"], probe["data"]
+    if name in {"dxgi", "vulkan"}:
+        # 原生库存已合并进系统显卡；采集失败由报告末尾的 warnings 保留。
+        return []
+    if name == "selection" and status == "ok":
+        return [f"  小模型后端：{_value(data.get('small_backend'))}；VLM 引擎：{_value(data.get('vlm_engine'))}"]
+    labels = {
+        "selection": "后端选择",
+        "torch": "Torch",
+        "onnx": "ONNX Runtime",
+        "llama-cpp": "llama.cpp",
+        "vllm": "vLLM",
+        "lmdeploy": "LMDeploy",
+        "mlx-vlm": "MLX-VLM",
+    }
+    states = {"ok": "正常", "not_installed": "未安装", "error": "失败", "timeout": "超时"}
+    version = f"{data['version']}，" if data.get("version") else ""
+    lines = [f"  {labels.get(name, name)}：{version}{states.get(status, status)}"]
+    if probe["error"]:
+        lines.append(f"    {probe['error']}")
+    if status != "ok":
+        return lines
+    if name == "torch":
+        lines.append(f"    当前设备：{_torch_device_summary(data)}")
+        selected = data.get("selected_device") or {}
+        if (selected.get("device") or "").split(":", 1)[0] == "cuda":
+            if data.get("rocm_build"):
+                lines.append(f"    ROCm 构建版本：{data['rocm_build']}")
+            elif data.get("cuda_build"):
+                lines.append(f"    CUDA 构建版本：{data['cuda_build']}")
+        if selected.get("warning"):
+            lines.append(f"    提示：{selected['warning']}")
+        lines.extend(
+            f"    提示：{backend} 探测失败：{details['error']}"
+            for backend, details in data.get("backends", {}).items()
+            if details.get("error")
+        )
+    elif name == "onnx":
+        providers = [
+            {"DmlExecutionProvider": "DirectML", "WebGpuExecutionProvider": "WebGPU"}.get(
+                provider, provider.removesuffix("ExecutionProvider")
+            )
+            for provider in data.get("providers", [])
+        ]
+        if providers:
+            lines.append(f"    可用 Provider：{', '.join(providers)}")
+        selected = data.get("selected_device") or {}
+        device = selected.get("device")
+        adapter = selected.get("adapter") or data.get("selected_adapter") or {}
+        if selected.get("reason") in {"calibration_required", "calibration_pending"}:
+            lines.append("    设备选择：待校准")
+            if adapter.get("name"):
+                lines.append(f"    候选设备：{adapter['name']}")
+        elif device == "gpu":
+            label = f"{selected.get('backend') or data.get('backend')}:gpu"
+            detail = f"（{adapter['name']}）" if adapter.get("name") else ""
+            lines.append(f"    设备选择：{label}{detail}")
+        else:
+            lines.append(f"    设备选择：{_value(device)}")
+        if data.get("adapter_error"):
+            lines.append(f"    提示：{data['adapter_error']}")
+    elif name == "llama-cpp" and "devices" in data:
+        lines.append("    可见设备：" if data["devices"] else "    未发现可见 GPU")
+        for device in data["devices"]:
+            label = device.get("name") or device.get("backend") or "GPU"
+            detail = f"：{device['description']}" if device.get("description") else ""
+            lines.append(f"      {label}{detail}")
+    return lines
 
 
 def _render_device_selection(data: dict[str, Any]) -> list[str]:
@@ -179,15 +256,9 @@ def _render_info_section(section: HardwareInfoSection, data: dict[str, Any]) -> 
             )
         return "\n".join(lines)
     if section == "runtimes":
-        lines = ["当前进程运行时探测："] if data.get("runtime_header", True) else []
+        lines = ["运行时："] if data.get("runtime_header", True) else []
         for probe in data["runtimes"]:
-            lines.append(f"  {probe['name']}: {probe['status']}")
-            if probe["error"]:
-                lines.append(f"    {probe['error']}")
-            for key, value in probe["data"].items():
-                if key != "module_path":
-                    rendered = _memory(value) if key.endswith("_bytes") else _runtime_value(value)
-                    lines.append(f"    {key.removesuffix('_bytes')}: {rendered}")
+            lines.extend(_render_runtime_probe(probe))
         return "\n".join(lines)
     lines = ["有效配置："]
     lines.extend(f"  {key}: {_value(value)}" for key, value in data["effective_config"].items())
@@ -204,7 +275,9 @@ def render_info(data: dict[str, Any]) -> str:
 
 def _emit_info_section(section: HardwareInfoSection, data: dict[str, Any]) -> None:
     """每节完成后立即刷新 stdout，管道重定向时也能读取到早期结果。"""
-    print(_render_info_section(section, data), file=sys.stdout, flush=True)
+    rendered = _render_info_section(section, data)
+    if rendered:
+        print(rendered, file=sys.stdout, flush=True)
 
 
 def _info_data(*, stream: bool = False) -> dict[str, Any] | None:
