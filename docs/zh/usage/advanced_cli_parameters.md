@@ -13,11 +13,11 @@
 
 ### CUDA_VISIBLE_DEVICES 基本用法
 > [!TIP]
-> - 任何情况下，您都可以通过在命令行的开头添加`CUDA_VISIBLE_DEVICES` 环境变量来指定可见的 GPU 设备：
+> - 使用 CUDA 的 Torch/vLLM/LMDeploy 时，`CUDA_VISIBLE_DEVICES` 控制可见的 CUDA 设备。它不能选择 ONNX DirectML/WebGPU、Metal 或 llama.cpp Vulkan 设备。下例要求已安装相应加速运行时：
 >   ```bash
->   CUDA_VISIBLE_DEVICES=1 mineru-kit parse <input_path> -o <output_path>
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=1 mineru-kit parse <input_path> -o <output_path>
 >   ```
-> - 这种指定方式适用于下文明确说明的模型服务与解析命令，不适用于 `mineru-router`。
+> - Router 通过 `--local-gpus` 设置 worker 的设备限制；auto 也会读取检测到的设备族对应的可见设备变量。分配设备时可显式指定 worker ID。
 
 ### 常见设备配置示例
 > [!TIP]
@@ -27,7 +27,7 @@
 >   CUDA_VISIBLE_DEVICES=0,1  # Devices 0 and 1 will be visible
 >   CUDA_VISIBLE_DEVICES="0,1"  # Same as above, quotation marks are optional
 >   CUDA_VISIBLE_DEVICES=0,2,3  # Devices 0, 2, 3 will be visible; device 1 is masked
->   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
+>   CUDA_VISIBLE_DEVICES=""  # No CUDA GPU will be visible
 >   ```
 
 ## 实际应用场景
@@ -46,9 +46,9 @@
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令： 
 >   ```bash
 >   # 在终端1中
->   CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
 >   # 在终端2中
->   CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
 >   ```
 >   
 > - 如果您有多张显卡，需要通过`router`在其中4张卡上启动`fastapi`服务并统一管理，可以使用以下命令： 

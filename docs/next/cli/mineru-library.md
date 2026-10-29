@@ -331,7 +331,7 @@ mineru telemetry disable
 mineru telemetry flush
 ```
 
-所有 telemetry 子命令都支持 `--json`。详细数据边界见 [Telemetry 设计](../telemetry.md)。
+所有 telemetry 子命令都支持 `--json`。详细数据边界见 [Telemetry 最小规范](../telemetry-minimum.md)。
 
 ## 14. parsing-rules
 

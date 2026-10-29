@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-TelemetryConsentState = Literal["unset", "enabled", "disabled"]
+TelemetryState = Literal["enabled", "disabled"]
+TelemetryStateSource = Literal["default", "user", "environment", "error"]
 TelemetrySource = Literal["cli", "sdk", "http_api", "watch", "background", "unknown"]
 TelemetryCaller = Literal["agent", "user", "sdk", "http_client", "system", "unknown"]
 
-CONSENT_UNSET: TelemetryConsentState = "unset"
-CONSENT_ENABLED: TelemetryConsentState = "enabled"
-CONSENT_DISABLED: TelemetryConsentState = "disabled"
+TELEMETRY_ENABLED: TelemetryState = "enabled"
+TELEMETRY_DISABLED: TelemetryState = "disabled"
 
 TELEMETRY_ENDPOINT = "https://mineru.net/metrics/v2/metrics"
 TELEMETRY_APP_KEY = "213a83db-44c8-4218-90c0-ded685cca86e"

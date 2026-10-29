@@ -50,7 +50,7 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 | `--tier standard` | `flash`、`basic`、`standard` | `standard` |
 | `--tier advanced` | 全部四档 | `standard` |
 
-Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `null` 时按 `standard -> basic -> flash -> advanced` 选择，仅开放 advanced 时也可使用默认值。所有服务均支持 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等现有原生格式，固定使用 flash，不检查公开列表中是否有 flash。非法枚举或空字符串仍报错。完整规则见 [Tasks](../api/tasks.md#tier默认选择与文件作用范围)。
+Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `null` 时按 `standard -> basic -> flash -> advanced` 选择，仅开放 advanced 时也可使用默认值。所有服务均支持 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等现有原生格式，固定使用 flash，不检查公开列表中是否有 flash。非法枚举或空字符串仍报错。完整规则见 [Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/#tier-selection)。
 
 ### 自动推荐
 
@@ -126,7 +126,7 @@ Standard/Advanced 上限复用 Standard 模型配置，Basic 上限使用 Basic 
 
 OCR 模式通过每次 `POST /v1/tasks` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
 
-模型默认在首次解析时懒加载。`--preload-models` 会在 Basic、Standard 或 Advanced 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
+模型默认在首次解析时懒加载。`--preload-models` 会在 Basic、Standard 或 Advanced 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；该参数对 Flash 无操作，但 Flash OCR 首次使用时仍需要小模型资源。Doclib managed parse-server 会自动启用模型预加载。
 
 ### 服务日志级别
 
@@ -150,7 +150,7 @@ Doclib（包括命令行解析时使用的本地服务及自动重启）、Gradi
 HTTP 访问日志刷屏。连接外部服务时，其日志级别由服务部署者控制。
 `mineru-kit parse` 的本地模式直接调用 parser，不启动 api-server。
 
-### 使用远程 MinerU VLM 服务
+### 使用远程 MinerU VLM 服务 {#remote-vlm}
 
 ```bash
 mineru-kit api-server --tier standard --vlm-server-url http://127.0.0.1:30000/v1
@@ -168,7 +168,7 @@ mineru-api --vlm-server-url https://vlm.example.com/proxy/v1 --vlm-model mineru-
 | `--vlm-max-concurrency` | 100 | VLM 推理请求并发，必须为正整数 |
 
 表中为未配置时的默认值。命令行只覆盖显式传入的字段，其余读取全局 `model.vlm`；
-环境变量覆盖 YAML。详见 [远程 VLM 配置](../config.md#远程-vlm)。例如：
+环境变量覆盖 YAML。详见 [远程 VLM 配置](../config.md#remote-vlm)。例如：
 
 ```bash
 export MINERU_MODEL_VLM_SERVER_URL=http://127.0.0.1:30000/v1

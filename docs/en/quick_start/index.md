@@ -69,6 +69,10 @@ mineru search "keyword" --json
 
 `mineru` uses the document library and cache. `mineru parse` defaults to the first 10 PDF pages and may return a continuation request when the output reaches its length budget. Follow the returned locator and `next_request`. This differs from `mineru-kit parse`, which directly writes complete conversion outputs; see [Quick Usage](../usage/quick_usage.md).
 
+### Document-library telemetry
+
+Doclib includes usage and diagnostic telemetry, initially enabled. Inspect it with `mineru telemetry status` or `preview`, and use `mineru telemetry disable` to stop collection and sending. Set `MINERU_TELEMETRY_DISABLED=1` before server startup when needed. Document contents, file names, and paths are excluded; see [telemetry details](../../next/telemetry-minimum.md) for scope and controls.
+
 ## WebUI and API
 
 ```bash

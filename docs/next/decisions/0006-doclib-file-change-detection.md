@@ -1,5 +1,7 @@
 # ADR-0006: Doclib 文件变化检测与重新入库语义
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Proposed
 日期: 2026-06-11
 相关文档: ../architecture.md, ../workflows.md, ../sdk/doclib-client.md, 0002-force-vs-invalidate.md

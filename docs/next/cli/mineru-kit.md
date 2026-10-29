@@ -26,7 +26,7 @@
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
-| `mineru-kit file-parse-server` | 单文件直传、同步附件和超时恢复，连接既有 Tasks 服务 | [file_parse](../api/file-parse.md) |
+| `mineru-kit file-parse-server` | 单文件直传、同步附件和超时恢复，连接既有 Tasks 服务 | [file_parse](https://opendatalab.github.io/MinerU/zh/usage/file_parse/) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
 | `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
 

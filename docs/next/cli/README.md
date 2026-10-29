@@ -68,4 +68,4 @@ MinerU 仓库提供两款命令行工具：
 
 ## 未决问题
 
-CLI 选项命名和 Agent message contract，集中维护在 [开放问题清单](../open-questions.md)。
+CLI 选项命名和 Agent message contract，集中维护在 [开放问题清单](../backlog.md)。

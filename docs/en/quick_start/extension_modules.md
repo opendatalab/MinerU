@@ -31,3 +31,14 @@ The WebUI uses Gradio 6 and bundled PDF.js preview assets; it does not require `
 ## Upgrade an existing environment
 
 Stop that environment's MinerU services before upgrading with the original installer. Preserve the required extras, then check the version, dependencies, and model configuration. Downloads and inference must use the same `model.small_backend` and `model.vlm.engine`; see [Model Source](../usage/model_source.md).
+
+## Explicit MLX on Apple Silicon
+
+MLX is optional and must be selected explicitly. The standalone server requires Apple Silicon, macOS 14 or newer, and `mlx-vlm>=0.7.0,<0.8.0`; there is no `mineru[mlx]` extra.
+
+```bash
+uv pip install "mlx-vlm>=0.7.0,<0.8.0"
+mineru-kit vlm-server --engine mlx --port 30000
+```
+
+For in-process parsing, set `model.vlm.engine: mlx`. Auto mode continues to choose llama.cpp on macOS.

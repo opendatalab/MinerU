@@ -197,7 +197,11 @@ class RuntimeHandle:
         error: BaseException | None = None
         with runtime_close_scope():
             try:
-                await run_sync(self._wait_for_calls)
+                # 关闭已拒绝新调用；空闲时无需线程池，避免 atexit 在线程池退出后继续提交任务。
+                with self._condition:
+                    has_active_calls = self._active > 0
+                if has_active_calls:
+                    await run_sync(self._wait_for_calls)
             except BaseException as exc:
                 error = exc
             try:
@@ -211,7 +215,8 @@ class RuntimeHandle:
     async def aclose(self) -> None:
         """取消时仍排空客户端关闭，再释放引擎并传播最早的取消或清理异常。"""
         if not self._begin_close():
-            await run_sync(self._closed.wait)
+            if not self._closed.is_set():
+                await run_sync(self._closed.wait)
             return
         work = asyncio.create_task(self._close_client())
         error: BaseException | None = None

@@ -1,75 +1,53 @@
 # 模块地图
 
-状态: Draft
-读者: 核心开发、编程 Agent、首次接触 4.x 代码的贡献者
-范围: 4.x 的模块职责、入口与两条主调用链
-基准: 本文件以 commit `317428b8`（2026-09-01）为基准核实。
+核对版本：MinerU 4.1.2。模块职责变化时同步更新本页；文件长度、测试总数与旧提交行号不作为定位依据。
 
-**维护规则**：结构性改动（模块新增/删除/职责迁移、入口或调用链变化）合并时必须同步更新本文件；纯函数级改动不需要。
+## 入口和职责
 
-## 1. 入口声明
-
-`pyproject.toml:137-140` 声明 4 个 console script：
-
-| 入口 | 指向 |
+| 模块 | 当前职责与入口 |
 |---|---|
-| `mineru` | `mineru.cli.main:main` |
-| `mineru-kit` | `mineru.kit.main:main` |
-| `mineru-router` | `mineru.kit.router.cli:main` |
-| `mineru-webui` | `mineru.kit.commands.webui:main`（`mineru-kit webui` 独立入口） |
+| `mineru/cli/` | 文档库 CLI；`main.py` 显式组织 parse/read/search/scan/watch/server 等入口 |
+| `mineru/kit/commands/` | parse、api-server、file-parse-server、vlm-server、models、hardware、webui 等工具命令 |
+| `mineru/parser/` | 本地与远程解析门面；`base.py` 的 ParseResult、`mineru_parser.py`、`api_client.py`、`api_server.py` |
+| `mineru/tasks/` | `contracts.py` 共享协议、`service.py` 任务编排、`execution.py` 执行、`http.py` 路由 |
+| `mineru/parser/task_backend.py`、`task_outputs.py` | 本地解析与 Tasks 的适配、多格式结果打包 |
+| `mineru/backend/` | `analyze.py` 统一分析门面；PDF OCR/VLM/Hybrid；原生格式通过 DocVortex 公开接口；后处理追加可选 LLM 增强 |
+| `mineru/model/` | layout/OCR/公式/表格/VLM 推理；`runtime/` 管理设备、ONNX 选型和模型生命周期；registry/download 管理模型资产 |
+| `mineru/integrations/docvortex.py`、`mineru/types.py` | 宿主产品元数据校验和共享文档类型重导出；原生解析、PDF 访问及共享 schema 的实现属于 DocVortex |
+| `mineru/render/` | 九种输出门面；Content List V1/V2 属于 MinerU，其他七种渲染与通用导出能力复用 DocVortex |
+| `mineru/doclib/` | app/server/interface/client、SQLite/FTS、transport discovery 和有状态文档库 |
+| `mineru/doclib/services/` | ingest_svc 刷新入库；parse_queue_svc 排队与失效；parse_execution_svc 执行与索引；content_read_svc 缓存读取与导出 |
+| `mineru/doclib/core/` | DB、FTS、parse_artifacts；middle_json 是历史缓存的唯一读取入口 |
+| `mineru/doclib/background/` | ingest、parse、scan/watch、设备监测、服务健康检查、compaction 与 telemetry flush |
+| `mineru/kit/router/` | 多 worker 调度、认证、源缓存、结果路由及租约 |
+| `mineru/kit/file_parse/` | Tasks 同步包装、SQLite 恢复记录和附件传输 |
+| `mineru/kit/gradio/` | UI 构建、转换编排、document_io、素材与预览；由配置的 API 提供解析能力 |
+| `mineru/config.py`、`errors.py` | 惰性配置加载、来源信息与内部 CLI/Doclib 错误分类 |
 
-## 2. 模块职责表
+## 本地文档库调用链
 
-| 模块 | 职责 | 关键锚点 |
-|---|---|---|
-| `mineru/cli/` | 面向 agent 的文档中心 CLI，16 个顶层命令（parse/read/scan/watch/search/find/usage/list/show/telemetry/server/config/invalidate/forget/cleanup/version，注册顺序见 `TOP_LEVEL_COMMAND_ORDER`） | `cli/main.py:22-40`、`cli/commands/*.py` |
-| `mineru/doclib/` | 本地文档库常驻服务：入库、SHA256 去重、解析调度、缓存、搜索、配置。FastAPI + SQLite(WAL) + FTS5，路由→`services/`→`core/` 三层 | `doclib/server.py`（2439 行）；`doclib/services/{parse,search,scan,config,cleanup}_svc.py`；`doclib/core/{db,fts,file_io}.py` |
-| `mineru/doclib/background/` | 后台 asyncio 任务：ingest（入库）、parse_worker（解析执行）、scan_worker / watch（目录监听）、parse_server_health（parse-server 托管与健康探测）、device_monitor、compaction（批次合并）、telemetry_flush | 各文件顶部 docstring；`background/parse_worker.py:15` |
-| `mineru/parser/` | parse-server 与解析门面：`api_server.py`（2495 行，独立进程）、`api_client.py`（HTTP 客户端）、`tier.py`（tier/backend 解析）、`mineru_parser.py`（`MinerUParser` 统一解析入口）、`base.py`（Middle JSON schema） | `parser/mineru_parser.py`、`parser/tier.py` |
-| `mineru/backend/` | 解析引擎：`analyze.py`（`doc_analyze` 统一门面）→ `analysis/`（按格式分派：`pdf/`、`csv.py`、`epub.py`、`html.py`、`ofd.py`、`office.py`）→ `postprocess/`（Middle JSON 组装、段落/标题/列表/表格合并、`llm_aided.py`、仅用于 Doclib 的 `legacy_schema_adapter.py`） | `backend/analyze.py`、`backend/analysis/pdf/pipeline.py` |
-| `mineru/model/` | 模型层：`flash/`（纯 CPU 本地结构化解析器族：pdf / office / epub / html / ofd / csv）；`runtime/`（`device.py` 设备与 light/full 栈、`hybrid.py` 原子模型分派、`onnx.py`）；`layout/ mfr/ ocr/ table/ vlm/`（ML 模型实现）；`_internal/pytorchocr` | `model/runtime/device.py:48`、`model/runtime/hybrid.py` |
-| `mineru/render/` | 输出渲染：markdown / content_list(v2) / structured_content / docx / epub / html / pdf | `render/api.py`（唯一渲染入口）、`render/contracts.py` |
-| `mineru/kit/` | 服务端与 Web 工具 CLI：`parse` / `webui` / `api-server` / `vlm-server` / `router` / `models`，面向无状态批处理、自部署和多卡部署 | `kit/main.py`、`kit/commands/*.py`、`kit/gradio/` |
-| 顶层类型/配置 | `types.py`（1317 行，Tier / locator / 各 Response 模型）、`errors.py`（错误协议）、`config.py`（MINERU_HOME、UDS/TCP、model stack）、`filetypes.py`（扩展名→tier 语义） | `config.py`（`Config`）、`errors.py:20` |
-| `docs/next/` | 4.x 全套设计文档：architecture / tiers / errors / middle-json + 33 篇 ADR（`decisions/0001-0033`）+ 实施计划 `docs/plans/` | `docs/next/README.md` |
-| `tests/unittest/` | 约 2372 个测试函数 | — |
-
-## 3. 主调用链
-
-### 3.1 解析链（`mineru parse <file>`）
-
-```
-cli/commands/parse.py parse_cmd（--remote 选项 :100）
-  → DoclibClient（doclib/client.py）经 UDS（$MINERU_HOME/doclib.sock；UDS 不可用回退
-    TCP 127.0.0.1:15980，见 config.py 与 doclib/endpoint.py）
-  → doclib/server.py → ParseQueueService.request_parse（services/parse_queue_svc.py）
-    校验 tier/privacy/page_range/扩展名，通过 IngestService 刷新源文件并写入 parses 队列
-  → ParseWorkerPool（background/parse_worker.py）通过队列服务抢占批次
-  → ParseExecutionService.process_doc（services/parse_execution_svc.py）按 tier 分派：
-    · flash → 进程内统一 Parser 的原生/Flash 路由（_parse_via_local）
-    · basic/standard/advanced → _parse_via_api 按既有配置选择：
-        managed（doclib 托管本地 parse-server）
-        self_hosted（parse_server.local.self_hosted_url）
-        remote（parse_server.remote.url）
-      没有可用目标时沿用原有错误，不从本地静默转发远端
-  → parse-server 侧：parser/api_server.py → MinerUParser（parser/mineru_parser.py，按后缀路由）
-    → doc_analyze（backend/analyze.py）→ analysis/<格式> → postprocess → MiddleJson(schema 2.0)
-    → 解析产物写回 doclib（background/compaction.py 合并批次）
+```text
+mineru parse → DoclibClient → doclib server
+  → IngestService / ParseQueueService
+  → ParseWorkerPool → ParseExecutionService
+  → 本地 Flash，或配置的 managed / self-hosted / remote API
+  → 缓存 Middle JSON 与素材 → ContentReadService → 阅读与导出
 ```
 
-### 3.2 读取链（`mineru read <locator>`）
+Doclib cache hit、覆盖计算、读取和 compaction 统一通过 `core/middle_json.py` 的历史缓存边界。
+自托管状态和配置由 AppState 持有，不通过模块级隐式状态传递。
 
+## 无状态解析与 Tasks 调用链
+
+```text
+mineru-kit parse / Python parse → MinerUParser → doc_analyze
+  → backend.analysis → DocVortex 原生能力或 MinerU OCR/VLM/Hybrid
+  → DocVortex 确定性后处理 → MinerU 可选 LLM 增强 → ParseResult
+
+HTTP / WebUI → Tasks → 执行后端 → 同一解析门面
+  → task_outputs 多格式打包 → Files 下载
 ```
-cli/commands/read.py:25 read_cmd
-  → DoclibClient.read_content
-  → doclib/server.py:684 _build_read_plan_from_locator（locator 解析在 :1484 _parse_doc_locator）
-  → 从缓存页取内容、按 --limit 截断
-  → 生成 ContentNextRequest（server.py:2142 _next_content_request；模型定义 doclib/types.py:293）
-  → CLI 侧拼 `<!-- Next: mineru read … -->` 续读标记（cli/commands/read.py:164）
-```
 
-## 4. 相关文档
-
-- 陷阱与兼容面联动：[pitfalls.md](pitfalls.md)
-- 不变量红线：[invariants.md](invariants.md)
-- 系统架构与设计：[architecture.md](architecture.md)、[decisions/README.md](decisions/README.md)
+原始 ModelJson 仅服务分析和后处理，不进入公开结果包。
+公开协议见 [Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/)、[Middle JSON](middle-json/README.md)；
+后续工作见 [待办](backlog.md)，长期选择见 [ADR](decisions/README.md)。

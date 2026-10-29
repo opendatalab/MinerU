@@ -2,7 +2,7 @@
 
 页码规范与历史结果兼容说明见 [PDF 页码范围规范](../page-ranges.md)。
 
-状态: Draft
+状态: Implemented
 读者: SDK 开发者、`mineru` CLI 开发者、MCP/桌面端集成方
 范围: 本地 doclib client 的公开能力、方法和错误模型
 来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
@@ -26,7 +26,7 @@ Doclib SDK 是 doclib 本地 API 的推荐承载方式。MinerU 项目内部除 
 
 ## 构造参数
 
-目标公开签名:
+当前构造签名:
 
 ```python
 from pathlib import Path
@@ -36,8 +36,9 @@ from mineru.doclib.client import DoclibClient
 class DoclibClient:
     def __init__(
         self,
+        *,
         endpoint_path: str | Path | None = None,
-        socket_path: str | None = None,
+        socket_path: str | Path | None = None,
         base_url: str | None = None,
         timeout: int = 60,
         api_prefix: str = "/api/v1",
@@ -55,7 +56,7 @@ class DoclibClient:
 - 显式 `socket_path` / `base_url` 代表调用方明确选择的 server，不执行 endpoint `server_id` 校验。
 - `socket_path` 和 `base_url` 不能同时传入。
 - 无法连接任何候选 endpoint 时，方法调用抛出 `ServerNotRunningError`。
-- client 当前支持 `close()`；是否增加 context manager 仍是迁移任务。
+- client 提供 `close()`，调用方在 finally 中释放；当前不提供上下文管理器。
 
 示例:
 
@@ -164,7 +165,7 @@ def get_file_by_path(self, path: str) -> FileInfoResponse: ...
 
 按路径查询文件信息使用 `get_file_by_path(path)`，对应 `GET /files/by-path`；不存在独立的 `info()` 方法。
 
-目标响应类型:
+响应类型:
 
 | 方法 | 响应 |
 |------|------|
@@ -210,7 +211,7 @@ Doclib client 暴露运行时配置能力:
 
 ## 错误模型
 
-doclib client 当前从服务端 error envelope 还原 `MineruError`。目标行为:
+doclib client 从服务端 error envelope 还原 `MineruError`：
 
 | 场景 | 错误 |
 |------|------|
@@ -226,15 +227,7 @@ SDK 不应把 doclib 内部异常原样泄漏给调用者。
 
 只有调用方显式设置 `ParseRequest.remote=True`，doclib 才可以连接 remote parse-server 或 mineru.net。即便远端可用，SDK 也不能自动越过该开关。
 
-## 当前与目标差异
+## 接口扩展
 
-| 主题 | 当前 | 目标 |
-|------|------|------|
-| 包路径 | `mineru.doclib.client.DoclibClient` | 保持；是否增加 `MineruClient` / `mineru.client` 别名仍未决。 |
-| 返回类型 | 已返回 typed Pydantic response | 保持；是否增加 `raw=True` 兼容层未决。 |
-| 高层 parse helper | 当前稳定入口是 `ensure_parse(ParseRequest)` | 是否增加 `parse(path, ...)` convenience wrapper 未决。 |
-| context manager | 仅 `close()` | 是否支持 `with DoclibClient() as client` 未决。 |
-
-## 未决问题
-
-Product SDK 入口、async client 和高层 parse helper 命名，集中维护在 [开放问题清单](../open-questions.md)。
+当前入口为 `DoclibClient`，没有 `MineruClient` 别名、`raw=True` 或 `parse(path, ...)` 便利方法。
+新增接口及异步客户端是否提供，统一在 [当前待办](../backlog.md) 讨论，不作为当前 SDK 承诺。

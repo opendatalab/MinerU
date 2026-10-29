@@ -1,9 +1,10 @@
-"""CLI telemetry context and first-run prompt."""
+"""CLI 遥测上下文与一次性默认开启说明。"""
 
 from __future__ import annotations
 
 import os
 import sys
+from contextlib import suppress
 
 import typer
 
@@ -11,7 +12,7 @@ from ..doclib.client import DoclibClient
 from ..doclib.telemetry import TelemetryContext, infer_default_client_context, reset_telemetry_context, set_telemetry_context
 from ..utils.i18n import t
 
-PROMPT_COMMANDS = {
+NOTICE_COMMANDS = {
     "parse",
     "read",
     "scan",
@@ -25,52 +26,43 @@ PROMPT_COMMANDS = {
     "cleanup",
 }
 
-TELEMETRY_CONSENT_MESSAGE = """
-Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.
-
-Collected:
-    command names, MinerU version, OS, architecture, Python version, install channel,
-    coarse CPU/GPU categories, success/failure status, error categories, tiers,
-    and performance timing buckets.
-
-NOT collected:
-    document contents, extracted text/images, file names, file paths, raw URLs,
-    search queries, prompts, snippets, tracebacks, exception messages, hostnames,
-    usernames, account IDs, API keys, or exact CPU/GPU models.
-
-Press Enter or type Y to enable, or type N to disable.
-You can change this later with `mineru telemetry enable` or `mineru telemetry disable`.
-Preview what would be sent with `mineru telemetry preview`.
+TELEMETRY_NOTICE_MESSAGE = """
+Doclib telemetry is enabled by default: locally aggregated usage, coarse environment categories, and performance metrics.
+Document contents, file names and paths, search queries, and API keys are not included.
+Inspect data with `mineru telemetry preview`; turn it off with `mineru telemetry disable`.
+Set MINERU_TELEMETRY_DISABLED=1 before starting Doclib to disable it from the first startup.
 """.strip()
 
 
 def prepare_cli_telemetry(ctx: typer.Context) -> None:
+    """设置调用上下文，仅在适合人阅读的业务命令中展示一次说明。"""
     telemetry_context = infer_default_client_context(source="cli")
     token = set_telemetry_context(telemetry_context)
     ctx.call_on_close(lambda: reset_telemetry_context(token))
     command = _top_level_command(ctx)
-    if not _should_prompt_telemetry_consent(ctx, command, telemetry_context):
+    if not _should_show_telemetry_notice(ctx, command, telemetry_context):
         return
-    maybe_prompt_telemetry_consent()
+    maybe_show_telemetry_notice()
 
 
-def maybe_prompt_telemetry_consent() -> None:
+def maybe_show_telemetry_notice() -> None:
+    """非阻塞地告知默认策略，单独确认已展示，不修改用户开关。"""
     if not _is_interactive():
         return
+    client: DoclibClient | None = None
     try:
         client = DoclibClient(timeout=5)
         status = client.get_telemetry_status()
+        if status.state != "enabled" or status.notice_shown:
+            return
+        typer.echo(t(TELEMETRY_NOTICE_MESSAGE), err=True)
+        client.telemetry_action("notice-shown")
     except Exception:
         return
-    if status.state != "unset":
-        return
-
-    typer.echo(t(TELEMETRY_CONSENT_MESSAGE))
-    enabled = typer.confirm(t("Enable telemetry?"), default=True)
-    try:
-        client.telemetry_action("enable" if enabled else "disable")
-    except Exception:
-        return
+    finally:
+        if client is not None:
+            with suppress(Exception):
+                client.close()
 
 
 def _top_level_command(ctx: typer.Context) -> str | None:
@@ -81,8 +73,9 @@ def _top_level_command(ctx: typer.Context) -> str | None:
     return args[0] if args else None
 
 
-def _should_prompt_telemetry_consent(ctx: typer.Context, command: str | None, telemetry_context: TelemetryContext) -> bool:
-    if command not in PROMPT_COMMANDS:
+def _should_show_telemetry_notice(ctx: typer.Context, command: str | None, telemetry_context: TelemetryContext) -> bool:
+    """帮助、JSON、CI 与 Agent 不插入提示，保持原命令输出协议。"""
+    if command not in NOTICE_COMMANDS:
         return False
     if telemetry_context.caller == "agent":
         return False
@@ -124,4 +117,4 @@ def _is_interactive() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-__all__ = ["maybe_prompt_telemetry_consent", "prepare_cli_telemetry"]
+__all__ = ["maybe_show_telemetry_notice", "prepare_cli_telemetry"]

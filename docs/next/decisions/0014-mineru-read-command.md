@@ -1,5 +1,7 @@
 # ADR-0014: MinerU Read Command
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted
 日期: 2026-06-16
 相关文档: 0012-doclib-block-locator.md, 0013-doc-content-progressive-reading.md, ../cli/mineru-parse.md, ../workflows.md
@@ -60,7 +62,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 - `doc:{short_id}` 会解析为当前可用的默认高质量 tier；不会静默把 `flash` 当作高质量读取结果。
 - `doc:{short_id}/tier:{tier}` 明确读取指定 tier 的已有结果。
 
-请求定位器的 `page:` 同步采用输入页范围语法：数字、`rN`、区间、逗号组合与 `all`，具体规则见 [ADR-0012](0012-doclib-block-locator.md#请求页选择与稳定块引用)。返回引用仍使用实际页码；block/char 和图片读取必须选择单页，多页选择不支持非零 context。
+请求定位器的 `page:` 同步采用输入页范围语法：数字、`rN`、区间、逗号组合与 `all`，具体规则见 [ADR-0012](0012-doclib-block-locator.md#page-selection-and-block-references)。返回引用仍使用实际页码；block/char 和图片读取必须选择单页，多页选择不支持非零 context。
 
 ## Markdown 读取语义
 

@@ -1,6 +1,6 @@
 # Output Formats and Result Contract
 
-4.0 uses a shared document model. Distinguish what a renderer can generate from what a particular CLI/API exposes; renderer capabilities are not automatically valid command options.
+4.1 uses a shared document model. Distinguish what a renderer can generate from what a particular CLI/API exposes; renderer capabilities are not automatically valid command options.
 
 ## Entrypoint capabilities
 
@@ -9,7 +9,7 @@
 | `mineru parse` | Markdown; `--json` is a command response with status, content, locators, and continuation |
 | `mineru read` | Markdown or `--format image`; cached content only |
 | `mineru-kit parse` | `markdown`, `middle_json`, `zip` |
-| Self-hosted V1 API | `markdown`, `middle_json`, `structured_content`, `zip`; consult service capabilities |
+| V1 Tasks / file-parse | `default`, `docx`, `html`, `latex`, including combinations; `default` is a ZIP of Markdown, Middle JSON, Structured Content, and images |
 | `ParseResult` | `markdown()`, `structured_content()`, `to_dict()`, `to_json()`, `save(writer)` |
 | `mineru.render.render()` | The nine targets below |
 
@@ -18,7 +18,7 @@ A `mineru parse --json` response is not MiddleJson and cannot be passed directly
 ## ZIP image names
 
 `mineru-kit parse --format zip`, V1 API ZIP, and Gradio Markdown/JSON/LaTeX downloads
-share DocVortex image materialization and naming (`docvortex>=0.4.19,<1`). Each entrypoint
+share DocVortex image materialization and naming. Each entrypoint
 keeps its existing archive name and document members.
 
 Direct image/table/chart payloads use `images/page_{page_idx}_{parent_type}_{parent_index}.{ext}`;
@@ -96,7 +96,7 @@ and report `pdf_title_geometry_conflict`; unavailable expansion clearance report
 `pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
 asset, protocol or public-option changes.
 
-Requires `docvortex>=0.4.19,<1` (the current minimum dependency declared by MinerU 4.0). DocVortex clears native TXT PDF display equation
+MinerU currently requires `docvortex>=0.6.8,<0.7`; the release’s `pyproject.toml` defines its dependency range. DocVortex clears native TXT PDF display equation
 `content` once when producing model output; MinerU Flash TXT uses that output.
 Flash OCR already leaves display equation content empty. MinerU does not clear
 equation content again. Both Flash paths retain the bbox, orientation, image and
@@ -206,7 +206,7 @@ Round-trip current results with `ParseResult.from_json(result.to_json())`. Legac
 
 ## Saved files, ZIP, and assets
 
-`ParseResult.save(writer)` materializes images on a document copy and writes `markdown.md`, `middle_json.json`, `structured_content.json`, and `images/`, plus `model_output.json` when raw model output exists. Self-hosted V1 API ZIP output and `mineru-kit parse --format zip` share this save path. All three consumer formats reference the same assets; image bytes, source page indices, block indices, and rotation metadata are preserved.
+`ParseResult.save(writer)` materializes images on a document copy and writes `markdown.md`, `middle_json.json`, `structured_content.json`, and `images/`. `mineru-kit parse --format zip` uses this save path; Tasks uses a separate packaging pipeline for [default and other formats](../usage/tasks.md#outputs-and-downloads). ModelJson is internal and is not included in SDK, CLI, Tasks, or Gradio results. All three consumer formats reference the same assets; image bytes, source page indices, block indices, and rotation metadata are preserved.
 
 ```python
 from mineru.parser.writer import FileBasedDataWriter

@@ -12,18 +12,20 @@ python -m pip install "mineru[core]>=3.4.0,<4"
 
 ## 平台指南
 
-- [昇腾 / Ascend](acceleration_cards/Ascend.md)
-- [平头哥 / THead](acceleration_cards/THead.md)
-- [沐曦 / METAX](acceleration_cards/METAX.md)
-- [海光 / Hygon](acceleration_cards/Hygon.md)
-- [燧原 / Enflame](acceleration_cards/Enflame.md)
-- [摩尔线程 / MooreThreads](acceleration_cards/MooreThreads.md)
-- [天数智芯 / IluvatarCorex](acceleration_cards/IluvatarCorex.md)
-- [寒武纪 / Cambricon](acceleration_cards/Cambricon.md)
-- [昆仑芯 / Kunlunxin](acceleration_cards/Kunlunxin.md)
-- [太初元碁 / Tecorigin](acceleration_cards/Tecorigin.md)
-- [壁仞 / Biren](acceleration_cards/Biren.md)
-- [瀚博 / VastAI](acceleration_cards/VastAI.md)
+以下链接为已归档的中文历史快照，不作为当前主线安装说明。
+
+- [昇腾 / Ascend](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Ascend.md)
+- [平头哥 / THead](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/THead.md)
+- [沐曦 / METAX](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/METAX.md)
+- [海光 / Hygon](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Hygon.md)
+- [燧原 / Enflame](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Enflame.md)
+- [摩尔线程 / MooreThreads](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/MooreThreads.md)
+- [天数智芯 / IluvatarCorex](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/IluvatarCorex.md)
+- [寒武纪 / Cambricon](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Cambricon.md)
+- [昆仑芯 / Kunlunxin](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Kunlunxin.md)
+- [太初元碁 / Tecorigin](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Tecorigin.md)
+- [壁仞 / Biren](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Biren.md)
+- [瀚博 / VastAI](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/VastAI.md)
 
 ## 旧版入口与资料
 

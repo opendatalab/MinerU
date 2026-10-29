@@ -585,7 +585,7 @@ def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> No
 
         def get_telemetry_status(self) -> TelemetryStatusResponse:
             return TelemetryStatusResponse(
-                state="unset",
+                state="enabled",
                 installation_id="inst_test",
                 pending_periods=1,
                 pending_metrics=2,
@@ -597,47 +597,54 @@ def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> No
     result = runner.invoke(app, ["telemetry", "status"])
 
     assert result.exit_code == 0
-    assert "state: unset" in result.output
+    assert "state: enabled" in result.output
     assert "installation_id: inst_test" in result.output
 
 
-def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
+def test_interactive_notice_is_shown_once_without_changing_preference(monkeypatch: Any) -> None:
+    """首次说明不询问、不启用遥测，确认后同一文档库不再重复展示。"""
     actions: list[str] = []
     echoed: list[str] = []
-    prompts: list[tuple[str, bool]] = []
+    closed: list[bool] = []
 
     class _Client:
         def __init__(self, *, timeout: int) -> None:
+            """检查说明使用有界的本地客户端超时。"""
             assert timeout == 5
 
         def get_telemetry_status(self) -> TelemetryStatusResponse:
-            return TelemetryStatusResponse(state="unset", installation_id="inst_test")
+            """模拟已展示标记在不同客户端实例间持久化。"""
+            return TelemetryStatusResponse(state="enabled", installation_id="inst_test", notice_shown=bool(actions))
 
         def telemetry_action(self, action: str) -> TelemetryActionResponse:
+            """只允许确认已展示，不能偷偷调用 enable。"""
+            assert action == "notice-shown"
             actions.append(action)
-            return TelemetryActionResponse(action=action, state="enabled", installation_id="inst_test")
+            return TelemetryActionResponse(action="notice-shown", state="enabled", installation_id="inst_test")
+
+        def close(self) -> None:
+            """验证说明客户端始终释放连接。"""
+            closed.append(True)
+
+    def reject_prompt(*args: Any, **kwargs: Any) -> bool:
+        """新策略不允许任何交互确认。"""
+        raise AssertionError("Notice must not ask for confirmation")
 
     monkeypatch.setattr(cli_telemetry, "DoclibClient", _Client)
     monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
     monkeypatch.setattr("typer.echo", lambda msg="", *args, **kwargs: echoed.append(str(msg)))
-    monkeypatch.setattr("typer.confirm", lambda prompt, default=True, *args, **kwargs: prompts.append((prompt, default)) or True)
+    monkeypatch.setattr("typer.confirm", reject_prompt)
 
-    cli_telemetry.maybe_prompt_telemetry_consent()
+    cli_telemetry.maybe_show_telemetry_notice()
+    cli_telemetry.maybe_show_telemetry_notice()
 
-    assert actions == ["enable"]
-    prompt_text = "\n".join(echoed)
-    assert "Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data." in prompt_text
-    assert "Collected:" in prompt_text
-    assert "command names, MinerU version, OS, architecture, Python version" in prompt_text
-    assert "coarse CPU/GPU categories" in prompt_text
-    assert "NOT collected:" in prompt_text
-    assert "document contents, extracted text/images, file names, file paths" in prompt_text
-    assert "search queries, prompts, snippets, tracebacks, exception messages" in prompt_text
-    assert "API keys, or exact CPU/GPU models" in prompt_text
-    assert "Press Enter or type Y to enable, or type N to disable." in prompt_text
-    assert "`mineru telemetry enable` or `mineru telemetry disable`" in prompt_text
-    assert "`mineru telemetry preview`" in prompt_text
-    assert prompts == [("Enable telemetry?", True)]
+    assert actions == ["notice-shown"]
+    assert closed == [True, True]
+    assert len(echoed) == 1
+    assert "enabled by default" in echoed[0]
+    assert "mineru telemetry disable" in echoed[0]
+    assert "mineru telemetry preview" in echoed[0]
+    assert "MINERU_TELEMETRY_DISABLED=1" in echoed[0]
 
 
 @pytest.mark.parametrize(
@@ -648,44 +655,44 @@ def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
         (["search", "needle", "--json"], "json"),
     ],
 )
-def test_prepare_cli_telemetry_skips_prompt_for_non_interactive_command_modes(
+def test_prepare_cli_telemetry_skips_notice_for_non_interactive_command_modes(
     monkeypatch: Any, args: list[str], reason: str
 ) -> None:
     del reason
     calls: list[str] = []
 
     monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
-    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+    monkeypatch.setattr(cli_telemetry, "maybe_show_telemetry_notice", lambda: calls.append("prompt"))
 
     result = runner.invoke(app, args)
 
-    assert "Enable telemetry?" not in result.output
+    assert "Doclib telemetry is enabled by default" not in result.output
     assert calls == []
 
 
-def test_prepare_cli_telemetry_skips_prompt_in_ci(monkeypatch: Any) -> None:
+def test_prepare_cli_telemetry_skips_notice_in_ci(monkeypatch: Any) -> None:
     calls: list[str] = []
 
     monkeypatch.setenv("CI", "true")
     monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
-    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+    monkeypatch.setattr(cli_telemetry, "maybe_show_telemetry_notice", lambda: calls.append("prompt"))
 
     result = runner.invoke(app, ["search", "needle", "--limit", "1"])
 
-    assert "Enable telemetry?" not in result.output
+    assert "Doclib telemetry is enabled by default" not in result.output
     assert calls == []
 
 
-def test_prepare_cli_telemetry_skips_prompt_for_agent_caller(monkeypatch: Any) -> None:
+def test_prepare_cli_telemetry_skips_notice_for_agent_caller(monkeypatch: Any) -> None:
     calls: list[str] = []
 
     monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
-    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+    monkeypatch.setattr(cli_telemetry, "maybe_show_telemetry_notice", lambda: calls.append("prompt"))
     monkeypatch.setattr(cli_telemetry, "infer_default_client_context", lambda source: TelemetryContext(source=source, caller="agent"))
 
     result = runner.invoke(app, ["search", "needle", "--limit", "1"])
 
-    assert "Enable telemetry?" not in result.output
+    assert "Doclib telemetry is enabled by default" not in result.output
     assert calls == []
 
 

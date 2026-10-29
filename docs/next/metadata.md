@@ -16,9 +16,4 @@ Doclib 仅负责数据库映射、截断和调度。作者以 `; ` 拼接，关�
 解析完成后非空源属性更新现有列及 FTS 标题作者，不按推理 tier 判断源属性质量，也不清空旧值。
 元数据不同的缓存批次保持原有不合并规则。
 
-本次移除 17 项已经归属 DocVortex 的基础直接依赖；这些包仍随 DocVortex 安装。
-测试专用的 pypdf、reportlab、lxml 在 test extra 中显式声明。tokenizers 仍是基础依赖，
-因为无 Transformers 的 ONNX 公式识别会直接使用它。
-
-发布顺序：先验证并发布包含公共接口的 DocVortex 0.2.5，再将 MinerU 最低版本要求提升到该版本。
-本地集成验收使用两边构建的 wheel，不能用旧版 DocVortex 验证新调用链。
+当前依赖范围以 `pyproject.toml` 为准。源元数据接口由 DocVortex 提供；使用与发布版本约束一致的环境验证集成。

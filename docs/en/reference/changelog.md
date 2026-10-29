@@ -6,14 +6,14 @@ This document records the release history of MinerU, including major capability 
 
 - **Hardware diagnostics and output:** `mineru-kit hardware info` runs isolated runtime probes concurrently and flushes text sections in a fixed order as they become available. Capacity formatting and device summaries are clearer, while JSON retains full diagnostics and adds the read-only ONNX device candidate and selection reason.
 - **On-demand CLI help:** Root help, hardware help, and version queries no longer initialize the runtime or read user configuration. Command entry points load only when executed.
-- **Issue reporting:** Separate English and Chinese forms require less information, default the parsing tier to “Unknown,” and automatically offer the three most recent stable versions after each release.
+- **Issue reporting:** Separate English and Chinese forms require less information, default the parsing tier to “Unknown,” and automatically offer the five most recent stable versions after each release.
 - **CI and release workflows:** Issue-form changes use lightweight checks, while release reruns retain the full test suite and are protected from cancellation by later branch pushes.
 
 ## 4.1.1
 
 - **Windows GPU identification:** Match GPUs and memory information by physical PCI address, improving identification on systems with multiple GPUs or identical models.
 - **llama.cpp runtime policy:** Automatic mode on Linux and Windows reuses the small-model backend's CPU/GPU selection and lets llama.cpp choose the specific GPU. On these platforms, GPU models default to 4 generation threads while preserving explicit user settings.
-- **Automatic tier recommendations:** Use the device actually selected by the small-model backend without requiring a GPU memory threshold. GPU execution can enable all tiers; CPU execution enables Basic with at least 4 available cores and Standard with at least 12. Default requests still prefer Standard → Basic → Flash; Advanced requires an explicit request.
+- **Automatic tier recommendations:** Use the device actually selected by the small-model backend without requiring a GPU memory threshold. GPU execution can enable all tiers; CPU execution enables Basic with at least 4 available cores and Standard with at least 12. Default requests still prefer Standard → Basic → Flash → Advanced; Advanced is selected automatically only when it is the sole available tier.
 - **PDF text cleanup:** Replace residual Unicode private-use characters with spaces after post-OCR processing and fallback restoration in native body text, covering both basic and supplementary private-use areas.
 
 ## 4.1.0

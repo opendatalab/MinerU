@@ -44,7 +44,7 @@ loaded = load_config()  # 按当前环境独立装载，不替换进程默认配
 依赖 `MINERU_HOME` 的默认路径在每次构造对象时解析。Doclib 的
 `create_app(cfg)` 会保存传入配置的独立副本，并使用其中的全局日志级别补全服务日志设置。
 
-### 远程 VLM
+### 远程 VLM {#remote-vlm}
 
 `model.vlm` 是所有本地解析入口的 VLM 默认配置，适用于 API server、Python
 `parse()` / `parse_async()` 和 `mineru-kit parse`。Standard/Advanced 将 VLM 推理交给
@@ -301,7 +301,7 @@ API Key 读取优先级：
 |------|------|
 | `MINERU_API_KEY` | 默认远端 API Key |
 | `MINERU_BASE_URL` | SDK 或 CLI 的默认远端 URL，是否采用待定 |
-| `MINERU_TELEMETRY` | 遥测开关，是否采用待定 |
+| `MINERU_TELEMETRY_DISABLED` | Doclib 服务启动前的遥测禁用开关，优先于持久化偏好 |
 
 ## 7. CLI 参数与配置关系
 
@@ -318,9 +318,9 @@ API Key 读取优先级：
 `mineru config` 修改持久配置：
 
 ```bash
-mineru config parse-server local.mode managed
-mineru config parse-server local.managed-tier basic
-mineru config parse-server remote.api-key sk-...
+mineru config set parse_server.local.mode managed
+mineru config set parse_server.local.managed_tier basic
+mineru config set parse_server.remote.api_key sk-...
 ```
 
 当前已实现的 config 命令分组：
@@ -331,12 +331,12 @@ mineru config parse-server remote.api-key sk-...
 | `mineru watch add/list/remove/rescan` | 管理 watch 目录 |
 | `mineru config exclude add/list/rm` | 管理排除规则 |
 | `mineru config parsing-rules add/list/rm` | 管理解析规则 |
-| `mineru config parse-server local.mode` | 设置本地 parse-server 模式 |
-| `mineru config parse-server local.managed-tier` | 设置 managed tier |
-| `mineru config parse-server local.self-hosted-url` | 设置 self-hosted URL |
-| `mineru config parse-server local.self-hosted-api-key` | 设置 self-hosted API Key |
-| `mineru config parse-server remote.url` | 设置远端 URL |
-| `mineru config parse-server remote.api-key` | 设置远端 API Key |
+| `mineru config set parse_server.local.mode` | 设置本地 parse-server 模式 |
+| `mineru config set parse_server.local.managed_tier` | 设置 managed tier |
+| `mineru config set parse_server.local.self_hosted_url` | 设置 self-hosted URL |
+| `mineru config set parse_server.local.self_hosted_api_key` | 设置 self-hosted API Key |
+| `mineru config set parse_server.remote.url` | 设置远端 URL |
+| `mineru config set parse_server.remote.api_key` | 设置远端 API Key |
 
 ## 8. Watch 与 Rules
 
@@ -393,19 +393,14 @@ Exclude 使用 glob 模式排除路径。默认 exclude 规则由 DB 初始化�
 
 ## 9. SDK Client 配置
 
-SDK 配置应显式、可类型检查，并避免 `**kwargs: Any` 式透传。
+`MinerUApiParser` 的构造参数为 `api_url/api_key/tier/ocr_mode/include_images`。
+api_url 未传时依次读取 `MINERU_API_URL` 和内置默认地址；api_key 未传时读取 `MINERU_API_KEY`。
+显式空字符串会清空认证，不再继承环境变量。tier=None 与 ocr_mode=None 在 HTTP 请求中省略。
+它没有 `default_tier/allow_remote` 构造参数；目标地址由调用者选择，Doclib 的 remote 授权另行处理。
+详见 [API-backed SDK](sdk/api-parser.md)。
 
-建议字段：
-
-| 字段 | 说明 |
-|------|------|
-| `base_url` | API 地址 |
-| `api_key` | API Key |
-| `timeout` | 请求超时 |
-| `default_tier` | SDK client 自身默认 tier；未设置时使用默认选择策略 |
-| `allow_remote` | 是否允许上传远端，应显式设置 |
-
-SDK client 的配置不应在 import 时读取重依赖或启动服务。
+`DoclibClient` 使用独立的 endpoint_path/socket_path/base_url/timeout/api_prefix，见 [Doclib SDK](sdk/doclib-client.md)。
+这些构造参数不能互换，也不是 YAML 的同名配置段。
 
 ## 10. 隐私与遥测
 
@@ -421,23 +416,23 @@ SDK client 的配置不应在 import 时读取重依赖或启动服务。
 
 - 不包含文档内容、文件名和路径。
 - doclib server 是 P0 唯一 telemetry 上报主体。
-- 首次启动应要求用户选择，不预选开启或关闭，用户可关闭。
+- 初始设置为 enabled；disable 后保存关闭选择，升级和重启保持。启动环境中的 `MINERU_TELEMETRY_DISABLED=1` 优先禁用，不改写持久化偏好；具体行为见遥测说明。
 - parser SDK、`mineru-kit parse`、`mineru-kit api-server` 等纯工具无 telemetry 能力。
 - telemetry 配置存储在 SQLite 中，不使用启动前文件配置。
 - telemetry 聚合数据也存储在 SQLite 中，flush 成功后删除已确认上报的数据。
 
-P0 必须完成 telemetry 设计，明确字段、开关、默认值、隐私边界和上报时机。具体设计见 [Telemetry 设计](telemetry.md)。
+遥测字段、开关、默认值、隐私边界和上报时机以 [Telemetry 最小规范](telemetry-minimum.md) 为准；旧设计仅作历史背景。
 
 ## 与其他文档的关系
 
-- CLI 参数见 [CLI 规格](cli.md)。
+- CLI 参数见 [CLI 规格](cli/README.md)。
 - CLI 配置命令见 [mineru library](cli/mineru-library.md)。
 - 启动前 server 配置和 SQLite `config` 表见 [系统架构](architecture.md)。
-- API key、base_url、timeout 等 client 配置见 [SDK 设计](sdk.md)。
-- 隐私默认策略见 [产品路线图](roadmap.md)。
+- API key、base_url、timeout 等 client 配置见 [SDK 设计](sdk/README.md)。
+- 隐私默认策略见本页「隐私与遥测」，后续决策见 [当前待办](backlog.md)。
 - Tier 默认语义见 [解析 Tier](tiers.md)。
 - 配置相关错误见 [错误码体系](errors.md)。
 
 ## 未决问题
 
-项目级配置、用户级配置路径和正式环境变量等问题，集中维护在 [开放问题清单](open-questions.md)。
+项目级配置、用户级配置路径和正式环境变量等问题，集中维护在 [开放问题清单](backlog.md)。

@@ -1,5 +1,7 @@
 # ADR-0005: Doclib Interface、Client 与 Server 契约一致性
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted
 日期: 2026-06-11
 相关文档: ../sdk/doclib-client.md, ../architecture.md, 0004-doclib-http-api-resources.md

@@ -85,7 +85,7 @@ mineru-kit models download --tier <basic|standard> [flags]
 
 - repo 位置参数与 `--tier` 互斥
 - 不带 repo 且不带 `--tier` 会报错
-- `--tier` 只接受 `basic` 和 `standard`；Flash 不需要模型，Advanced 复用 Standard
+- `--tier` 只接受 `basic` 和 `standard`；Flash 原生文本解析不需要推理模型，但 Flash OCR 仍使用小模型资源；Advanced 复用 Standard
 - `--source` 不支持 `local`
 - 如果当前配置为 `model.source: local`，显式 download 会临时按 `auto` 解析远端源，不改写配置
 - 下载目标固定为 `config.model.base_dir` 下的 repo local dir
@@ -100,7 +100,7 @@ mineru-kit models download --tier <basic|standard> [flags]
 模型 tier 到 repo 的映射按两个后端组合：basic 使用小模型资源包；standard 追加实际引擎的 VLM 权重。
 例如 Torch + llama 需要 `MinerU-4_models_torch` 和 `MinerU2.5-Pro-2605-1.2B-GGUF`。
 
-解析 Tier 中的 Flash 不进入模型管理流程；Advanced 使用 Standard 模型集。
+模型命令没有 flash 下载档位；离线运行 Flash OCR 可准备所选后端的 Basic 小模型资源。Advanced 使用 Standard 模型集。
 
 示例:
 

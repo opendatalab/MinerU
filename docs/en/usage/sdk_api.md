@@ -37,14 +37,13 @@ Start the service in its inference environment:
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ```
 
-The Python client handles discovery, file submission, job polling, and result downloads:
+The Python client handles discovery, file submission, task polling, and result downloads:
 
 ```python
 from mineru.parser import MinerUApiParser
 
 parser = MinerUApiParser(
     api_url="http://127.0.0.1:8000",
-    api_key="",
     tier="standard",
     include_images=True,
 )
@@ -60,7 +59,7 @@ mineru-kit webui --api-url http://127.0.0.1:8000
 
 ### Batching and instance reuse
 
-Reuse one `MinerUApiParser` instance for batch work instead of constructing a parser per file; each call opens and closes its own HTTP session, so there is nothing to release explicitly. HTTP failures are expressed as job statuses and per-file `error` entries; the Python SDK converts `failed`/`canceled` terminal jobs (and network/HTTP errors) into exceptions, so batch code should catch per file, record a summary, and exit with an explicit policy:
+Reuse one `MinerUApiParser` instance for batch work instead of constructing a parser per file; each call opens and closes its own HTTP session, so there is nothing to release explicitly. HTTP failures are expressed as task statuses and per-file `error` entries; the Python SDK converts `failed`/`canceled` terminal tasks (and network/HTTP errors) into exceptions, so batch code should catch per file, record a summary, and exit with an explicit policy:
 
 ```python
 import sys
@@ -92,6 +91,6 @@ When throughput matters, check the service logs and `GET /v1/usage`. See [Tiers 
 
 ## HTTP API without the SDK
 
-The same upload → job → poll → download cycle can be driven with plain HTTP calls. The [V1 HTTP API walkthrough](http_api.md) provides a complete curl example covering upload completion, terminal states (including `partial`), resuming after a client timeout, and artifact downloads.
+The same create → upload → poll → download cycle can be driven with plain HTTP calls. The [V1 HTTP API walkthrough](http_api.md) provides a single-file curl flow and a resumable script client for PUT uploads, terminal states, and downloads. No upload-complete request is needed.
 
-The 4.0 V1 service does not provide legacy `/file_parse` or `/tasks` routes. See [migration](../reference/migration_4.md) for older clients and [output formats](../reference/output_files.md) for rendering and saving Python results.
+The 4.1 main API uses `/v1/tasks` and does not provide legacy `/file_parse` or `/tasks` routes. The separate wrapper serves `/v1/file_parse`. See [migration](../reference/migration_4.md) for older clients and [output formats](../reference/output_files.md) for rendering and saving Python results.

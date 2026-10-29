@@ -97,7 +97,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 单张集显保持默认物理选择。若原生类型查询失败且 ORT 库存中的架构均受支持，则保留默认候选并继续校准，
 不会据此授予独显免校准资格；存在受限 Intel 架构时，查询失败直接回退 CPU。
 
-本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
+本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-intel-architecture-policy-validation.md)。
 
 通常在首次实际使用 ONNX 模型时选型。API/WebUI 使用自动 tier 且有效小模型后端为 ONNX 时，会在所有 CPU 核数下提前同步调用相同的设备选择流程，不依赖 `--preload-models`。选中 GPU 就开放全部四档；选中 CPU 时，可用逻辑核至少 12 开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。推荐不查询显存、不增加独立测速，也不额外要求历史校准证据。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均不强制测速。显式启动档位和 Python 精确集合跳过推荐。有效小模型后端为 Torch 时采用已验证的加速设备结论，不调用 ONNX 或修改其配置/证据。llama.cpp 自动模式也复用相同的小模型设备选择入口。
 
@@ -114,7 +114,7 @@ Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或�
 
 要重新测量，将配置改回 `auto` 并重启应用。修改程序阈值也不主动覆盖已保存的选择。
 
-## llama.cpp 自动模式与手动覆盖
+## llama.cpp 自动模式与手动覆盖 {#llama-auto-mode}
 
 Windows/Linux 的 Engine 和 `llama-server` 复用同一 CPU/GPU 决策：
 
@@ -184,7 +184,7 @@ CTC 去重、blank 删除、置信度平均和输入顺序还原继续由识别�
 自动选型也使用该派生图，图转换发生在 15 秒 worker 预算之外。报告记录源模型、派生模型 SHA256
 及 `output_format`，阈值工具拒绝混合完整概率输出和精简输出的报告。已有保存的 cpu/gpu 不会被覆盖；
 需要重新测速时设置 `auto`。历史完整概率输出测速保留作为优化前对照，不据此重新推导精简图阈值。
-本机阶段耗时、输出一致性和 EP 验证见 [精简 rec 生产验证](onnx-compact-rec-validation.md)。
+本机阶段耗时、输出一致性和 EP 验证见 [精简 rec 生产验证](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-compact-rec-validation.md)。
 
 ### 测量协议
 
@@ -213,14 +213,14 @@ worker 报告 schema v5，`measurement` 保存完整自适应规则；`sampling`
 每端同时保留全部实际预热、计时、波动与漂移指标。每一次推理均检查输出及重复解码，两个后端解码必须一致。
 阈值推导拒绝混合不同测量策略或决策阈值；同一自适应策略内的短测/长测可共同记录，持续不稳定的结果不能用于推导。
 
-本机实测及 NHWC 缩小复现见 [自适应校准与 UHD 770 诊断](onnx-adaptive-calibration-uhd770-validation.md)。
-此前固定 3＋7 与整本测试见 [轮次和预打包报告](onnx-i7-12700-nhwc-no-prepack-validation.md)。
+本机实测及 NHWC 缩小复现见 [自适应校准与 UHD 770 诊断](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-adaptive-calibration-uhd770-validation.md)。
+此前固定 3＋7 与整本测试见 [轮次和预打包报告](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-i7-12700-nhwc-no-prepack-validation.md)。
 UHD 770 关闭预打包仍存在内容错误及挂起，生产 WebGPU 布局和预打包参数未因本次校准改动而调整。
 阈值在 `mineru.model.runtime.onnx_device` 中集中维护。
 阈值按后端独立维护：`dml=0.8`、`webgpu=0.8`，即 GPU 推理耗时至少比 CPU 低 20%。
 Linux 8060S 六图预检比值为 0.420、0.502、0.523，解码一致；目前没有跨硬件证据支持另设 WebGPU 数值。
 原三机校准推导值为 0.69639683662382，保留为历史参考；已有 24 次记录按 0.8 判断仍得到相同选择。
-详细数据见 [DML 三机校准报告](onnx-selection-validation.md) 和 [Linux WebGPU 生产验证](onnx-webgpu-validation.md)。
+详细数据见 [DML 三机校准报告](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-selection-validation.md) 和 [Linux WebGPU 生产验证](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-webgpu-validation.md)。
 
 下载和设备发现不计入 worker 预算。独立隐藏子进程的总超时为 15 秒，包含解释器启动、加载及推理；
 1–2 秒只是小样本推理目标。结果记录 backend、模型/输入校验值、ORT/EP 版本、参数、provider、初始化、预热和正式计时。
@@ -298,4 +298,4 @@ Windows x64 的完整依赖安装、发行包身份、真实分类、rec 与文�
 ```
 
 不能把两个 ORT 发行包或两个 Magika 发行包同时存在视为有效安装。
-版本、校验值、平台矩阵与实测结果见 [依赖验收报告](onnx-dependency-validation.md)。
+版本、校验值、平台矩阵与实测结果见 [依赖验收报告](https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-dependency-validation.md)。

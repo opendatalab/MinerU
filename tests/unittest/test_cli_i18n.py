@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mineru.cli.telemetry import TELEMETRY_CONSENT_MESSAGE
+from mineru.cli.telemetry import TELEMETRY_NOTICE_MESSAGE
 from mineru.utils import i18n
 from mineru.utils.i18n import detect_language, reset_language_cache, t
 from mineru.utils.translations import ZH_MESSAGES
@@ -116,8 +116,8 @@ class TestCatalogIntegrity:
             actual = {name for _, name, _, _ in formatter.parse(value) if name is not None}
             assert expected == actual, f"占位符不一致: {key!r}"
 
-    def test_telemetry_consent_block_is_translated(self) -> None:
-        assert TELEMETRY_CONSENT_MESSAGE in ZH_MESSAGES
+    def test_telemetry_notice_is_translated(self) -> None:
+        assert TELEMETRY_NOTICE_MESSAGE in ZH_MESSAGES
 
     def test_every_t_literal_has_catalog_entry(self) -> None:
         keys = {key for path, key in _iter_t_literals()}

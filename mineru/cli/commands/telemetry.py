@@ -42,9 +42,9 @@ def telemetry_disable(json_mode: bool = typer.Option(False, "--json", help=t("JS
     _run_action("disable", json_mode=json_mode)
 
 
-@app.command("flush", help=t("Flush pending telemetry now when telemetry is enabled (or unset during prerelease)."))
+@app.command("flush", help=t("Flush pending telemetry now when telemetry is enabled."))
 def telemetry_flush(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
-    """Flush pending telemetry now when telemetry is enabled (or unset during prerelease)."""
+    """只在实际生效状态为开启时发送待发遥测。"""
     _run_action("flush", json_mode=json_mode)
 
 
@@ -62,6 +62,7 @@ def _render_telemetry_status(data: TelemetryStatusResponse) -> str:
     return "\n".join(
         [
             t("state: {state}", state=data.state),
+            t("source: {source}", source=data.source),
             t("installation_id: {id}", id=data.installation_id),
             t("pending_periods: {n}", n=data.pending_periods),
             t("pending_metrics: {n}", n=data.pending_metrics),
@@ -71,6 +72,9 @@ def _render_telemetry_status(data: TelemetryStatusResponse) -> str:
 
 
 def _render_telemetry_action(data: TelemetryActionResponse) -> str:
+    """区分已保存的开启偏好和优先级更高的进程环境禁用。"""
+    if data.reason == "environment_override":
+        return t("Telemetry preference saved as enabled; MINERU_TELEMETRY_DISABLED still disables this server.")
     if data.action == "flush":
         return t("telemetry flush: {reason}", reason=data.reason or "success")
     return t("telemetry {state}", state=data.state)

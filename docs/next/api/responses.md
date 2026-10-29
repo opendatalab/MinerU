@@ -5,7 +5,7 @@
 范围: 成功响应、错误 envelope、请求追踪和幂等
 来源: 由根目录旧 Unified API 底稿迁移整理而来
 
-## 成功响应
+## 成功响应 {#success-responses}
 
 成功响应直接返回接口定义的对象，不增加统一外层 envelope。资源对象、分页列表及二进制附件是不同的返回类型，不能统一按 Task 对象解析。
 
@@ -21,9 +21,9 @@
 | 独立 `GET /v1/file_parse/{request_id}` | 200 | `application/json` | 包装层 `StatusResponse`，独立于 Tasks 的响应模型。 |
 | 独立 `GET /v1/file_parse/{request_id}/result` | 200 | 随产物格式 | ZIP、DOCX 或 HTML 文件字节。 |
 
-Tasks 各响应模型、字段省略规则及完整 JSON 见 [Tasks](tasks.md#响应模型)；Files 和下载响应见 [Files](files.md)。
-Health、Models、Tiers 见 [能力发现接口](health-models.md)，用量见 [Usage](usage-limits.md)，独立 Chat/Responses 协议见 [文档对话](chat.md)。
-独立包装服务的附件、202、状态查询和错误结构见 [file_parse 响应说明](file-parse.md#响应结构与格式)。
+Tasks 各响应模型、字段省略规则及完整 JSON 见 [Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/#response-models)；Files 和下载响应见 [Files](files.md)。
+Health、Models、Tiers 见 [能力发现接口](health-models.md)，用量见 [Usage](usage-limits.md)，独立 Chat/Responses 协议见 [文档对话](https://github.com/opendatalab/MinerU/blob/master/docs/proposals/document-chat-api.md)。
+独立包装服务的附件、202、状态查询和错误结构见 [file_parse 响应说明](https://opendatalab.github.io/MinerU/zh/usage/file_parse/#responses)。
 JSON 正文使用 UTF-8。Tasks 成功响应省略无值可选字段，保留 0、false、[] 和 {}；其他接口及非成功错误 envelope 沿用各自的 null 规则。任务取消使用 `POST /v1/tasks/{task_id}/cancel`；目前不提供任务记录或产物的公开删除接口。
 
 当前 Python API Server 和 Router 不统一生成或返回 `X-Request-Id`；网关或公网部署提供请求追踪时，客户端可记录该响应头，不能把它作为上述共同响应的必带头。
@@ -49,10 +49,10 @@ JSON 正文使用 UTF-8。Tasks 成功响应省略无值可选字段，保留 0�
 | 202 | Tasks 创建请求已接受，或 file_parse 等待结束/零等待后返回状态 JSON；具体任务状态以正文为准。 |
 | 302 | 文件内容下载重定向到 CDN 或对象存储。 |
 
-## 错误响应
+## 错误响应 {#error-responses}
 
 本地 API Server、Router 和 SaaS 的公共错误响应采用下面的统一结构。
-独立 file_parse 使用 `error.code/message/upstream_status`，已有恢复记录时还返回状态字段；其错误格式以 [file_parse 错误响应](file-parse.md#错误响应) 为准。
+独立 file_parse 使用 `error.code/message/upstream_status`，已有恢复记录时还返回状态字段；其错误格式以 [file_parse 错误响应](https://opendatalab.github.io/MinerU/zh/usage/file_parse/#error-responses) 为准。
 
 ```json
 {
@@ -70,9 +70,9 @@ JSON 正文使用 UTF-8。Tasks 成功响应省略无值可选字段，保留 0�
 | `param` | string 或 null | 否 | 出错参数路径，例如 `files.0.page_range`；有明确对应参数时返回，无值时省略。接收端允许缺省或 `null`。 |
 
 上例对应 `409 Conflict`；HTTP 错误的正文类型为 `application/json`。错误对象只包含必填 `code/message` 和可选 `param`，不再输出或接受 `type`。客户端依据 HTTP 状态与 `code` 处理请求失败，不解析 `message` 判断错误类别。
-请求级错误位于顶层 `error`；异步解析失败则通常通过查询接口的 `200` 响应及 `files[].error` 表达，详见 [Tasks 错误响应](tasks.md#各接口错误响应)。
+请求级错误位于顶层 `error`；异步解析失败则通常通过查询接口的 `200` 响应及 `files[].error` 表达，详见 [Tasks 错误响应](https://opendatalab.github.io/MinerU/zh/usage/tasks/#error-responses)。
 
-## 请求追踪
+## 请求追踪 {#request-tracing}
 
 请求追踪属于部署扩展。提供此能力的网关或服务可以在成功和失败响应中返回：
 
@@ -125,7 +125,7 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 Local Parse Server 使用同一套错误结构。差异主要体现在错误来源:
 
 - 未启用 API Key 时，不会产生 `invalid_api_key`。
-- PDF/image 省略 `tier` 或传 `null` 且无法解析到非 `flash` 质量 tier 时，应返回 tier 相关错误，不能降级到 `flash`。OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`，其它 text 不作为解析输入。
+- PDF/image 省略 `tier` 或传 `null` 时按 Standard → Basic → Flash → Advanced 选择；仅开放 Advanced 时才自动选择它。显式不支持的档位返回错误。OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`，其它 text 不作为解析输入。
 - 解析能力缺失时，应返回具体的模型预加载或档位错误码，而不是泛化为 `internal_error`。
 
 ## 协议升级

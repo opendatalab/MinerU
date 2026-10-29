@@ -1,5 +1,7 @@
 # ADR-0028: CSV 本地结构化 Flash 解析
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted，已实现（`.tsv` 独立后缀已由 ADR-0034 实现并修订本文后续动作 1 的 CSV 部分）
 日期: 2026-08-26
 相关文档: ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/tasks.md, 0022-doclib-file-type-tier-remote-semantics.md, 0024-file-type-tier-normalization.md

@@ -5,15 +5,15 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .constants import (
-    CONSENT_DISABLED,
-    CONSENT_ENABLED,
-    CONSENT_UNSET,
+    TELEMETRY_DISABLED,
+    TELEMETRY_ENABLED,
     TELEMETRY_FLUSH_LOCK_TTL_SEC,
     TELEMETRY_MAX_FLUSH_PERIODS,
-    TelemetryConsentState,
+    TelemetryState,
+    TelemetryStateSource,
 )
 from .payload import canonical_dimensions, dimensions_hash
 
@@ -34,11 +34,40 @@ class TelemetryStore:
         self.db = db
 
     async def initialize(self) -> None:
+        """原子迁移历史选择；新安装默认开启，已有关闭和异常状态不被升级重置。"""
         now = _now_ms()
-        await self._ensure_state("installation_id", _new_installation_id(), now)
-        await self._ensure_state("consent_state", CONSENT_UNSET, now)
-        await self._ensure_state("last_flush_at", "0", now)
-        await self._ensure_state("flush_locked_at", "0", now)
+        rows = await self.db.fetchall("SELECT key, value FROM telemetry_state")
+        previous = {row["key"]: row["value"] for row in rows}
+        if "telemetry_state" in previous:
+            initial = previous["telemetry_state"]
+            source = previous.get("state_source", "error")
+        elif "consent_state" in previous:
+            legacy = previous["consent_state"]
+            initial = TELEMETRY_ENABLED if legacy in {"unset", "enabled"} else TELEMETRY_DISABLED
+            source = "default" if legacy == "unset" else "user" if legacy in {"enabled", "disabled"} else "error"
+        elif not previous:
+            initial, source = TELEMETRY_ENABLED, "default"
+        else:
+            initial, source = TELEMETRY_DISABLED, "error"
+        defaults = {
+            "telemetry_state": initial,
+            "state_source": source,
+            "installation_id": _new_installation_id(),
+            "last_flush_at": "0",
+            "flush_locked_at": "0",
+            "notice_shown": "0",
+        }
+        statements = [
+            ("INSERT OR IGNORE INTO telemetry_state (key, value, updated_at) VALUES (?, ?, ?)", (key, value, now))
+            for key, value in defaults.items()
+        ]
+        if "telemetry_state" not in previous:
+            # 迁移或修复缺失开关时，旧来源也必须同步，不能沿用损坏前的 default 标记。
+            statements.append(("UPDATE telemetry_state SET value=?, updated_at=? WHERE key='state_source'", (source, now)))
+        statements.append(("DELETE FROM telemetry_state WHERE key='consent_state'", ()))
+        if initial == TELEMETRY_DISABLED:
+            statements.append(("DELETE FROM telemetry_aggregates", ()))
+        await self.db.execute_atomic(statements)
 
     async def installation_id(self) -> str:
         value = await self.get_state("installation_id")
@@ -48,16 +77,35 @@ class TelemetryStore:
         await self.set_state("installation_id", installation_id)
         return installation_id
 
-    async def consent_state(self) -> TelemetryConsentState:
-        value = await self.get_state("consent_state")
-        if value in {CONSENT_UNSET, CONSENT_ENABLED, CONSENT_DISABLED}:
-            return value  # type: ignore[return-value]
-        return CONSENT_UNSET
+    async def preference(self) -> tuple[TelemetryState, TelemetryStateSource]:
+        """在同一查询快照中读取状态与来源；异常值交给服务层暂停上报。"""
+        rows = await self.db.fetchall("SELECT key, value FROM telemetry_state WHERE key IN ('telemetry_state', 'state_source')")
+        values = {row["key"]: row["value"] for row in rows}
+        state, source = values.get("telemetry_state"), values.get("state_source")
+        if state not in {TELEMETRY_ENABLED, TELEMETRY_DISABLED} or source not in {"default", "user", "error"}:
+            raise ValueError("Telemetry state is missing or invalid")
+        return cast(TelemetryState, state), cast(TelemetryStateSource, source)
 
-    async def set_consent_state(self, state: TelemetryConsentState) -> None:
-        await self.set_state("consent_state", state)
-        if state == CONSENT_DISABLED:
-            await self.clear_aggregates()
+    async def telemetry_state(self) -> TelemetryState:
+        """返回已迁移的持久化开关，不应用进程级环境覆盖。"""
+        return (await self.preference())[0]
+
+    async def set_telemetry_state(self, state: TelemetryState) -> None:
+        """同一事务保存用户选择并在关闭时清空待发数据，避免部分成功。"""
+        if state not in {TELEMETRY_ENABLED, TELEMETRY_DISABLED}:
+            raise ValueError("Unsupported telemetry state")
+        now = _now_ms()
+        statements = [
+            (
+                "INSERT INTO telemetry_state (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                (key, value, now),
+            )
+            for key, value in (("telemetry_state", state), ("state_source", "user"))
+        ]
+        if state == TELEMETRY_DISABLED:
+            statements.append(("DELETE FROM telemetry_aggregates", ()))
+        await self.db.execute_atomic(statements)
 
     async def get_state(self, key: str) -> str | None:
         row = await self.db.fetchone("SELECT value FROM telemetry_state WHERE key=?", (key,))
@@ -178,16 +226,6 @@ class TelemetryStore:
 
     async def mark_flushed_now(self) -> None:
         await self.set_state("last_flush_at", str(_now_ms()))
-
-    async def _ensure_state(self, key: str, value: str, now: int) -> None:
-        await self.db.execute(
-            """
-            INSERT INTO telemetry_state (key, value, updated_at)
-            SELECT ?, ?, ?
-            WHERE NOT EXISTS (SELECT 1 FROM telemetry_state WHERE key=?)
-            """,
-            (key, value, now, key),
-        )
 
 
 def period_bounds(timestamp_ms: int) -> tuple[int, int]:
