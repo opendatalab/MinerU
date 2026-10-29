@@ -607,7 +607,7 @@ def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: floa
         list(CONTROL_LINE_BREAK_CHARS),
         _SPACING_DIACRITIC_TO_COMBINING,
         threshold,
-        (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),
+        ((PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),),
         [span.metadata.get("_native_tight_spacing", True) for span in spans],
     )
 
