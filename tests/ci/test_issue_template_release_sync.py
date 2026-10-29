@@ -224,6 +224,35 @@ def test_old_release_replay_uses_latest_history_without_rollback(template_path: 
     assert template_path.read_bytes() == original
 
 
+@pytest.mark.parametrize(("version", "exit_code"), [("4.0.11", 0), ("4.0.12", 0), ("4.0.13", 1)])
+def test_fixed_old_release_workflow_arguments_only_allow_safe_replay(tmp_path: Path, version: str, exit_code: int) -> None:
+    """旧标签工作流缺少新增参数时只能安全重跑，不能无历史依据地推进版本列表。"""
+    targets = []
+    for template in TEMPLATES:
+        target = tmp_path / template.relative_to(ROOT)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_baseline_template(template), encoding="utf-8")
+        targets.append(target)
+    originals = [target.read_bytes() for target in targets]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--wheel",
+            str(_wheel(tmp_path, f"Name: mineru\nVersion: {version}\n")),
+            "--tag",
+            f"mineru-{version}-released",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == exit_code, result.stdout + result.stderr
+    assert [target.read_bytes() for target in targets] == originals
+
+
 @pytest.mark.parametrize("version", ["5.0.0a1", "5.0.0rc1", "5.0.0.dev1", "4.0.13+local"])
 def test_non_stable_publication_does_not_change_forms(template_path: Path, version: str) -> None:
     """预发布和本地版本不进入正式版本选择。"""
