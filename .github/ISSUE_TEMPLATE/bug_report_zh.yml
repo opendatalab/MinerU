@@ -75,12 +75,12 @@ body:
       description: 请选择实际版本，安装失败时选择目标版本；其他版本请在环境诊断中说明。
       # BEGIN MINERU_RECENT_RELEASES
       options:
+        - "4.1.2"
         - "4.1.1"
         - "4.1.0"
         - "4.0.12"
         - "4.0.11"
-        - "4.0.10"
-        - 其他 / 开发版 / 不清楚
+        - "其他 / 开发版 / 不清楚"
       default: 5
       # END MINERU_RECENT_RELEASES
     validations:
