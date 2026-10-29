@@ -104,7 +104,7 @@ def _mapping_entry(node: Node | None, key: str) -> tuple[Node, Node]:
     return entries[0]
 
 
-def _prepare_template(source: str, versions: tuple[Version, ...]) -> tuple[str, tuple[Version, ...]]:
+def _prepare_template(source: str, versions: tuple[Version, ...] | None) -> tuple[str, tuple[Version, ...]]:
     """严格绑定版本下拉框的选项区块，并保留区块外文案、兜底语言与原换行符。"""
     if source.count(BEGIN_MARKER) != 1 or source.count(END_MARKER) != 1:
         raise ValueError("Template must contain exactly one pair of recent release markers.")
@@ -159,7 +159,7 @@ def _prepare_template(source: str, versions: tuple[Version, ...]) -> tuple[str, 
         raise ValueError("The fallback default must belong to the marked version choices.")
     if yaml.safe_load(region["region"]) != {"options": options, "default": len(options) - 1}:
         raise ValueError("Recent release markers must contain only version options and their fallback default.")
-    if current == versions:
+    if versions is None or current == versions:
         return source, current
     newline = "\r\n" if "\r\n" in region[0] else "\n"
     values = [*(str(version) for version in versions), options[-1]]
@@ -169,19 +169,21 @@ def _prepare_template(source: str, versions: tuple[Version, ...]) -> tuple[str, 
     return source[: region.start("region")] + replacement + source[region.end("region") :], current
 
 
-def sync_template_versions(wheel_path: Path, template_paths: Sequence[Path], release_tag: str, releases_path: Path) -> bool:
+def sync_template_versions(
+    wheel_path: Path, template_paths: Sequence[Path], release_tag: str, releases_path: Path | None
+) -> bool:
     """验证所有输入后统一更新两种语言；陈旧列表不得回退任何模板的版本选择。"""
     version = read_wheel_version(wheel_path)
     tag = TAG_PATTERN.fullmatch(release_tag)
     if tag is None or Version(tag[1]) != version:
         raise ValueError("Release tag must be mineru-<wheel version>-released.")
-    released = read_release_versions(releases_path)
+    released = read_release_versions(releases_path) if releases_path is not None else None
     if version.is_prerelease or version.local is not None:
         print(f"No template update needed for non-stable version {version}.")
         return False
-    if version not in released:
+    if released is not None and version not in released:
         raise ValueError("Published wheel version is missing from the Release history.")
-    recent = released[:MAX_VERSIONS]
+    recent = released[:MAX_VERSIONS] if released is not None else None
     paths = list(template_paths)
     if not paths or len({path.resolve() for path in paths}) != len(paths):
         raise ValueError("Provide distinct template paths.")
@@ -190,6 +192,13 @@ def sync_template_versions(wheel_path: Path, template_paths: Sequence[Path], rel
         source = path.read_bytes().decode("utf-8")
         updated, current = _prepare_template(source, recent)
         updates.append((path, source, updated, current))
+    if recent is None:
+        # 已发布标签固定使用旧工作流参数，但其同步 checkout 指向最新默认分支。
+        # 缺少历史时只允许旧版本幂等退出，真正推进版本仍必须提供已发布列表。
+        if all(version <= current[0] for _, _, _, current in updates):
+            print("No template update needed when replaying an existing release without history.")
+            return False
+        raise ValueError("--releases-json is required to advance the version choices.")
     if any(recent < current for _, _, _, current in updates):
         print("No template update: Release history is older than the checked-out choices.")
         return False
@@ -209,7 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wheel", type=Path, required=True, help="Published wheel file or directory.")
     parser.add_argument("--tag", required=True, help="Release tag, in the form mineru-<version>-released.")
-    parser.add_argument("--releases-json", type=Path, required=True, help="GitHub Releases JSON, including slurped pages.")
+    parser.add_argument("--releases-json", type=Path, help="GitHub Releases JSON; required to advance version choices.")
     parser.add_argument("--template", type=Path, action="append", help="Repeat to override the default English/Chinese forms.")
     args = parser.parse_args(argv)
     try:

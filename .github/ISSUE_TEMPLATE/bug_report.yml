@@ -90,7 +90,7 @@ body:
   - type: dropdown
     id: tier
     attributes:
-      label: Parsing tier (optional)
+      label: Parsing tier
       options:
         - flash
         - basic
@@ -98,6 +98,9 @@ body:
         - advanced
         - Default selection
         - Not applicable / unknown
+      default: 5
+    validations:
+      required: true
 
   - type: markdown
     attributes:
