@@ -122,7 +122,7 @@ body:
       label: MinerU version | MinerU 版本
       # BEGIN MINERU_LATEST_STABLE_VERSION
       description: |
-        Latest stable release: 4.0.12 | 最新正式版本：4.0.12
+        Latest stable release: 4.1.0 | 最新正式版本：4.1.0
         Paste the output of mineru --version from the environment with the issue, including old or development versions.
         请粘贴出现问题的环境中 mineru --version 的输出，旧版和开发版也请填写实际版本。
         If installation failed, state the version you attempted to install and that the command is unavailable.
