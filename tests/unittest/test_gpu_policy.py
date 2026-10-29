@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from mineru.model.runtime import hardware, llama_device, llama_probe, tier_recommendation, vulkan, webgpu, windows_gpu
+from mineru.model.runtime import hardware, llama_probe, tier_recommendation, vulkan, webgpu, windows_gpu
 from mineru.model.runtime.gpu_memory import GpuMemory
 from mineru.model.runtime.gpu import (
     GPU_KIND_ORDER,
@@ -68,7 +68,6 @@ def test_native_classification_agrees_across_runtime_and_report(
     monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: (windows,))
     monkeypatch.setattr(webgpu, "discover_webgpu_devices", lambda: (webgpu.WebGPUDevice(0x1002, 1),))
     actual = llama_probe._classify_devices((llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),), (native,))
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: actual)
     ocr = (
         windows_gpu.preferred_gpu((windows,))
         if platform == "win32"
@@ -90,21 +89,15 @@ def test_native_classification_agrees_across_runtime_and_report(
 
 
 @pytest.mark.parametrize("order", list(itertools.permutations(GPU_KIND_ORDER)))
-def test_backends_share_kind_order_with_native_tiebreakers(order: tuple[GpuKind, ...]) -> None:
-    """Windows 性能排序和 llama 后端分组都只能在统一类型优先级之后生效。"""
+def test_windows_kind_order_with_native_tiebreakers(order: tuple[GpuKind, ...]) -> None:
+    """Windows 性能排序只能在统一类型优先级之后生效。"""
     windows = tuple(
         windows_gpu.GpuAdapter(index, str(index), kind, 0x1002, index, index, kind=kind) for index, kind in enumerate(order)
-    )
-    llama = tuple(
-        llama_probe.LlamaDevice(f"Vulkan{index}", kind, "vulkan", 0x1002, index, index, kind=kind)
-        for index, kind in enumerate(order)
     )
     for expected in GPU_KIND_ORDER:
         selected = windows_gpu.preferred_gpu(windows)
         assert selected is not None and selected.kind == expected
-        assert llama_device._preferred(llama, "auto")[0].kind == expected
         windows = tuple(device for device in windows if device.kind != expected)
-        llama = tuple(device for device in llama if device.kind != expected)
 
 
 def test_identity_matching_requires_mutual_uniqueness() -> None:
@@ -148,6 +141,28 @@ def test_ambiguous_native_mapping_remains_unknown_everywhere(monkeypatch: pytest
     assert len(report) == 2 and all(device.kind == "unknown" for device in report)
 
 
+@pytest.mark.parametrize("luid", ["selected", "other", "missing", None])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_windows_vulkan_luid_disambiguates_same_model_dxgi_adapters(
+    monkeypatch: pytest.MonkeyPatch, luid: str | None, reverse: bool
+) -> None:
+    """同型号 DXGI 库存必须按 Vulkan 的有效 LUID 关联，缺失或冲突时不猜测。"""
+    monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
+    adapters = (
+        windows_gpu.GpuAdapter(0, "selected", "GPU", 0x10DE, 1, 0, kind="discrete", kind_source="d3d12"),
+        windows_gpu.GpuAdapter(2, "other", "GPU", 0x10DE, 1, 3, kind="integrated", kind_source="d3d12"),
+    )
+    monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: adapters[::-1] if reverse else adapters)
+    result = llama_probe._classify_devices(
+        (llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),),
+        (vulkan.VulkanDevice(0x10DE, 1, "GPU", 0, luid=luid),),
+    )
+    expected = {"selected": "discrete", "other": "integrated"}.get(luid, "unknown")
+    assert result[0].kind == expected
+    assert result[0].identity.luid == luid
+    assert result[0].vulkan_index == 0
+
+
 def test_windows_native_query_failure_does_not_use_ggml_or_vulkan_type(monkeypatch: pytest.MonkeyPatch) -> None:
     """Windows 的分类查询失败时保留未知，不把 ggml/Vulkan 的 GPU 标签升级为独显。"""
     monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
@@ -184,6 +199,38 @@ def test_ggml_gpu_enum_only_controls_inventory(monkeypatch: pytest.MonkeyPatch, 
     assert not hasattr(result[0], "integrated")
     with pytest.raises(TypeError, match="integrated"):
         llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan", integrated=True)
+
+
+@pytest.mark.parametrize("folder", ["bin", "lib"])
+@pytest.mark.parametrize("prefix", ["", "lib"])
+def test_windows_probe_loads_device_accessors_from_base_dll(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, folder: str, prefix: str
+) -> None:
+    """Windows DLL 导出不沿依赖解析；严格分离注册与设备接口以覆盖真实 wheel 布局。"""
+    registry_path = tmp_path / folder / f"{prefix}ggml.dll"
+    registry_path.parent.mkdir()
+    registry_path.touch()
+    base_path = registry_path.with_name(f"{prefix}ggml-base.dll")
+    base_path.touch()
+    registry_library = SimpleNamespace(
+        ggml_backend_load_all_from_path=Mock(),
+        ggml_backend_dev_count=Mock(return_value=1),
+        ggml_backend_dev_get=Mock(return_value=1),
+    )
+    base_library = SimpleNamespace(
+        ggml_backend_dev_type=Mock(return_value=1),
+        ggml_backend_dev_name=Mock(return_value=b"Vulkan0"),
+        ggml_backend_dev_description=Mock(return_value=b"GPU"),
+        ggml_backend_dev_backend_reg=Mock(return_value=1),
+        ggml_backend_reg_name=Mock(return_value=b"Vulkan"),
+    )
+    libraries = {str(registry_path): registry_library, str(base_path): base_library}
+    monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(llama_probe.ct, "CDLL", libraries.__getitem__)
+    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda: ())
+    monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: ())
+
+    assert llama_probe._probe_library(tmp_path) == (llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),)
 
 
 def test_apple_classification_preserves_unified_memory() -> None:

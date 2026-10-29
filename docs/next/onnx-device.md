@@ -9,22 +9,24 @@ model:
 ```
 
 环境变量 `MINERU_MODEL_ONNX_DEVICE` 高于文件配置。`small_backend=auto` 仍按原有规则选择
-Torch 或 ONNX；此选项不强制切换模型栈，也不改变 Torch / VLM 的设备。
+Torch 或 ONNX；此选项不强制切换模型栈，也不改变 Torch 的设备。小模型使用 ONNX 时，
+llama.cpp 自动模式复用这里的 CPU/GPU 结论。
 
 ### 共享 GPU 分类与选型
 
-OCR、llama.cpp、auto tier 和硬件诊断共用 `discrete / integrated / virtual / unknown` 分类。
+OCR、auto tier 和硬件诊断共用 `discrete / integrated / virtual / unknown` 分类。
 Windows 的分类依据为 D3D12 UMA，Linux 为 Vulkan 原生设备类型，macOS 复用现有系统显示设备信息。
 统一内存属性单独保存，不将 Apple Silicon 的集显分类解释为低性能设备。
 
-各后端先应用显式配置、设备可见性及兼容限制，再按“确认独显 → 确认集显 → 虚拟 GPU → 类型未知”排序；
-同类设备保留 Windows 高性能排序、Vulkan 原生顺序或 llama.cpp 的单后端多设备分组规则。
-OCR 与 llama.cpp 可以因支持范围不同选择不同显卡；不在目标后端候选中的独显不影响当前设备的校准或推荐。
+ONNX 先应用显式配置、设备可见性及兼容限制，再按“确认独显 → 确认集显 → 虚拟 GPU → 类型未知”排序；
+同类设备保留 Windows 高性能排序或 Vulkan 原生顺序。显存证据只取 ONNX 实际选中的设备。
+身份匹配优先使用 LUID、PCI 地址，再使用双方唯一的厂商/设备型号；名称只用于原生库存的唯一关联。
+重复库存或原生查询失败时保留未知类型，不据此授予独显免校准资格。
 
-ggml 的 GPU/IGPU 枚举仅用于确定 llama.cpp 可见的 GPU 库存，分类来自与平台原生设备的唯一关联。
-身份匹配优先使用双方已有的 LUID、PCI 地址，再使用双方唯一的厂商/设备型号；名称只用于原生库存的唯一关联，
-不用于猜测类型。重复库存、同型号多卡无法唯一关联或原生查询失败时保留未知，不凭此开放 Advanced 或免校准。
-本实现不增加 UUID、PCI 地址等身份采集。Torch 的加速可用性推荐和 Apple Silicon/MPS 特例保持不变。
+llama.cpp 的 CPU/GPU 自动决策直接复用小模型后端，具体显卡交给原生引擎。
+MinerU 不在启动推荐或模型构造时枚举 ggml、匹配 ONNX/llama 显卡、绑定 Vulkan 编号或重映射设备名。
+`hardware info` 仍可显式运行隔离的 llama 诊断；Windows 诊断读取有效 Vulkan LUID 与 DXGI 关联，
+但诊断库存不参与推荐或推理决策。
 
 | 值 | Windows DML | Linux WebGPU |
 |---|---|---|
@@ -97,7 +99,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 
 本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
 
-通常在首次实际使用 ONNX 模型时选型。API 使用 `--tier auto`（或省略），有效小模型后端为 ONNX，且可用逻辑 CPU 至少 4 核或存在显存／预算达到 5.5 GiB 的兼容 GPU 候选时，Windows/Linux 会提前同步调用相同的设备选择流程，并直接采用本次设备选型结果，不依赖 `--preload-models`。实际选中 GPU 且内存达标时开放 Standard/Advanced；auto tier 不增加独立测速，也不额外检查历史校准是否胜出。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均免测速，校准记录缺失、损坏、过期或 GPU 较慢不阻止内存达标的已选 GPU 开放高级档位。CPU 不足 4 核且无内存达标 GPU 候选、显式启动档位或 macOS 不增加这项启动选型。有效小模型后端为 Torch 时采用实际设备可用性和内存证据并跳过 OCR 校准，不修改 ONNX 设备偏好或证据；llama.cpp 自动集显路径也遵循这处分流。
+通常在首次实际使用 ONNX 模型时选型。API 使用 `--tier auto`（或省略），有效小模型后端为 ONNX，且可用逻辑 CPU 至少 4 核或存在显存／预算达到 5.5 GiB 的兼容 GPU 候选时，Windows/Linux 会提前同步调用相同的设备选择流程，并直接采用本次设备选型结果，不依赖 `--preload-models`。实际选中 GPU 且内存达标时开放 Standard/Advanced；auto tier 不增加独立测速，也不额外检查历史校准是否胜出。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均免测速，校准记录缺失、损坏、过期或 GPU 较慢不阻止内存达标的已选 GPU 开放高级档位。CPU 不足 4 核且无内存达标 GPU 候选、显式启动档位或 macOS 不增加这项启动选型。有效小模型后端为 Torch 时采用实际设备可用性和内存证据并跳过 OCR 校准，不修改 ONNX 设备偏好或证据；llama.cpp 自动模式也遵循这处分流，且不要求另一次显卡匹配。
 
 `mineru-kit hardware detect` 与 API 自动启动共享推荐逻辑；`hardware info` 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
@@ -111,6 +113,30 @@ Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或�
 显式或已保存的 `cpu` 不会因后来接入独显而改变。
 
 要重新测量，将配置改回 `auto` 并重启应用。修改程序阈值也不主动覆盖已保存的选择。
+
+## llama.cpp 自动模式与手动覆盖
+
+Windows/Linux 的 Engine 和 `llama-server` 复用同一 CPU/GPU 决策：
+
+- 小模型为 ONNX：使用 `resolve_onnx_device()` 的结果和进程缓存。兼容独显免测速；集显或类型未知按既有 OCR 校准决定。
+- 小模型为 Torch：使用已核验的 Torch 加速器可用性，不调用 ONNX、不下载 OCR 校准模型。
+- CPU：模型、视觉投影均使用 CPU，server 同时关闭额外算子卸载。
+- GPU：允许原生运行时按默认规则选择显卡；不要求它与 ONNX 使用同一物理卡，不新增 VLM 测速。
+- macOS：保持原生 Metal/CPU 路径。
+
+显式 `MINERU_LLAMA_CPP_BACKEND`、GPU 层数、server 设备或投影设备参数优先于自动模式。
+原生设备名称与用户提供的可见设备环境变量保持原样；“主模型 CPU、投影 GPU”等显式组合继续支持。
+原生引擎负责实际显卡选择及参数合法性；其自动 GPU 不可用回退保持原样，显式后端不可用及推理错误直接报告，不另行重试。
+`llama.cpp device policy` 日志说明共享决策来源；原生 Engine 的 `verbosity=LOG_LEVEL_INFO` 可查看实际设备。
+
+仅自动 ONNX 路径在 Linux 选择 WebGPU、已选适配器为 Intel legacy/Xe-LP/Xe-LPG 架构时，
+MinerU 才在初始化期间补充 `GGML_VK_SERIALIZE_SUBMISSIONS=1`。依据来自 ONNX 已有适配器信息，
+不再探测 llama 的实际显卡。用户已设置的值（包括 `0`）优先；Torch 和手动选卡路径需自行设置该兼容变量。
+临时环境设置使用互斥锁并在成功或异常后恢复；不生成 `GGML_VK_VISIBLE_DEVICES`。
+离线 server 仍禁止为自动选型下载校准模型，缺少本地权重时沿用现有 ONNX CPU 回退。
+
+档位推荐只看小模型后端、其实际选型及显存预算，不受 llama 专用后端参数或诊断失败影响。
+CPU 核数、5.5 GiB 显存门槛及默认 Standard 的规则保持不变。
 
 ## 模型预设
 

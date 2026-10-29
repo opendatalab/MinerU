@@ -18,7 +18,6 @@ from mineru.config import VlmConfig, get_config
 from mineru.kit.commands import hardware as hardware_cmd
 from mineru.kit.main import app as kit_app
 from mineru.model.runtime import device, llama_device, onnx_calibration_cache, onnx_device, tier_recommendation
-from mineru.model.runtime.llama_probe import LlamaDevice
 from mineru.parser import api_server
 from mineru.types import TIERS
 
@@ -196,22 +195,13 @@ def test_remote_vlm_and_api_override_match_detect(
 def test_torch_llama_integrated_route_does_not_return_to_onnx(
     torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, accelerated: bool
 ) -> None:
-    """llama 自动集显复用 Torch 可用性，后续绑定及 Intel 兼容策略继续执行。"""
+    """llama 自动模式仅复用 Torch 可用性，不探测显卡或注入 Intel 兼容设置。"""
     monkeypatch.setattr(llama_device, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.delenv("GGML_VK_SERIALIZE_SUBMISSIONS", raising=False)
     monkeypatch.setenv("MINERU_DEVICE_MODE", "xpu" if accelerated else "cpu")
     _fake_torch(monkeypatch, "xpu", accelerated)
-    native = LlamaDevice("Vulkan0", "Arc", "vulkan", 0x8086, 0x7D51, 0, kind="integrated", kind_source="vulkan")
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: (native,))
-    bind = Mock(side_effect=lambda selection: selection)
-    monkeypatch.setattr(llama_device, "_bind", bind)
     result = llama_device.resolve_llama_device()
     assert result.device == ("gpu" if accelerated else "cpu")
-    if accelerated:
-        assert result.devices == (native,)
-        assert dict(result.environment)["GGML_VK_SERIALIZE_SUBMISSIONS"] == "1"
-        bind.assert_called_once()
-    else:
-        bind.assert_not_called()
+    assert result.environment == ()
     torch_environment.assert_not_called()

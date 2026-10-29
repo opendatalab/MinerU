@@ -12,7 +12,6 @@ llama-server 的全部服务能力由 llama.cpp 提供，本模块只补默认�
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 import struct
 import sys
 import typing
@@ -210,13 +209,6 @@ def _exec_server(args: list[str], selection: LlamaSelection | None = None) -> ty
 
     print(f"start llama.cpp server: {binary} {' '.join(_redact_secrets(args))}")
     changes = dict(selection.environment) if selection is not None else {}
-    if selection is not None and selection.device != "native":
-        # Native env values are parsed before CLI arguments and can contain names
-        # invalid after physical filtering; remap those too, before exec.
-        for name, flags in (("LLAMA_ARG_DEVICE", ("-dev", "--device")), ("MTMD_BACKEND_DEVICE", ("-mmdev", "--mmproj-device"))):
-            value = _flag_value(args, *flags)
-            if name in os.environ and value is not None:
-                changes[name] = value
     previous = {name: os.environ.get(name) for name in changes}
     try:
         os.environ.update(changes)
@@ -241,36 +233,19 @@ def _device_policy(args: list[str]) -> LlamaSelection:
     names = tuple(devices.split(",")) if devices else None
     offline = _has_arg(args, "--offline") or _has_env("LLAMA_ARG_OFFLINE")
     options = {"allow_download": False} if offline else {}
-    model_cpu = count == 0 or names == ("none",) or os.environ.get("MINERU_LLAMA_CPP_BACKEND") == "cpu"
     projector = _flag_value(args, "-mmdev", "--mmproj-device") or os.environ.get("MTMD_BACKEND_DEVICE")
     projector_enabled = _projector_enabled(args)
     projector_gpu = projector != "none" and (
         projector_enabled is True or (projector is not None and projector_enabled is not False)
     )
-    if model_cpu and projector_gpu:
-        selected = resolve_llama_device(
-            n_gpu_layers=99, device_names=(projector,) if projector else None, backend="vulkan", **options
-        )
-        return replace(selected, cpu_model=True, model_devices=())
-    selected = resolve_llama_device(n_gpu_layers=count, device_names=names, **options)
-    if selected.device == "cpu" and projector_gpu:
-        selected = resolve_llama_device(
-            n_gpu_layers=99, device_names=(projector,) if projector else None, backend="vulkan", **options
-        )
-        return replace(selected, cpu_model=True, model_devices=())
-    if selected.device == "gpu" and projector_gpu and projector:
-        model_names = tuple(old for old, _new in selected.device_aliases)
-        if projector not in model_names:
-            selected = resolve_llama_device(device_names=(*model_names, projector), **options)
-            aliases = dict(selected.device_aliases)
-            selected = replace(selected, model_devices=tuple(aliases[name] for name in model_names))
-    return selected
+    if projector_gpu:
+        # 显式投影 GPU 可以与 CPU 主模型共存；设备名和组合合法性由原生 parser 处理。
+        return LlamaSelection(reason="explicit_projector")
+    return resolve_llama_device(n_gpu_layers=count, device_names=names, **options)
 
 
 def _apply_device_policy(args: list[str], selection: LlamaSelection) -> None:
-    """将经过物理绑定的设备名称转交原生 server，不让投影落到其他显卡。"""
-    if selection.device == "native":
-        return
+    """自动 CPU 完整关闭卸载；GPU 及显式设备名交给原生运行时。"""
     if selection.device == "cpu":
         _set_arg(args, "0", "--n-gpu-layers", "-ngl", "--gpu-layers")
         _set_arg(args, "none", "--device", "-dev")
@@ -278,21 +253,19 @@ def _apply_device_policy(args: list[str], selection: LlamaSelection) -> None:
         args.append("--no-op-offload")
         if not _has_arg(args, "--mmproj-offload", "--no-mmproj-offload") and not _has_env("LLAMA_ARG_MMPROJ_OFFLOAD"):
             args.append("--no-mmproj-offload")
-        return
-    if selection.cpu_model:
-        _set_arg(args, "0", "--n-gpu-layers", "-ngl", "--gpu-layers")
-        args.append("--no-op-offload")
-    model_devices = selection.model_devices if selection.model_devices else tuple(d.name for d in selection.devices)
-    _set_arg(args, ",".join(model_devices), "--device", "-dev")
-    projector = _flag_value(args, "-mmdev", "--mmproj-device") or os.environ.get("MTMD_BACKEND_DEVICE")
-    if projector and projector != "none":
-        if _projector_enabled(args) is False:
-            _set_arg(args, "none", "--mmproj-device", "-mmdev")
-            return
-        alias = dict(selection.device_aliases).get(projector)
-        if alias is None:
-            raise ValueError("mmproj device must belong to the selected llama.cpp GPU group")
-        _set_arg(args, alias, "--mmproj-device", "-mmdev")
+    elif selection.reason == "explicit_projector":
+        layers = _flag_value(args, "-ngl", "--gpu-layers", "--n-gpu-layers") or os.environ.get("LLAMA_ARG_N_GPU_LAYERS")
+        devices = _flag_value(args, "-dev", "--device") or os.environ.get("LLAMA_ARG_DEVICE")
+        try:
+            cpu_layers = int(layers) == 0 if layers is not None else False
+        except ValueError:
+            cpu_layers = False
+        if cpu_layers or devices == "none" or os.environ.get("MINERU_LLAMA_CPP_BACKEND") == "cpu":
+            _set_arg(args, "0", "--n-gpu-layers", "-ngl", "--gpu-layers")
+            args.append("--no-op-offload")
+        # 明确指定投影设备时，后续 ngl=0 默认值不能再关闭投影 GPU。
+        if not _has_arg(args, "--mmproj-offload", "--no-mmproj-offload") and not _has_env("LLAMA_ARG_MMPROJ_OFFLOAD"):
+            args.append("--mmproj-offload")
 
 
 def main() -> None:

@@ -1,7 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """No-compute Vulkan enumeration and scoped physical-device restrictions for Dawn.
 
-Uses the stable Vulkan 1.0 C ABI. No logical device, shader or GPU work is created.
+Uses Vulkan 1.0 properties and Vulkan 1.1 identity/budget queries.
+No logical device, shader or GPU work is created.
 Callers must serialize scopes with the WebGPU runtime lock.
 """
 
@@ -33,11 +34,12 @@ class VulkanDevice(GpuClassification):
     dedicated_memory_bytes: int | None = None
     memory_budget_bytes: int | None = None
     memory_error: str | None = None
+    luid: str | None = None
 
     @property
     def identity(self) -> GpuIdentity:
-        """返回现有 PCI 型号和原生名称，不把枚举序号当作跨后端身份。"""
-        return GpuIdentity(self.vendor_id, self.device_id, name=self.name)
+        """携带 Windows 原生 LUID，避免同型号 DXGI 适配器记录造成身份歧义。"""
+        return GpuIdentity(self.vendor_id, self.device_id, luid=self.luid, name=self.name)
 
 
 class _ApplicationInfo(ct.Structure):
@@ -81,6 +83,35 @@ class _PropertiesStorage(ct.Union):
     # on Linux x86_64). Reserve aligned storage for its unused limits/sparse fields.
     # Unlike VkPhysicalDeviceProperties2, it cannot acquire fields via extensions.
     _fields_ = [("prefix", _PropertiesPrefix), ("storage", ct.c_uint64 * 128)]
+
+
+class _Properties2(ct.Structure):
+    _fields_ = [("sType", ct.c_uint32), ("pNext", ct.c_void_p), ("properties", _PropertiesStorage)]
+
+
+class _DeviceIDProperties(ct.Structure):
+    _fields_ = [
+        ("sType", ct.c_uint32),
+        ("pNext", ct.c_void_p),
+        ("deviceUUID", ct.c_uint8 * 16),
+        ("driverUUID", ct.c_uint8 * 16),
+        ("deviceLUID", ct.c_uint8 * 8),
+        ("deviceNodeMask", ct.c_uint32),
+        ("deviceLUIDValid", ct.c_uint32),
+    ]
+
+
+def _device_luid(library: Any, handle: ct.c_void_p) -> str | None:
+    """只接受 Vulkan 声明有效的 Windows LUID，并按 DXGI 的 high:low 格式编码。"""
+    identity = _DeviceIDProperties(sType=1000071004)
+    info = _Properties2(sType=1000059001, pNext=ct.cast(ct.pointer(identity), ct.c_void_p))
+    properties = library.vkGetPhysicalDeviceProperties2
+    properties.argtypes, properties.restype = [ct.c_void_p, ct.POINTER(_Properties2)], None
+    properties(handle, ct.byref(info))
+    if not identity.deviceLUIDValid:
+        return None
+    value = bytes(identity.deviceLUID)
+    return f"{int.from_bytes(value[4:], 'little'):08x}:{int.from_bytes(value[:4], 'little'):08x}"
 
 
 class _MemoryType(ct.Structure):
@@ -203,6 +234,7 @@ def enumerate_vulkan_devices(*, include_memory: bool = False) -> tuple[VulkanDev
                                 total,
                                 budget,
                                 memory_error,
+                                luid=_device_luid(library, handle) if sys.platform == "win32" else None,
                             ),
                             classify_vulkan_gpu(value.deviceType),
                         )

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -13,7 +12,7 @@ from loguru import logger
 from ...types import TIERS, Tier, select_default_task_tier
 from .cpu_threads import effective_cpu_count
 from .device import resolve_small_model_backend, resolve_torch_device
-from .gpu import is_discrete_gpu, match_gpu_identities
+from .gpu import is_discrete_gpu
 from .gpu_memory import GpuMemory, native_gpu_memory, torch_gpu_memory
 from .onnx_calibration_cache import CalibrationInfo, inspect_calibration_record
 
@@ -92,23 +91,14 @@ def _onnx_gpu_hardware(count: int, choice: OnnxSelection | None = None) -> TierH
 
     if choice is not None and (choice.device != "gpu" or choice.adapter is None):
         return TierHardware(count, reason=choice.reason)
-    backend = os.getenv("MINERU_LLAMA_CPP_BACKEND", "auto")
-    if backend == "cpu":
-        return TierHardware(count, reason="configured_cpu")
     if sys.platform == "darwin":
-        if backend in {"auto", "metal"} and _apple_metal_available():
+        if _apple_metal_available():
             return _gpu_hardware(count, True, "apple_silicon_metal", torch_gpu_memory("mps"))
         return TierHardware(count)
     if sys.platform not in {"linux", "win32"}:
         return TierHardware(count)
     if choice is None and get_config().model.onnx_device == "cpu":
         return TierHardware(count, reason="configured_cpu")
-
-    from .llama_device import discover_llama_devices
-
-    devices = tuple(d for d in discover_llama_devices() if backend == "auto" or d.backend == backend)
-    if not devices:
-        return TierHardware(count, reason="no_visible_gpu")
 
     if choice is not None:
         adapter = choice.adapter
@@ -122,9 +112,6 @@ def _onnx_gpu_hardware(count: int, choice: OnnxSelection | None = None) -> TierH
         adapter = select_webgpu_device(discover_webgpu_devices())
     if adapter is None:
         return TierHardware(count, reason="no_eligible_gpu")
-    matched = match_gpu_identities((adapter.identity,), [device.identity for device in devices])[0]
-    if matched is None:
-        return TierHardware(count, reason="gpu_identity_unconfirmed")
     memory = native_gpu_memory(adapter.identity, device=f"{choice.backend if choice else 'onnx'}:gpu")
     if choice is not None:
         # 性能判断属于 ONNX 自动选型；已选 GPU 仅需满足内存门槛，不再要求历史校准证据。
@@ -141,7 +128,7 @@ def _onnx_gpu_hardware(count: int, choice: OnnxSelection | None = None) -> TierH
     threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS["webgpu" if sys.platform == "linux" else "dml"]
     if threshold is None:
         return TierHardware(count, reason="no_eligible_gpu")
-    discrete = (is_discrete_gpu(adapter) or is_discrete_gpu(devices[matched])) and (
+    discrete = is_discrete_gpu(adapter) and (
         not isinstance(adapter, WebGPUDevice) or adapter.vulkan_device == (adapter.vendor_id, adapter.device_id)
     )
     calibrated = calibrated_gpu_is_faster(adapter, threshold)
@@ -238,8 +225,6 @@ def recommend_tiers(*, vlm_config: VlmConfig | None = None) -> TierRecommendatio
         warnings.append("GPU discovery unavailable; using CPU recommendation rules")
     if hardware.gpu_memory is not None and hardware.gpu_memory.warning:
         warnings.append(hardware.gpu_memory.warning)
-    if hardware.reason == "gpu_identity_unconfirmed":
-        warnings.append("GPU device identity could not be uniquely matched; using CPU recommendation rules")
     logger.info(
         "Recommended API tiers: {} (available CPUs: {}, reason: {})",
         ",".join(tier for tier in TIERS if tier in tiers),

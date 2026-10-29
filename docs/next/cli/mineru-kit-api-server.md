@@ -66,7 +66,7 @@ CPU 数按逻辑 CPU 计算，并考虑进程亲和性和 Linux cgroup 配额。
 
 5.5 GiB 按 `5_905_580_032` 字节比较，不四舍五入、不累加多卡，也不使用 `MINERU_VIRTUAL_VRAM_SIZE`。独显读取专用显存总量；Apple 统一内存使用 Metal 推荐工作集，Windows/Linux 集显分别使用 DXGI 本地预算与 Vulkan `heapBudget`。预算比较使用上限，不减去当前用量；未知预算不以系统总内存替代。容量证据可通过 `mineru-kit hardware detect --json` 的 `gpu_memory` 查看。
 
-GPU 类型与 OCR、llama.cpp 和硬件诊断使用共享分类；目标运行后端可见且原生身份确认的独显可以免测速，但仍须满足 5.5 GiB 内存门槛才能开放 Standard/Advanced。ggml 的通用 GPU 标志、未知类型及虚拟 GPU 均不直接视为独显；同型号多卡无法唯一关联时保持保守结果。各后端可以选择不同 GPU，共用分类和优先级，不强制跨后端同卡。
+GPU 类型与 OCR 和硬件诊断使用共享分类；小模型后端可见且原生身份确认的独显可以免测速，但仍须满足 5.5 GiB 内存门槛才能开放 Standard/Advanced。未知类型、虚拟 GPU 和无法唯一关联的设备不能直接获得独显免校准资格。推荐不查询 llama.cpp 库存，也不受其专用后端设置影响；llama 自动模式消费小模型的 CPU/GPU 结论，具体显卡由原生引擎选择。
 
 自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）验证实际设备可用性及容量：选中 CUDA/MPS/XPU 等设备的显存／预算至少 5.5 GiB 时推荐 advanced；显式 CPU 或设备不可用时按 CPU 条件推荐，不下载 ONNX 校准模型或改写其配置/记录。Torch 推荐不依赖 llama.cpp 库存。
 

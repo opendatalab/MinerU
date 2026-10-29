@@ -33,9 +33,13 @@ ONNX 分支保留既有兼容策略、0.8 阈值和进程缓存。Windows 确认
 
 `onnx_device=gpu` 无论来自用户配置还是之前的自动选型，都不触发测速；实际选中兼容 GPU 后，仅检查该设备的显存／预算是否达到 5.5 GiB。校准记录缺失、损坏、过期或记录 GPU 较慢，均不阻止内存达标的 GPU 开放 Standard/Advanced。此时推荐原因是 `configured_gpu`，校准状态为 `status=skipped, reason=configured_gpu`。内存不足或未知时报告相应内存原因。记录摘要只供诊断，读取失败会附带警告，不改变设备和档位结论。`onnx_device=cpu` 仍遵循 CPU 规则。
 
-llama.cpp 自动集显路径同样按有效小模型后端分流：Torch 使用加速可用性结果，不再绕回 OCR 校准；ONNX 保留原有性能结果和设备身份匹配。原生独显优先、显式 CPU/GPU 参数、物理绑定和兼容处理保持不变。
+llama.cpp 自动模式只复用小模型后端的 CPU/GPU 结论：Torch 使用加速可用性，ONNX 使用实际选型与缓存。
+显式参数优先，具体显卡由原生引擎选择；MinerU 不在推荐或引擎构造时查询 ggml 库存、匹配身份、绑定或重映射设备。
+自动推荐同样不读取 llama 专用后端设置；VLM 使用其他引擎或远程服务时不会因此探测 llama。
+Linux Intel 串行提交仅在自动 ONNX 路径依据已有适配器信息补充，用户环境值优先；Torch 和手动路径不自动补充。
 
-OCR、llama.cpp、档位推荐与诊断共用 GPU 分类和双向唯一身份匹配。先按各后端的实际可见性和兼容性过滤，再按独显、集显、虚拟 GPU、未知类型排序；后端之间无需选择同一张卡。ggml 的 GPU/IGPU 标志不再直接作为独显判据，Windows 使用 D3D12 UMA、Linux 使用 Vulkan 原生分类。无法唯一关联的设备保留未知类型，不授予独显免校准或仅凭类型开放 Advanced。
+OCR、档位推荐与诊断保留共享 GPU 分类和双向唯一身份匹配，内存查询必须对应小模型后端选中的设备。
+`hardware info` 可独立探测 llama 的真实可见设备，诊断失败不会影响自动推荐。
 
 JSON 报告保留 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`default_request_tier`、`reason`、`cpu_count`、`small_backend`、`vlm_engine`、`device`、`calibration` 和 `warnings`，并增补 `gpu_memory`。内存证据包含 `device`、`identity`、`memory_bytes`、`kind`（`dedicated`／`budget`／`unknown`）、`source`、`warning`；没有候选设备时为 `null`。校准状态来自执行结果；Torch 使用 `status=skipped, reason=torch_backend`，不将可用性结论标成性能实测通过。
 

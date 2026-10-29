@@ -17,7 +17,6 @@ from mineru.model.runtime import onnx_calibration_cache as cache
 from mineru.model.runtime import tier_recommendation as recommendation
 from mineru.model.runtime.gpu import GpuIdentity, classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
 from mineru.model.runtime.gpu_memory import GpuMemory
-from mineru.model.runtime.llama_probe import LlamaDevice
 from mineru.model.runtime.webgpu import WebGPUDevice
 from mineru.model.runtime.windows_gpu import GpuAdapter
 from mineru.types import TIERS
@@ -26,6 +25,19 @@ from mineru.types import TIERS
 @pytest.fixture(autouse=True)
 def onnx_recommendation_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """本文件验证 ONNX 既有推荐规则，隔离宿主可能自动选择的 Torch 后端。"""
+    from mineru.model.runtime import llama_probe
+    import subprocess
+
+    forbidden = Mock(side_effect=AssertionError("recommendation must not probe llama devices"))
+    monkeypatch.setattr(llama_probe, "probe_devices", forbidden)
+    monkeypatch.setattr(llama_probe, "_probe_library", forbidden)
+    run = subprocess.run
+
+    def guarded_run(args: list[str], **kwargs: Any) -> Any:
+        assert "mineru.model.runtime.llama_probe" not in args
+        return run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", guarded_run)
     monkeypatch.setattr(recommendation, "resolve_small_model_backend", lambda: "onnx")
     from mineru.config import get_config
 
@@ -165,7 +177,7 @@ def test_unwritable_record_does_not_break_calibration(evidence_path: Path, monke
 @pytest.mark.parametrize(("platform", "metal"), [("darwin", True), ("darwin", False), ("other", False)])
 def test_apple_metal_recommendation(monkeypatch: pytest.MonkeyPatch, platform: str, metal: bool) -> None:
     """Apple Silicon 按 Metal 可用性推荐，不要求 Windows/Linux 校准记录。"""
-    from mineru.model.runtime import llama_device, onnx_device
+    from mineru.model.runtime import onnx_device
 
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.setattr(recommendation, "sys", SimpleNamespace(platform=platform))
@@ -174,7 +186,6 @@ def test_apple_metal_recommendation(monkeypatch: pytest.MonkeyPatch, platform: s
     monkeypatch.setattr(
         recommendation, "torch_gpu_memory", lambda device: GpuMemory(device, GpuIdentity(), 8 * 1024**3, "budget", "test")
     )
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: ())
     selection = Mock(side_effect=AssertionError("unsupported platform must not select ONNX device"))
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", selection)
     assert frozenset(recommendation.recommend_tiers().pdf_image_tiers) == frozenset(TIERS if metal else TIERS[:2])
@@ -182,41 +193,25 @@ def test_apple_metal_recommendation(monkeypatch: pytest.MonkeyPatch, platform: s
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])
-@pytest.mark.parametrize("kind", ["discrete", "calibrated", "slow", "unknown", "mismatch", "hidden", "failure"])
-def test_gpu_discovery_uses_only_existing_evidence(
+@pytest.mark.parametrize("kind", ["discrete", "calibrated", "slow", "unknown", "hidden", "failure"])
+def test_gpu_discovery_uses_only_existing_onnx_evidence(
     evidence_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, kind: str
 ) -> None:
-    """硬件初选只读取真实证据，校准由达到门槛后的启动编排触发。"""
-    from mineru.model.runtime import llama_device, onnx_device, webgpu, windows_gpu
+    """初选仅查询 ONNX 候选和旧证据，不提前校准或依赖 llama 库存。"""
+    from mineru.model.runtime import onnx_device, webgpu, windows_gpu
 
-    monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.setattr(recommendation, "sys", SimpleNamespace(platform=platform))
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 4)
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", Mock(side_effect=AssertionError("must not calibrate")))
-    descriptor = LlamaDevice(
-        "Vulkan0",
-        "test",
-        "vulkan",
-        0x8086,
-        0x7D51,
-        kind="integrated" if kind != "discrete" else "discrete",
-        kind_source="vulkan",
-    )
-    if kind == "mismatch":
-        descriptor = replace(descriptor, device_id=1)
-    inventory = () if kind == "hidden" else (descriptor,)
-    monkeypatch.setattr(
-        llama_device,
-        "discover_llama_devices",
-        Mock(
-            return_value=inventory,
-            side_effect=RuntimeError("driver") if kind == "failure" else None,
-        ),
-    )
     adapter = _adapter() if platform == "win32" else WebGPUDevice(0x8086, 0x7D51, vulkan_device=(0x8086, 0x7D51))
-    monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: (adapter,))
-    monkeypatch.setattr(webgpu, "discover_webgpu_devices", lambda: (adapter,))
-    monkeypatch.setattr(webgpu, "select_webgpu_device", lambda devices: devices[0])
+    if kind == "discrete":
+        adapter = replace(adapter, kind="discrete")
+    discover = Mock(
+        return_value=() if kind == "hidden" else (adapter,), side_effect=RuntimeError("driver") if kind == "failure" else None
+    )
+    monkeypatch.setattr(windows_gpu, "discover_gpus", discover)
+    monkeypatch.setattr(webgpu, "discover_webgpu_devices", discover)
+    monkeypatch.setattr(webgpu, "select_webgpu_device", lambda devices: devices[0] if devices else None)
     if kind != "unknown":
         cache.save_calibration_record(adapter, _measurement(gpu_elapsed=3.0 if kind == "slow" else 1.0))
     before = evidence_path.read_bytes() if evidence_path.exists() else None
@@ -228,7 +223,9 @@ def test_gpu_discovery_uses_only_existing_evidence(
 
 def test_explicit_cpu_and_discovery_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """显式 CPU 禁止 GPU 推荐，CPU 探测失败时只推荐基础档位。"""
-    monkeypatch.setenv("MINERU_LLAMA_CPP_BACKEND", "cpu")
+    from mineru.config import get_config
+
+    monkeypatch.setattr(get_config().model, "onnx_device", "cpu")
     monkeypatch.setattr(recommendation, "effective_cpu_count", Mock(side_effect=OSError("affinity")))
     assert recommendation.recommend_tiers().pdf_image_tiers == ("flash",)
 
@@ -241,7 +238,7 @@ def startup_calibration(
     import onnxruntime
 
     from mineru.model.download import ModelPath
-    from mineru.model.runtime import llama_device, onnx_calibration, onnx_device, vulkan, webgpu, windows_gpu
+    from mineru.model.runtime import onnx_calibration, onnx_device, vulkan, webgpu, windows_gpu
 
     settings = importlib.import_module("mineru.config")
     config_file = evidence_path.with_name("settings.yaml")
@@ -264,11 +261,6 @@ def startup_calibration(
         monkeypatch.setattr(module, "discover_gpus", lambda **kwargs: (_adapter(),))
     for module in (onnx_device, webgpu):
         monkeypatch.setattr(module, "discover_webgpu_devices", lambda: (WebGPUDevice(0x8086, 0x7D51),))
-    monkeypatch.setattr(
-        llama_device,
-        "discover_llama_devices",
-        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 0x7D51, kind="integrated", kind_source="vulkan"),),
-    )
     # 只替换权重准备，避免服务惰性导入的模块永久持有伪造的仓库对象。
     monkeypatch.setattr(ModelPath, "ensure", Mock(return_value=Path("rec.onnx")))
     measurement = Mock(return_value=_measurement())
@@ -359,14 +351,9 @@ def test_low_cpu_advanced_recommendation_still_selects_device(
     startup_calibration: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """门槛按初选档位判断，低 CPU 配额的独显设备仍按平台规则提前选型。"""
-    from mineru.model.runtime import llama_device, onnx_device, vulkan
+    from mineru.model.runtime import onnx_device, vulkan
 
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 2)
-    monkeypatch.setattr(
-        llama_device,
-        "discover_llama_devices",
-        lambda: (LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 0x7D51, kind="discrete", kind_source="vulkan"),),
-    )
     monkeypatch.setattr(
         onnx_device, "discover_gpus", lambda **kwargs: (with_gpu_classification(_adapter(), classify_d3d12_gpu(False)),)
     )
@@ -522,19 +509,15 @@ def test_configured_gpu_does_not_require_calibration_threshold(
     configured_gpu[1].assert_not_called()
 
 
-@pytest.mark.parametrize("inventory", ["hidden", "mismatch", "ambiguous"])
-def test_configured_gpu_still_requires_visible_matching_device(
-    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, inventory: str
+@pytest.mark.parametrize("llama_backend", ["auto", "cpu", "vulkan", "metal"])
+def test_configured_gpu_recommendation_is_independent_of_llama(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, llama_backend: str
 ) -> None:
-    """配置 GPU 不能借用不可见、另一张卡或身份不唯一的显存来开放高级档位。"""
-    from mineru.model.runtime import llama_device
-
-    device = LlamaDevice("Vulkan0", "test", "vulkan", 0x8086, 1 if inventory == "mismatch" else 0x7D51)
-    devices = () if inventory == "hidden" else (device, device) if inventory == "ambiguous" else (device,)
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: devices)
+    """VLM 后端设置、缺失或有歧义的 ggml 库存不参与 ONNX 档位推荐。"""
+    monkeypatch.setenv("MINERU_LLAMA_CPP_BACKEND", llama_backend)
     report = recommendation.recommend_tiers()
-    assert report.device.endswith(":gpu") and report.pdf_image_tiers == TIERS[:2]
-    assert report.reason == ("no_visible_gpu" if inventory == "hidden" else "gpu_identity_unconfirmed")
+    assert report.device.endswith(":gpu") and report.pdf_image_tiers == TIERS
+    assert report.reason == "configured_gpu"
     configured_gpu[1].assert_not_called()
 
 
