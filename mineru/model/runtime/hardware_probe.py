@@ -10,7 +10,7 @@ import importlib.util
 import json
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from .hardware_types import RuntimeProbe
 
@@ -68,6 +68,13 @@ def _onnx_probe() -> dict[str, Any]:
     """检查 ORT provider 和适配器库存，不调用会触发校准的设备选择。"""
     import onnxruntime as ort
 
+    from ...config import get_config
+    from .onnx_device import inspect_onnx_candidate
+
+    requested = get_config().model.onnx_device
+    backend: Literal["dml", "webgpu"] | None = None
+    selected = None
+    has_devices = False
     result: dict[str, Any] = {
         "version": ort.__version__,
         "module_path": ort.__file__,
@@ -76,7 +83,9 @@ def _onnx_probe() -> dict[str, Any]:
     if sys.platform == "win32":
         from .windows_gpu import discover_gpus, preferred_gpu
 
-        adapters = discover_gpus()
+        backend = "dml"
+        # 显式 GPU 沿用运行时性能排序；CPU 模式仍保留分类库存以核对历史校准证据。
+        adapters = discover_gpus(classify=requested != "gpu")
         selected = preferred_gpu(adapters)
         result["backend"] = "dml"
         result["adapters"] = [asdict(adapter) for adapter in adapters]
@@ -84,13 +93,33 @@ def _onnx_probe() -> dict[str, Any]:
     elif sys.platform == "linux":
         from .webgpu import discover_webgpu_devices, select_webgpu_device
 
+        backend = "webgpu"
         try:
             adapters = discover_webgpu_devices()
+            has_devices = bool(adapters)
             selected = select_webgpu_device(adapters)
             result.update(backend="webgpu", adapters=[asdict(adapter) for adapter in adapters])
             result["selected_adapter"] = asdict(selected) if selected is not None else None
         except Exception as error:
             result["adapter_error"] = str(error)
+    if result.get("adapter_error") and requested != "cpu":
+        result["selected_device"] = {
+            "device": None,
+            "reason": "selection_unavailable",
+            "warning": result["adapter_error"],
+        }
+    else:
+        choice = inspect_onnx_candidate(
+            requested,
+            backend=backend,
+            adapter=selected,
+            provider_available="DmlExecutionProvider" in result["providers"],
+            has_devices=has_devices,
+        )
+        result["selected_device"] = asdict(choice)
+        if choice.reason in {"calibration_required", "calibration_pending"}:
+            # 只读报告没有执行测速，不能把临时 CPU 占位值当作最终选择。
+            result["selected_device"]["device"] = None
     return result
 
 

@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from .onnx_calibration_cache import CalibrationInfo
 from .gpu import GpuIdentity, GpuKind
+
+HardwareInfoSection = Literal["environment", "cpu_memory", "packages", "gpus", "runtimes", "configuration"]
 
 
 @dataclass
@@ -107,4 +109,13 @@ class HardwareInfo:
     schema_version: int = 1
 
 
-__all__ = ["CpuInfo", "GpuInfo", "HardwareInfo", "MemoryInfo", "PackageInfo", "RuntimeProbe", "SystemHardware"]
+__all__ = [
+    "CpuInfo",
+    "GpuInfo",
+    "HardwareInfo",
+    "HardwareInfoSection",
+    "MemoryInfo",
+    "PackageInfo",
+    "RuntimeProbe",
+    "SystemHardware",
+]

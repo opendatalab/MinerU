@@ -72,42 +72,70 @@ def choose_gpu(cpu_elapsed: float, gpu_elapsed: float, threshold: float) -> bool
     return gpu_elapsed / cpu_elapsed <= threshold
 
 
-def _select(
-    requested: str, intra_op_num_threads: int, inter_op_num_threads: int, *, allow_download: bool = True
-) -> tuple[OnnxSelection, bool]:
+def inspect_onnx_candidate(
+    requested: str,
+    *,
+    backend: Literal["dml", "webgpu"] | None,
+    adapter: GpuAdapter | WebGPUDevice | None = None,
+    provider_available: bool = True,
+    has_devices: bool = False,
+) -> OnnxSelection:
+    """按已采集的库存解释免校准路径；需测速时只报告待校准，不探测、下载或写配置。"""
     if requested == "cpu":
-        return OnnxSelection(reason="configured_cpu"), False
-    if sys.platform not in {"win32", "linux"}:
-        if requested == "gpu":
-            logger.warning("ONNX GPU selection requires Windows DirectML or Linux WebGPU; using CPU")
-        return OnnxSelection(reason="unsupported_platform"), False
-    backend: Literal["dml", "webgpu"] = "webgpu" if sys.platform == "linux" else "dml"
-    if backend == "webgpu":
-        devices = discover_webgpu_devices()
-        adapter = select_webgpu_device(devices)
-        if devices and adapter is None:
-            logger.info("Linux WebGPU device policy selected CPU; no eligible visible GPU")
-            return OnnxSelection(reason="webgpu_architecture_policy", backend=backend), False
-    else:
-        import onnxruntime as ort
-
-        if "DmlExecutionProvider" not in ort.get_available_providers():
-            logger.warning("DirectML provider unavailable; using CPU without saving a performance decision")
-            return OnnxSelection(reason="directml_unavailable"), False
-        adapter = preferred_gpu(discover_gpus(classify=requested == "auto"))
+        return OnnxSelection(reason="configured_cpu")
+    if backend is None:
+        return OnnxSelection(reason="unsupported_platform")
+    if backend == "dml" and not provider_available:
+        return OnnxSelection(reason="directml_unavailable")
+    if backend == "webgpu" and has_devices and adapter is None:
+        return OnnxSelection(reason="webgpu_architecture_policy", backend=backend)
     if adapter is None:
-        # A plugin can expose no devices after a driver discovery failure. Do not persist that as a CPU win.
-        return OnnxSelection(reason="no_hardware_gpu"), requested == "auto" and backend == "dml"
+        return OnnxSelection(reason="no_hardware_gpu")
     # Linux 只有唯一确认的 Vulkan 独显且会话带物理约束，才与 DML 独显一样免校准。
     discrete = is_discrete_gpu(adapter) and (
         not isinstance(adapter, WebGPUDevice) or adapter.vulkan_device == (adapter.vendor_id, adapter.device_id)
     )
     if requested == "gpu" or discrete:
-        return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu", backend), False
+        return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu", backend)
+    if ONNX_GPU_TIME_RATIO_THRESHOLDS[backend] is None:
+        return OnnxSelection(reason="calibration_pending")
+    return OnnxSelection(reason="calibration_required", backend=backend)
+
+
+def _select(
+    requested: str, intra_op_num_threads: int, inter_op_num_threads: int, *, allow_download: bool = True
+) -> tuple[OnnxSelection, bool]:
+    """复用只读候选规则，只有需要测速时才进入模型准备和校准流程。"""
+    backend: Literal["dml", "webgpu"] | None = (
+        "webgpu" if sys.platform == "linux" else "dml" if sys.platform == "win32" else None
+    )
+    if requested == "cpu" or backend is None:
+        if requested == "gpu":
+            logger.warning("ONNX GPU selection requires Windows DirectML or Linux WebGPU; using CPU")
+        return inspect_onnx_candidate(requested, backend=backend), False
+    has_devices = False
+    if backend == "webgpu":
+        devices = discover_webgpu_devices()
+        has_devices = bool(devices)
+        adapter = select_webgpu_device(devices)
+        if devices and adapter is None:
+            logger.info("Linux WebGPU device policy selected CPU; no eligible visible GPU")
+    else:
+        import onnxruntime as ort
+
+        if "DmlExecutionProvider" not in ort.get_available_providers():
+            logger.warning("DirectML provider unavailable; using CPU without saving a performance decision")
+            return inspect_onnx_candidate(requested, backend=backend, provider_available=False), False
+        adapter = preferred_gpu(discover_gpus(classify=requested == "auto"))
+    selection = inspect_onnx_candidate(requested, backend=backend, adapter=adapter, has_devices=has_devices)
+    if selection.reason != "calibration_required":
+        if selection.reason == "calibration_pending":
+            logger.warning("ONNX {} threshold has not completed calibration; using CPU without saving", backend)
+        # 驱动发现失败不能作为 CPU 性能胜出的证据，保留原有 DML 空库存持久化规则。
+        return selection, selection.reason == "no_hardware_gpu" and requested == "auto" and backend == "dml"
+    assert adapter is not None
     threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS[backend]
-    if threshold is None:
-        logger.warning("ONNX {} threshold has not completed calibration; using CPU without saving", backend)
-        return OnnxSelection(reason="calibration_pending"), False
+    assert threshold is not None
     from ..registry import MINERU_4_MODELS_ONNX
     from .onnx_calibration import run_calibration
 
@@ -206,6 +234,7 @@ __all__ = [
     "choose_gpu",
     "cached_onnx_device",
     "confirm_gpu_session",
+    "inspect_onnx_candidate",
     "metacommands_enabled",
     "resolve_onnx_device",
 ]

@@ -195,6 +195,8 @@ jobs:
         shell: bash
         env:
           RELEASE_WHEEL_DIR: ${{ runner.temp }}/mineru-issue-template-dist
+          RELEASE_HISTORY: ${{ runner.temp }}/mineru-release-history.json
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -202,14 +204,15 @@ jobs:
             # 此 job 的独立 checkout 每次基于最新分支重新生成，避免覆盖并发提交。
             git fetch origin "$RELEASE_BRANCH"
             git reset --hard FETCH_HEAD
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RELEASE_HISTORY"
             uv run --no-project --python 3.12 scripts/sync_issue_template_version.py \
-              --wheel "$RELEASE_WHEEL_DIR" --tag "$RELEASE_TAG"
-            git add -- .github/ISSUE_TEMPLATE/bug_report.yml
-            if git diff --cached --quiet -- .github/ISSUE_TEMPLATE/bug_report.yml; then
-              echo "Issue template already reflects the latest stable release."
+              --wheel "$RELEASE_WHEEL_DIR" --tag "$RELEASE_TAG" --releases-json "$RELEASE_HISTORY"
+            git add -- .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/bug_report_zh.yml
+            if git diff --cached --quiet -- .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/bug_report_zh.yml; then
+              echo "Issue templates already reflect the recent stable releases."
               exit 0
             fi
-            git commit -m "chore: sync latest stable release in issue template"
+            git commit -m "chore: sync recent releases in issue templates"
             if git push origin "HEAD:$RELEASE_BRANCH"; then
               exit 0
             fi

@@ -523,3 +523,27 @@ def test_unstable_calibration_keeps_auto(config_file: Path, monkeypatch: pytest.
     assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
     assert policy.resolve_onnx_device() == selected
     measure.assert_called_once()
+
+
+@pytest.mark.parametrize("binding", [None, (0x8086, 1), (0x8086, 2)])
+def test_readonly_discrete_policy_requires_matching_webgpu_binding(binding: tuple[int, int] | None) -> None:
+    """只读诊断与运行时共享独显判断，缺少或错误物理绑定时仍需要校准。"""
+    descriptor = with_gpu_classification(WebGPUDevice(0x8086, 1, vulkan_device=binding), classify_vulkan_gpu(2))
+    selection = policy.inspect_onnx_candidate("auto", backend="webgpu", adapter=descriptor, has_devices=True)
+    assert selection.reason == ("discrete_gpu" if binding == (0x8086, 1) else "calibration_required")
+    assert selection.device == ("gpu" if binding == (0x8086, 1) else "cpu")
+
+
+@pytest.mark.parametrize(
+    "backend, has_devices, reason",
+    [
+        (None, False, "unsupported_platform"),
+        ("dml", False, "no_hardware_gpu"),
+        ("webgpu", False, "no_hardware_gpu"),
+        ("webgpu", True, "webgpu_architecture_policy"),
+    ],
+)
+def test_readonly_policy_explains_missing_candidate(backend: str | None, has_devices: bool, reason: str) -> None:
+    """平台不支持、无设备和有库存但无合格候选保持不同原因。"""
+    selection = policy.inspect_onnx_candidate("auto", backend=backend, has_devices=has_devices)
+    assert selection.device == "cpu" and selection.reason == reason

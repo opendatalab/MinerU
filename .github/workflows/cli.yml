@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.changes.outputs.code }}
+      issue_templates: ${{ steps.changes.outputs.issue_templates }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -40,7 +41,7 @@ jobs:
 
   lint:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.issue_templates == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -55,14 +56,17 @@ jobs:
       - name: Install lightweight check tools
         run: |
           uv venv
-          uv pip install ruff==0.14.2 pytest packaging
-      - name: Check Python and CI helpers
+          uv pip install ruff==0.14.2 pytest packaging 'PyYAML>=6,<7'
+      - name: Check product Python
+        if: needs.changes.outputs.code == 'true'
         run: |
           uv run --no-project --no-sync python -m compileall -q mineru scripts tests
           # 存量注解问题分批治理；全仓先阻止语法错误及未定义名称。
           uv run --no-project --no-sync ruff check --select E9,F63,F7,F82 mineru scripts tests
-          uv run --no-project --no-sync ruff check scripts/ci tests/ci
-          uv run --no-project --no-sync ruff format --check scripts/ci tests/ci
+      - name: Check CI helpers and issue forms
+        run: |
+          uv run --no-project --no-sync ruff check scripts/ci tests/ci scripts/sync_issue_template_version.py
+          uv run --no-project --no-sync ruff format --check scripts/ci tests/ci scripts/sync_issue_template_version.py
           uv run --no-project --no-sync python -m pytest -o addopts='' --confcutdir=tests/ci tests/ci
 
   cli-test:
@@ -180,13 +184,18 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          ISSUE_TEMPLATES_CHANGED: ${{ needs.changes.outputs.issue_templates }}
           LINT_RESULT: ${{ needs.lint.result }}
           TEST_RESULT: ${{ needs.cli-test.result }}
           TORCH_RESULT: ${{ needs.torch-test.result }}
         run: |
           test "$CHANGES_RESULT" = success
-          if [[ "$CODE_CHANGED" == true ]]; then
+          if [[ "$CODE_CHANGED" == true || "$ISSUE_TEMPLATES_CHANGED" == true ]]; then
             test "$LINT_RESULT" = success
+          else
+            test "$ISSUE_TEMPLATES_CHANGED" = false
+          fi
+          if [[ "$CODE_CHANGED" == true ]]; then
             test "$TEST_RESULT" = success
             test "$TORCH_RESULT" = success
           else

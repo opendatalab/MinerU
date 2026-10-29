@@ -27,8 +27,9 @@ from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from ..output import print_info, print_success
+from ._base import RuntimeCommand
 
-app = typer.Typer(help=t("Download, inspect, and verify local MinerU models."), no_args_is_help=True)
+app = typer.Typer(help=t("Download, inspect, and verify local MinerU models."), no_args_is_help=True, add_completion=False)
 
 
 def _validate_download_source(source: str | None) -> str | None:
@@ -82,7 +83,11 @@ def _format_repo_status(repo: ModelRepo) -> str:
     return f"{repo.name}: {status} ({repo.local_dir()})"
 
 
-@app.command("download", help=t("Download an explicit repo or the tier resources required by the current backend combination."))
+@app.command(
+    "download",
+    cls=RuntimeCommand,
+    help=t("Download an explicit repo or the tier resources required by the current backend combination."),
+)
 def download_cmd(
     repo: str | None = typer.Argument(None, help=t("Model repo: MinerU-4_models_torch, MinerU-4_models_onnx, or a VLM repo")),
     tier: str | None = typer.Option(None, "--tier", help=t("Model tier to prepare: basic or standard")),
@@ -115,7 +120,7 @@ def download_cmd(
     print_success(t("Downloaded models for {label}.", label=label))
 
 
-@app.command("show", help=t("Show configuration sources, effective backends, and tier resources."))
+@app.command("show", cls=RuntimeCommand, help=t("Show configuration sources, effective backends, and tier resources."))
 def show_cmd(
     small_backend: str | None = typer.Option(
         None,
@@ -169,7 +174,9 @@ def show_cmd(
         print_info(f"  {tier}: {names}")
 
 
-@app.command("verify", help=t("Verify local resources for an explicit repo or the current backend combination."))
+@app.command(
+    "verify", cls=RuntimeCommand, help=t("Verify local resources for an explicit repo or the current backend combination.")
+)
 def verify_cmd(
     repo: str | None = typer.Argument(None, help=t("Optional model repo name")),
     tier: str | None = typer.Option(None, "--tier", help=t("Optional model tier: basic or standard")),
