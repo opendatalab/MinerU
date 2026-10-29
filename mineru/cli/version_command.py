@@ -9,7 +9,6 @@ import typer
 
 from ..utils.i18n import t
 from .contracts import CliContext
-from .runtime import run_cli
 
 __all__ = ["VersionInfo", "render_version", "show_version", "version_cmd", "version_info"]
 
@@ -44,5 +43,7 @@ def show_version(ctx: typer.Context, value: bool) -> None:
 
 def version_cmd(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """Print MinerU and Python versions."""
+    from .runtime import run_cli
+
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, version_info, render=render_version)

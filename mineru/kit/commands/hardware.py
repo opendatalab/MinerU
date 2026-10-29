@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from functools import partial
+import sys
+from typing import TYPE_CHECKING, Any
 
 import typer
 
 from ...cli.contracts import CliContext
-from ...cli.runtime import run_cli
 from ...utils.i18n import t
+from ._base import RuntimeCommand
 
-app = typer.Typer(help=t("Detect recommended tiers or inspect hardware and runtime information."), no_args_is_help=True)
+if TYPE_CHECKING:
+    from ...model.runtime.hardware_types import HardwareInfoSection
+
+app = typer.Typer(
+    help=t("Detect recommended tiers or inspect hardware and runtime information."),
+    no_args_is_help=True,
+    add_completion=False,
+)
 
 
 def _value(value: Any) -> str:
@@ -41,55 +50,169 @@ def render_detection(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_info(data: dict[str, Any]) -> str:
-    """使用与 JSON 相同的字段生成可复制的问题反馈文本。"""
-    cpu, memory = data["cpu"], data["memory"]
-    lines = [
-        f"系统：{data['system']['name']} {data['system']['release']} ({data['system']['architecture']})",
-        f"系统版本：{_value(data['system'].get('os_version'))}",
-        f"发行版：{_value(data['system']['distribution'])}",
-        f"Python：{data['python']['version']} ({data['python']['executable']})",
-        f"MinerU：{data['mineru']['version']} ({data['mineru']['module_path']})",
-        f"CPU：{_value(cpu['model'])}",
-        f"CPU 核数：物理 {_value(cpu['physical_cores'])}，逻辑 {_value(cpu['logical_cores'])}，"
-        f"进程可用 {_value(cpu['available_cores'])}",
-        f"CPU 频率 (MHz)：基础 {_value(cpu['base_mhz'])}，当前 {_value(cpu['current_mhz'])}，最大 {_value(cpu['max_mhz'])}",
-        f"内存 (bytes)：总量 {_value(memory['total_bytes'])}，可用 {_value(memory['available_bytes'])}",
-        "系统显卡：",
-    ]
-    if not data["gpus"]:
-        lines.append("  未发现；如有探测错误，请参见提示")
-    for gpu in data["gpus"]:
+def _memory(value: int | None) -> str:
+    """将已知字节容量转换为三位小数的 GiB，未知值不附加伪造单位。"""
+    return "未知" if value is None else f"{value / 1024**3:.3f} GiB"
+
+
+def _runtime_value(value: Any) -> str:
+    """递归隐藏运行时模块路径并格式化容量，不修改原始探测数据。"""
+    if isinstance(value, dict):
+        fields = []
+        for key, item in value.items():
+            if key == "module_path":
+                continue
+            label = key.removesuffix("_bytes")
+            rendered = _memory(item) if key.endswith("_bytes") else _runtime_value(item)
+            fields.append(f"{label}: {rendered}")
+        return "{" + ", ".join(fields) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_runtime_value(item) for item in value) + "]"
+    return _value(value)
+
+
+def _render_device_selection(data: dict[str, Any]) -> list[str]:
+    """展示当前后端的只读设备选择；仅在存在校准证据时展开详细记录。"""
+    backend = (data["effective_config"].get("resolved") or {}).get("small_backend")
+    probe = next((probe for probe in data["runtimes"] if probe["name"] == backend), None)
+    selection = probe["data"].get("selected_device") if probe and probe["status"] == "ok" else None
+    lines = ["设备选择与校准：", f"  小模型后端：{_value(backend)}"]
+    reason = selection.get("reason") if selection else None
+    reasons = {
+        "torch_accelerator": "Torch 加速设备可用",
+        "torch_cpu": "未发现可用的 Torch 加速设备，使用 CPU",
+        "torch_device_unavailable": "指定的 Torch 设备不可用，回退 CPU",
+        "torch_device_error": "Torch 设备检查失败，回退 CPU",
+        "configured_cpu": "配置指定使用 CPU",
+        "configured_gpu": "配置指定使用 GPU，跳过自动测速",
+        "discrete_gpu": "已确认的候选独显满足免校准规则",
+        "unsupported_platform": "当前平台不支持 ONNX GPU 路径，使用 CPU",
+        "directml_unavailable": "DirectML provider 不可用，使用 CPU",
+        "no_hardware_gpu": "未发现可用的 ONNX GPU，使用 CPU",
+        "webgpu_architecture_policy": "没有通过 WebGPU 架构与可见性检查的 GPU，使用 CPU",
+        "calibration_required": "候选 GPU 需要 OCR 校准后才能确定最终设备",
+        "calibration_pending": "当前后端尚未配置可用的校准阈值",
+        "selection_unavailable": "设备探测失败，无法确定选择结果",
+    }
+    if selection:
+        device = selection.get("device")
+        if reason in {"calibration_required", "calibration_pending"}:
+            device = "待校准"
+        elif backend == "onnx" and device == "gpu":
+            device = f"{selection['backend']}:gpu"
+        lines.append(f"  选择设备：{_value(device)}")
+        lines.append(f"  选择依据：{reasons.get(reason, _value(reason))} ({_value(reason)})")
+        if selection.get("warning"):
+            lines.append(f"  设备提示：{selection['warning']}")
+        if backend == "onnx" and selection.get("device") == "gpu":
+            lines.append("  验证范围：只读选型，尚未验证 GPU 推理会话")
+    else:
+        lines.append("  选择设备：未知")
+        detail = f"{probe['status']}，{_value(probe['error'])}" if probe else "未取得对应运行时的设备选择结果"
+        lines.append(f"  选择依据：{detail}")
+
+    if backend == "torch":
+        lines.append("  校准：不适用（Torch 后端无需 ONNX OCR 校准）")
+    elif reason in {"discrete_gpu", "configured_gpu"}:
+        lines.append("  校准：免校准")
+    elif reason in {"calibration_required", "calibration_pending"}:
+        lines.append("  校准：待完成（info 只读检查不会执行测速）")
+    elif selection and selection.get("device") == "cpu":
+        lines.append("  校准：未执行（当前选择 CPU）")
+
+    calibration = data["calibration"]
+    if calibration["status"] == "present":
+        label = "ONNX 校准记录（不参与当前 Torch 设备选择）" if backend == "torch" else "ONNX 校准记录"
+        lines.append(f"  {label}：")
+        lines.extend(f"    {key}: {_value(value)}" for key, value in calibration.items() if value is not None)
+    elif calibration["status"] == "invalid":
         lines.extend(
             [
-                f"  {_value(gpu['name'])} [{gpu['kind']}]，厂商 {_value(gpu['vendor'])}，标识 {_value(gpu['device_id'])}",
-                f"    来源 {gpu['source']}，驱动 {_value(gpu['driver'])}，总线 {_value(gpu['bus_id'])}",
-                f"    独立显存 {_value(gpu['dedicated_memory_bytes'])} bytes，"
-                f"共享内存 {_value(gpu['shared_memory_bytes'])} bytes，统一内存 {_value(gpu['unified_memory'])}",
+                "  校准记录：不可用",
+                f"    path: {calibration['path']}",
+                f"    error: {_value(calibration['error'])}",
             ]
         )
-    lines.append("已安装软件：")
-    lines.extend(f"  {package['name']} {package['version']} ({package['location']})" for package in data["packages"])
-    lines.append("当前进程运行时探测：")
-    for probe in data["runtimes"]:
-        lines.append(f"  {probe['name']}: {probe['status']}")
-        if probe["error"]:
-            lines.append(f"    {probe['error']}")
-        for key, value in probe["data"].items():
-            lines.append(f"    {key}: {_value(value)}")
-    lines.append("有效配置：")
+    elif backend != "torch" and reason not in {"discrete_gpu", "configured_gpu"}:
+        lines.append("  校准记录：无详细记录")
+    return lines
+
+
+def _render_info_section(section: HardwareInfoSection, data: dict[str, Any]) -> str:
+    """用统一分节渲染实现完整报告与逐段输出，保持文本字段和顺序一致。"""
+    if section == "environment":
+        return "\n".join(
+            [
+                f"系统：{data['system']['name']} {data['system']['release']} ({data['system']['architecture']})",
+                f"系统版本：{_value(data['system'].get('os_version'))}",
+                f"发行版：{_value(data['system']['distribution'])}",
+                f"Python：{data['python']['version']}",
+                f"MinerU：{data['mineru']['version']}",
+            ]
+        )
+    if section == "cpu_memory":
+        cpu, memory = data["cpu"], data["memory"]
+        return "\n".join(
+            [
+                f"CPU：{_value(cpu['model'])}",
+                f"CPU 核数：物理 {_value(cpu['physical_cores'])}，逻辑 {_value(cpu['logical_cores'])}，"
+                f"进程可用 {_value(cpu['available_cores'])}",
+                f"CPU 频率 (MHz)：基础 {_value(cpu['base_mhz'])}，当前 {_value(cpu['current_mhz'])}，"
+                f"最大 {_value(cpu['max_mhz'])}",
+                f"内存：总量 {_memory(memory['total_bytes'])}，可用 {_memory(memory['available_bytes'])}",
+            ]
+        )
+    if section == "packages":
+        return "\n".join(["已安装软件：", *(f"  {package['name']} {package['version']}" for package in data["packages"])])
+    if section == "gpus":
+        lines = ["系统显卡："]
+        if not data["gpus"]:
+            lines.append("  未发现；如有探测错误，请参见提示")
+        for gpu in data["gpus"]:
+            lines.extend(
+                [
+                    f"  {_value(gpu['name'])} [{gpu['kind']}]，厂商 {_value(gpu['vendor'])}，标识 {_value(gpu['device_id'])}",
+                    f"    来源 {gpu['source']}，驱动 {_value(gpu['driver'])}，总线 {_value(gpu['bus_id'])}",
+                    f"    独立显存 {_memory(gpu['dedicated_memory_bytes'])}，"
+                    f"共享内存 {_memory(gpu['shared_memory_bytes'])}，统一内存 {_value(gpu['unified_memory'])}",
+                ]
+            )
+        return "\n".join(lines)
+    if section == "runtimes":
+        lines = ["当前进程运行时探测："] if data.get("runtime_header", True) else []
+        for probe in data["runtimes"]:
+            lines.append(f"  {probe['name']}: {probe['status']}")
+            if probe["error"]:
+                lines.append(f"    {probe['error']}")
+            for key, value in probe["data"].items():
+                if key != "module_path":
+                    rendered = _memory(value) if key.endswith("_bytes") else _runtime_value(value)
+                    lines.append(f"    {key.removesuffix('_bytes')}: {rendered}")
+        return "\n".join(lines)
+    lines = ["有效配置："]
     lines.extend(f"  {key}: {_value(value)}" for key, value in data["effective_config"].items())
-    lines.append("OCR 校准记录：")
-    lines.extend(f"  {key}: {_value(value)}" for key, value in data["calibration"].items())
+    lines.extend(_render_device_selection(data))
     lines.extend(f"提示：{warning}" for warning in data["warnings"])
     return "\n".join(lines)
 
 
-def _info_data() -> dict[str, Any]:
-    """仅在执行 info 时惰性导入采集层，帮助入口保持无探测副作用。"""
+def render_info(data: dict[str, Any]) -> str:
+    """使用与 JSON 相同的原始数据生成精简路径和容量的完整文本报告。"""
+    sections: tuple[HardwareInfoSection, ...] = ("environment", "cpu_memory", "packages", "gpus", "runtimes", "configuration")
+    return "\n".join(_render_info_section(section, data) for section in sections)
+
+
+def _emit_info_section(section: HardwareInfoSection, data: dict[str, Any]) -> None:
+    """每节完成后立即刷新 stdout，管道重定向时也能读取到早期结果。"""
+    print(_render_info_section(section, data), file=sys.stdout, flush=True)
+
+
+def _info_data(*, stream: bool = False) -> dict[str, Any] | None:
+    """文本逐节展示，JSON 仍返回完整报告；帮助入口不导入采集层。"""
     from ...model.runtime.hardware import collect_hardware_info
 
-    return asdict(collect_hardware_info())
+    report = collect_hardware_info(on_section=_emit_info_section if stream else None)
+    return None if stream else asdict(report)
 
 
 def _detect_data() -> dict[str, Any]:
@@ -99,16 +222,24 @@ def _detect_data() -> dict[str, Any]:
     return run_detection()
 
 
-@app.command("detect", help=t("Recommend the API tier ceiling using hardware and applicable OCR calibration."))
+@app.command(
+    "detect", cls=RuntimeCommand, help=t("Recommend the API tier ceiling using hardware and applicable OCR calibration.")
+)
 def detect_cmd(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """执行与 API 自动启动一致的后端感知推荐。"""
+    from ...cli.runtime import run_cli
+
     run_cli(CliContext(json_mode=json_mode), _detect_data, render=render_detection)
 
 
-@app.command("info", help=t("Read hardware, installed versions and runtime diagnostics without calibration."))
+@app.command(
+    "info", cls=RuntimeCommand, help=t("Read hardware, installed versions and runtime diagnostics without calibration.")
+)
 def info_cmd(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """只读输出可用于问题反馈的环境报告。"""
-    run_cli(CliContext(json_mode=json_mode), _info_data, render=render_info)
+    from ...cli.runtime import run_cli
+
+    run_cli(CliContext(json_mode=json_mode), partial(_info_data, stream=not json_mode))
 
 
 __all__ = ["app", "detect_cmd", "info_cmd", "render_detection", "render_info"]
