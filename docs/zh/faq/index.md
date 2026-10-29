@@ -10,7 +10,7 @@
 
     4.1 基础包在 Windows x64 可自动选择 ONNX DirectML 或 CPU，VLM 使用 llama.cpp。可用 `mineru-kit hardware info --json` 检查环境与已有校准证据。需要 Torch 小模型和 LMDeploy 时，在原虚拟环境中安装 `"mineru[full]>=4.0,<5"`，并核对 Torch 的 CUDA 支持、显卡驱动及引擎 wheel 的 Python 范围。
 
-    4.0 使用 `lmdeploy>=0.17.0,<0.18` 和 Transformers 5；不要套用旧版 LMDeploy 0.11.x 的 wheel 或跳过依赖检查。详见[扩展模块](../quick_start/extension_modules.md)和[档位说明](../usage/tiers.md)。
+    当前版本使用 `lmdeploy>=0.17.0,<0.19` 和 Transformers 5；不要套用旧版 LMDeploy 0.11.x 的 wheel 或跳过依赖检查。详见[扩展模块](../quick_start/extension_modules.md)和[档位说明](../usage/tiers.md)。
 
 ??? question "升级后旧命令、API 或配置不再工作怎么办？"
 

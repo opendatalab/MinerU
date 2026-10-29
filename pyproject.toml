@@ -103,8 +103,8 @@ torch = [
 ]
 full = [
     "mineru[torch]",
-    "vllm>=0.19.1,<0.29.0 ; sys_platform == 'linux'",
-    "lmdeploy>=0.17.0,<0.18 ; sys_platform == 'win32'",
+    "vllm>=0.19.1,<0.31.0 ; sys_platform == 'linux'",
+    "lmdeploy>=0.17.0,<0.19 ; sys_platform == 'win32'",
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
 ]
 all = [

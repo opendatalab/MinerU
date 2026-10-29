@@ -22,7 +22,7 @@ uv pip install -U "mineru[full]>=4.0,<5"
 
 ## Optional engine constraints
 
-The current 4.0 dependency declarations are `torch>=2.7.0,<3`, `transformers>=5.10.1,<6`, Linux `vllm>=0.19.1,<0.29.0`, and Windows `lmdeploy>=0.17.0,<0.18`. Intersect the package's Python range with the wheels actually available for these dependencies. Check the [legacy platform policy](../usage/compatibility.md) before upgrading a vendor environment.
+The current dependency declarations are `torch>=2.7.0,<3`, `transformers>=5.10.1,<6`, Linux `vllm>=0.19.1,<0.31.0`, and Windows `lmdeploy>=0.17.0,<0.19`. Intersect the package's Python range with the wheels actually available for these dependencies. Check the [legacy platform policy](../usage/compatibility.md) before upgrading a vendor environment.
 
 Apple Silicon defaults to llama.cpp for the VLM.
 
