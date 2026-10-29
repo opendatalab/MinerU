@@ -2,6 +2,13 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.1.1
+
+- **Windows GPU identification:** Match GPUs and memory information by physical PCI address, improving identification on systems with multiple GPUs or identical models.
+- **llama.cpp runtime policy:** Automatic mode on Linux and Windows reuses the small-model backend's CPU/GPU selection and lets llama.cpp choose the specific GPU. On these platforms, GPU models default to 4 generation threads while preserving explicit user settings.
+- **Automatic tier recommendations:** Use the device actually selected by the small-model backend without requiring a GPU memory threshold. GPU execution can enable all tiers; CPU execution enables Basic with at least 4 available cores and Standard with at least 12. Default requests still prefer Standard → Basic → Flash; Advanced requires an explicit request.
+- **PDF text cleanup:** Replace residual Unicode private-use characters with spaces after post-OCR processing and fallback restoration in native body text, covering both basic and supplementary private-use areas.
+
 ## 4.1.0
 
 - **Automatic acceleration across major platforms and GPUs:** The default installation supports CPU inference on Windows, Linux, and macOS, plus accelerated inference on compatible Intel, AMD, NVIDIA, and Apple Silicon GPUs, including integrated graphics. MinerU automatically selects suitable GPU or CPU execution; representative core inference workloads run at approximately **2–3× CPU speed**.

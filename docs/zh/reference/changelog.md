@@ -2,6 +2,13 @@
 
 本文档记录 MinerU 项目的版本更新历史、主要能力演进和重要兼容性变动。
 
+## 4.1.1
+
+- **Windows GPU 识别**：通过物理 PCI 地址关联 GPU 与显存信息，改善多显卡和同型号设备的匹配。
+- **llama.cpp 运行策略**：Linux 和 Windows 自动模式复用小模型后端的 CPU/GPU 选择，由 llama.cpp 选择具体显卡；这些平台上的 GPU 主模型默认使用 4 个生成线程，保留用户显式设置。
+- **自动档位推荐**：根据小模型后端实际选择的设备推荐档位，不再以显存容量作为准入条件。GPU 可开放全部档位；CPU 可用核数至少 4 核开放 Basic，至少 12 核开放 Standard。默认请求仍按 Standard → Basic → Flash 选择，Advanced 需要显式指定。
+- **PDF 文本清理**：原生正文在后置 OCR 和失败恢复后，将残留的 Unicode 私用区字符替换为空格，覆盖基本和补充私用区。
+
 ## 4.1.0
 
 - **主流平台与 GPU 自动加速**：默认安装支持 Windows、Linux 和 macOS 上的 CPU 运行，以及 Intel、AMD、NVIDIA 和 Apple Silicon 兼容独显或集显的推理加速。自动选择合适的 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
