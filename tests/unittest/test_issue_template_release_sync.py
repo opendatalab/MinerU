@@ -13,6 +13,7 @@ from zipfile import ZipFile
 
 import pytest
 import yaml
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
@@ -21,11 +22,22 @@ WORKFLOW = ROOT / ".github" / "workflows" / "python-package.yml"
 TEMPLATE_RELATIVE = TEMPLATE.relative_to(ROOT)
 
 
+def _baseline_template() -> str:
+    """保留真实表单结构，只固定测试起始版本，避免正式发版改变升级和重试场景。"""
+    source, count = re.subn(
+        r"(?m)^(        Latest stable release: )\S+( \| 最新正式版本：)\S+$",
+        r"\g<1>4.0.12\g<2>4.0.12",
+        TEMPLATE.read_text(encoding="utf-8"),
+    )
+    assert count == 1
+    return source
+
+
 @pytest.fixture
 def template_path(tmp_path: Path) -> Path:
-    """复制真实模板，确保同步测试不会写入仓库中的表单。"""
+    """复制固定版本的真实模板，确保同步测试不会写入仓库中的表单。"""
     target = tmp_path / "bug_report.yml"
-    target.write_bytes(TEMPLATE.read_bytes())
+    target.write_text(_baseline_template(), encoding="utf-8")
     return target
 
 
@@ -53,7 +65,7 @@ def _run_sync(wheel: Path, template: Path, tag: str = "mineru-4.0.13-released") 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_new_release_preserves_other_text_and_line_endings(template_path: Path, version: str, newline: str) -> None:
     """验证 PEP 440 升级、注释保留、换行保留和重复运行不写文件。"""
-    source = TEMPLATE.read_text(encoding="utf-8") + "# Unrelated version example: 4.0.12\n"
+    source = template_path.read_text(encoding="utf-8") + "# Unrelated version example: 4.0.12\n"
     original = source.replace("\n", newline).encode("utf-8")
     template_path.write_bytes(original)
     wheel = _wheel(template_path.parent, f"Name: mineru\nVersion: {version}\n")
@@ -68,6 +80,21 @@ def test_new_release_preserves_other_text_and_line_endings(template_path: Path, 
     repeated = _run_sync(wheel, template_path, f"mineru-{version}-released")
     assert repeated.returncode == 0, repeated.stderr
     assert template_path.stat().st_mtime_ns == modified
+
+
+def test_current_repository_template_can_advance(tmp_path: Path) -> None:
+    """直接验证未归一化的当前表单仍能升级，防止固定夹具掩盖真实模板漂移。"""
+    source = TEMPLATE.read_text(encoding="utf-8")
+    hint = re.search(r"(?m)^        Latest stable release: (?P<version>\S+) \| 最新正式版本：(?P=version)$", source)
+    assert hint is not None
+    current = Version(hint["version"])
+    version = f"{current.major}.{current.minor}.{current.micro + 1}"
+    template = tmp_path / "current-template.yml"
+    template.write_text(source, encoding="utf-8")
+    result = _run_sync(_wheel(tmp_path, f"Name: mineru\nVersion: {version}\n"), template, f"mineru-{version}-released")
+    assert result.returncode == 0, result.stderr
+    replacement = f"        Latest stable release: {version} | 最新正式版本：{version}"
+    assert template.read_text(encoding="utf-8") == source[: hint.start()] + replacement + source[hint.end() :]
 
 
 @pytest.mark.parametrize("version", ["4.0.12", "4.0.11", "4.0.9", "5.0.0a1", "5.0.0rc1", "5.0.0.dev1", "4.0.13+local"])
@@ -242,6 +269,7 @@ def release_checkout(tmp_path: Path) -> Path:
         target = checkout / source.relative_to(ROOT)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+    (checkout / TEMPLATE_RELATIVE).write_text(_baseline_template(), encoding="utf-8")
     (checkout / "untouched.txt").write_text("preserve unrelated content\n", encoding="utf-8")
     _git(checkout, "add", ".")
     _git(checkout, "commit", "-m", "seed release template")
@@ -353,4 +381,4 @@ def test_workflow_reports_failure_after_three_rejected_pushes(release_checkout: 
     assert result.returncode == 1
     assert "::error::Could not synchronize the issue template after three push attempts." in result.stdout
     assert attempts.read_text(encoding="utf-8").splitlines() == ["push", "push", "push"]
-    assert _git(release_checkout, "show", f"origin/master:{TEMPLATE_RELATIVE}") == TEMPLATE.read_text(encoding="utf-8").strip()
+    assert _git(release_checkout, "show", f"origin/master:{TEMPLATE_RELATIVE}") == _baseline_template().strip()
