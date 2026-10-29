@@ -1,5 +1,9 @@
 # Linux Xe-LPG 自动串行提交验证
 
+> 2026-10-29 策略更新：本文保留历史验证结果。当前仅自动 ONNX 路径依据 ONNX 已选适配器补充串行设置；
+> 已移除 llama 独立选卡、绑定复核及手动 GPU 路径的自动注入。Torch 和手动选卡需显式设置兼容变量。
+> 当前行为见 [llama.cpp 自动模式与手动覆盖](onnx-device.md#llamacpp-自动模式与手动覆盖)。
+
 2026-10-22。共享 llama.cpp 设备策略新增 Xe-LPG（PCI 家族 `7dxx`、`b6xx`），
 保留 Xe-LP 及更早架构的既有规则。Xe-HPG、Xe2/Xe3 LPG、其他后续架构及未知 PCI 家族不自动开启。
 

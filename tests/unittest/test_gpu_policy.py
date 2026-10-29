@@ -12,13 +12,13 @@ from unittest.mock import Mock
 
 import pytest
 
-from mineru.model.runtime import hardware, llama_device, llama_probe, tier_recommendation, vulkan, webgpu, windows_gpu
-from mineru.model.runtime.gpu_memory import GpuMemory
+from mineru.model.runtime import hardware, llama_probe, vulkan, webgpu, windows_gpu
 from mineru.model.runtime.gpu import (
     GPU_KIND_ORDER,
     GpuClassification,
     GpuIdentity,
     GpuKind,
+    PciAddress,
     classify_d3d12_gpu,
     classify_macos_gpu,
     classify_vulkan_gpu,
@@ -44,20 +44,10 @@ from mineru.model.runtime.hardware_types import GpuInfo, RuntimeProbe
 def test_native_classification_agrees_across_runtime_and_report(
     monkeypatch: pytest.MonkeyPatch, platform: str, classification: GpuClassification
 ) -> None:
-    """同一卡的 OCR、ggml 可见设备、档位推荐和硬件报告必须采用同一个分类来源。"""
-    from mineru.model.runtime import onnx_calibration_cache
-
-    for module in (llama_probe, webgpu, tier_recommendation):
+    """同一卡的 OCR、ggml 可见设备和硬件报告必须采用同一个分类来源。"""
+    for module in (llama_probe, webgpu):
         monkeypatch.setattr(module, "sys", SimpleNamespace(platform=platform))
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
-    monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: 4)
-    from mineru.config import get_config
-
-    monkeypatch.setattr(get_config().model, "onnx_device", "auto")
-    monkeypatch.setattr(
-        tier_recommendation, "native_gpu_memory", lambda identity, *, device: GpuMemory(device, identity, 8 * 1024**3)
-    )
-    monkeypatch.setattr(onnx_calibration_cache, "calibrated_gpu_is_faster", lambda *args: False)
     native = vulkan.VulkanDevice(0x1002, 1, "GPU", 0)
     # Windows 故意提供相反的 Vulkan 类型，确认分类权威仍是 D3D12。
     native = with_gpu_classification(
@@ -68,7 +58,6 @@ def test_native_classification_agrees_across_runtime_and_report(
     monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: (windows,))
     monkeypatch.setattr(webgpu, "discover_webgpu_devices", lambda: (webgpu.WebGPUDevice(0x1002, 1),))
     actual = llama_probe._classify_devices((llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),), (native,))
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: actual)
     ocr = (
         windows_gpu.preferred_gpu((windows,))
         if platform == "win32"
@@ -86,25 +75,18 @@ def test_native_classification_agrees_across_runtime_and_report(
         assert device.kind == classification.kind
         assert device.kind_source == classification.kind_source
         assert device.unified_memory == classification.unified_memory
-    assert tier_recommendation.detect_tier_hardware().advanced_gpu is (classification.kind == "discrete")
 
 
 @pytest.mark.parametrize("order", list(itertools.permutations(GPU_KIND_ORDER)))
-def test_backends_share_kind_order_with_native_tiebreakers(order: tuple[GpuKind, ...]) -> None:
-    """Windows 性能排序和 llama 后端分组都只能在统一类型优先级之后生效。"""
+def test_windows_kind_order_with_native_tiebreakers(order: tuple[GpuKind, ...]) -> None:
+    """Windows 性能排序只能在统一类型优先级之后生效。"""
     windows = tuple(
         windows_gpu.GpuAdapter(index, str(index), kind, 0x1002, index, index, kind=kind) for index, kind in enumerate(order)
-    )
-    llama = tuple(
-        llama_probe.LlamaDevice(f"Vulkan{index}", kind, "vulkan", 0x1002, index, index, kind=kind)
-        for index, kind in enumerate(order)
     )
     for expected in GPU_KIND_ORDER:
         selected = windows_gpu.preferred_gpu(windows)
         assert selected is not None and selected.kind == expected
-        assert llama_device._preferred(llama, "auto")[0].kind == expected
         windows = tuple(device for device in windows if device.kind != expected)
-        llama = tuple(device for device in llama if device.kind != expected)
 
 
 def test_identity_matching_requires_mutual_uniqueness() -> None:
@@ -121,6 +103,29 @@ def test_identity_matching_requires_mutual_uniqueness() -> None:
     first, second = replace(card, luid="a"), replace(card, luid="b")
     assert match_gpu_identities((first, second), (second, first)) == (1, 0)
     assert gpu_identities_match(GpuIdentity(bus_id="00000000:01:00.0"), GpuIdentity(bus_id="0000:01:00.0"))
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_physical_pci_match_beats_duplicate_name(reverse: bool) -> None:
+    """有效 PCI 坐标优先于同名无物理地址的 DXGI 条目，不依赖枚举顺序。"""
+    selected = GpuIdentity(name="8060S", pci_address=PciAddress(195, 0, domain=0))
+    physical = GpuIdentity(0x1002, 5510, luid="physical", name="8060S", pci_address=PciAddress(195, 0, function=0))
+    duplicate = replace(physical, luid="duplicate", pci_address=None)
+    targets = (physical, duplicate) if not reverse else (duplicate, physical)
+    assert match_gpu_identities((selected,), targets, allow_name=True) == (int(reverse),)
+    assert match_gpu_identities((selected, selected), targets, allow_name=True) == (None, None)
+
+
+def test_partial_pci_address_does_not_guess_domain_or_function() -> None:
+    """Torch 不提供 function、Windows 不提供 domain 时，只比较已知坐标并保留多解。"""
+    selected = GpuIdentity(name="GPU", pci_address=PciAddress(195, 0, domain=0))
+    function_zero = GpuIdentity(name="GPU", bus_id="0000:c3:00.0")
+    function_one = replace(function_zero, bus_id="0000:c3:00.1")
+    assert match_gpu_identities((selected,), (function_one,), allow_name=True) == (0,)
+    assert match_gpu_identities((selected,), (function_zero, function_one), allow_name=True) == (None,)
+    for conflict in ("0001:c3:00.0", "0000:c4:00.0", "0000:c3:01.0"):
+        assert not gpu_identities_match(selected, replace(function_zero, bus_id=conflict), allow_name=True)
+    assert not gpu_identities_match(replace(selected, luid="one"), replace(function_zero, luid="two"), allow_name=True)
 
 
 @pytest.mark.parametrize("platform", ["linux", "win32"])
@@ -146,6 +151,28 @@ def test_ambiguous_native_mapping_remains_unknown_everywhere(monkeypatch: pytest
     report = [GpuInfo(name="GPU", device_id="0x10de:0x0001") for _ in range(2)]
     hardware.merge_gpu_inventory(report, RuntimeProbe("vulkan", "ok", {"devices": [asdict(device) for device in physical]}))
     assert len(report) == 2 and all(device.kind == "unknown" for device in report)
+
+
+@pytest.mark.parametrize("luid", ["selected", "other", "missing", None])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_windows_vulkan_luid_disambiguates_same_model_dxgi_adapters(
+    monkeypatch: pytest.MonkeyPatch, luid: str | None, reverse: bool
+) -> None:
+    """同型号 DXGI 库存必须按 Vulkan 的有效 LUID 关联，缺失或冲突时不猜测。"""
+    monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
+    adapters = (
+        windows_gpu.GpuAdapter(0, "selected", "GPU", 0x10DE, 1, 0, kind="discrete", kind_source="d3d12"),
+        windows_gpu.GpuAdapter(2, "other", "GPU", 0x10DE, 1, 3, kind="integrated", kind_source="d3d12"),
+    )
+    monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: adapters[::-1] if reverse else adapters)
+    result = llama_probe._classify_devices(
+        (llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),),
+        (vulkan.VulkanDevice(0x10DE, 1, "GPU", 0, luid=luid),),
+    )
+    expected = {"selected": "discrete", "other": "integrated"}.get(luid, "unknown")
+    assert result[0].kind == expected
+    assert result[0].identity.luid == luid
+    assert result[0].vulkan_index == 0
 
 
 def test_windows_native_query_failure_does_not_use_ggml_or_vulkan_type(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -186,6 +213,38 @@ def test_ggml_gpu_enum_only_controls_inventory(monkeypatch: pytest.MonkeyPatch, 
         llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan", integrated=True)
 
 
+@pytest.mark.parametrize("folder", ["bin", "lib"])
+@pytest.mark.parametrize("prefix", ["", "lib"])
+def test_windows_probe_loads_device_accessors_from_base_dll(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, folder: str, prefix: str
+) -> None:
+    """Windows DLL 导出不沿依赖解析；严格分离注册与设备接口以覆盖真实 wheel 布局。"""
+    registry_path = tmp_path / folder / f"{prefix}ggml.dll"
+    registry_path.parent.mkdir()
+    registry_path.touch()
+    base_path = registry_path.with_name(f"{prefix}ggml-base.dll")
+    base_path.touch()
+    registry_library = SimpleNamespace(
+        ggml_backend_load_all_from_path=Mock(),
+        ggml_backend_dev_count=Mock(return_value=1),
+        ggml_backend_dev_get=Mock(return_value=1),
+    )
+    base_library = SimpleNamespace(
+        ggml_backend_dev_type=Mock(return_value=1),
+        ggml_backend_dev_name=Mock(return_value=b"Vulkan0"),
+        ggml_backend_dev_description=Mock(return_value=b"GPU"),
+        ggml_backend_dev_backend_reg=Mock(return_value=1),
+        ggml_backend_reg_name=Mock(return_value=b"Vulkan"),
+    )
+    libraries = {str(registry_path): registry_library, str(base_path): base_library}
+    monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(llama_probe.ct, "CDLL", libraries.__getitem__)
+    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda: ())
+    monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: ())
+
+    assert llama_probe._probe_library(tmp_path) == (llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),)
+
+
 def test_apple_classification_preserves_unified_memory() -> None:
     """Apple Silicon 的集显分类保留统一内存事实，不改变 MPS 的可用性推荐。"""
     apple = classify_macos_gpu("Apple", "arm64", integrated=False)
@@ -208,5 +267,33 @@ sys.meta_path.insert(0, BlockRuntime())
 from mineru.model.runtime.gpu import GPU_KIND_ORDER, GpuIdentity, match_gpu_identities
 assert GPU_KIND_ORDER[0] == "discrete"
 assert match_gpu_identities((GpuIdentity(1, 2),), (GpuIdentity(1, 2),)) == (0,)
+"""
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)
+
+
+def test_windows_memory_query_without_torch_or_other_inference_dependencies() -> None:
+    """基础安装的 Windows 原生查询和 LUID 匹配无需导入任何推理后端。"""
+    code = """
+import importlib.abc
+import sys
+from types import SimpleNamespace
+class BlockRuntime(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'torch', 'torchvision', 'onnxruntime', 'mineru_llama_cpp'}:
+            raise AssertionError(fullname)
+sys.meta_path.insert(0, BlockRuntime())
+from mineru.model.runtime import gpu_memory, windows_gpu
+from mineru.model.runtime.gpu import GpuIdentity
+gpu_memory.sys = SimpleNamespace(platform='win32')
+rows = [
+    {'vendor_id': 4098, 'device_id': 5510, 'name': '8060S', 'luid': luid,
+     'kind': 'integrated', 'memory_budget_bytes': budget, 'pci_address': None}
+    for luid, budget in [('other', 128 * 1024**3), ('selected', 8 * 1024**3)]
+]
+windows_gpu.inspect_gpus = lambda **kwargs: rows
+memory = gpu_memory.native_gpu_memory(GpuIdentity(luid='selected'), device='dml:gpu')
+assert memory.memory_bytes == 8 * 1024**3
+assert memory.source == 'dxgi.local_budget' and memory.identity.luid == 'selected'
+assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
 """
     subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)

@@ -17,8 +17,7 @@ from typer.testing import CliRunner
 from mineru.config import VlmConfig, get_config
 from mineru.kit.commands import hardware as hardware_cmd
 from mineru.kit.main import app as kit_app
-from mineru.model.runtime import device, llama_device, onnx_calibration_cache, onnx_device, tier_recommendation
-from mineru.model.runtime.llama_probe import LlamaDevice
+from mineru.model.runtime import device, gpu_memory, llama_device, onnx_calibration_cache, onnx_device, tier_recommendation
 from mineru.parser import api_server
 from mineru.types import TIERS
 
@@ -35,7 +34,8 @@ def torch_environment(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", forbidden)
     monkeypatch.setattr(onnx_calibration_cache, "save_calibration_record", forbidden)
     monkeypatch.setattr(onnx_calibration_cache, "invalidate_calibration_record", forbidden)
-    monkeypatch.setattr(tier_recommendation, "_onnx_gpu_hardware", forbidden)
+    monkeypatch.setattr(gpu_memory, "native_gpu_memory", forbidden)
+    monkeypatch.setattr(gpu_memory, "torch_gpu_memory", forbidden)
     return forbidden
 
 
@@ -44,12 +44,9 @@ def _fake_torch(monkeypatch: pytest.MonkeyPatch, kind: str, available: bool, cou
     api = SimpleNamespace(
         is_available=lambda: available,
         device_count=lambda: count,
-        current_device=lambda: 0,
-        get_device_properties=lambda index: SimpleNamespace(total_memory=8 * 1024**3, is_integrated_gpu=False),
     )
     unavailable = SimpleNamespace(is_available=lambda: False, device_count=lambda: 0)
     fake = SimpleNamespace(
-        mps=SimpleNamespace(recommended_max_memory=lambda: 8 * 1024**3),
         cuda=api if kind == "cuda" else unavailable,
         xpu=api if kind == "xpu" else unavailable,
         backends=SimpleNamespace(mps=api if kind == "mps" else unavailable),
@@ -83,7 +80,7 @@ def test_torch_accelerator_skips_onnx_for_every_engine(
     ("requested", "available", "expected_warning"),
     [("cpu", True, False), ("cuda", False, True), ("cuda:2", True, True), ("xpu:-1", True, True)],
 )
-@pytest.mark.parametrize("cores", [3, 4])
+@pytest.mark.parametrize("cores", [1, 3, 4, 9, 10, 11, 12, 32])
 def test_torch_cpu_and_invalid_explicit_device_are_conservative(
     torch_environment: Mock,
     monkeypatch: pytest.MonkeyPatch,
@@ -97,7 +94,8 @@ def test_torch_cpu_and_invalid_explicit_device_are_conservative(
     monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: cores)
     _fake_torch(monkeypatch, requested.split(":")[0], available)
     report = tier_recommendation.recommend_tiers()
-    assert report.device == "cpu" and report.ceiling == ("basic" if cores == 4 else "flash")
+    assert report.device == "cpu"
+    assert report.ceiling == ("standard" if cores >= 12 else "basic" if cores >= 4 else "flash")
     assert bool(report.warnings) == expected_warning
     assert get_config().model.small_backend == "torch"
     assert os.environ["MINERU_DEVICE_MODE"] == requested
@@ -113,54 +111,55 @@ def test_torch_probe_exception_keeps_warning(torch_environment: Mock, monkeypatc
     torch_environment.assert_not_called()
 
 
-@pytest.mark.parametrize("cores", [3, 4])
+@pytest.mark.parametrize("cores", [1, 10])
 @pytest.mark.parametrize("accelerator", ["cuda", "mps", "xpu"])
-@pytest.mark.parametrize("amount", [None, 5_905_580_032 - 1, 5_905_580_032, 6 * 1024**3 - 1])
-def test_torch_memory_gate_preserves_onnx_isolation(
-    torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, cores: int, accelerator: str, amount: int | None
+@pytest.mark.parametrize("amount", [None, 1024**3, "error"])
+def test_torch_memory_does_not_affect_recommendation(
+    torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, cores: int, accelerator: str, amount: int | str | None
 ) -> None:
-    """真实推荐链路检查精确容量边界，内存不足和未知均不触发 ONNX。"""
+    """容量偏小、未知或读取异常均不影响设备结论，且无需任何显存查询。"""
     monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: cores)
     monkeypatch.setenv("MINERU_DEVICE_MODE", accelerator)
     _fake_torch(monkeypatch, accelerator, True)
+    memory = Mock(return_value=amount, side_effect=RuntimeError("memory unavailable") if amount == "error" else None)
     fake = sys.modules["torch"]
     if accelerator == "mps":
-        fake.mps.recommended_max_memory = lambda: amount
+        fake.mps = SimpleNamespace(recommended_max_memory=memory)
     else:
-        getattr(fake, accelerator).get_device_properties = lambda index: SimpleNamespace(
-            total_memory=amount, is_integrated_gpu=False
-        )
+        getattr(fake, accelerator).get_device_properties = memory
     report = tier_recommendation.recommend_tiers()
-    expected = TIERS if amount is not None and amount >= 5_905_580_032 else TIERS[:2] if cores >= 4 else ("flash",)
-    assert report.pdf_image_tiers == expected
-    assert report.gpu_memory.memory_bytes == amount and report.calibration.reason == "torch_backend"
-    assert bool(report.warnings) is (amount is None)
+    assert report.pdf_image_tiers == TIERS and report.default_request_tier == "standard"
+    assert report.gpu_memory is None and report.calibration.reason == "torch_backend"
+    assert not report.warnings
+    memory.assert_not_called()
     torch_environment.assert_not_called()
 
 
-def test_auto_basic_api_defaults_and_rejects_higher_tiers(
-    torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(("cores", "expected"), [(4, TIERS[:2]), (10, TIERS[:2]), (11, TIERS[:2]), (12, TIERS[:3])])
+def test_auto_cpu_api_defaults_and_rejects_higher_tiers(
+    torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cores: int, expected: tuple[str, ...]
 ) -> None:
-    """经过真实推荐形成 Basic 服务，文本/JSON、能力列表和接单错误保持一致。"""
-    monkeypatch.setenv("MINERU_DEVICE_MODE", "cuda")
-    _fake_torch(monkeypatch, "cuda", True)
-    sys.modules["torch"].cuda.get_device_properties = lambda index: SimpleNamespace(total_memory=5_905_580_032 - 1)
+    """真实 CPU 推荐驱动文本/JSON、API 能力、默认请求以及显式请求的上下界。"""
+    monkeypatch.setenv("MINERU_DEVICE_MODE", "cpu")
+    monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: cores)
     monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", Mock())
     report = tier_recommendation.recommend_tiers()
     monkeypatch.setattr(hardware_cmd, "_detect_data", lambda: asdict(report))
     output = CliRunner().invoke(kit_app, ["hardware", "detect", "--json"])
+    assert output.exit_code == 0, output.output
     data = json.loads(output.stdout)
-    assert data["schema_version"] == 1 and data["gpu_memory"]["memory_bytes"] == 5_905_580_032 - 1
+    assert data["schema_version"] == 1 and data["gpu_memory"] is None
     rendered = hardware_cmd.render_detection(data)
-    assert "gpu_memory_insufficient" in rendered and "5905580031 bytes" in rendered and "torch.cuda.total_memory" in rendered
+    assert f"推荐启动上限：{expected[-1]}" in rendered
+    assert "5.5" not in rendered and "GPU 内存" not in rendered
     app = api_server.create_app(upload_dir=str(tmp_path))
     with TestClient(app) as client:
-        assert tuple(row["id"] for row in client.get("/v1/tiers").json()["data"]) == ("flash", "basic")
-        for options in ({}, {"tier": None}):
+        assert tuple(row["id"] for row in client.get("/v1/tiers").json()["data"]) == expected
+        for options in ({}, {"tier": None}, {"tier": expected[-1]}):
             response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
             assert response.status_code == 202
-            assert app.state.task_store._records[response.json()["task_id"]].options.tier == "basic"
-        for tier in ("standard", "advanced"):
+            assert app.state.task_store._records[response.json()["task_id"]].options.tier == expected[-1]
+        for tier in TIERS[len(expected) :]:
             response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], "tier": tier})
             assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_request"
             assert response.json()["error"]["param"] == "tier"
@@ -196,22 +195,28 @@ def test_remote_vlm_and_api_override_match_detect(
 def test_torch_llama_integrated_route_does_not_return_to_onnx(
     torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, accelerated: bool
 ) -> None:
-    """llama 自动集显复用 Torch 可用性，后续绑定及 Intel 兼容策略继续执行。"""
+    """llama 自动模式仅复用 Torch 可用性，不探测显卡或注入 Intel 兼容设置。"""
     monkeypatch.setattr(llama_device, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
     monkeypatch.delenv("GGML_VK_SERIALIZE_SUBMISSIONS", raising=False)
     monkeypatch.setenv("MINERU_DEVICE_MODE", "xpu" if accelerated else "cpu")
     _fake_torch(monkeypatch, "xpu", accelerated)
-    native = LlamaDevice("Vulkan0", "Arc", "vulkan", 0x8086, 0x7D51, 0, kind="integrated", kind_source="vulkan")
-    monkeypatch.setattr(llama_device, "discover_llama_devices", lambda: (native,))
-    bind = Mock(side_effect=lambda selection: selection)
-    monkeypatch.setattr(llama_device, "_bind", bind)
     result = llama_device.resolve_llama_device()
     assert result.device == ("gpu" if accelerated else "cpu")
-    if accelerated:
-        assert result.devices == (native,)
-        assert dict(result.environment)["GGML_VK_SERIALIZE_SUBMISSIONS"] == "1"
-        bind.assert_called_once()
-    else:
-        bind.assert_not_called()
+    assert result.environment == ()
+    assert tier_recommendation.recommend_tiers().ceiling == ("advanced" if accelerated else "basic")
+    torch_environment.assert_not_called()
+
+
+@pytest.mark.parametrize("accelerated", [False, True])
+def test_torch_cpu_count_failure_preserves_device_result(
+    torch_environment: Mock, monkeypatch: pytest.MonkeyPatch, accelerated: bool
+) -> None:
+    """CPU 计数异常回退一核，已验证的 Torch 加速设备仍开放全部档位。"""
+    monkeypatch.setattr(tier_recommendation, "effective_cpu_count", Mock(side_effect=OSError("affinity")))
+    monkeypatch.setenv("MINERU_DEVICE_MODE", "cuda" if accelerated else "cpu")
+    _fake_torch(monkeypatch, "cuda", accelerated)
+    report = tier_recommendation.recommend_tiers()
+    assert report.cpu_count == 1 and report.pdf_image_tiers == (TIERS if accelerated else TIERS[:1])
+    assert any("affinity" in warning for warning in report.warnings)
     torch_environment.assert_not_called()

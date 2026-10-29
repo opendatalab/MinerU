@@ -66,6 +66,8 @@ mineru-kit hardware info --json
 
 detect shares API startup recommendations and may perform applicable ONNX calibration. info reads hardware, installed runtimes, effective configuration, and calibration records without benchmarking, downloading weights, or writing configuration.
 
+Automatic API/WebUI tiers use the small-model backend’s device decision: GPU enables all four tiers; CPU with at least 12 available logical cores enables up to Standard, 4–11 cores up to Basic, and fewer than 4 cores only Flash. Recommendations do not query GPU memory capacity. Standard is the default request tier when available; CPU does not automatically enable Advanced. An explicit startup ceiling bypasses automatic recommendation.
+
 ## Resources and platform boundaries
 
 Native text parsing needs no inference models. Basic can run on CPU. Standard / Advanced speed and memory depend on the VLM engine, input size, and concurrency. Plan for at least 16 GB of system memory for higher-throughput local deployment. NVIDIA deployments also need an engine-supported GPU, driver, and sufficient free VRAM; 8 GB is only a planning starting point, not a guarantee for every workload.

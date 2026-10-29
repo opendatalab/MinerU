@@ -66,6 +66,8 @@ mineru-kit hardware info --json
 
 detect 与 API 自动启动共用推荐逻辑，可能执行适用的 ONNX 校准；info 只读采集硬件、已安装运行时、有效配置和校准记录，不测速、不下载权重、不写配置。
 
+API/WebUI 的自动 tier 采用小模型后端的设备结论：GPU 开放全部四档；CPU 可用逻辑核至少 12 时开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。自动推荐不查询显存容量。开放 Standard 时默认请求 Standard，CPU 不自动开放 Advanced。显式启动上限跳过自动推荐。
+
 ## 资源与平台边界
 
 原生文本解析不需要推理模型。Basic 可在 CPU 运行；Standard / Advanced 的速度和内存占用取决于 VLM 引擎、输入规模和并发。高吞吐本地部署建议至少 16 GB 系统内存；NVIDIA 部署还需要所选引擎支持的显卡、驱动和足够可用显存，8 GB 仅作为规划起点，不是所有任务的保证。

@@ -34,21 +34,22 @@ Layout、OCR-det/rec、公式主批次和 UNet 通过 `model.onnx_device=auto/cp
 环境变量为 `MINERU_MODEL_ONNX_DEVICE`。自动模式复用六图 rec 校准与输出检查；Linux 还执行 Intel 架构策略。
 其他 ONNX 会话及规定的公式尾批次保持 CPU 路线，具体以日志中的实际 provider 为准。
 CPU 算子线程读取 `MINERU_INTRA_OP_NUM_THREADS` 和 `MINERU_INTER_OP_NUM_THREADS`，默认 4/1。
-llama.cpp 自动模式优先使用原生 ggml 实际可见的独显；没有可用独显时，Windows 复用 DirectML、Linux 复用 WebGPU 的 ONNX 设备决策，
-包括已保存的 CPU/GPU 选择、输出一致性检查失败及架构回退。ONNX 决策涉及的 GPU 必须与 llama.cpp 的设备身份匹配，不能用另一张卡的成绩替集显决策。
-因此 Linux 上 Xe-LP 及以前的 Intel 默认随现有 WebGPU 架构策略走 CPU；显式 `MINERU_LLAMA_CPP_BACKEND=vulkan`、GPU 层数或 server `--device` 仍可强制使用 GPU。
+llama.cpp 自动模式直接复用小模型后端的 CPU/GPU 结论：ONNX 使用现有 DirectML/WebGPU 选型与缓存，
+Torch 使用已验证的加速器可用性。兼容独显优先和集显 OCR 校准由 ONNX 统一处理；不增加 VLM 测速。
+MinerU 不再枚举 ggml、匹配跨后端身份、过滤显卡或重映射设备名；GPU 模式下由原生引擎选择具体显卡，
+不要求与 ONNX 同卡。显式后端、GPU 层数、server 设备和投影参数优先，支持主模型 CPU、投影 GPU 的组合。
+macOS 保持原生 Metal/CPU 路径。
 
-解析与 `mineru-kit vlm-server` 的 llama 入口共用设备策略。仅当 Linux Vulkan 实际选中明确 PCI 映射中的 Intel Xe-LP/更早架构，
-或 Xe-LPG（`7dxx`、`b6xx`，包含 `8086:7d51`）时，自动启用 `GGML_VK_SERIALIZE_SUBMISSIONS=1`，
-规避已复现的 i915 请求取消、设备丢失及异常视觉结果。该规则对 standard、advanced 等档位统一生效。
-Xe-HPG、Xe2/Xe3 LPG 和其他后续架构、AMD、NVIDIA 及 Windows 不自动开启该开关。Xe-LPG 的 ONNX WebGPU 自适应校准策略不变。
-多卡机器先确认原生设备，再隔离所选 GPU 并复核身份；不能仅因机器里存在 Intel 集显就给独显开启串行提交。
-自动选择也不会混用需要串行提交的设备和其他设备；显式要求此类混合设备组会报错，因为 ggml 的环境开关无法逐卡设置。
+Engine 和 `mineru-kit vlm-server` 的 llama 入口共用这套决策。仅自动 ONNX 路径在 Linux 选择 WebGPU，
+且已有适配器信息明确属于 Intel legacy/Xe-LP/Xe-LPG 时，才补充 `GGML_VK_SERIALIZE_SUBMISSIONS=1`。
+该规避沿用已验证的架构范围，未重新探测 llama 实际设备；Windows、其他架构、Torch 和手动选卡不自动补充。
+手动使用受影响 Intel GPU 时须自行设置该变量。已有的显式环境值保持不变：原生开关检查变量是否存在，
+设为 `0` 同样会开启，撤销须 `unset`。进程内初始化结束后恢复临时环境；变更已缓存的 Vulkan 环境须使用新进程。
 
-已有的显式 `GGML_VK_SERIALIZE_SUBMISSIONS` 环境值保持不变：该开关检查变量是否存在，设为 `0` 同样会开启，撤销须 `unset`。
-进程内初始化结束后会恢复临时环境；ggml 已缓存设备状态时，变更可见显卡或提交策略须使用新进程。
-server 的 `--offline` 同样约束新增的 ONNX 校准模型读取，缺少本地模型时回退 CPU，不发起下载。
-Torch、其他 VLM 引擎和远程 VLM 不使用这套 llama.cpp 设备策略。
+server 的 `--offline` 同样约束 ONNX 校准模型读取，缺少本地模型时沿用 CPU 回退，不发起下载。
+`hardware info` 保留独立 llama 诊断；诊断失败不会降低推荐档位或改变运行设备。
+其他 VLM 引擎和远程 VLM 不使用 llama.cpp 的运行策略，也不会因自动档位推荐而触发 llama 探测。
+详细规则见 [ONNX 设备选择](onnx-device.md#llamacpp-自动模式与手动覆盖)。
 
 ## 资源结构
 

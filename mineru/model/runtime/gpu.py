@@ -22,6 +22,23 @@ class GpuClassification:
 
 
 @dataclass(frozen=True)
+class PciAddress:
+    """PCI 物理位置；未提供的 domain/function 保留未知，不猜测为零。"""
+
+    bus: int
+    device: int
+    domain: int | None = None
+    function: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.bus is None or self.device is None:
+            raise ValueError("PCI bus and device are required")
+        for value, maximum in ((self.bus, 255), (self.device, 31), (self.domain, 65535), (self.function, 7)):
+            if value is not None and (type(value) is not int or not 0 <= value <= maximum):
+                raise ValueError("Invalid PCI address")
+
+
+@dataclass(frozen=True)
 class GpuIdentity:
     """只使用已有设备身份；名称仅可用于原生库存之间的唯一关联。"""
 
@@ -30,6 +47,7 @@ class GpuIdentity:
     luid: str | None = None
     bus_id: str | None = None
     name: str | None = None
+    pci_address: PciAddress | None = None
 
 
 _Gpu = TypeVar("_Gpu", bound=GpuClassification)
@@ -89,28 +107,58 @@ def _normalized_bus_id(value: str) -> str:
         return value.lower()
 
 
-def gpu_identities_match(left: GpuIdentity, right: GpuIdentity, *, allow_name: bool = False) -> bool:
-    """优先比较双方共有的强身份，存在冲突时不得退回型号或名称匹配。"""
+def _pci_address(identity: GpuIdentity) -> PciAddress | None:
+    """兼容既有完整 BDF 字符串与运行时只提供部分坐标的 PCI 地址。"""
+    if identity.pci_address is not None:
+        return identity.pci_address
+    if isinstance(identity.bus_id, str):
+        try:
+            domain, bus, address = identity.bus_id.split(":")
+            device, function = address.split(".")
+            return PciAddress(int(bus, 16), int(device, 16), int(domain, 16), int(function, 16))
+        except ValueError:
+            pass
+    return None
+
+
+def _identity_match_strength(left: GpuIdentity, right: GpuIdentity, *, allow_name: bool) -> int:
+    """LUID、PCI 地址、型号、名称依次降级；共有身份冲突时禁止弱匹配。"""
     for first, second in ((left.vendor_id, right.vendor_id), (left.device_id, right.device_id)):
         if first is not None and second is not None and first != second:
-            return False
+            return -1
     if left.luid and right.luid:
-        return left.luid.lower() == right.luid.lower()
+        return 5 if left.luid.lower() == right.luid.lower() else -1
+    left_pci, right_pci = _pci_address(left), _pci_address(right)
+    if left_pci is not None and right_pci is not None:
+        coordinates = (
+            (left_pci.bus, right_pci.bus),
+            (left_pci.device, right_pci.device),
+            (left_pci.domain, right_pci.domain),
+            (left_pci.function, right_pci.function),
+        )
+        shared = [(first, second) for first, second in coordinates if first is not None and second is not None]
+        return len(shared) if all(first == second for first, second in shared) else -1
     if left.bus_id and right.bus_id:
-        return _normalized_bus_id(left.bus_id) == _normalized_bus_id(right.bus_id)
+        return 4 if _normalized_bus_id(left.bus_id) == _normalized_bus_id(right.bus_id) else -1
     if all(value is not None for value in (left.vendor_id, left.device_id, right.vendor_id, right.device_id)):
-        return (left.vendor_id, left.device_id) == (right.vendor_id, right.device_id)
-    return bool(allow_name and left.name and left.name == right.name)
+        return 1
+    return 0 if allow_name and left.name and left.name == right.name else -1
+
+
+def gpu_identities_match(left: GpuIdentity, right: GpuIdentity, *, allow_name: bool = False) -> bool:
+    """优先比较双方共有的强身份，存在冲突时不得退回型号或名称匹配。"""
+    return _identity_match_strength(left, right, allow_name=allow_name) >= 0
 
 
 def match_gpu_identities(
     sources: Sequence[GpuIdentity], targets: Sequence[GpuIdentity], *, allow_name: bool = False
 ) -> tuple[int | None, ...]:
     """只有两侧均唯一对应时返回目标索引，同型号多卡和重复库存均不猜测归属。"""
-    candidates = [
-        [index for index, target in enumerate(targets) if gpu_identities_match(source, target, allow_name=allow_name)]
-        for source in sources
-    ]
+    candidates: list[list[int]] = []
+    for source in sources:
+        strengths = [_identity_match_strength(source, target, allow_name=allow_name) for target in targets]
+        strongest = max(strengths, default=-1)
+        candidates.append([index for index, strength in enumerate(strengths) if strength >= 0 and strength == strongest])
     return tuple(
         matches[0] if len(matches) == 1 and sum(matches[0] in other for other in candidates) == 1 else None
         for matches in candidates
@@ -122,6 +170,7 @@ __all__ = [
     "GpuClassification",
     "GpuIdentity",
     "GpuKind",
+    "PciAddress",
     "classify_d3d12_gpu",
     "classify_macos_gpu",
     "classify_vulkan_gpu",

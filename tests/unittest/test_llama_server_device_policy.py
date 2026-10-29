@@ -1,29 +1,41 @@
-"""server 与进程内引擎遵循同一设备计划，参数别名与环境不泄漏。"""
+"""Engine/server 共用 CPU/GPU 决策，显式设备参数原样交给原生运行时。"""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from mineru.kit.vlm_server import llama_cpp_server as server
-from mineru.model.runtime import llama_device as policy
+from mineru.model.runtime import device, llama_device as policy, llama_probe, onnx_device
 from mineru.model.runtime.llama_device import LlamaSelection, SERIALIZE_ENV
-from mineru.model.runtime.llama_probe import LlamaDevice
+from mineru.model.runtime.onnx_device import OnnxSelection
+from mineru.model.runtime.webgpu import WebGPUDevice
 
 
-def plan() -> LlamaSelection:
-    """显式选择原来的 Vulkan1 后，隔离原生设备索引会变为 Vulkan0。"""
-    return LlamaSelection(
-        "gpu",
-        (LlamaDevice("Vulkan0", "Intel", "vulkan", 0x8086, 0x4680, 1, kind="integrated", kind_source="vulkan"),),
-        "explicit_gpu",
-        ((SERIALIZE_ENV, "1"), ("GGML_VK_VISIBLE_DEVICES", "1")),
-        (("Vulkan1", "Vulkan0"),),
-    )
+@pytest.fixture(autouse=True)
+def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(device, "resolve_small_model_backend", lambda: "onnx")
+    for name in (
+        *policy._BACKEND_ENV,
+        "MINERU_LLAMA_CPP_BACKEND",
+        "LLAMA_ARG_DEVICE",
+        "LLAMA_ARG_N_GPU_LAYERS",
+        "MTMD_BACKEND_DEVICE",
+        "LLAMA_ARG_MMPROJ_OFFLOAD",
+        "LLAMA_ARG_OFFLINE",
+        "LLAMA_ARG_THREADS",
+        "LLAMA_ARG_THREADS_BATCH",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    forbidden = Mock(side_effect=AssertionError("server must not probe llama devices"))
+    monkeypatch.setattr(llama_probe, "probe_devices", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
 
 
 @pytest.mark.parametrize(
@@ -39,8 +51,6 @@ def plan() -> LlamaSelection:
 def test_raw_selection_arguments_are_read_before_defaults(
     monkeypatch: pytest.MonkeyPatch, args: list[str], layers: int | None, names: tuple[str, ...] | None
 ) -> None:
-    monkeypatch.delenv("LLAMA_ARG_DEVICE", raising=False)
-    monkeypatch.delenv("LLAMA_ARG_N_GPU_LAYERS", raising=False)
     resolve = Mock(return_value=LlamaSelection())
     monkeypatch.setattr(server, "resolve_llama_device", resolve)
     server._device_policy(args)
@@ -57,24 +67,38 @@ def test_native_environment_selectors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_offline_prohibits_calibration_download(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("LLAMA_ARG_N_GPU_LAYERS", "LLAMA_ARG_DEVICE", "MTMD_BACKEND_DEVICE", "LLAMA_ARG_MMPROJ_OFFLOAD"):
-        monkeypatch.delenv(name, raising=False)
     resolve = Mock(return_value=LlamaSelection())
     monkeypatch.setattr(server, "resolve_llama_device", resolve)
     server._device_policy(["--offline"])
     resolve.assert_called_once_with(n_gpu_layers=None, device_names=None, allow_download=False)
 
 
-def test_cpu_model_with_explicit_gpu_projector_still_gets_workaround(monkeypatch: pytest.MonkeyPatch) -> None:
-    resolve = Mock(return_value=plan())
-    monkeypatch.setattr(server, "resolve_llama_device", resolve)
-    args = ["-ngl", "0", "--mmproj-device", "Vulkan1", "--mmproj-offload"]
+@pytest.mark.parametrize("source", ["cli", "env"])
+@pytest.mark.parametrize("cpu_model", [False, True])
+def test_explicit_projector_preserves_native_names_and_mixed_routing(
+    monkeypatch: pytest.MonkeyPatch, source: str, cpu_model: bool
+) -> None:
+    args = ["-ngl", "0"] if cpu_model else ["--device", "Vulkan1"]
+    if source == "cli":
+        args += ["--mmproj-device", "Vulkan9"]
+    else:
+        monkeypatch.setenv("MTMD_BACKEND_DEVICE", "Vulkan9")
+    select = Mock(side_effect=AssertionError("explicit projector must bypass ONNX"))
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", select)
     selected = server._device_policy(args)
-    assert selected.cpu_model
+    assert selected.device == "native" and not selected.environment
     server._apply_device_policy(args, selected)
-    assert server._flag_value(args, "--n-gpu-layers") == "0"
-    assert server._flag_value(args, "--mmproj-device") == "Vulkan0"
-    assert dict(selected.environment)[SERIALIZE_ENV] == "1"
+    server._apply_thread_policy(args, selected)
+    assert (server._flag_value(args, "--mmproj-device") or os.environ.get("MTMD_BACKEND_DEVICE")) == "Vulkan9"
+    assert "--mmproj-offload" in args
+    if cpu_model:
+        assert server._flag_value(args, "--n-gpu-layers", "-ngl") == "0"
+        assert "--no-op-offload" in args
+        assert "--threads" not in args
+    else:
+        assert server._flag_value(args, "--device") == "Vulkan1"
+        assert server._flag_value(args, "--threads") == "4"
+    select.assert_not_called()
 
 
 def test_disabled_projector_does_not_activate_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,109 +108,132 @@ def test_disabled_projector_does_not_activate_gpu(monkeypatch: pytest.MonkeyPatc
     resolve.assert_called_once_with(n_gpu_layers=0, device_names=None)
 
 
-def test_cpu_policy_disables_model_projector_and_op_offload(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LLAMA_ARG_MMPROJ_OFFLOAD", raising=False)
+def test_cpu_policy_disables_model_projector_and_op_offload() -> None:
     args = []
     server._apply_device_policy(args, LlamaSelection("cpu", reason="onnx_rec_calibration"))
     assert server._flag_value(args, "--n-gpu-layers") == "0"
     assert server._flag_value(args, "--device") == "none"
+    assert server._flag_value(args, "--mmproj-device") == "none"
     assert "--no-mmproj-offload" in args and "--no-op-offload" in args
 
 
-def test_projector_device_remaps_with_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MTMD_BACKEND_DEVICE", raising=False)
-    args = ["--device", "Vulkan1", "--mmproj-device", "Vulkan1"]
-    server._apply_device_policy(args, plan())
-    assert server._flag_value(args, "--device") == "Vulkan0"
-    assert server._flag_value(args, "--mmproj-device") == "Vulkan0"
-    assert "Vulkan1" not in args
-    assert args.count("--device") == 1 and args.count("--mmproj-device") == 1
-    with pytest.raises(ValueError, match="GPU group"):
-        server._apply_device_policy(["--mmproj-device", "Vulkan2"], plan())
+def test_gpu_policy_does_not_inject_device_names() -> None:
+    args = ["--model", "model.gguf"]
+    original = list(args)
+    server._apply_device_policy(args, LlamaSelection("gpu", reason="onnx_configured_gpu"))
+    assert args == original
 
 
 @pytest.mark.parametrize("fails", [False, True])
-def test_exec_scopes_workaround_and_restores_on_return(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fails: bool) -> None:
+def test_exec_scopes_compatibility_and_preserves_user_filters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fails: bool
+) -> None:
     binary = tmp_path / "llama-server"
     binary.touch()
     monkeypatch.setattr(server, "llama_server_binary", lambda: binary)
-    monkeypatch.delenv(SERIALIZE_ENV, raising=False)
-    monkeypatch.delenv("GGML_VK_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setenv("GGML_VK_VISIBLE_DEVICES", "1")
+    monkeypatch.setenv("LLAMA_ARG_DEVICE", "Vulkan1")
+    monkeypatch.setenv("MTMD_BACKEND_DEVICE", "Vulkan2")
 
     def execute(path: str, args: list[str]) -> None:
-        assert os.environ[SERIALIZE_ENV] == "1" and os.environ["GGML_VK_VISIBLE_DEVICES"] == "1"
+        assert os.environ[SERIALIZE_ENV] == "1"
+        assert os.environ["GGML_VK_VISIBLE_DEVICES"] == "1"
+        assert os.environ["LLAMA_ARG_DEVICE"] == "Vulkan1"
+        assert os.environ["MTMD_BACKEND_DEVICE"] == "Vulkan2"
         if fails:
             raise OSError("exec failed")
 
     monkeypatch.setattr(server.os, "execv", execute)
+    selection = LlamaSelection("gpu", environment=((SERIALIZE_ENV, "1"),))
     if fails:
         with pytest.raises(OSError, match="exec failed"):
-            server._exec_server([], plan())
+            server._exec_server([], selection)
     else:
-        server._exec_server([], plan())
-    assert SERIALIZE_ENV not in os.environ and "GGML_VK_VISIBLE_DEVICES" not in os.environ
+        server._exec_server([], selection)
+    assert SERIALIZE_ENV not in os.environ
+    assert os.environ["GGML_VK_VISIBLE_DEVICES"] == "1"
 
 
-def test_exec_remaps_environment_before_native_parser_validates_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    binary = tmp_path / "llama-server"
-    binary.touch()
-    monkeypatch.setattr(server, "llama_server_binary", lambda: binary)
-    monkeypatch.setenv("LLAMA_ARG_DEVICE", "Vulkan1")
-    monkeypatch.setenv("MTMD_BACKEND_DEVICE", "Vulkan1")
-    args = []
-    server._apply_device_policy(args, plan())
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_only_automatic_onnx_route_adds_intel_compatibility(
+    monkeypatch: pytest.MonkeyPatch, platform: str, explicit: bool
+) -> None:
+    monkeypatch.setattr(policy.sys, "platform", platform)
+    select = Mock(return_value=OnnxSelection("gpu", WebGPUDevice(0x8086, 0x7D51), "configured_gpu", "webgpu"))
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", select)
+    args = ["--device", "Vulkan1"] if explicit else []
+    selected = server._device_policy(args)
+    assert dict(selected.environment).get(SERIALIZE_ENV) == ("1" if platform == "linux" and not explicit else None)
+    server._apply_device_policy(args, selected)
+    assert args == (["--device", "Vulkan1"] if explicit else [])
+    assert select.call_count == int(not explicit)
 
-    def execute(path: str, argv: list[str]) -> None:
-        assert os.environ["LLAMA_ARG_DEVICE"] == "Vulkan0"
-        assert os.environ["MTMD_BACKEND_DEVICE"] == "Vulkan0"
-        assert "Vulkan1" not in argv
 
-    monkeypatch.setattr(server.os, "execv", execute)
-    server._exec_server(args, plan())
-    assert os.environ["LLAMA_ARG_DEVICE"] == "Vulkan1"
-    assert os.environ["MTMD_BACKEND_DEVICE"] == "Vulkan1"
+@pytest.mark.parametrize("decision", ["cpu", "gpu"])
+def test_server_main_applies_automatic_mode_before_gpu_defaults(monkeypatch: pytest.MonkeyPatch, decision: str) -> None:
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", lambda: OnnxSelection(decision, reason="configured_" + decision))
+    monkeypatch.setattr(server.sys, "argv", ["llama-server", "-m", "model.gguf", "--mmproj", "mmproj.gguf"])
+    monkeypatch.setattr(server, "_read_gguf_context_length", lambda path: 0)
+    execute = Mock()
+    monkeypatch.setattr(server, "_exec_server", execute)
+    server.main()
+    args, selection = execute.call_args.args
+    assert selection.device == decision
+    assert server._flag_value(args, "--n-gpu-layers") == ("0" if decision == "cpu" else "99")
+    assert ("--no-mmproj-offload" in args) is (decision == "cpu")
+    assert ("--no-op-offload" in args) is (decision == "cpu")
+    assert server._flag_value(args, "--threads") == (None if decision == "cpu" else "4")
+
+
+@pytest.mark.parametrize("source", ["short", "long", "inline", "env"])
+@pytest.mark.parametrize("threads", ["6", "-1"])
+def test_explicit_threads_override_gpu_default(monkeypatch: pytest.MonkeyPatch, source: str, threads: str) -> None:
+    args = {
+        "short": ["-t", threads],
+        "long": ["--threads", threads],
+        "inline": [f"--threads={threads}"],
+        "env": [],
+    }[source]
+    if source == "env":
+        monkeypatch.setenv("LLAMA_ARG_THREADS", threads)
+    original = list(args)
+    server._apply_thread_policy(args, LlamaSelection("gpu"))
+    assert args == original
+
+
+@pytest.mark.parametrize("source", ["cli", "env"])
+def test_batch_threads_remain_independent(monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+    args = ["--threads-batch", "8"] if source == "cli" else []
+    if source == "env":
+        monkeypatch.setenv("LLAMA_ARG_THREADS_BATCH", "8")
+    original = list(args)
+    server._apply_thread_policy(args, LlamaSelection("gpu"))
+    assert args == [*original, "--threads", "4"]
 
 
 @pytest.mark.parametrize(
-    "platform,chip,serialize",
-    [("linux", 0x7D51, True), ("linux", 0xB640, True), ("linux", 0x56A0, False), ("win32", 0x7D51, False)],
+    "args,backend,expected",
+    [
+        (["--device", "Vulkan1"], "auto", "4"),
+        (["-ngl", "99"], "auto", "4"),
+        ([], "vulkan", "4"),
+        ([], "cpu", None),
+        (["-ngl", "0"], "auto", None),
+        (["--device", "none"], "auto", None),
+    ],
 )
-@pytest.mark.parametrize("projector_only", [False, True])
-def test_actual_device_policy_reaches_server_environment(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str, chip: int, serialize: bool, projector_only: bool
+def test_manual_device_routes_apply_thread_defaults(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], backend: str, expected: str | None
 ) -> None:
-    """复用真实设备策略，验证模型或仅视觉编码选中 Xe-LPG 时的启动环境。"""
-    for name in (
-        *policy._BACKEND_ENV,
-        "MINERU_LLAMA_CPP_BACKEND",
-        "LLAMA_ARG_DEVICE",
-        "LLAMA_ARG_N_GPU_LAYERS",
-        "MTMD_BACKEND_DEVICE",
-        "LLAMA_ARG_MMPROJ_OFFLOAD",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
-    device = LlamaDevice(
-        "Vulkan0", "Intel", "vulkan", 0x8086, chip, 0, kind="integrated" if chip != 0x56A0 else "discrete", kind_source="vulkan"
-    )
-    monkeypatch.setattr(policy, "discover_llama_devices", Mock(return_value=(device,)))
-    args = ["-ngl", "0", "--mmproj-device", "Vulkan0", "--mmproj-offload"] if projector_only else ["--device", "Vulkan0"]
+    monkeypatch.setenv("MINERU_LLAMA_CPP_BACKEND", backend)
     selected = server._device_policy(args)
-    assert selected.cpu_model is projector_only
-    assert dict(selected.environment).get(SERIALIZE_ENV) == ("1" if serialize else None)
     server._apply_device_policy(args, selected)
+    server._apply_thread_policy(args, selected)
+    assert server._flag_value(args, "--threads") == expected
 
-    binary = tmp_path / "llama-server"
-    binary.touch()
-    monkeypatch.setattr(server, "llama_server_binary", lambda: binary)
 
-    def execute(path: str, argv: list[str]) -> None:
-        assert os.environ.get(SERIALIZE_ENV) == ("1" if serialize else None)
-        assert os.environ["GGML_VK_VISIBLE_DEVICES"] == "0"
-        if projector_only:
-            assert server._flag_value(argv, "--n-gpu-layers") == "0"
-            assert server._flag_value(argv, "--mmproj-device") == "Vulkan0"
-
-    monkeypatch.setattr(server.os, "execv", execute)
-    server._exec_server(args, selected)
-    assert SERIALIZE_ENV not in os.environ and "GGML_VK_VISIBLE_DEVICES" not in os.environ
+def test_unresolved_native_route_retains_native_thread_default() -> None:
+    args: list[str] = []
+    server._apply_thread_policy(args, LlamaSelection(reason="platform_native"))
+    assert not args

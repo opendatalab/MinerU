@@ -48,7 +48,11 @@ def _classify_devices(devices: tuple[LlamaDevice, ...], physical: tuple[VulkanDe
             continue
         native = physical[matched]
         result[index] = replace(
-            result[index], vendor_id=native.vendor_id, device_id=native.device_id, vulkan_index=native.index
+            result[index],
+            vendor_id=native.vendor_id,
+            device_id=native.device_id,
+            vulkan_index=native.index,
+            luid=native.luid or result[index].luid,
         )
         if sys.platform == "linux":
             result[index] = with_gpu_classification(result[index], native)
@@ -92,21 +96,27 @@ def _probe_library(root: Path) -> tuple[LlamaDevice, ...]:
     if path is None:
         raise RuntimeError("Cannot find the packaged ggml device registry library")
     library = ct.CDLL(str(path))
+    device_library = library
+    if sys.platform == "win32":
+        # Windows does not resolve exports through dependent DLLs. Device and
+        # backend accessors belong to ggml-base, while the registry is in ggml.
+        base_path = path.with_name(path.name.replace("ggml", "ggml-base"))
+        device_library = ct.CDLL(str(base_path))
     load = library.ggml_backend_load_all_from_path
     load.argtypes, load.restype = [ct.c_char_p], None
     count = library.ggml_backend_dev_count
     count.argtypes, count.restype = [], ct.c_size_t
     get = library.ggml_backend_dev_get
     get.argtypes, get.restype = [ct.c_size_t], ct.c_void_p
-    kind = library.ggml_backend_dev_type
+    kind = device_library.ggml_backend_dev_type
     kind.argtypes, kind.restype = [ct.c_void_p], ct.c_int
-    name = library.ggml_backend_dev_name
+    name = device_library.ggml_backend_dev_name
     name.argtypes, name.restype = [ct.c_void_p], ct.c_char_p
-    description = library.ggml_backend_dev_description
+    description = device_library.ggml_backend_dev_description
     description.argtypes, description.restype = [ct.c_void_p], ct.c_char_p
-    registry = library.ggml_backend_dev_backend_reg
+    registry = device_library.ggml_backend_dev_backend_reg
     registry.argtypes, registry.restype = [ct.c_void_p], ct.c_void_p
-    backend = library.ggml_backend_reg_name
+    backend = device_library.ggml_backend_reg_name
     backend.argtypes, backend.restype = [ct.c_void_p], ct.c_char_p
     load(str(root / "bin").encode())
     try:
