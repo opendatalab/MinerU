@@ -7,7 +7,7 @@
 
 ## 定位
 
-Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张图片 OCR、单个表格提取或一段文本识别。完整 PDF、DOCX、PPTX 等多页文档解析应使用 [Parse Jobs](parse-jobs.md)。
+Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张图片 OCR、单个表格提取或一段文本识别。完整 PDF、DOCX、PPTX 等多页文档解析应使用 [Tasks](tasks.md)。
 
 两套接口都只支持单轮请求，不维护服务端会话历史。
 
@@ -49,7 +49,7 @@ Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张�
 |------|------|:--:|------|
 | `messages` | array | 是 | 消息列表。 |
 | `model` | string | 是 | 虚拟模型 ID（`mineru-<服务版本>`），来自 `GET /v1/models`，精确匹配当前部署广告值；不用于选择引擎。 |
-| `tier` | string | 否 | MinerU 扩展字段：解析质量档（`flash`/`basic`/`standard`/`advanced`），内部复用 parse job 的 tier 路由与默认选择策略。OpenAI SDK 通过 `extra_body` 传入。 |
+| `tier` | string | 否 | MinerU 扩展字段：解析质量档（`flash`/`basic`/`standard`/`advanced`），内部复用 Tasks 的 tier 路由与默认选择策略。OpenAI SDK 通过 `extra_body` 传入。 |
 | `stream` | bool | 否 | 是否流式输出，默认 `false`。 |
 | `stream_options.include_usage` | bool | 否 | `stream=true` 时，最终 chunk 是否包含 usage。 |
 | `temperature` | number | 否 | 采样温度，范围 `[0, 2]`。 |
@@ -81,7 +81,6 @@ Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张�
 |------|------|------|
 | `text` | `{"type":"text","text":"..."}` | 文本指令。 |
 | `image_url` | `{"type":"image_url","image_url":{"url":"..."}}` | 图片 URL 或 base64 data URI。`detail` 可传但忽略。 |
-| `file` | `{"type":"file","file":{"file_id":"file-..."}}` | 引用 `purpose:"input_image"` 的 File。 |
 
 输入限制:
 
@@ -224,8 +223,7 @@ Content part:
 | part | 结构 | 说明 |
 |------|------|------|
 | `input_text` | `{"type":"input_text","text":"..."}` | 文本。 |
-| `input_image` | `{"type":"input_image","image_url":"..."}` 或 `{"type":"input_image","file_id":"file-..."}` | 图片 URL、data URI 或 File。 |
-| `input_file` | `{"type":"input_file","file_id":"file-..."}` | 仅支持 `purpose:"input_image"` 的 File。 |
+| `input_image` | `{"type":"input_image","image_url":"..."}` | 图片 URL 或 data URI。 |
 
 不支持 assistant role、tool/function item、reasoning item、conversation 状态 item。
 
@@ -329,3 +327,5 @@ Local Parse Server 可以暴露同样的 Chat 和 Responses endpoint，但实际
 - 不得静默切换到 `flash`。
 - 本地部署通常不做 anonymous/registered 的功能售卖差异；启用 API Key 后，通过认证的请求可以使用本地 server 暴露的全部模型能力。
 - 如果本地不实现 Chat/Responses，应在 `GET /v1/models` 中不要暴露对应模型，并对 endpoint 返回明确错误。
+
+这里的 Chat/Responses 为独立协议说明；Python 解析服务不新增这些路由。独立 Uploads 移除后，图片输入使用 URL 或 data URI，不再承诺 purpose=input_image 的 File 输入。

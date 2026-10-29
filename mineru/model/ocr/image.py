@@ -82,9 +82,14 @@ def mask_formula_regions_for_ocr_det(
     return masked_image
 
 
-def get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray:
-    """按四边形透视裁剪文本区域，并自动转正高纵横比结果。"""
+def get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
+    """裁剪四边形，退化框返回 None，透视裁图保留既有的高纵横比转正规则。"""
     assert len(points) == 4, "shape of points must be 4*2"
+    img_crop_width = int(max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])))
+    img_crop_height = int(max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])))
+    # 在轴对齐快捷路径之前过滤，避免跨整数边界的亚像素框被切成一列或一行像素。
+    if img_crop_width < 1 or img_crop_height < 1:
+        return None
     if is_bbox_aligned_rect(points):
         xmin = int(np.min(points[:, 0]))
         xmax = int(np.max(points[:, 0]))
@@ -94,8 +99,6 @@ def get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray:
         if new_img.shape[0] > 0 and new_img.shape[1] > 0:
             return new_img
 
-    img_crop_width = int(max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])))
-    img_crop_height = int(max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])))
     pts_std = np.float32([[0, 0], [img_crop_width, 0], [img_crop_width, img_crop_height], [0, img_crop_height]])
     # 四边形裁图调用共享数值内核，轴对齐区域继续直接复制。
 
@@ -144,7 +147,7 @@ def resize_text_recognition_image(
 
 
 def get_rotate_crop_image_for_text_rec(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
-    """裁剪四边形文本区域并应用文字识别方向规则。"""
+    """复用基础裁图的退化检查，并对有效裁片应用文字识别方向规则。"""
     return rotate_vertical_crop_if_needed(get_rotate_crop_image(img, points))
 
 

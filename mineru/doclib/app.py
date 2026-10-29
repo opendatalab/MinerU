@@ -12,24 +12,30 @@ import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
-from typing import TYPE_CHECKING, Any, AsyncIterator, cast
+from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, cast
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger as loguru_logger
 
-from ..config import Config, LogConfig, _mineru_home, config, get_config_source
+from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, get_config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
+from ..utils.async_utils import drain_future
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
+from .parse_server_state import ParseServerHealth
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
 if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
+
+    from .services.ingest_svc import IngestService
+    from .services.parse_execution_svc import ParseExecutionService
+    from .services.parse_queue_svc import ParseQueueService
 else:
     LoguruMessage = Any
 
@@ -37,12 +43,12 @@ logger = logging.getLogger("mineru.doclib.app")
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
-    """Create the new interface-backed FastAPI app."""
-    if cfg is None:
-        cfg = config
-    _setup_logging(cfg.doclib.log)
+    """使用独立启动配置快照创建应用，显式配置不触发进程默认配置加载。"""
+    cfg = (get_config() if cfg is None else cfg).model_copy(deep=True)
+    _setup_logging(cfg.doclib.log, global_level=cfg.log.level)
     state = AppState()
-    app = DoclibServer(state).app
+    state.config = cfg
+    app = DoclibServer(state, config=cfg, health=state.health).app
     app.title = "MinerU DocLib"
     app.version = "1.0.0"
     app.state.doclib_state = state
@@ -53,7 +59,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.ingest import IngestWorkerPool
         from .background.parse_server_health import (
             ParseServerHealthCheck,
-            get_health,
             get_managed_parse_server_tier,
             start_managed_parse_server,
         )
@@ -65,7 +70,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .core.fts import FTSManager
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
-        from .services.parse_svc import ParseService
+        from .services.ingest_svc import IngestService
+        from .services.parse_execution_svc import ParseExecutionService
+        from .services.parse_queue_svc import ParseQueueService
         from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
         from .telemetry import TelemetryService, TelemetryStore
@@ -85,18 +92,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.config_svc = ConfigService(state.db)
         state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
         await state.telemetry_svc.initialize()
-        state.parse_svc = ParseService(
+        state.ingest_svc = IngestService(
+            state.db, state.fts, state.config_svc, health=state.health, telemetry_svc=state.telemetry_svc
+        )
+        state.parse_queue_svc = ParseQueueService(
             state.db,
             state.fts,
-            state.config_svc,
             data_dir,
+            ingest_svc=state.ingest_svc,
+            health=state.health,
+            latex_delimiters=cfg.render.latex_delimiters,
             parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
+        )
+        state.parse_execution_svc = ParseExecutionService(
+            state.db, state.fts, state.config_svc, data_dir, health=state.health, telemetry_svc=state.telemetry_svc
         )
         state.scan_svc = ScanService(
             state.db,
             state.config_svc,
-            state.parse_svc,
+            state.ingest_svc,
             scan_lock_timeout_sec=cfg.doclib.scan_lock_timeout_sec,
             telemetry_svc=state.telemetry_svc,
         )
@@ -124,7 +139,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         )
 
         local_mode = (await state.config_svc.get("parse_server.local.mode")) or "disabled"
-        health = get_health()
+        health = state.health
         health.local_mode = local_mode
         if local_mode == "managed":
             managed_tier = await get_managed_parse_server_tier(state.config_svc)
@@ -149,17 +164,19 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.watch = WatchLoop(
             state.db,
             state.config_svc,
-            state.parse_svc,
+            state.ingest_svc,
             scan_interval_sec=cfg.doclib.scan_interval_sec,
             scan_svc=state.scan_svc,
         )
         state.scan_workers = ScanWorkerPool(state.scan_svc, num_workers=1)
         state.ingest_workers = IngestWorkerPool(
-            state.parse_svc,
+            state.ingest_svc,
             num_workers=cfg.doclib.ingest_workers,
             lock_timeout_sec=cfg.doclib.ingest_lock_timeout_sec,
         )
-        state.parse_workers = ParseWorkerPool(state.parse_svc, num_workers=cfg.doclib.parse_workers)
+        state.parse_workers = ParseWorkerPool(
+            state.parse_queue_svc, state.parse_execution_svc, num_workers=cfg.doclib.parse_workers
+        )
         state.device_monitor = DeviceMonitor(
             state.db,
             state.config_svc,
@@ -169,6 +186,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.compaction = Compaction(state.db, interval_sec=cfg.doclib.compaction_interval_sec, data_dir=data_dir)
         state.health_check = ParseServerHealthCheck(
             state.config_svc,
+            health=state.health,
             interval_sec=cfg.doclib.parse_server_health_check_interval_sec,
             probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
@@ -202,50 +220,93 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
         state.tcp_enabled = cfg.doclib.resolved_tcp_enabled
         state.tcp_host = cfg.doclib.tcp.host
-        state.config = cfg
 
     async def shutdown() -> None:
-        from .background.parse_server_health import get_health, stop_managed_parse_server
+        """先结束后台编排，再清理全部已拥有资源，单项失败不截断后续清理。"""
+        from .background.parse_server_health import stop_managed_parse_server
 
-        health = get_health()
-        if health.managed_proc:
-            stop_managed_parse_server(
-                health.managed_proc,
-                control=health.managed_control,
-                timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
-                reason="doclib shutdown",
-                startup_in_progress=health.local_starting,
-            )
-            health.managed_proc = None
-            health.managed_control = None
+        errors: list[Exception] = []
+        # 探测循环可能正在网络等待，必须先取消并等待它退出，禁止收尾时再次重启进程。
+        try:
+            await _cancel_background_tasks(state)
+        except Exception as exc:
+            errors.append(exc)
+            logger.exception("Failed to finish Doclib background tasks")
 
-        for comp in [
-            "watch",
-            "scan_workers",
-            "ingest_workers",
-            "parse_workers",
-            "device_monitor",
-            "compaction",
-            "health_check",
-            "telemetry_flush",
-        ]:
-            c = getattr(state, comp, None)
-            if c and hasattr(c, "stop"):
-                await c.stop()
+        for name, component in (
+            ("watch", state.watch),
+            ("scan_workers", state.scan_workers),
+            ("ingest_workers", state.ingest_workers),
+            ("parse_workers", state.parse_workers),
+            ("device_monitor", state.device_monitor),
+            ("compaction", state.compaction),
+            ("telemetry_flush", state.telemetry_flush),
+            ("health_check", state.health_check),
+        ):
+            if component is None:
+                continue
+            try:
+                await component.stop()
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to stop Doclib component %s", name)
 
-        await _cancel_background_tasks(state)
+        # 启动可能在创建健康检查器之前失败；停止失败也可能留下仍归属应用的进程。
+        health = state.health
+        if health.managed_proc is not None or health.managed_control is not None:
+            try:
+                stop_managed_parse_server(
+                    health.managed_proc,
+                    control=health.managed_control,
+                    timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
+                    reason="doclib shutdown",
+                    startup_in_progress=health.local_starting,
+                )
+                health.managed_proc = None
+                health.managed_control = None
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to stop Doclib managed parse-server")
 
-        if state.db:
-            await state.db.close()
+        if state.db is not None:
+            try:
+                await state.db.close()
+            except Exception as exc:
+                errors.append(exc)
+                logger.exception("Failed to close Doclib database")
+        try:
+            _run_discovery_cleanup(state)
+        except Exception as exc:
+            errors.append(exc)
+            logger.exception("Failed to clean Doclib discovery information")
+        if errors:
+            raise errors[0]
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        await startup()
+        """启动失败也清理已拥有资源，退出取消先排空清理且保留最初异常。"""
+        failed = False
         try:
+            await startup()
             yield
+        except BaseException:
+            failed = True
+            raise
         finally:
             try:
-                await shutdown()
+                cleanup = asyncio.create_task(shutdown(), name="doclib:shutdown")
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    try:
+                        await drain_future(cleanup)
+                    except Exception:
+                        logger.exception("Doclib cleanup failed while teardown was canceled")
+                    raise
+            except BaseException:
+                if not failed:
+                    raise
+                logger.exception("Doclib cleanup failed; preserving the original lifespan error")
             finally:
                 _run_discovery_cleanup(state)
 
@@ -293,10 +354,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
 class AppState:
     def __init__(self) -> None:
+        self.health = ParseServerHealth()
         self.db: Any = None
         self.fts: Any = None
         self.config_svc: Any = None
-        self.parse_svc: Any = None
+        self.ingest_svc: IngestService | None = None
+        self.parse_queue_svc: ParseQueueService | None = None
+        self.parse_execution_svc: ParseExecutionService | None = None
         self.scan_svc: Any = None
         self.search_svc: Any = None
         self.cleanup_svc: Any = None
@@ -446,13 +510,15 @@ def main() -> None:
     configure_global_log_level()
     try:
         with doclib_home_lock():
-            _run_server(config)
+            cfg = get_config()
+            log_source = get_config_source("doclib.log.level" if cfg.doclib.log.level is not None else "log.level")
+            _run_server(cfg, log_source=log_source)
     except DoclibLockUnavailable:
         raise SystemExit(build_doclib_home_owned_message()) from None
 
 
-def _run_server(cfg: Config) -> None:
-    """Run the doclib server while the caller holds the home ownership lock."""
+def _run_server(cfg: Config, *, log_source: ConfigSource | Literal["provided"] = "provided") -> None:
+    """在持有目录锁时按显式配置启动服务，配置来源由入口提供。"""
     uds_path = os.path.expanduser(cfg.doclib.uds.path)
     endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
     uds_enabled = cfg.doclib.resolved_uds_enabled
@@ -468,16 +534,9 @@ def _run_server(cfg: Config) -> None:
 
     app = create_app(cfg)
     server_id = app.state.doclib_state.server_id
-    log_source = (
-        get_config_source("doclib.log.level")
-        if cfg is config and cfg.doclib.log.level is not None
-        else get_config_source("log.level")
-        if cfg is config
-        else "provided"
-    )
     logger.info(
         "Doclib logging configured level=%s source=%s path=%s",
-        logging.getLevelName(_resolve_log_level(cfg.doclib.log)),
+        logging.getLevelName(_resolve_log_level(cfg.doclib.log, global_level=cfg.log.level)),
         log_source,
         os.path.expanduser(cfg.doclib.log.resolved_app_path),
     )
@@ -637,13 +696,15 @@ def _remove_owned_uds_path(uds_path: str, expected_identity: tuple[int, int]) ->
     logger.debug("Removed owned doclib UDS path=%s identity=%s", uds_path, expected_identity)
 
 
-def _resolve_log_level(log_cfg: LogConfig) -> int:
-    level = log_cfg.level or config.log.level
+def _resolve_log_level(log_cfg: LogConfig, *, global_level: LogLevel) -> int:
+    """以当前应用的全局级别补全未设置的服务日志级别。"""
+    level = log_cfg.level or global_level
     return getattr(logging, level.upper(), logging.INFO)
 
 
-def _setup_logging(log_cfg: LogConfig) -> None:
-    level = _resolve_log_level(log_cfg)
+def _setup_logging(log_cfg: LogConfig, *, global_level: LogLevel) -> None:
+    """按当前应用配置安装日志处理器，不读取默认配置。"""
+    level = _resolve_log_level(log_cfg, global_level=global_level)
     log_path = os.path.expanduser(log_cfg.resolved_app_path)
     access_log_path = os.path.expanduser(log_cfg.resolved_access_path)
     _ensure_log_dir(log_path)

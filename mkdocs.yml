@@ -71,58 +71,45 @@ extra:
 
 copyright: © 2024 - 2025 MinerU. All Rights Reserved.
 
-extra_css:
-  - stylesheets/extra.css
-
+# 复用公共导航项，中文仅覆盖在线演示的目标地址。
 nav:
   - Home:
-    - "MinerU": index.md
-    - Quick Start:
+    - &nav_home
+      "MinerU": index.md
+    - &nav_quick_start
+      Quick Start:
       - Quick Start: quick_start/index.md
       - Extension Modules: quick_start/extension_modules.md
       - Docker Deployment: quick_start/docker_deployment.md
-    - Usage:
+    - &nav_usage
+      Usage:
       - Usage: usage/index.md
       - Quick Usage: usage/quick_usage.md
       - Tiers and Runtimes: usage/tiers.md
       - Python SDK: usage/sdk_api.md
       - V1 HTTP API: usage/http_api.md
+      - Tasks API: usage/tasks.md
+      - Synchronous File Parse: usage/file_parse.md
       - Legacy Platforms (MinerU <4): usage/compatibility.md
       - Model Source: usage/model_source.md
       - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-    - Reference:
+    - &nav_reference
+      Reference:
       - Reference: reference/index.md
       - Migration to 4.0: reference/migration_4.md
+      - Migration to 4.1: reference/migration_4_1.md
       - Output File Format: reference/output_files.md
       - Changelog: reference/changelog.md
-    - FAQ:
+    - &nav_faq
+      FAQ:
       - FAQ: faq/index.md
-    - Demo:
-      - Demo: demo/index.md
-  - Quick Start:
-    - Quick Start: quick_start/index.md
-    - Extension Modules: quick_start/extension_modules.md
-    - Docker Deployment: quick_start/docker_deployment.md
-  - Usage:
-    - Usage: usage/index.md
-    - Quick Usage: usage/quick_usage.md
-    - Tiers and Runtimes: usage/tiers.md
-    - Python SDK: usage/sdk_api.md
-    - V1 HTTP API: usage/http_api.md
-    - Legacy Platforms (MinerU <4): usage/compatibility.md
-    - Model Source: usage/model_source.md
-    - CLI Tools: usage/cli_tools.md
-    - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-  - Reference:
-    - Reference: reference/index.md
-    - Migration to 4.0: reference/migration_4.md
-    - Output File Format: reference/output_files.md
-    - Changelog: reference/changelog.md
-  - FAQ:
-    - FAQ: faq/index.md
-  - Demo:
-    - Demo: demo/index.md
+    - Demo: https://huggingface.co/spaces/opendatalab/MinerU
+  - *nav_quick_start
+  - *nav_usage
+  - *nav_reference
+  - *nav_faq
+  - Demo: https://huggingface.co/spaces/opendatalab/MinerU
 
 
 plugins:
@@ -140,6 +127,19 @@ plugins:
         - locale: zh
           name: 中文
           build: true
+          nav:
+            - Home:
+              - *nav_home
+              - *nav_quick_start
+              - *nav_usage
+              - *nav_reference
+              - *nav_faq
+              - Demo: https://www.modelscope.cn/studios/OpenDataLab/MinerU
+            - *nav_quick_start
+            - *nav_usage
+            - *nav_reference
+            - *nav_faq
+            - Demo: https://www.modelscope.cn/studios/OpenDataLab/MinerU
           nav_translations:
             Home: 主页
             Quick Start: 快速入门
@@ -151,8 +151,11 @@ plugins:
             Tiers and Runtimes: 档位与运行环境
             Python SDK: Python SDK
             V1 HTTP API: V1 HTTP API
+            Tasks API: Tasks 异步接口
+            Synchronous File Parse: 单文件同步解析
             Legacy Platforms (MinerU <4): 旧平台适配（MinerU <4）
             Migration to 4.0: 迁移到 4.0
+            Migration to 4.1: 迁移到 4.1
             Model Source: 模型源配置
             Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答

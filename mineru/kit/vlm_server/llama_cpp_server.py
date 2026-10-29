@@ -12,12 +12,14 @@ llama-server 的全部服务能力由 llama.cpp 提供，本模块只补默认�
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 import struct
 import sys
 import typing
 from pathlib import Path
 
 from ...model.registry import vlm_model_repo
+from ...model.runtime.llama_device import LlamaSelection, resolve_llama_device
 
 DEFAULT_PORT = "30000"
 DEFAULT_N_GPU_LAYERS = 99
@@ -90,13 +92,39 @@ def _has_env(*names: str) -> bool:
 
 
 def _flag_value(args: list[str], *flags: str) -> str | None:
+    value = None
     for index, arg in enumerate(args):
         for flag in flags:
             if arg == flag and index + 1 < len(args):
-                return args[index + 1]
+                value = args[index + 1]
             if arg.startswith(f"{flag}="):
-                return arg.split("=", 1)[1]
-    return None
+                value = arg.split("=", 1)[1]
+    return value
+
+
+def _set_arg(args: list[str], value: str, *flags: str) -> None:
+    """替换所有旧别名，避免原生 parser 在读到后续覆盖值前校验旧设备名失败。"""
+    kept = []
+    index = 0
+    while index < len(args):
+        if args[index] in flags:
+            index += 2
+        elif any(args[index].startswith(f"{flag}=") for flag in flags):
+            index += 1
+        else:
+            kept.append(args[index])
+            index += 1
+    args[:] = [*kept, flags[0], value]
+
+
+def _projector_enabled(args: list[str]) -> bool | None:
+    """读取投影显式开关，保留未设置状态并遵循 CLI 最后一次出现的值。"""
+    offload = os.environ.get("LLAMA_ARG_MMPROJ_OFFLOAD")
+    enabled = offload.lower() in {"1", "true", "yes", "on"} if offload else None
+    for arg in args:
+        if arg in {"--mmproj-offload", "--no-mmproj-offload"}:
+            enabled = arg == "--mmproj-offload"
+    return enabled
 
 
 def _redact_secrets(args: list[str]) -> list[str]:
@@ -174,14 +202,97 @@ def _read_gguf_context_length(model_path: Path) -> int:
     return context_by_architecture.get(architecture, 0)
 
 
-def _exec_server(args: list[str]) -> typing.NoReturn:
+def _exec_server(args: list[str], selection: LlamaSelection | None = None) -> typing.NoReturn:
     """定位二进制并以进程替换方式转发参数。"""
     binary = llama_server_binary()
     if not binary.is_file():
         raise FileNotFoundError(f"llama-server binary not found: {binary}")
 
     print(f"start llama.cpp server: {binary} {' '.join(_redact_secrets(args))}")
-    os.execv(str(binary), [str(binary), *args])
+    changes = dict(selection.environment) if selection is not None else {}
+    if selection is not None and selection.device != "native":
+        # Native env values are parsed before CLI arguments and can contain names
+        # invalid after physical filtering; remap those too, before exec.
+        for name, flags in (("LLAMA_ARG_DEVICE", ("-dev", "--device")), ("MTMD_BACKEND_DEVICE", ("-mmdev", "--mmproj-device"))):
+            value = _flag_value(args, *flags)
+            if name in os.environ and value is not None:
+                changes[name] = value
+    previous = {name: os.environ.get(name) for name in changes}
+    try:
+        os.environ.update(changes)
+        os.execv(str(binary), [str(binary), *args])
+    finally:
+        # exec replaces this process on success; restore only after a failure/test stub.
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _device_policy(args: list[str]) -> LlamaSelection:
+    """读取原生路由参数后应用同一设备策略；模型默认参数尚未注入 GPU 层数。"""
+    layers = _flag_value(args, "-ngl", "--gpu-layers", "--n-gpu-layers") or os.environ.get("LLAMA_ARG_N_GPU_LAYERS")
+    try:
+        count = int(layers) if layers is not None else None
+    except ValueError:
+        count = -1  # Explicit all/auto: preserve native GPU-layer parsing and manual routing.
+    devices = _flag_value(args, "-dev", "--device") or os.environ.get("LLAMA_ARG_DEVICE")
+    names = tuple(devices.split(",")) if devices else None
+    offline = _has_arg(args, "--offline") or _has_env("LLAMA_ARG_OFFLINE")
+    options = {"allow_download": False} if offline else {}
+    model_cpu = count == 0 or names == ("none",) or os.environ.get("MINERU_LLAMA_CPP_BACKEND") == "cpu"
+    projector = _flag_value(args, "-mmdev", "--mmproj-device") or os.environ.get("MTMD_BACKEND_DEVICE")
+    projector_enabled = _projector_enabled(args)
+    projector_gpu = projector != "none" and (
+        projector_enabled is True or (projector is not None and projector_enabled is not False)
+    )
+    if model_cpu and projector_gpu:
+        selected = resolve_llama_device(
+            n_gpu_layers=99, device_names=(projector,) if projector else None, backend="vulkan", **options
+        )
+        return replace(selected, cpu_model=True, model_devices=())
+    selected = resolve_llama_device(n_gpu_layers=count, device_names=names, **options)
+    if selected.device == "cpu" and projector_gpu:
+        selected = resolve_llama_device(
+            n_gpu_layers=99, device_names=(projector,) if projector else None, backend="vulkan", **options
+        )
+        return replace(selected, cpu_model=True, model_devices=())
+    if selected.device == "gpu" and projector_gpu and projector:
+        model_names = tuple(old for old, _new in selected.device_aliases)
+        if projector not in model_names:
+            selected = resolve_llama_device(device_names=(*model_names, projector), **options)
+            aliases = dict(selected.device_aliases)
+            selected = replace(selected, model_devices=tuple(aliases[name] for name in model_names))
+    return selected
+
+
+def _apply_device_policy(args: list[str], selection: LlamaSelection) -> None:
+    """将经过物理绑定的设备名称转交原生 server，不让投影落到其他显卡。"""
+    if selection.device == "native":
+        return
+    if selection.device == "cpu":
+        _set_arg(args, "0", "--n-gpu-layers", "-ngl", "--gpu-layers")
+        _set_arg(args, "none", "--device", "-dev")
+        _set_arg(args, "none", "--mmproj-device", "-mmdev")
+        args.append("--no-op-offload")
+        if not _has_arg(args, "--mmproj-offload", "--no-mmproj-offload") and not _has_env("LLAMA_ARG_MMPROJ_OFFLOAD"):
+            args.append("--no-mmproj-offload")
+        return
+    if selection.cpu_model:
+        _set_arg(args, "0", "--n-gpu-layers", "-ngl", "--gpu-layers")
+        args.append("--no-op-offload")
+    model_devices = selection.model_devices if selection.model_devices else tuple(d.name for d in selection.devices)
+    _set_arg(args, ",".join(model_devices), "--device", "-dev")
+    projector = _flag_value(args, "-mmdev", "--mmproj-device") or os.environ.get("MTMD_BACKEND_DEVICE")
+    if projector and projector != "none":
+        if _projector_enabled(args) is False:
+            _set_arg(args, "none", "--mmproj-device", "-mmdev")
+            return
+        alias = dict(selection.device_aliases).get(projector)
+        if alias is None:
+            raise ValueError("mmproj device must belong to the selected llama.cpp GPU group")
+        _set_arg(args, alias, "--mmproj-device", "-mmdev")
 
 
 def main() -> None:
@@ -251,6 +362,8 @@ def main() -> None:
             args.extend(["--alias", repo.name])
 
     # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户 CLI 或环境变量设定时逐项让位）----
+    selection = _device_policy(args)
+    _apply_device_policy(args, selection)
     user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS) or _has_env("LLAMA_ARG_N_PARALLEL")
     user_defined_ctx = _has_arg(args, "-c", "--ctx-size") or _has_env("LLAMA_ARG_CTX_SIZE")
     if not user_defined_parallel:
@@ -289,7 +402,7 @@ def main() -> None:
         if n_ctx_train > 0:
             args.extend(["--ctx-size", str(n_ctx_train * DEFAULT_N_PARALLEL)])
 
-    _exec_server(args)
+    _exec_server(args, selection)
 
 
 if __name__ == "__main__":

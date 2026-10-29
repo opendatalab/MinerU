@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
-from mineru.model.vlm.async_runtime import AsyncVlmPredictor, RuntimeOwner, runtime_owner
+from mineru.model.runtime.ownership import RuntimeOwner, runtime_owner
+from mineru.model.vlm.async_runtime import AsyncVlmPredictor
+from mineru.model.vlm.handles import RuntimeHandle
 from mineru.utils.async_utils import run_sync
 
 
@@ -66,7 +68,7 @@ class _AsyncClient:
 @pytest.fixture
 def native_runtime() -> Any:
     """创建可跨线程使用的原生异步运行时并保证用例后关闭。"""
-    runtime = AsyncVlmPredictor(_AsyncClient, lambda _: None, backend="test", max_concurrency=2)
+    runtime = AsyncVlmPredictor(lambda: RuntimeHandle(_AsyncClient(), backend="test"), backend="test", max_concurrency=2)
     runtime.wait_ready()
     try:
         yield runtime
@@ -114,14 +116,16 @@ def test_repeated_cancel_waits_for_engine_cleanup(native_runtime: AsyncVlmPredic
 
 def test_shutdown_drains_active_requests_and_rejects_new(native_runtime: AsyncVlmPredictor) -> None:
     """关闭时等待在途请求真正退出，然后拒绝旧代理继续提交。"""
-    native_runtime._predictor.block = True
+    client = native_runtime._predictor
+    client.block = True
     with ThreadPoolExecutor() as executor:
         future = executor.submit(native_runtime.batch_two_step_extract, [1])
         assert native_runtime._predictor.entered.wait(2)
         native_runtime.shutdown()
         with pytest.raises(asyncio.CancelledError):
             future.result()
-    assert native_runtime._predictor.closed
+    assert client.closed
+    assert native_runtime._predictor is None
     assert not native_runtime._thread.is_alive()
     with pytest.raises(RuntimeError, match="shutting down"):
         native_runtime.batch_two_step_extract([2])
@@ -143,7 +147,9 @@ def test_application_owners_share_and_release_runtime(monkeypatch: pytest.Monkey
     from mineru.model.vlm.runtime import ModelSingleton
 
     monkeypatch.setattr(ModelSingleton, "_models", {})
-    monkeypatch.setattr(ModelSingleton, "_create_model", lambda *args, **kwargs: _AsyncClient())
+    monkeypatch.setattr(
+        ModelSingleton, "_create_model", lambda *args, **kwargs: RuntimeHandle(_AsyncClient(), backend="http-client")
+    )
     manager = ModelSingleton()
     first, second = RuntimeOwner(), RuntimeOwner()
 
@@ -157,12 +163,14 @@ def test_application_owners_share_and_release_runtime(monkeypatch: pytest.Monkey
 
     try:
         predictor = get(first)
+        client = predictor._predictor
         assert get(second) is predictor
         manager.release_owner(first)
         assert predictor.batch_two_step_extract([1]) == [1]
         assert not predictor._predictor.closed
         manager.release_owner(second)
-        assert predictor._predictor.closed
+        assert client.closed
+        assert predictor._predictor is None
         replacement = get(None)
         assert replacement is not predictor
         third = RuntimeOwner()
@@ -182,13 +190,13 @@ def test_cancelled_initialization_is_drained_before_owner_release(monkeypatch: p
     entered, release = threading.Event(), threading.Event()
     clients = []
 
-    def factory(*args: Any, **kwargs: Any) -> _AsyncClient:
+    def factory(*args: Any, **kwargs: Any) -> RuntimeHandle:
         """模拟无法强行中断的模型初始化。"""
         entered.set()
         assert release.wait(3)
         client = _AsyncClient()
         clients.append(client)
-        return client
+        return RuntimeHandle(client, backend="http-client")
 
     monkeypatch.setattr(ModelSingleton, "_models", {})
     monkeypatch.setattr(ModelSingleton, "_create_model", factory)
@@ -231,7 +239,9 @@ def test_failed_initialization_does_not_poison_cache(monkeypatch: pytest.MonkeyP
     with pytest.raises(ValueError, match="initialization failed"):
         manager.get_model("http-client", None, "http://unused")
     assert not manager._models
-    monkeypatch.setattr(ModelSingleton, "_create_model", lambda *args, **kwargs: _AsyncClient())
+    monkeypatch.setattr(
+        ModelSingleton, "_create_model", lambda *args, **kwargs: RuntimeHandle(_AsyncClient(), backend="http-client")
+    )
     try:
         assert manager.get_model("http-client", None, "http://unused").batch_two_step_extract([1]) == [1]
     finally:
@@ -244,11 +254,11 @@ def test_vllm_sync_and_async_names_resolve_to_one_async_engine(monkeypatch: pyte
 
     calls = []
 
-    def factory(self: Any, backend: str, *args: Any, **kwargs: Any) -> _AsyncClient:
+    def factory(self: Any, backend: str, *args: Any, **kwargs: Any) -> RuntimeHandle:
         """记录实际请求构造的后端，并拒绝离线同步引擎。"""
         assert backend == "vllm-async-engine"
         calls.append(backend)
-        return _AsyncClient()
+        return RuntimeHandle(_AsyncClient(), backend=backend)
 
     monkeypatch.setattr(runtime.ModelSingleton, "_models", {})
     monkeypatch.setattr(runtime.ModelSingleton, "_create_model", factory)
@@ -339,13 +349,13 @@ def test_owner_cleanup_failure_still_closes_other_runtimes(monkeypatch: pytest.M
         """模拟底层传输关闭异常。"""
         raise RuntimeError("close failed")
 
-    def factory(*args: Any, **kwargs: Any) -> _AsyncClient:
+    def factory(*args: Any, **kwargs: Any) -> RuntimeHandle:
         """仅第一个客户端关闭时失败。"""
         client = _AsyncClient()
         if not clients:
             client.aclose = fail_close
         clients.append(client)
-        return client
+        return RuntimeHandle(client, backend="http-client")
 
     monkeypatch.setattr(ModelSingleton, "_models", {})
     monkeypatch.setattr(ModelSingleton, "_create_model", factory)
@@ -392,7 +402,9 @@ def test_vllm_runtime_uses_standard_progress_label(
 
     monkeypatch.setattr(backend, "aio_predict", predict)
     monkeypatch.setattr("mineru_vl_utils.mineru_client.new_vlm_client", lambda **kwargs: backend)
-    runtime = AsyncVlmPredictor(create, lambda _: None, backend="vllm-async-engine", max_concurrency=2)
+    runtime = AsyncVlmPredictor(
+        lambda: RuntimeHandle(create(), backend="vllm-async-engine"), backend="vllm-async-engine", max_concurrency=2
+    )
     image = Image.new("RGB", (32, 32))
     blocks = [[ContentBlock("text", [0, 0, 1, 1])]]
     try:

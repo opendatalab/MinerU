@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_services
+from mineru.doclib.services.ingest_svc import ensure_doc_record
+
 import asyncio
 from io import BytesIO
 from pathlib import Path
@@ -15,7 +18,6 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services.parse_svc import ParseService, ensure_doc_record
 from mineru.parser import MinerUParser, ParseResult
 
 
@@ -41,7 +43,7 @@ def test_parser_preserves_source_metadata_before_selection(tmp_path: Path, async
     assert (props.title, props.authors, props.page_count) == ("Original title", ["Source author"], 2)
     assert result.middle_json.pages[0].page_idx == 1
     assert result.middle_json.metadata.producer.name == "mineru"
-    assert result._model_output.metadata.document == props
+    assert not hasattr(result, "_model_output")
     assert ParseResult.from_json(result.to_json()).middle_json.metadata.document == props
     assert result.structured_content()["metadata"]["document"]["title"] == "Original title"
 
@@ -78,7 +80,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
         db = DatabaseManager(str(tmp_path / "db.sqlite"))
         await db.initialize()
         fts = FTSManager(db)
-        service = ParseService(db, fts, ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
+        service = create_parse_services(db, fts, ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
         sha = "a" * 64
         await ensure_doc_record(
             db,
@@ -105,7 +107,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
             ),
         )
         result = ParseResult(MiddleJson(pages=[PageInfo(page_idx=0)], is_full_document=False, metadata=metadata))
-        await service._update_source_metadata(sha, result)
+        await service.execution._update_source_metadata(sha, result)
         row = await db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha,))
         assert (row["title"], row["author"], row["language"], row["page_count"]) == ("New title", "Alice; Bob", "zh-CN", 9)
         assert row["subject"] == "Keep subject" and row["keywords"] == "Keep keywords"
@@ -113,7 +115,7 @@ def test_doclib_source_columns_and_fts_are_independent_of_tier(tmp_path: Path) -
         assert index["tier"] == "advanced" and index["title"] == "New title" and index["author"] == "Alice; Bob"
         assert "Preserved" in index["text"]
         result.middle_json.metadata.document = None
-        await service._update_source_metadata(sha, result)
+        await service.execution._update_source_metadata(sha, result)
         assert (await db.fetchone("SELECT title FROM docs WHERE sha256=?", (sha,)))["title"] == "New title"
 
     asyncio.run(scenario())
@@ -126,12 +128,12 @@ def test_doclib_ingest_gets_html_metadata_without_parsing(tmp_path: Path) -> Non
         """使用临时数据库与源 HTML 走入库服务。"""
         db = DatabaseManager(str(tmp_path / "db.sqlite"))
         await db.initialize()
-        service = ParseService(db, FTSManager(db), ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
+        service = create_parse_services(db, FTSManager(db), ConfigService(db), str(tmp_path), parse_lock_timeout_sec=30)
         source = tmp_path / "source.html"
         source.write_text(
             '<html lang="zh-CN"><head><title>入库标题</title><meta name="author" content="作者"></head><body>正文</body></html>'
         )
-        refresh = await service.refresh_file(str(source), ensure_ingested=True)
+        refresh = await service.ingest.refresh_file(str(source), ensure_ingested=True)
         assert refresh.file is not None
         row = await db.fetchone("SELECT * FROM docs WHERE sha256=?", (refresh.file.sha256,))
         assert (row["title"], row["author"], row["language"]) == ("入库标题", "作者", "zh-CN")

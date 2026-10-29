@@ -76,6 +76,61 @@ def test_initialize_enables_wal_mode(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize("use_custom_config", [False, True], ids=["defaults", "custom"])
+def test_operational_connections_apply_sqlite_settings(tmp_path: Path, use_custom_config: bool) -> None:
+    """验证初始化结束后，新建运行连接仍应用默认或自定义参数。"""
+
+    async def _run() -> None:
+        """通过公开查询入口检查多个独立连接以及重新创建的数据库管理器。"""
+        sqlite_cfg = (
+            SQLiteConfig(
+                busy_timeout_ms=4321,
+                synchronous="FULL",
+                mmap_size=4_194_304,
+                cache_size=-4096,
+                temp_store="FILE",
+                wal_autocheckpoint=64,
+                journal_size_limit=1_048_576,
+            )
+            if use_custom_config
+            else None
+        )
+        expected = (
+            {
+                "busy_timeout": 4321,
+                "synchronous": 2,
+                "mmap_size": 4_194_304,
+                "cache_size": -4096,
+                "temp_store": 1,
+                "wal_autocheckpoint": 64,
+                "journal_size_limit": 1_048_576,
+                "foreign_keys": 1,
+            }
+            if use_custom_config
+            else {
+                "busy_timeout": 5000,
+                "synchronous": 1,
+                "mmap_size": 268_435_456,
+                "cache_size": -20000,
+                "temp_store": 2,
+                "wal_autocheckpoint": 1000,
+                "journal_size_limit": 33_554_432,
+                "foreign_keys": 1,
+            }
+        )
+        db_path = str(tmp_path / "doclib.db")
+        initialized_db = DatabaseManager(db_path, sqlite_cfg)
+        await initialized_db.initialize()
+
+        for db in (initialized_db, DatabaseManager(db_path, sqlite_cfg)):
+            for setting, value in expected.items():
+                row = await db.fetchone(f"PRAGMA {setting}")
+                assert row is not None and list(row.values()) == [value], setting
+            assert await db.fetchone("PRAGMA journal_mode") == {"journal_mode": "wal"}
+
+    asyncio.run(_run())
+
+
 def test_operational_connection_sets_busy_timeout_without_resetting_wal(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _run() -> None:
         connection = _FakeConnection()
@@ -91,7 +146,9 @@ def test_operational_connection_sets_busy_timeout_without_resetting_wal(monkeypa
         await db._connect()
 
         assert connect_timeouts == [4.321]
-        assert connection.statements == ["PRAGMA busy_timeout=4321", "PRAGMA foreign_keys=ON"]
+        assert "PRAGMA busy_timeout=4321" in connection.statements
+        assert "PRAGMA foreign_keys=ON" in connection.statements
+        assert not any(statement.startswith("PRAGMA journal_mode") for statement in connection.statements)
 
     asyncio.run(_run())
 

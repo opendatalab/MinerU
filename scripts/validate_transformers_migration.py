@@ -172,12 +172,12 @@ def _operation(args: argparse.Namespace, manifest: dict[str, Any]) -> Callable[[
         detections = [[{"label": "display_formula", "bbox": [0, 0, image.shape[1], image.shape[0]]}] for image in images]
         return lambda: model.batch_predict(detections, images, batch_size=2)
 
-    from mineru.config import VlmConfig, config
+    from mineru.config import VlmConfig, get_config
     from mineru.parser.mineru_parser import MinerUParser
 
-    config.model.small_backend = "torch"
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().model.small_backend = "torch"
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
     parser = MinerUParser(tier=args.tier, parse_mode="ocr", vlm_config=VlmConfig())
 
     def parse() -> list[dict[str, Any]]:

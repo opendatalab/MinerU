@@ -108,21 +108,27 @@ class FTSManager:
             ]
         )
 
-    async def search_filenames(self, query: str, limit: int = 50) -> list[FtsFilenameSearchRow]:
+    async def search_filenames(self, query: str, limit: int | None = 50) -> list[FtsFilenameSearchRow]:
+        """仅对文件名查询的最后一个词默认启用前缀匹配；None 获取完整候选快照。"""
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
+        if not query.rstrip().endswith("*"):
+            tokens[-1] += "*"
         fts_query = " ".join(tokens)
+        sql = (
+            "SELECT file_id, ext, "
+            "snippet(fts_filenames, 1, '<mark>', '</mark>', '...', 40) AS snippet "
+            "FROM fts_filenames WHERE fts_filenames MATCH ? ORDER BY rank, file_id"
+        )
+        params: tuple[str | int, ...] = (fts_query,)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params += (limit,)
         try:
             return cast(
                 list[FtsFilenameSearchRow],
-                await self.db.fetchall(
-                    "SELECT file_id, ext, "
-                    "snippet(fts_filenames, 1, '<mark>', '</mark>', '...', 40) AS snippet "
-                    "FROM fts_filenames WHERE fts_filenames MATCH ? "
-                    "ORDER BY rank LIMIT ?",
-                    (fts_query, limit),
-                ),
+                await self.db.fetchall(sql, params),
             )
         except Exception:
             return []
@@ -142,3 +148,14 @@ def _sanitize_query_tokens(tokenized: str) -> list[str]:
         if t and t.upper() not in ("AND", "OR", "NOT", "NEAR"):
             safe.append(t)
     return safe
+
+
+MAX_FTS_CHARS = 30_000
+FTS_HEAD_HALF = 15_000
+
+
+def truncate_head_tail(text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF) -> str:
+    """超长正文仅保留首尾内容，沿用原有 FTS 长度与省略标记。"""
+    if len(text) <= max_chars:
+        return text
+    return text[:half] + "\n...\n" + text[-half:]

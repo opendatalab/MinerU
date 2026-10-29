@@ -44,26 +44,15 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 ### 3. 单进程 tier 规则
 
-一个 `mineru-kit api-server` 进程使用单个 `--tier` 表示启动能力上限。
+一个 API 服务进程使用 `--tier auto|flash|basic|standard|advanced` 表示 PDF/图片的最高开放档位，上限包含自身及全部较低档位；省略等价于 auto，取硬件推荐集合的最高档。Standard 上限不再隐含 Advanced。`--tiers`、`--no-flash`、`--no-advanced` 均直接移除。
 
-支持的启动 tier：
+自动推荐先按有效小模型后端分流：CPU 可用逻辑核至少 4 时开放到 Basic，否则只开放 Flash。GPU 经既有选型确认可用且选定设备显存／预算至少 5.5 GiB 时，独立于 CPU 核数开放全部四档。Torch、Apple Metal 和符合既有绑定规则的独显保留免测速路径；其他 ONNX GPU 仍须校准胜出。CPU 至少 4 核或存在内存达标的兼容 GPU 候选时，Windows/Linux 在本次启动内完成适用选型；最终 CPU 回退不能被静态库存覆盖。显式启动上限跳过推荐。不引入新的采样阈值或 VLM 实测，依赖预检与可选预加载仍执行。Advanced 复用 Standard 模型配置，请求默认仍优先 Standard。`hardware detect` 与服务使用相同结构化推荐及设备内存证据。
 
-- `flash`
-- `basic`
-- `standard`
+`/v1/tiers` 仅发布 PDF/图片可选档位。所有服务都支持现有原生文档格式，固定使用 flash；原生支持不再从公开 flash 档位推断，不新增原生能力声明。Tasks 请求 tier 继续可选，PDF/图片按 `standard -> basic -> flash` 默认选择，advanced 仅显式使用。
 
-Advanced 仍是公开请求 tier，但不是启动 tier；Standard 的依赖和模型同时覆盖 Advanced。
+Python 工厂保留非空精确集合 `create_app(tiers=...)`，供内嵌部署和 SaaS 模拟使用；`tiers={"standard"}` 仍支持原生文档。WebUI、Router 和 Doclib 托管配置统一按上限解释，增加显式 advanced 选项；客户端不再补起本地 Flash 服务。
 
-规则：
-
-1. `--tier flash` 暴露 `flash`
-2. `--tier basic` 暴露 `flash`、`basic`
-3. `--tier standard` 暴露 `flash`、`basic`、`standard`、`advanced`
-4. 未传 `--tier` 等价于 `--tier standard`
-5. `--no-flash` 从能力中移除 Flash，并禁止该进程执行 Flash backend
-6. `--tier flash --no-flash` 启动失败
-7. `--no-advanced` 从能力中移除 Advanced，并禁止该进程接受 Advanced 请求
-8. `--no-flash --no-advanced` 可组合使用；Standard server 此时只发布 Basic 与 Standard
+详细规则及迁移见 [API 启动文档](../cli/mineru-kit-api-server.md)。
 
 ### 4. backend 的公开边界
 
@@ -85,8 +74,6 @@ backend 不是普通 API 协议层字段。
 - `--host`
 - `--port`
 - `--tier`
-- `--no-flash`
-- `--no-advanced`
 - `--api-key`
 
 #### 稳定解析参数

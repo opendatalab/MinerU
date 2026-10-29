@@ -42,7 +42,7 @@ uv pip install --python .venv-validation/bin/python \
 uv pip check --python .venv-validation/bin/python
 ```
 
-安装矩阵直接读取已构建 wheel 的元数据，覆盖三个平台、Python 3.10–3.14 与基础/torch/full/all 模式：
+安装矩阵直接读取已构建 wheel 的元数据，覆盖三个平台、Python 3.11–3.14 与基础/torch/full/all 模式：
 
 ```bash
 python scripts/check_transformers5_dependencies.py \

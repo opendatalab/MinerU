@@ -15,12 +15,12 @@ def render_structured_content(
     asset_base_url: str = "",
 ) -> dict[str, Any]:
     """惰性加载 Structured Content 实现并渲染严格 MiddleJson。"""
-    from ..config import config
+    from ..config import get_config
     from docvortex.render.structured_content import render_structured_content as _render_structured_content
 
     validate_mineru_metadata(middle_json)
     return _render_structured_content(
-        middle_json, asset_base_url=asset_base_url, latex_delimiters=config.render.latex_delimiters
+        middle_json, asset_base_url=asset_base_url, latex_delimiters=get_config().render.latex_delimiters
     )
 
 

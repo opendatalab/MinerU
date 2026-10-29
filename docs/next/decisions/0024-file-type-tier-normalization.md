@@ -2,7 +2,8 @@
 
 状态: Accepted，已实现
 日期: 2026-07-09
-相关文档: ../tiers.md, ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/parse-jobs.md, 0022-doclib-file-type-tier-remote-semantics.md, 0028-csv-structured-flash-parsing.md
+Tasks 语义更新: 2026-10-27
+相关文档: ../tiers.md, ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/tasks.md, 0022-doclib-file-type-tier-remote-semantics.md, 0028-csv-structured-flash-parsing.md
 
 ## 背景
 
@@ -38,7 +39,7 @@ EPUB、Office、HTML 和 CSV 即使通过高层接口传入了 `basic`、`standa
 
 - `mineru parse <single-file>` 经 doclib 解析。
 - `DoclibClient.ensure_parse(ParseRequest(...))`。
-- SDK 直接解析单个文件。
+- 本地 SDK 直接解析单个文件（HTTP `MinerUApiParser` 遵循下述 Tasks 规则）。
 - `mineru-kit parse` 展开后只有一个输入文件。
 
 规则:
@@ -55,7 +56,7 @@ EPUB、Office、HTML 和 CSV 即使通过高层接口传入了 `basic`、`standa
 
 批量操作包括:
 
-- API Server v1 parse job。
+- API Server / Router 的 V1 Tasks，包括单文件请求及 HTTP SDK、file_parse 的提交。
 - `mineru-kit parse` 展开后包含多个输入文件，或输入目录。
 - parsing-rule 触发的后台解析。
 
@@ -71,7 +72,10 @@ EPUB、Office、HTML 和 CSV 即使通过高层接口传入了 `basic`、`standa
 
 批量操作中，EPUB/Office/HTML/CSV 的实际 parse row、缓存目录、locator 和 metadata 必须记录 `flash`，不能记录用户传入的质量 tier。其它 text 不得生成这些解析产物。
 
-API Server 当前只有 job 级 `tier` 字段，暂不扩展 file-level effective tier 字段。因此 API job 响应中的 job tier 可以表示请求 tier；但内部执行 EPUB/Office/HTML/CSV 文件时，应按 `flash` 语义处理，不产生伪质量缓存。其它 text 不进入 API parse job。
+Tasks 的顶层请求 `tier` 可选，只对 PDF/image 生效。省略或 JSON `null` 时，接单服务按 `standard -> basic -> flash` 选择支持的档位；advanced 必须显式指定，仅有 advanced 时省略 tier 返回 `503 quality_tier_unavailable`。
+显式档位不受支持且批次包含 PDF/image 时，整个创建请求返回 `400 invalid_request`，不自动升降档。纯原生文档忽略合法的显式 tier，固定使用 flash；非法枚举或空字符串仍报参数错误，原生解析是所有正常可用服务的必备能力，不依赖 `/v1/tiers` 是否发布 flash。
+选档在接单时保存，后续逐文件执行和 Router 转发使用有效档位，不随 worker 默认值变化。成功结果通过 `files[].parse.tier` 返回真实执行档位，不在顶层回显请求 tier，也不产生伪质量缓存。其它 text 不进入 Tasks 解析。
+Tasks 默认选择独立于 Doclib 主动操作的默认质量策略，不改变后者必须显式选择 flash 的规则。
 
 ### 4. Parsing-Rule 语义
 
@@ -99,7 +103,7 @@ remote 的含义取决于入口:
 |------|----------------------|---------------|
 | doclib / `mineru parse` 单文件主动解析 | 报 `remote_unsupported_for_file_type` | 报 `parse_not_required` |
 | parsing-rule | 忽略 remote，按 `flash` | 只入库和索引 |
-| API Server job | 不适用；API Server 自身就是解析服务 | 不接受 text 作为解析输入 |
+| API Server / Router Tasks | 不适用；HTTP 请求明确发往配置的解析服务 | 不接受 text 作为解析输入 |
 | `mineru-kit parse` | 允许，作为低层工具特例 | 不接受 text 作为解析输入 |
 
 doclib 单文件主动解析中，`remote=true` 表示用户显式要求把该文件交给 remote parse-server。因为 remote parse-server 只支持 PDF/image，该组合必须报错，不能静默改成本地 `flash`，否则会改变用户显式选择的执行路径和隐私语义。
@@ -126,17 +130,11 @@ doclib 单文件主动解析中，`remote=true` 表示用户显式要求把该�
 
 - 批量任务经常包含混合文件类型。
 - parsing-rule 是后台批量策略，不应因为 EPUB/Office/HTML/CSV 携带无效质量 tier 而阻断整个目录处理。
-- API Server v1 parse job 当前是多文件接口，也应支持异构输入。
+- API Server V1 Tasks 是多文件接口，也应支持异构输入。
 
 ### 方案 C: 为 API Server 增加 file-level effective tier 字段
 
-暂不采用。
-
-原因:
-
-- 当前目标是先统一行为，不扩展 API response schema。
-- API job 的 job-level tier 可以继续表达请求 tier。
-- 如未来需要精确暴露每个文件的实际 tier，可另行设计 file-level effective tier 字段。
+原先暂缓的响应设计已由 Tasks 的 `files[].parse.tier` 实现。该字段来自成功产物的实际元数据，不以请求档位代替；不再使用 job-level tier 表示整批实际执行档位。
 
 ## 影响
 
@@ -149,15 +147,15 @@ doclib 单文件主动解析中，`remote=true` 表示用户显式要求把该�
 
 ### 对 SDK 和 mineru-kit
 
-- SDK 单文件解析应按单对象主动操作语义处理，并排除 text 解析输入。
+- 本地 SDK 单文件解析按单对象主动操作语义处理，并排除 text 解析输入；HTTP `MinerUApiParser` 遵循 Tasks 语义。
 - `mineru-kit parse` 需要根据展开后的输入数量区分单对象和批量。
 - `mineru-kit parse --remote` 对 EPUB/Office/HTML/CSV 是允许的低层工具特例；其它 text 不作为解析输入。
 
 ### 对 API Server
 
-- API Server job 按批量操作语义处理。
-- EPUB/Office/HTML/CSV 即使 job tier 是质量 tier，执行时也按 `flash` 语义；其它 text 不进入 parse job。
-- 暂不新增 file-level effective tier 字段。
+- API Server 和 Router Tasks 按批量操作语义处理，包括单文件提交。
+- EPUB/Office/HTML/CSV 即使请求 tier 是质量 tier，执行时也按 `flash` 语义；其它 text 不进入 Tasks 解析。
+- 成功文件的实际档位通过 `files[].parse.tier` 返回，默认选档及错误规则见上文。
 
 ### 对缓存和 locator
 

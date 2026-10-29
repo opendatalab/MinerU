@@ -14,6 +14,7 @@ from ....utils.timing import stage_timer
 
 from ....config import VlmConfig
 from ....model.runtime.execution import acquire_document, release_document
+from ....model.runtime.ownership import runtime_document_scope
 from ....utils.async_utils import run_sync
 from ....model.vlm.contracts import VlmPredictor
 from ....model.runtime.memory import clean_memory, trim_process_heap
@@ -90,26 +91,27 @@ def analyze_pdf(
     vlm_config: VlmConfig | None = None,
 ) -> AnalysisResult:
     """使用共享资源生命周期与同步窗口编排生产 PDF 模型结果。"""
-    state = _PDFAnalysis()
-    try:
-        with stage_timer("pdf.prepare"):
-            _prepare_analysis(state, file_bytes, effort, parse_mode, vlm_config)
-        infer_started_at = time.perf_counter()
-        model_list = process_pdf_windows(
-            file_bytes,
-            state.document,
-            effort=effort,
-            parse_mode=state.parse_mode,
-            image_analysis=image_analysis,
-            flash_txt_mode=state.flash_txt_mode,
-            hybrid_model=state.hybrid_model,
-            vlm_predictor=state.predictor,
-        )
-        result = _build_pdf_analysis_result(state, model_list, effort, infer_started_at)
-    finally:
-        with stage_timer("pdf.cleanup"):
-            _close_analysis(state)
-    return result
+    with runtime_document_scope():
+        state = _PDFAnalysis()
+        try:
+            with stage_timer("pdf.prepare"):
+                _prepare_analysis(state, file_bytes, effort, parse_mode, vlm_config)
+            infer_started_at = time.perf_counter()
+            model_list = process_pdf_windows(
+                file_bytes,
+                state.document,
+                effort=effort,
+                parse_mode=state.parse_mode,
+                image_analysis=image_analysis,
+                flash_txt_mode=state.flash_txt_mode,
+                hybrid_model=state.hybrid_model,
+                vlm_predictor=state.predictor,
+            )
+            result = _build_pdf_analysis_result(state, model_list, effort, infer_started_at)
+        finally:
+            with stage_timer("pdf.cleanup"):
+                _close_analysis(state)
+        return result
 
 
 async def aio_analyze_pdf(
@@ -120,25 +122,26 @@ async def aio_analyze_pdf(
     vlm_config: VlmConfig | None = None,
 ) -> AnalysisResult:
     """原生异步调度 VLM；同步准备、回填与清理使用取消安全的线程边界。"""
-    state = _PDFAnalysis()
-    try:
-        await run_sync(_prepare_analysis, state, file_bytes, effort, parse_mode, vlm_config)
-        if state.document is None or state.hybrid_model is None or state.predictor is None:
-            raise ValueError("Native async PDF analysis requires a high/xhigh VLM pipeline")
-        infer_started_at = time.perf_counter()
-        model_list = await aio_process_pdf_windows(
-            file_bytes,
-            state.document,
-            effort=effort,
-            parse_mode=state.parse_mode,
-            image_analysis=image_analysis,
-            hybrid_model=state.hybrid_model,
-            vlm_predictor=state.predictor,
-        )
-        result = await run_sync(_build_pdf_analysis_result, state, model_list, effort, infer_started_at)
-    finally:
-        await run_sync(_close_analysis, state)
-    return result
+    with runtime_document_scope():
+        state = _PDFAnalysis()
+        try:
+            await run_sync(_prepare_analysis, state, file_bytes, effort, parse_mode, vlm_config)
+            if state.document is None or state.hybrid_model is None or state.predictor is None:
+                raise ValueError("Native async PDF analysis requires a high/xhigh VLM pipeline")
+            infer_started_at = time.perf_counter()
+            model_list = await aio_process_pdf_windows(
+                file_bytes,
+                state.document,
+                effort=effort,
+                parse_mode=state.parse_mode,
+                image_analysis=image_analysis,
+                hybrid_model=state.hybrid_model,
+                vlm_predictor=state.predictor,
+            )
+            result = await run_sync(_build_pdf_analysis_result, state, model_list, effort, infer_started_at)
+        finally:
+            await run_sync(_close_analysis, state)
+        return result
 
 
 def _build_pdf_analysis_result(

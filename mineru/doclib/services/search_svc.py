@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
+from ...errors import InvalidRequestError
 from ...types import TIER_ORDER, Tier
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
@@ -12,9 +13,10 @@ from ..rows import ContentSearchResultRow, DocRow, FilenameSearchFileRow, Filena
 from ..types import FILE_STATUS_ACTIVE
 
 if TYPE_CHECKING:
-    from .parse_svc import FileRefreshResult
+    from .ingest_svc import FileRefreshResult
 
 FilenamePathProbe = Callable[[str], Awaitable["FileRefreshResult"]]
+_FILENAME_METADATA_BATCH_SIZE = 256
 
 
 class SearchService:
@@ -113,54 +115,65 @@ class SearchService:
     # ── filename search ─────────────────────────────────────────
 
     async def search_filenames(
-        self, query: str, ext: str | None = None, limit: int = 50, *, refresh_file: FilenamePathProbe | None = None
+        self,
+        query: str,
+        ext: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        refresh_file: FilenamePathProbe | None = None,
     ) -> tuple[list[FilenameSearchResultRow], int]:
-        """Search filenames only. Returns (results, total_count)."""
-        rows = await self.fts.search_filenames(query, limit=limit)
+        """完整候选按固定顺序分批刷新，在有效文件过滤后统计总数并分页。"""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise InvalidRequestError("invalid_request", "limit must be a positive integer.", "limit")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise InvalidRequestError("invalid_request", "offset must be a non-negative integer.", "offset")
+        rows = await self.fts.search_filenames(query, limit=None)
         if not rows:
             return [], 0
 
-        file_ids = [r["file_id"] for r in rows]
-        placeholders = ",".join("?" * len(file_ids))
-        sql = (
-            f"SELECT f.*, d.title, d.page_count "
-            f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.id IN ({placeholders})"
-        )
-        params: list[Any] = [*file_ids]
-        if refresh_file is None:
-            sql += " AND f.status = ?"
-            params.append(FILE_STATUS_ACTIVE)
-        if ext:
-            sql += " AND f.ext = ?"
-            params.append(ext.lower().lstrip("."))
-        file_rows = cast(list[FilenameSearchFileRow], await self.db.fetchall(sql, tuple(params)))
-        if refresh_file is not None:
-            file_rows = await self._filter_probe_stale_filename_rows(file_rows, refresh_file)
-
-        files_by_id = {fr["id"]: fr for fr in file_rows}
-
+        normalized_ext = ext.lower().lstrip(".") if ext else None
         results: list[FilenameSearchResultRow] = []
-        for row in rows:
-            fr = files_by_id.get(row["file_id"])
-            if not fr:
-                continue
-            results.append(
-                {
-                    "sha256": fr.get("sha256", ""),
-                    "title": fr.get("title"),
-                    "filename": fr["filename"],
-                    "ext": fr.get("ext", ""),
-                    "size_bytes": fr.get("size_bytes", 0),
-                    "page_count": fr.get("page_count"),
-                    "tier": "",
-                    "snippet": strip_sep(row.get("snippet", "")),
-                    "paths": [fr["path"]],
-                }
+        for start in range(0, len(rows), _FILENAME_METADATA_BATCH_SIZE):
+            batch = rows[start : start + _FILENAME_METADATA_BATCH_SIZE]
+            file_ids = [row["file_id"] for row in batch]
+            placeholders = ",".join("?" * len(file_ids))
+            sql = (
+                "SELECT f.*, d.title, d.page_count "
+                "FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
+                f"WHERE f.id IN ({placeholders})"
             )
+            params: list[Any] = [*file_ids]
+            if refresh_file is None:
+                sql += " AND f.status = ?"
+                params.append(FILE_STATUS_ACTIVE)
+            if normalized_ext:
+                sql += " AND f.ext = ?"
+                params.append(normalized_ext)
+            file_rows = cast(list[FilenameSearchFileRow], await self.db.fetchall(sql, tuple(params)))
+            if refresh_file is not None:
+                file_rows = await self._filter_probe_stale_filename_rows(file_rows, refresh_file)
+            files_by_id = {file["id"]: file for file in file_rows}
+            for row in batch:
+                file = files_by_id.get(row["file_id"])
+                if file is None or (normalized_ext and file["ext"] != normalized_ext):
+                    continue
+                results.append(
+                    {
+                        "sha256": file.get("sha256", ""),
+                        "title": file.get("title"),
+                        "filename": file["filename"],
+                        "ext": file.get("ext", ""),
+                        "size_bytes": file.get("size_bytes", 0),
+                        "page_count": file.get("page_count"),
+                        "tier": "",
+                        "snippet": strip_sep(row.get("snippet", "")),
+                        "paths": [file["path"]],
+                    }
+                )
 
         total = len(results)
-        return results, total
+        return results[offset : offset + limit], total
 
     async def _filter_probe_stale_filename_rows(
         self,

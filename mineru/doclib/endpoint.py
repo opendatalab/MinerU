@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from ..config import Config, config
+from ..config import Config, get_config
 
 logger = logging.getLogger("mineru.doclib.endpoint")
 
@@ -46,7 +46,7 @@ def uds_available() -> bool:
 
 
 def default_endpoint_path(cfg: Config | None = None) -> str:
-    cfg = config if cfg is None else cfg
+    cfg = get_config() if cfg is None else cfg
     return os.path.expanduser(cfg.doclib.endpoint_path)
 
 

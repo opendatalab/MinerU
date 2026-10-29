@@ -15,13 +15,28 @@
 from docvortex.image import minimum_rectangle, perspective_matrix, rectangle_corners, warp_image
 
 import copy
-from typing import List, Tuple
+from typing import List, Tuple, cast
 
 import numpy as np
 from numpy.linalg import norm
 from shapely.geometry import Polygon
 
 from .seal_det_warp import AutoRectifier
+
+
+def filter_valid_seal_crops(
+    dt_polys: list[np.ndarray], crops: list[np.ndarray | None]
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """同步过滤无效印章裁片和对应检测框，保持有效轮廓的识别顺序。"""
+    valid_polys = []
+    valid_crops = []
+    for poly, crop in zip(dt_polys, crops, strict=True):
+        if crop is not None and crop.size > 0:
+            valid_polys.append(poly)
+            valid_crops.append(crop)
+    if len(valid_crops) == len(crops):
+        return dt_polys, cast(list[np.ndarray], crops)
+    return valid_polys, valid_crops
 
 
 class SortPolyBoxes:
@@ -44,7 +59,8 @@ class CropByPolys:
     def __init__(self, det_box_type: str = "quad") -> None:
         self.det_box_type = det_box_type
 
-    def __call__(self, img: np.ndarray, dt_polys: List[list]) -> List[np.ndarray]:
+    def __call__(self, img: np.ndarray, dt_polys: list[np.ndarray]) -> list[np.ndarray | None]:
+        """逐个裁剪印章轮廓，以原位置的 None 标记无法形成有效裁片的轮廓。"""
         if self.det_box_type == "quad":
             dt_boxes = np.array(dt_polys)
             output_list = []
@@ -64,7 +80,8 @@ class CropByPolys:
 
         return output_list
 
-    def get_minarea_rect_crop(self, img: np.ndarray, points: np.ndarray) -> np.ndarray:
+    def get_minarea_rect_crop(self, img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
+        """按最小外接矩形裁剪四边形，向调用方传递零尺寸裁片标记。"""
         bounding_box = minimum_rectangle(np.array(points).astype(np.int32))
         points = sorted(list(rectangle_corners(bounding_box)), key=lambda x: x[0])
 
@@ -86,7 +103,8 @@ class CropByPolys:
         crop_img = self.get_rotate_crop_image(img, np.array(box))
         return crop_img
 
-    def get_rotate_crop_image(self, img: np.ndarray, points: list) -> np.ndarray:
+    def get_rotate_crop_image(self, img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
+        """沿用透视裁剪和转正规则，在生成矩阵前跳过取整后零宽或零高的轮廓。"""
         assert len(points) == 4, "shape of points must be 4*2"
         img_crop_width = int(
             max(
@@ -100,6 +118,8 @@ class CropByPolys:
                 np.linalg.norm(points[1] - points[2]),
             )
         )
+        if img_crop_width < 1 or img_crop_height < 1:
+            return None
         pts_std = np.float32(
             [
                 [0, 0],
@@ -225,7 +245,8 @@ class CropByPolys:
             unit_vec2 = vec2 / (norm(vec2, axis=-1) + 1e-8)
         return np.arccos(np.clip(np.sum(unit_vec1 * unit_vec2, axis=-1), -1.0, 1.0))
 
-    def get_minarea_rect(self, img: np.ndarray, points: np.ndarray) -> Tuple[np.ndarray, list]:
+    def get_minarea_rect(self, img: np.ndarray, points: np.ndarray) -> tuple[np.ndarray | None, list[np.ndarray]]:
+        """返回多边形的外接矩形和可选裁片，保留无效轮廓的几何信息。"""
         bounding_box = minimum_rectangle(points)
         points = sorted(list(rectangle_corners(bounding_box)), key=lambda x: x[0])
 
@@ -316,17 +337,23 @@ class CropByPolys:
         resampled_line = np.array(mean_positions)
         return resampled_line
 
-    def get_poly_rect_crop(self, img, points):
+    def get_poly_rect_crop(self, img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
+        """对有效多边形执行既有曲线展开，外接矩形无有效像素时直接跳过。"""
         points = np.array(points).astype(np.int32).reshape(-1, 2)
         temp_crop_img, temp_box = self.get_minarea_rect(img, points)
+        if temp_crop_img is None:
+            return None
 
-        def get_union(pD, pG):
+        def get_union(pD: np.ndarray, pG: list[np.ndarray]) -> float:
+            """计算检测多边形与外接矩形的并集面积。"""
             return Polygon(pD).union(Polygon(pG)).area
 
-        def get_intersection_over_union(pD, pG):
+        def get_intersection_over_union(pD: np.ndarray, pG: list[np.ndarray]) -> float:
+            """沿用交并比判断是否需要曲线展开。"""
             return get_intersection(pD, pG) / (get_union(pD, pG) + 1e-10)
 
-        def get_intersection(pD, pG):
+        def get_intersection(pD: np.ndarray, pG: list[np.ndarray]) -> float:
+            """计算检测多边形与外接矩形的交集面积。"""
             return Polygon(pD).intersection(Polygon(pG)).area
 
         if not Polygon(points).is_valid:

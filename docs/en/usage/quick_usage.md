@@ -22,7 +22,7 @@ mineru parse <input_path> -o <output_path>
 > [!NOTE]
 > Runtime acceleration is selected separately for the two model components, based on installed dependencies and detected devices:
 >
-> - Small models use the Torch backend only when `torch`, `torchvision`, `transformers`, `accelerate`, and `safetensors` are **all** installed and a non-CPU device (CUDA/MPS/...) is detected; otherwise they run ONNX on CPU. Installing Torch alone is not enough.
+> - Small models use the Torch backend only when `torch`, `torchvision`, `transformers`, `accelerate`, and `safetensors` are **all** installed and a non-CPU device (CUDA/MPS/...) is detected; otherwise they use ONNX. In 4.1, ONNX selects compatible DirectML/WebGPU acceleration or CPU on Windows/Linux; see [Tiers and runtimes](tiers.md). Installing Torch alone is not enough.
 > - The local VLM engine is chosen independently: macOS always uses llama.cpp; on an accelerator device Linux prefers vLLM, then an installed LMDeploy, and Windows uses LMDeploy; otherwise llama.cpp.
 > - XPU is excluded from automatic LMDeploy selection: Linux uses an installed XPU-compatible vLLM, otherwise llama.cpp; Windows uses llama.cpp.
 > - Windows users who need CUDA acceleration should first visit the [PyTorch website](https://pytorch.org/get-started/locally/) and install accelerator-enabled `torch` and `torchvision` matching their CUDA version, then install the `mineru[full]` extras.
@@ -56,7 +56,7 @@ When an output reaches its budget, follow `next_request` or the returned continu
   mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
   ```
   >[!TIP]
-  >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, uploads, files, parse jobs, and usage.
+  >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, Tasks creation and operations by ID, per-file uploads, result downloads, and usage. Task and file lists are not exposed.
   >
   >Native document parsing example: [Python SDK](sdk_api.md); plain HTTP: [V1 HTTP API](http_api.md)
 

@@ -17,6 +17,15 @@ from ..ocr.language import normalize_ocr_model_lang
 from ..ocr.resources import PPOCRV6_DICT_PATH
 from ..registry import MINERU_4_MODELS_ONNX, small_model_repo
 from .contracts import AtomicModelName
+from .local_cache import (
+    LOCAL_MODEL_CACHE_LOCK,
+    LocalModelResource,
+    current_local_resource,
+    get_local_model,
+    local_resource_scope,
+    release_local_owner,
+)
+from .ownership import RuntimeOwner
 
 if TYPE_CHECKING:
     from ..table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
@@ -29,7 +38,7 @@ if TYPE_CHECKING:
 
 from .device import get_device, resolve_small_model_backend
 
-LOCAL_MODEL_INIT_LOCK = threading.RLock()
+LOCAL_MODEL_INIT_LOCK = LOCAL_MODEL_CACHE_LOCK
 # 这些锁保护 Hybrid medium/high/xhigh 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
 LOCAL_MODEL_LAYOUT_INFERENCE_LOCK = threading.RLock()
 LOCAL_MODEL_MFR_INFERENCE_LOCK = threading.RLock()
@@ -104,7 +113,9 @@ def table_cls_model_init(small_backend: str | None = None) -> PaddleTableClsMode
     """初始化有线与无线表格类型分类模型。"""
     from ..table.cls.paddle_table_cls import PaddleTableClsModel
 
-    return PaddleTableClsModel(model_path=str(small_model_repo(small_backend).paddle_table_cls.ensure()))
+    return PaddleTableClsModel(
+        model_path=str(small_model_repo(small_backend).paddle_table_cls.ensure()), small_backend=small_backend
+    )
 
 
 def wired_table_model_init(
@@ -123,7 +134,9 @@ def wired_table_model_init(
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = UnetTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).unet_structure.ensure()))
+    table_model = UnetTableModel(
+        ocr_engine, model_path=str(small_model_repo(small_backend).unet_structure.ensure()), small_backend=small_backend
+    )
     return table_model
 
 
@@ -143,7 +156,9 @@ def wireless_table_model_init(
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = PaddleTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).slanet_plus.ensure()))
+    table_model = PaddleTableModel(
+        ocr_engine, model_path=str(small_model_repo(small_backend).slanet_plus.ensure()), small_backend=small_backend
+    )
     return table_model
 
 
@@ -192,7 +207,7 @@ class AtomModelSingleton:
     """按模型配置缓存并复用本地原子模型实例。"""
 
     _instance: AtomModelSingleton | None = None
-    _models: dict[object, object] = {}
+    _models: dict[object, LocalModelResource] = {}
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> AtomModelSingleton:
@@ -233,10 +248,15 @@ class AtomModelSingleton:
             key = atom_model_name
 
         key = (small_backend, device, key)
-        with self._lock:
-            if key not in self._models:
-                self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
-        return self._models[key]
+        if small_backend == "onnx":
+            from .onnx_device import resolve_onnx_device
+
+            key = (*key, resolve_onnx_device())
+        return get_local_model(self._models, key, lambda: atom_model_init(model_name=atom_model_name, **kwargs))
+
+    def release_owner(self, owner: RuntimeOwner) -> None:
+        """释放应用直接持有的原子模型，仍被其它上下文引用的依赖继续保留。"""
+        release_local_owner(self._models, owner)
 
 
 @stage_timer("model.initialize")
@@ -339,7 +359,7 @@ class HybridLocalModelContextSingleton:
     """全局缓存并复用 Hybrid 本地模型上下文。"""
 
     _instance: HybridLocalModelContextSingleton | None = None
-    _models: dict[tuple[str, str], HybridLocalModelContext] = {}
+    _models: dict[object, LocalModelResource] = {}
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> HybridLocalModelContextSingleton:
@@ -355,11 +375,14 @@ class HybridLocalModelContextSingleton:
         """按小模型后端与实际设备缓存上下文，避免切换配置后混用模型。"""
         small_backend = resolve_small_model_backend()
         device = "cpu" if small_backend == "onnx" else get_device()
-        key = (small_backend, device)
-        with self._lock:
-            if key not in self._models:
-                self._models[key] = HybridLocalModelContext(device=device, small_backend=small_backend)
-            return self._models[key]
+        from ...config import get_config
+
+        key = (small_backend, device, get_config().model.onnx_device if small_backend == "onnx" else None)
+        return get_local_model(self._models, key, lambda: HybridLocalModelContext(device=device, small_backend=small_backend))
+
+    def release_owner(self, owner: RuntimeOwner) -> None:
+        """释放应用对上下文的租约，并按依赖关系回收无人持有的原子模型。"""
+        release_local_owner(self._models, owner)
 
 
 def ocr_det_batch_setting() -> bool:
@@ -394,6 +417,7 @@ class HybridLocalModelContext:
         small_backend: str | None = None,
     ) -> None:
         """初始化 Hybrid 基础运行时，其他模型在首次访问对应属性时加载。"""
+        self._resource = current_local_resource()
         self.small_backend = resolve_small_model_backend(small_backend)
         self.device = "cpu" if self.small_backend == "onnx" else (device or get_device())
         self.enable_ocr_det_batch = True if self.small_backend == "onnx" else ocr_det_batch_setting()
@@ -417,6 +441,11 @@ class HybridLocalModelContext:
 
         # 初始化layout模型，用于提供行内公式检测框和Hybrid标题拆分
         self.layout_model = self.get_layout_model()
+
+    def _get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
+        """把惰性模型登记为上下文依赖，复用 cached_property 时无需重复登记应用。"""
+        with local_resource_scope(self._resource):
+            return self.atom_model_manager.get_atom_model(atom_model_name=atom_model_name, **kwargs)
 
     @cached_property
     def mfr_model(self) -> FormulaRecognizer:
@@ -455,7 +484,7 @@ class HybridLocalModelContext:
         enable_merge_det_boxes: bool = True,
     ) -> "PytorchPaddleOCR":
         """获取 OCR 原子模型，默认使用当前 Hybrid 本地上下文语言并复用 singleton 缓存。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.OCR,
@@ -467,7 +496,7 @@ class HybridLocalModelContext:
 
     def get_layout_model(self) -> "PPDocLayoutV2LayoutModel":
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.Layout,
@@ -475,7 +504,7 @@ class HybridLocalModelContext:
 
     def get_mfr_model(self) -> "FormulaRecognizer":
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.MFR,
@@ -483,7 +512,7 @@ class HybridLocalModelContext:
 
     def get_wireless_table_model(self) -> PaddleTableModel:
         """获取无线表格识别原子模型。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.WirelessTable,
@@ -492,7 +521,7 @@ class HybridLocalModelContext:
 
     def get_wired_table_model(self) -> UnetTableModel:
         """获取有线表格识别原子模型。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.WiredTable,
@@ -501,7 +530,7 @@ class HybridLocalModelContext:
 
     def get_table_cls_model(self) -> PaddleTableClsModel:
         """获取表格分类原子模型。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.TableCls,
@@ -509,7 +538,7 @@ class HybridLocalModelContext:
 
     def get_table_orientation_cls_model(self) -> MineruTableOrientationClsModel:
         """获取表格方向分类原子模型。"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.TableOrientationCls,
@@ -517,7 +546,7 @@ class HybridLocalModelContext:
 
     def get_seal_ocr_model(self) -> PytorchPaddleOCR:
         """获取印章识别 OCR 原子模型"""
-        return self.atom_model_manager.get_atom_model(
+        return self._get_atom_model(
             small_backend=self.small_backend,
             device=self.device,
             atom_model_name=AtomicModelName.OCR,

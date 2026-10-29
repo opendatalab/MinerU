@@ -8,13 +8,13 @@ For unresolved problems, join our [Discord](https://discord.gg/Tdedn9GTXq) or [W
 
     ### Windows CUDA acceleration {#windows-cuda-acceleration}
 
-    The base package can use ONNX / CPU and llama.cpp. For Torch small models and LMDeploy, install `"mineru[full]>=4.0,<5"` in the owning environment, then check Torch CUDA support, GPU drivers, and the Python range of engine wheels.
+    The 4.1 base package can automatically use ONNX DirectML or CPU on Windows x64, with llama.cpp for the VLM. Use `mineru-kit hardware info --json` to inspect the environment and existing calibration evidence. For Torch small models and LMDeploy, install `"mineru[full]>=4.0,<5"` in the owning environment, then check Torch CUDA support, GPU drivers, and the Python range of engine wheels.
 
-    4.0 uses `lmdeploy>=0.17.0,<0.18` and Transformers 5. Do not reuse old LMDeploy 0.11.x wheel recipes or bypass dependency checks. See [extension modules](../quick_start/extension_modules.md) and [tiers](../usage/tiers.md).
+    The current version uses `lmdeploy>=0.17.0,<0.19` and Transformers 5. Do not reuse old LMDeploy 0.11.x wheel recipes or bypass dependency checks. See [extension modules](../quick_start/extension_modules.md) and [tiers](../usage/tiers.md).
 
 ??? question "What changed in commands, APIs, and configuration?"
 
-    The 4.0 WebUI uses `mineru-kit webui` / `mineru-webui`, parsing APIs use `/v1/*`, and configuration uses `config.yaml`. Old `/file_parse`, `/tasks`, and `model.stack` cannot be reused directly. See [migration](../reference/migration_4.md).
+    The 4.x WebUI uses `mineru-kit webui` / `mineru-webui`, parsing APIs use `/v1/*`, and configuration uses `config.yaml`. Old `/file_parse`, `/tasks`, and `model.stack` cannot be reused directly. See [3.x migration](../reference/migration_4.md). The 4.1 release also replaces standalone uploads/jobs with Tasks; see [4.1 migration](../reference/migration_4_1.md) and the standalone [file-parse API](../usage/file_parse.md).
 
 ??? question "Encountered the error `ImportError: libGL.so.1: cannot open shared object file: No such file or directory` in Ubuntu 22.04 on WSL2"
 

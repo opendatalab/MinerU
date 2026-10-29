@@ -7,13 +7,13 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from docvortex.document.contracts import HtmlSourceContext
 from docvortex.schema import DocumentProperties
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
-from ..config import VlmConfig, config
+from ..config import VlmConfig, get_config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..integrations.docvortex import read_source_properties
@@ -62,7 +62,7 @@ class MinerUParser(DocumentParser):
         self.effort: _Effort = effort_for_tier(tier)  # type: ignore[assignment]
         self.parse_mode: _ParseMode = parse_mode
         self.image_analysis: bool = image_analysis
-        self.vlm_config = (vlm_config if vlm_config is not None else config.model.vlm).model_copy(deep=True)
+        self.vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
 
     def parse(
         self,
@@ -78,14 +78,14 @@ class MinerUParser(DocumentParser):
             raise FileNotFoundError(path)
 
         prepared = self._prepare_input(path, page_range, source_context)
-        middle_json, model_output = self._run_analysis(prepared)
+        middle_json, _ = self._run_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
                 middle_json.pages,
                 prepared.retained_page_indices,
                 prepared.broken_page_indices,
             )
-        return self._build_result(middle_json, model_output)
+        return ParseResult(middle_json=middle_json)
 
     async def parse_async(
         self,
@@ -101,14 +101,14 @@ class MinerUParser(DocumentParser):
             raise FileNotFoundError(path)
 
         prepared = await run_sync(self._prepare_input, path, page_range, source_context)
-        middle_json, model_output = await self._arun_analysis(prepared)
+        middle_json, _ = await self._arun_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
                 middle_json.pages,
                 prepared.retained_page_indices,
                 prepared.broken_page_indices,
             )
-        return self._build_result(middle_json, model_output)
+        return ParseResult(middle_json=middle_json)
 
     def _run_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
         """将准备后的输入和实例连接配置传入同步分析入口。"""
@@ -259,16 +259,6 @@ class MinerUParser(DocumentParser):
         pages_by_index = {page.page_idx: page for page in pages}
         ordered_page_indices = sorted(set(pages_by_index) | set(broken_page_indices))
         pages[:] = [pages_by_index.get(page_idx, PageInfo(page_idx=page_idx)) for page_idx in ordered_page_indices]
-
-    def _build_result(
-        self,
-        middle_json: MiddleJson,
-        model_output: Any = None,
-    ) -> ParseResult:
-        return ParseResult(
-            middle_json=middle_json,
-            _model_output=model_output,
-        )
 
 
 __all__ = ["MinerUParser"]

@@ -20,11 +20,11 @@ Unified API 文档描述两类部署形态下的同一套 API:
 1. [API 总览](api/README.md): 资源模型、端点地图、认证、通用约定。
 2. [响应与错误](api/responses.md): 成功响应、错误 envelope、请求追踪。
 3. [Health、Models 与 Tiers](api/health-models.md): 服务能力、模型列表、解析档位。
-4. [Uploads 与 Files](api/uploads-files.md): 上传生命周期、文件对象、产物下载。
-5. [Parse Jobs](api/parse-jobs.md): 解析任务、轮询。
-   [V1 便捷解析](api/tasks.md): 一次提交、内联结果、同步包装和 Router 调度。
+4. [Files](api/files.md): 文件元数据、列表、产物下载和删除。
+5. [Tasks](api/tasks.md): JSON 清单、hash 缓存、逐文件上传、列表、轮询和下载。
+   [同步 file_parse](api/file-parse.md): 独立包装服务，单文件直传、同步附件和超时恢复。
 6. [Chat 与 Responses](api/chat.md): OpenAI-compatible 文档对话接口。
-7. [Webhooks](api/webhooks.md): 异步回调协议。
+7. [任务通知](api/webhooks.md): 轮询和 SDK 回调边界。
 8. [Usage 与 Limits](api/usage-limits.md): access level、限流、用量查询。
 9. [端到端示例](api/examples.md): 常见调用流程。
 

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import numpy as np
@@ -48,7 +47,6 @@ def get_ocr_result_list(
     """过滤 OCR 输出并将坐标回投到原始页面。"""
     paste_x, paste_y, xmin, ymin, _xmax, _ymax, _new_width, _new_height = useful_list
     ocr_result_list = []
-    ori_im = None
     for box_ocr_res in ocr_res:
         img_crop = None
         need_ocr_rec = False
@@ -60,16 +58,17 @@ def get_ocr_result_list(
         else:
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
-            if ocr_enable:
-                if ori_im is None:
-                    ori_im = bgr_image.copy()
-                tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype("float32"))
-                img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
-                need_ocr_rec = True
+            need_ocr_rec = ocr_enable
 
         poly = [p1, p2, p3, p4]
+        # 公式遮罩拆框可能产生零宽或窄残片；两类结果共用过滤条件，先过滤再裁图。
         if (p3[0] - p1[0]) < OcrConfidence.min_width:
             continue
+        if need_ocr_rec:
+            # 裁图只读源图且返回独立裁片，无需复制整个输入图或重复复制坐标数组。
+            img_crop = get_rotate_crop_image_for_text_rec(bgr_image, np.array(poly, dtype=np.float32))
+            if img_crop is None:
+                continue
         if calculate_is_angle(poly):
             x_center = sum(point[0] for point in poly) / 4
             y_center = sum(point[1] for point in poly) / 4

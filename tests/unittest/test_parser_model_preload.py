@@ -104,7 +104,7 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
 
     api_server._preload_server_models("standard", vlm_config=VlmConfig())
     predictor, engine = get_vlm_predictor(VlmConfig())
-    assert predictor is predictor_factory.return_value
+    assert predictor.predictor is predictor_factory.return_value
     assert engine == "llama-cpp-engine"
     predictor_factory.assert_called_once()
     engine_factory.assert_called_once()

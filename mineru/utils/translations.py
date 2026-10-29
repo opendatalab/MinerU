@@ -69,6 +69,9 @@ ZH_MESSAGES: dict[str, str] = {
     "{label}: {ids}": "{label}: {ids}",
     # ------------------------------------------------------------------ read
     "Document library locator, e.g. doc:ab12cd3/tier:basic/page:4": "文档库定位符,如 doc:ab12cd3/tier:basic/page:4",
+    "Document library locator; page selection supports numbers, rN, ranges, comma-separated pages and all": (
+        "文档库定位符；页选择支持数字、rN、区间、逗号组合和 all"
+    ),
     "Read N pages/blocks before and after the locator": "在定位符前后各读取 N 页/块",
     "Output format: markdown, image": "输出格式: markdown、image",
     "Omit continuation marker from output": "输出中省略续读标记",
@@ -140,6 +143,7 @@ ZH_MESSAGES: dict[str, str] = {
     "File retention: {retention}": "文件保留期: {retention}",
     "{start} - ongoing": "{start} - 进行中",
     "not specified": "未指定",
+    "unlimited": "无限制",
     "{days} day": "{days} 天",
     "{days} days": "{days} 天",
     # ------------------------------------------------------------------ list
@@ -460,8 +464,8 @@ ZH_MESSAGES: dict[str, str] = {
     "Gradio is a base dependency; repair the installation with `pip install 'mineru'`.": (
         "Gradio 是基础依赖;请用 `pip install 'mineru'` 修复安装。"
     ),
-    "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
-        "需要 Gradio >=6.8,<7;请用 `pip install --upgrade 'mineru'` 升级。"
+    "Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
+        "需要 Gradio >=6.21,<7;请用 `pip install --upgrade 'mineru'` 升级。"
     ),
     "Unsupported API server tier '{tier}'. Supported tiers: {tiers}": "不支持的 API server 档位 '{tier}'。支持的档位: {tiers}",
     "{name} must be greater than zero": "{name} 必须大于零",
@@ -476,7 +480,9 @@ ZH_MESSAGES: dict[str, str] = {
     "Maximum pages per PDF conversion; omitted: unlimited": "PDF 单次转换的最大页数;省略时不限制",
     "Show local examples": "显示本地示例",
     "Expose the Gradio event API": "开放 Gradio 事件 API",
-    "Managed API server capability tier": "托管 API server 的能力档位",
+    "Managed API server tier ceiling: auto, flash, basic, standard, advanced; ignored with --api-url": (
+        "托管 API server 的档位上限：auto、flash、basic、standard、advanced；指定 --api-url 时忽略"
+    ),
     "Managed server job concurrency": "托管服务的任务并发数",
     "Disable managed server image analysis": "禁用托管服务的图像分析",
     "Preload managed server models": "预加载托管服务的模型",
@@ -485,7 +491,13 @@ ZH_MESSAGES: dict[str, str] = {
     "Server host": "服务监听主机",
     "Server port": "服务监听端口",
     "Upload directory": "上传目录",
-    "Server capability tier: flash, basic, or standard": "服务能力档位: flash、basic 或 standard",
+    "Start the synchronous single-file Tasks wrapper service.": "启动单文件同步 Tasks 包装服务。",
+    "Upstream Tasks API base URL": "上游 Tasks API 基础 URL",
+    "Upstream Bearer API key": "上游 Bearer API 密钥",
+    "File parse recovery state directory": "同步解析请求恢复目录",
+    "PDF/image tier ceiling: flash, basic, standard, advanced; or auto": (
+        "PDF/图片档位上限: flash、basic、standard、advanced;或 auto 自动选择"
+    ),
     "Disable Flash tier advertisement and execution": "禁用 Flash 档位的广播与执行",
     "Disable Advanced tier advertisement and execution": "禁用 Advanced 档位的广播与执行",
     "Terminal retention seconds (default 86400; 0 disables collection)": "终态资源保留秒数（默认 86400；0 表示禁用回收）",
@@ -535,6 +547,14 @@ ZH_MESSAGES: dict[str, str] = {
         "mlx_vlm.server 不可用。请安装 'mlx-vlm>=0.7.0,<0.8.0'。"
     ),
     "MLX-VLM is not installed. Install 'mlx-vlm>=0.7.0,<0.8.0'.": "未安装 MLX-VLM。请安装 'mlx-vlm>=0.7.0,<0.8.0'。",
+    # -------------------------------------------------------- kit hardware
+    "Detect recommended tiers or inspect hardware and runtime information.": "检测推荐档位或查看硬件与运行时信息。",
+    "Recommend the API tier ceiling using hardware and applicable OCR calibration.": (
+        "根据硬件和适用的 OCR 校准结果推荐 API 档位上限。"
+    ),
+    "Read hardware, installed versions and runtime diagnostics without calibration.": (
+        "读取硬件、已安装软件版本与运行时诊断信息，不执行校准。"
+    ),
     # ---------------------------------------------------------- kit models
     "Download, inspect, and verify local MinerU models.": "下载、查看与校验本地 MinerU 模型。",
     "Download an explicit repo or the tier resources required by the current backend combination.": (
@@ -578,7 +598,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Existing MinerU V1 API base URL; repeat to add upstreams": "既有的 MinerU V1 API 基础 URL;可重复传入以添加多个上游",
     "Local workers: auto, none, or GPU CSV": "本地 worker: auto、none 或 GPU 列表(CSV)",
     "Host for managed api-server workers": "托管 api-server worker 的主机",
-    "Managed worker tier: flash, basic, standard": "托管 worker 档位: flash、basic、standard",
+    "Managed worker tier ceiling: flash, basic, standard, advanced": "托管 worker 档位上限: flash、basic、standard、advanced",
     "Concurrency per managed worker": "每个托管 worker 的并发数",
     "Preload models in managed workers": "在托管 worker 中预加载模型",
     # -------------------------------------------------------- kit common

@@ -4,7 +4,7 @@ import os
 
 import typer
 
-from ...config import config, get_config_file_exists, get_config_file_path, get_config_source
+from ...config import get_config, get_config_file_exists, get_config_file_path, get_config_source
 from ...model.download import (
     DOWNLOAD_MODEL_SOURCES,
     MODEL_SOURCE_ENV_VAR,
@@ -132,7 +132,7 @@ def show_cmd(
     try:
         effective_small_backend = resolve_small_model_backend(small_backend)
         effective_vlm_engine = (
-            "http-client" if vlm_engine is None and config.model.vlm.server_url else resolve_vlm_engine(vlm_engine)
+            "http-client" if vlm_engine is None and get_config().model.vlm.server_url else resolve_vlm_engine(vlm_engine)
         )
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc), "backend")
@@ -142,13 +142,15 @@ def show_cmd(
         t("Config: {path}", path=config_file),
         t("Config exists: {value}", value=str(get_config_file_exists()).lower()),
         f"MINERU_MODEL_SOURCE={os.getenv(MODEL_SOURCE_ENV_VAR, '') or '(unset)'}",
-        f"model.base_dir: {config.model.base_dir}",
+        f"model.base_dir: {get_config().model.base_dir}",
         f"model.base_dir.source: {get_config_source('model.base_dir')}",
-        f"model.source: {config.model.source}",
+        f"model.source: {get_config().model.source}",
         f"model.source.source: {get_config_source('model.source')}",
-        f"model.small_backend: {config.model.small_backend}",
+        f"model.small_backend: {get_config().model.small_backend}",
         f"model.small_backend.source: {get_config_source('model.small_backend')}",
-        f"model.vlm.engine: {config.model.vlm.engine}",
+        f"model.onnx_device: {get_config().model.onnx_device}",
+        f"model.onnx_device.source: {get_config_source('model.onnx_device')}",
+        f"model.vlm.engine: {get_config().model.vlm.engine}",
         f"model.vlm.engine.source: {get_config_source('model.vlm.engine')}",
         t("Effective small backend: {backend}", backend=effective_small_backend),
         t("Effective VLM engine: {engine}", engine=effective_vlm_engine),

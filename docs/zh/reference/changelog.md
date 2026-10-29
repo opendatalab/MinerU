@@ -2,18 +2,29 @@
 
 本文档记录 MinerU 项目的版本更新历史、主要能力演进和重要兼容性变动。
 
-## 未发布
+## 4.1.0
 
-- 图片命名变更：CLI/API ZIP 的新物化图片统一采用 Gradio 的视觉父块命名，表内图按所有 img src 顺序编号，冲突追加 `_duplicate_n`。引用同步更新，图片字节及 MiddleJson 2.0 不变；历史 ZIP 仍按已有引用读取。需要 `docvortex>=0.4.19,<1`。
+- **主流平台与 GPU 自动加速**：默认安装支持 Windows、Linux 和 macOS 上的 CPU 运行，以及 Intel、AMD、NVIDIA 和 Apple Silicon 兼容独显或集显的推理加速。自动选择合适的 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
+- **统一 Tasks 异步接口**：以 `/v1/tasks` 替换旧 `/v1/uploads`、`/v1/parse/jobs` 工作流，支持文件清单、URL 输入、缓存免传、逐文件执行与结果下载，以及统一的状态查询和取消操作。详见 [Tasks 接口说明](../usage/tasks.md)。
+- **可恢复的同步解析服务**：独立的 `file-parse-server` 提供 `/v1/file_parse`，支持单文件上传和附件返回、等待超时后查询，以及通过请求 ID 恢复已知任务。详见 [file-parse 接口说明](../usage/file_parse.md)。
+- **硬件诊断与档位推荐**：新增 `mineru-kit hardware detect` 和 `hardware info`，帮助选择合适的服务档位，并查看设备、运行环境与校准信息。
 
-- 破坏性变更：移除 `mineru-kit parse` 的 `--backend` 参数（该参数在 4.0 alpha 阶段引入）。它仅用于推断 tier，没有独立作用，请改用 `--tier`：`pipeline` → `--tier basic`；`vlm-engine`、`vlm-auto-engine`、`vlm-http-client` → `--tier advanced`；`hybrid-engine`、`hybrid-auto-engine` → `--tier standard`（或省略该参数）；`flash` → `--tier flash`。使用远程 VLM 服务由 VLM 服务配置表达，与该参数无关。
-- 破坏性变更：移除 `mineru.parser` 公开导出中的 `PARSER_BACKENDS` 常量（4.0 正式版包含该导出）。backend 由 tier 派生，不再是公开选择或公开符号；请通过 `model.small_backend` 与 `model.vlm.engine` 配置引擎。
+**升级提示：** Python 支持范围调整为 **3.11–3.14**。此次包含破坏性 HTTP 接口变更，请协调升级服务端、Router、SDK 和客户端，详见 [4.1 迁移说明](migration_4_1.md)。
 
 ## 4.0
 
-- 四档解析、多格式原生文档支持、文档库与渐进阅读。
-- ONNX/Torch 小模型与独立 VLM 引擎配置，统一 SDK、V1 API、WebUI 和渲染接口。
-- 主要能力见[4.0 概览](../index.md)，接口与部署调整见[迁移指南](migration_4.md)；旧平台适配继续限制 `mineru<4`。
+MinerU 4.0 将多格式文档解析、文档库和服务工具整合到统一工作流，面向文档转换、应用集成和 Agent 阅读。
+
+- **四档解析**：Flash 用于快速预览与索引，Basic 提供基础 OCR/模型解析，Standard 与 Advanced 面向更复杂的版面和更高的质量需求。
+- **多格式输入**：PDF、图片，以及 DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、OFD、HTML/MHTML、CSV/TSV。原生文档由 [DocVortex](https://github.com/myhloli/docvortex) 提供解析能力。
+- **文档库与 Agent 阅读**：发现文件、缓存结果、搜索内容，按页或块继续阅读，并保留稳定引用位置。
+- **独立模型配置**：小模型选择 ONNX 或 Torch；VLM 独立选择 llama.cpp、vLLM、LMDeploy。
+- **统一工具入口**：Python SDK、V1 API、无状态批处理、多服务 Router 和基于 Gradio 的 WebUI。
+- **结构化结果与渲染**：统一文档模型支持 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2 九种渲染目标；各 CLI/API 的导出范围见[输出格式与结果协议](output_files.md)。
+
+PDF 和图片支持四档解析；Office、OpenDocument、EPUB、OFD、HTML/MHTML、CSV/TSV 使用本地 Flash 原生解析。纯文本直接读取，不进入解析流程。默认不会自动将文档上传到官网服务，远程解析需要显式配置。
+
+接口与部署调整见 [4.0 迁移指南](migration_4.md)。
 
 ## 3.x 系列版本
 
@@ -310,7 +321,7 @@
 
 **体验优化**
 
-- 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuisglang-clientserver)
+- 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](../usage/quick_usage.md)
 - `sglang`适配`0.4.8`版本，大幅降低`vlm-sglang`后端的显存要求，最低可在`8G显存`(Turing及以后架构)的显卡上运行
 - 对所有命令增加`sglang`的参数透传，使得`sglang-engine`后端可以与`sglang-server`一致，接收`sglang`的所有参数
 - 支持基于配置文件的功能扩展，包含`自定义公式标识符`、`开启标题分级功能`、`自定义本地模型目录`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#mineru_1)

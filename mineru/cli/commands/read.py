@@ -24,7 +24,11 @@ class ReadTextOutput:
 
 
 def read_cmd(
-    locator: str = typer.Argument(..., help=t("Document library locator, e.g. doc:ab12cd3/tier:basic/page:4")),
+    locator: str = typer.Argument(
+        ...,
+        help=t("Document library locator; page selection supports numbers, rN, ranges, comma-separated pages and all"),
+    ),
+    after: str | None = typer.Option(None, "--after", help=t("Continue reading after a content cursor from earlier output")),
     context: int = typer.Option(0, "--context", help=t("Read N pages/blocks before and after the locator")),
     limit: int = typer.Option(30000, "--limit", help=t("Soft character limit for printed content")),
     format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help=t("Output format: markdown, image")),
@@ -32,12 +36,13 @@ def read_cmd(
     no_marker: bool = typer.Option(False, "--no-marker", help=t("Omit continuation marker from output")),
     json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
-    """Read parsed doclib content by locator."""
+    """按单点或页范围定位读取内容，并支持范围内续读。"""
     ctx = CliContext(json_mode=json_mode)
     run_cli(
         ctx,
         lambda: _read(
             locator,
+            after=after,
             context=context,
             limit=limit,
             format=format,
@@ -57,7 +62,9 @@ def _read(
     output: str | None,
     no_marker: bool,
     json_mode: bool,
+    after: str | None = None,
 ) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
+    """调用内容服务；只有显式续读时才传入 after，保持普通调用参数兼容。"""
     image_format = _image_format_for_output(format=format, output=output) if format == "image" else "jpeg"
     client = DoclibClient(timeout=60)
     if format == "image":
@@ -68,6 +75,7 @@ def _read(
             format=format,
             image_format=image_format,
             no_marker=no_marker,
+            **({"after": after} if after is not None else {}),
         )
     else:
         content = client.read_content(
@@ -76,6 +84,7 @@ def _read(
             limit=limit,
             format=format,
             no_marker=no_marker,
+            **({"after": after} if after is not None else {}),
         )
     return _prepare_read_output(content, json_mode=json_mode, output=output, no_marker=no_marker)
 
@@ -160,6 +169,8 @@ def _image_format_for_output(*, format: Literal["markdown", "image"], output: st
 
 
 def _read_next_marker(next_request: ContentNextRequest) -> str | None:
+    """把范围定位和绝对游标一起写入可直接执行的续读命令。"""
     if not next_request.locator:
         return None
-    return f"<!-- Next: mineru read {next_request.locator} -->"
+    after_option = f" --after {next_request.after}" if next_request.after else ""
+    return f"<!-- Next: mineru read {next_request.locator}{after_option} -->"

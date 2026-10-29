@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -11,18 +12,13 @@ from packaging.requirements import Requirement
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from mineru.config import Config, VlmConfig, _load_effective_config, config
+from mineru.config import Config, VlmConfig, _load_effective_config, get_config
 from mineru.kit.commands.models import app
 from mineru.model import registry
 from mineru.model.runtime import device
 from mineru.model.vlm import selector
 from mineru.parser import tier as parser_tier
 from scripts.check_transformers5_dependencies import check_backend_dependencies
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
 
 
 @pytest.mark.parametrize(
@@ -110,8 +106,8 @@ def test_old_cli_stack_option_is_removed() -> None:
 @pytest.mark.parametrize("engine", ["llama-cpp", "vllm", "lmdeploy", "mlx"])
 def test_preflight_uses_supplied_vlm_config(monkeypatch: pytest.MonkeyPatch, engine: str) -> None:
     """显式 VLM 配置同时决定预检依赖与资源集合，不被全局设置覆盖。"""
-    monkeypatch.setattr(config.model, "small_backend", "torch")
-    monkeypatch.setattr(config.model.vlm, "engine", "auto")
+    monkeypatch.setattr(get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(get_config().model.vlm, "engine", "auto")
     settings = VlmConfig(engine=engine)
     modules = parser_tier.required_modules_for_tier("standard", vlm_config=settings)
     assert set(modules) == {"onnxruntime", *device.TORCH_REQUIRED_MODULES, *selector.VLM_REQUIRED_MODULES[engine]}
@@ -130,7 +126,7 @@ def test_preflight_uses_supplied_vlm_config(monkeypatch: pytest.MonkeyPatch, eng
 
 def test_remote_vlm_needs_no_local_engine_or_weights(monkeypatch: pytest.MonkeyPatch) -> None:
     """远程地址优先，不因未安装本地 MLX 而阻断服务或下载无用 VLM 权重。"""
-    monkeypatch.setattr(config.model, "small_backend", "onnx")
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
     settings = VlmConfig(server_url="http://localhost:9000", engine="mlx")
     assert parser_tier.required_modules_for_tier("standard", vlm_config=settings) == ["onnxruntime"]
     assert registry.model_repos_for_tier("standard", vlm_config=settings) == (registry.MINERU_4_MODELS_ONNX,)
@@ -140,7 +136,7 @@ def test_remote_vlm_needs_no_local_engine_or_weights(monkeypatch: pytest.MonkeyP
 
 def test_explicit_missing_engine_reports_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
     """显式引擎缺失时报错，不改用可用的 llama 掩盖配置问题。"""
-    monkeypatch.setattr(config.model, "small_backend", "onnx")
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
 
     def missing_engine(name: str) -> object:
         """只模拟选定引擎缺失，避免加载真实 GPU 模块。"""
@@ -174,8 +170,8 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     from mineru.parser import api_server
 
     settings = VlmConfig(engine=engine)
-    monkeypatch.setattr(config.model, "small_backend", small_backend)
-    monkeypatch.setattr(config.model, "vlm", settings)
+    monkeypatch.setattr(get_config().model, "small_backend", small_backend)
+    monkeypatch.setattr(get_config().model, "vlm", settings)
     monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
 
     def import_without_dependency(name: str) -> object:
@@ -195,7 +191,7 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     assert "mineru[full]" in message
 
     with pytest.raises(api_server.ParseServerStartupError) as startup_error:
-        api_server.create_app(upload_dir=str(tmp_path), tier="standard", vlm_config=settings)
+        api_server.create_app(upload_dir=str(tmp_path), tiers=("flash", "basic", "standard", "advanced"), vlm_config=settings)
     assert str(startup_error.value) == message
 
     with pytest.raises(InvalidRequestError) as doclib_error:
@@ -205,10 +201,13 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     assert doclib_error.value.param == "value"
 
 
-def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> set[str]:
+def _resolved_direct_dependencies(platform: str, machine: str, extra: str, python: str = "3.14") -> set[str]:
     """按目标平台展开本项目的递归 extra，不使用宿主环境的标记值。"""
     project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    environment = {**default_environment(), "sys_platform": platform, "platform_machine": machine}
+    environment = {
+        **default_environment(), "sys_platform": platform, "platform_machine": machine,
+        "python_version": python, "python_full_version": python + ".0",
+    }
     pending, visited, names = [extra], set(), set()
     while pending:
         current = pending.pop()
@@ -228,13 +227,19 @@ def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> se
 
 
 @pytest.mark.parametrize(
-    "platform,machine", [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("win32", "AMD64")]
+    "platform,machine",
+    [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("linux", "aarch64"), ("win32", "AMD64"),
+     ("win32", "amd64"), ("win32", "x86_64"), ("win32", "ARM64")],
 )
 @pytest.mark.parametrize("extra", ["", "torch", "full", "all"])
-def test_package_markers(platform: str, machine: str, extra: str) -> None:
+@pytest.mark.parametrize("python", ["3.11", "3.12", "3.13", "3.14"])
+def test_package_markers(platform: str, machine: str, extra: str, python: str) -> None:
     """ARM 基础包引入完整 Torch 依赖，其他平台基础包保持 ONNX 与 llama。"""
-    names = _resolved_direct_dependencies(platform, machine, extra)
-    assert {"docvortex", "gradio", "onnxruntime", "mineru-llama-cpp"} <= names
+    names = _resolved_direct_dependencies(platform, machine, extra, python)
+    runtime = "onnxruntime-directml" if platform == "win32" and machine in {"AMD64", "amd64", "x86_64"} else "onnxruntime"
+    assert {"docvortex", "gradio", runtime, "mineru-llama-cpp"} <= names
+    assert not {"onnxruntime", "onnxruntime-directml"} <= names
+    assert ("onnxruntime-ep-webgpu" in names) == (platform == "linux" and machine == "x86_64")
     # lxml 由 DocVortex 声明，不在 MinerU 运行时 extras 中重复维护。
     assert "lxml" not in names
     expected_torch = (platform, machine) == ("darwin", "arm64") or extra in {"torch", "full", "all"}
@@ -249,7 +254,7 @@ def test_package_markers(platform: str, machine: str, extra: str) -> None:
 
 def test_real_resolution_policy_keeps_explicit_utils_mlx_separate() -> None:
     """真实 wheel 检查允许 ARM 基础 Torch，但不把 utils 的显式 MLX 当成 MinerU 默认安装。"""
-    names = _resolved_direct_dependencies("darwin", "arm64", "")
+    names = _resolved_direct_dependencies("darwin", "arm64", "") | {"mineru-magika"}
     assert check_backend_dependencies(names, "mineru", "base", "macos") == []
     # 完整求解结果允许包含 DocVortex 带入的传递依赖。
     assert check_backend_dependencies(names | {"lxml"}, "mineru", "base", "macos") == []

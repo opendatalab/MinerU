@@ -9,7 +9,7 @@ from importlib.metadata import version
 import typer
 from packaging.specifiers import SpecifierSet
 
-from ...types import SERVER_TIERS, ServerTier
+from ...types import SERVER_STARTUP_TIERS, ServerStartupTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
@@ -23,24 +23,24 @@ def _require_gradio_dependencies() -> None:
             "dependency_missing",
             t("Gradio is a base dependency; repair the installation with `pip install 'mineru'`."),
         )
-    if version("gradio") not in SpecifierSet(">=6.8,<7"):
+    if version("gradio") not in SpecifierSet(">=6.21,<7"):
         exit_with_message(
             "dependency_incompatible",
-            t("Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
+            t("Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
         )
 
 
-def _validate_server_tier(value: str) -> ServerTier:
+def _validate_server_tier(value: str) -> ServerStartupTier:
     """校验自动启动的本地 API server 能力档位。"""
-    if value not in SERVER_TIERS:
+    if value not in SERVER_STARTUP_TIERS:
         exit_with_message(
             "invalid_request",
             t(
                 "Unsupported API server tier '{tier}'. Supported tiers: {tiers}",
                 tier=value,
-                tiers=", ".join(SERVER_TIERS),
+                tiers=", ".join(SERVER_STARTUP_TIERS),
             ),
-            "api_server_tier",
+            "tier",
         )
     return value  # type: ignore[return-value]
 
@@ -70,8 +70,10 @@ def webui_cmd(
     max_pages: int | None = typer.Option(None, "--max-pages", help=t("Maximum pages per PDF conversion; omitted: unlimited")),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
-    api_server_tier: str = typer.Option(
-        "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
+    tier: str = typer.Option(
+        "auto",
+        "--tier",
+        help=t("Managed API server tier ceiling: auto, flash, basic, standard, advanced; ignored with --api-url"),
     ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")
@@ -93,7 +95,7 @@ def webui_cmd(
     if max_pages is not None:
         _validate_positive_option(max_pages, name="max_pages")
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
-    normalized_tier = _validate_server_tier(api_server_tier)
+    normalized_tier = _validate_server_tier(tier)
 
     from ..gradio.app import launch_gradio
 
@@ -108,7 +110,7 @@ def webui_cmd(
             max_pages=max_pages,
             enable_example=enable_example,
             enable_api=enable_api,
-            api_server_tier=normalized_tier,
+            tier=normalized_tier,
             api_server_concurrency=api_server_concurrency,
             api_server_disable_image_analysis=api_server_disable_image_analysis,
             api_server_preload_models=api_server_preload_models,

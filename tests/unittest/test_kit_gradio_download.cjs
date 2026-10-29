@@ -28,8 +28,14 @@ for (const [format, label] of formats) {
         const [token, busy] = step("begin", format, "run-a");
         assert.equal(busy.interactive, false);
         assert.match(busy.value, /准备中/);
-        assert.deepEqual(step("begin", format, "run-a"), [{ __type__: "update" }, { __type__: "update" }, { __type__: "update" }]);
+        assert.deepEqual(step("begin", format, "run-a"), ["", { __type__: "update" }, { __type__: "update" }]);
         const count = downloads.length;
+        // 重复开始的空令牌回执不能消费尚未完成的有效请求。
+        assert.deepEqual(
+            step("complete", format, null, receipt("", "ignored duplicate"), "run-a"),
+            [{ __type__: "update" }, { __type__: "update" }],
+        );
+        assert.equal(downloads.length, count);
         const [ready, notice] = step("complete", format, file, receipt(token), "run-a");
         assert.equal(downloads.length, count + 1);
         assert.deepEqual(downloads.at(-1), [file.url, file.orig_name]);
@@ -53,8 +59,8 @@ assert.deepEqual(reset.slice(1, 8), Array(7).fill(null));
 assert.ok(reset.slice(-8, -1).every(update => update.interactive === false));
 step("activate", "", "run-b");
 const [current] = step("begin", "pdf", "run-b");
-assert.deepEqual(step("busy", "pdf", retry, "run-b"), [{ __type__: "update" }, { __type__: "update" }]);
-assert.equal(step("busy", "pdf", current, "run-b")[0].interactive, false);
+assert.deepEqual(step("begin", "pdf", "run-a"), ["", { __type__: "update" }, { __type__: "update" }]);
+assert.deepEqual(step("begin", "pdf", ""), ["", { __type__: "update" }, { __type__: "update" }]);
 assert.deepEqual(step("complete", "pdf", file, receipt(retry), "run-b"), [{ __type__: "update" }, { __type__: "update" }]);
 assert.equal(downloads.length, count);
 step("complete", "pdf", file, receipt(current), "run-b");

@@ -1,49 +1,194 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: mineru-cli-test
+
 on:
   push:
-    branches:
-      - "master"
-      - "dev"
-    paths-ignore:
-      - "cmds/**"
-      - "**.md"
+    branches: [master, dev]
+  pull_request:
+    branches: [master, dev]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) }}
+
+env:
+  PYTHONUTF8: '1'
+
 jobs:
-  cli-test:
+  changes:
+    # fork 保持跳过；来自 fork 的上游 PR 仍在上游仓库执行只读测试。
     if: github.repository == 'opendatalab/MinerU'
     runs-on: ubuntu-latest
-    timeout-minutes: 240
-    strategy:
-      fail-fast: true
-
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
     steps:
-      - name: PDF cli
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: dev
+          ref: ${{ github.sha }}
           fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - id: changes
+        run: python scripts/ci/changes.py
 
-      - name: install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: install&test
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v7
+      - name: Install lightweight check tools
         run: |
-          uv --version
-          uv venv --python 3.12
-          source .venv/bin/activate
-          uv pip install .[test]
-          cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
-          # 统一使用 pytest-cov 采集覆盖率，避免叠加启动 coverage 采集器。
-          cd $GITHUB_WORKSPACE && python -m pytest tests/unittest
-          cd $GITHUB_WORKSPACE && python tests/get_coverage.py
+          uv venv
+          uv pip install ruff==0.14.2 pytest packaging
+      - name: Check Python and CI helpers
+        run: |
+          uv run --no-project --no-sync python -m compileall -q mineru scripts tests
+          # 存量注解问题分批治理；全仓先阻止语法错误及未定义名称。
+          uv run --no-project --no-sync ruff check --select E9,F63,F7,F82 mineru scripts tests
+          uv run --no-project --no-sync ruff check scripts/ci tests/ci
+          uv run --no-project --no-sync ruff format --check scripts/ci tests/ci
+          uv run --no-project --no-sync python -m pytest -o addopts='' --confcutdir=tests/ci tests/ci
 
-#  notify_to_feishu:
-#    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure')}}
-#    needs: cli-test
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: notify
-#        run: |
-#          curl -X POST -H "Content-Type: application/json" -d '{"msg_type":"post","content":{"post":{"zh_cn":{"title":"'${{ github.repository }}' GitHubAction Failed","content":[[{"tag":"text","text":""},{"tag":"a","text":"Please click here for details ","href":"https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"}]]}}}}'  ${{ secrets.FEISHU_WEBHOOK_URL }}
+  cli-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v6
+        if: runner.os == 'Linux'
+        with:
+          node-version: '22'
+      - name: Install and check dependencies
+        run: |
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')"
+          uv pip install --only-binary=docvortex '.[test]'
+          uv pip check
+      - name: Run Linux unit tests
+        if: runner.os == 'Linux'
+        run: |
+          command -v jq >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends jq; }
+          coverage=()
+          if [[ '${{ matrix.python }}' == '3.12' ]]; then
+            coverage=(--cov=mineru --cov-report=term:skip-covered --cov-report=xml:build/ci/coverage.xml --cov-precision=2 --cov-fail-under=58)
+          fi
+          uv run --no-project --no-sync python -m pytest -o addopts='' --strict-markers \
+            -m 'not torch' --durations=30 --junitxml=build/ci/tests.xml "${coverage[@]}" tests/unittest
+      - name: Run Windows and macOS public contract tests
+        if: runner.os != 'Linux'
+        run: |
+          uv run --no-project --no-sync python -m pytest -o addopts='' --strict-markers \
+            --durations=30 --junitxml=build/ci/tests.xml \
+            tests/unittest/test_docvortex_import_boundary.py \
+            tests/unittest/test_backend_architecture.py \
+            tests/unittest/test_docvortex_protocol.py \
+            tests/unittest/test_docvortex_routing.py \
+            tests/unittest/test_parser_api_contract.py \
+            tests/unittest/test_gradio_lifecycle.py \
+            tests/unittest/test_router_route_state.py \
+            tests/unittest/test_doclib_ingest_service.py \
+            tests/unittest/test_doclib_parse_services.py \
+            tests/unittest/test_doclib_instance_dependencies.py \
+            tests/unittest/test_doclib_lifespan.py \
+            tests/unittest/test_doclib_architecture.py
+      - name: Retain test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: tests-${{ matrix.os }}-py${{ matrix.python }}
+          path: build/ci/*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  torch-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          cache-suffix: torch-cpu
+      - name: Install CPU Torch test dependencies
+        run: |
+          uv venv
+          # 先安装 CPU wheel，宿主求解复用已安装的兼容版本，避免下载 CUDA 运行时。
+          uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --only-binary=docvortex '.[test,torch]'
+          uv pip check
+          uv run --no-project --no-sync python -c 'import torch, torchvision, transformers; assert torch.version.cuda is None'
+      - name: Run Torch regressions
+        run: |
+          uv run --no-project --no-sync python -m pytest -o addopts='' --strict-markers \
+            -m 'torch and not accelerator' --durations=30 --junitxml=build/ci/torch.xml tests/unittest
+      - name: Retain Torch test report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: tests-torch-cpu
+          path: build/ci/torch.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  ci-result:
+    name: CI result
+    needs: [changes, lint, cli-test, torch-test]
+    if: ${{ always() && github.repository == 'opendatalab/MinerU' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all applicable checks
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.cli-test.result }}
+          TORCH_RESULT: ${{ needs.torch-test.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [[ "$CODE_CHANGED" == true ]]; then
+            test "$LINT_RESULT" = success
+            test "$TEST_RESULT" = success
+            test "$TORCH_RESULT" = success
+          else
+            test "$CODE_CHANGED" = false
+          fi

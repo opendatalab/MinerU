@@ -9,7 +9,7 @@ license = "LicenseRef-MinerU-Open-Source-License"
 license-files = ["LICENSE.md"]
 description = "A practical document parsing tool for converting PDF, OFD, EPUB, HTML, images, CSV, RTF, OOXML, and OpenDocument files into Markdown and JSON"
 readme = "README.md"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 keywords = [
     "mineru",
     "magic-pdf",
@@ -32,18 +32,17 @@ keywords = [
     "multimodal",
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "docvortex>=0.5.16,<1",
-    "gradio>=6.8,<7",
+    "docvortex>=0.6.8,<0.7",
+    "gradio>=6.21,<7",
     "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "mineru-vl-utils>=2.0.5,<3",
-    "mineru-llama-cpp>=0.1.2,<1",
+    "mineru-vl-utils>=2.0.8,<3",
+    "mineru-llama-cpp>=0.2.0,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -51,7 +50,7 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=5.10.1,<6",
+    "pypdfium2>=5.13.0,<6",
     "PyYAML>=6.0.1,<7",
     "packaging",
     "modelscope>=1.26.0",
@@ -72,7 +71,10 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "jieba>=0.42.1",
-    "onnxruntime>=1.20.1",
+    "onnx>=1.19,<2",
+    "onnxruntime-directml>=1.23,<2 ; sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'amd64' or platform_machine == 'x86_64')",
+    "onnxruntime>=1.24.4,<2 ; sys_platform != 'win32' or (platform_machine != 'AMD64' and platform_machine != 'amd64' and platform_machine != 'x86_64')",
+    "onnxruntime-ep-webgpu>=0.4.0,<1 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
@@ -91,7 +93,6 @@ test = [
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
-    "tomli; python_version < '3.11'",
 ]
 torch = [
     "torch>=2.7.0,<3",
@@ -102,8 +103,8 @@ torch = [
 ]
 full = [
     "mineru[torch]",
-    "vllm>=0.19.1,<0.29.0 ; sys_platform == 'linux'",
-    "lmdeploy>=0.17.0,<0.18 ; sys_platform == 'win32'",
+    "vllm>=0.19.1,<0.31.0 ; sys_platform == 'linux'",
+    "lmdeploy>=0.17.0,<0.19 ; sys_platform == 'win32'",
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
 ]
 all = [
@@ -148,6 +149,8 @@ zip-safe = false
 testpaths = ["tests"]
 addopts = "-s --cov=mineru --cov-report html"
 markers = [
+  "torch: 需要可选 Torch/Transformers 依赖，由独立 CPU 测试任务执行",
+  "accelerator: 需要实际 GPU/NPU 设备，不属于 CPU CI 回归",
   "e2e: MinerU CLI 端到端用例（脚本化 docs/next/cli/mineru-e2e-test-cases.md）",
   "smoke: 快速回归子集（无需本地 quality tier）",
   "slow: 单用例预计超过 60s",

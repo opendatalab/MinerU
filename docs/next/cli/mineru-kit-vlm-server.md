@@ -6,8 +6,7 @@
 非目标: 完整 Parse API；通用聊天能力说明；底层 engine 私有参数表
 来源: 由根目录旧 CLI 底稿迁移整理而来
 
-自动服务引擎仅选择 vLLM/LMDeploy；MLX 必须显式使用 `--engine mlx`。
-本命令不提供 llama HTTP server；ARM Mac 的默认文档解析在进程内使用 llama。
+服务启动入口保留 vLLM、LMDeploy、llama.cpp 和 MLX；MLX 必须显式选择。
 
 ## 1. 定位
 
@@ -76,10 +75,11 @@ API 服务通过 `--vlm-server-url` 或全局 `model.vlm.server_url` 连接它�
 mineru-kit vlm-server --engine auto
 mineru-kit vlm-server --engine vllm
 mineru-kit vlm-server --engine lmdeploy
+mineru-kit vlm-server --engine llama-cpp
 mineru-kit vlm-server --engine mlx
 ```
 
-`--engine` 决定使用哪类底层 serving engine。当前合法值为 `auto`、`vllm`、`lmdeploy`、`mlx`；`auto` 按 vLLM、LMDeploy 的顺序选择已安装且可用的 engine；MLX 仅接受显式选择。
+`--engine` 决定使用哪类底层 serving engine。当前合法值为 `auto`、`vllm`、`lmdeploy`、`llama-cpp`、`mlx`；`auto` 按 vLLM、LMDeploy、llama.cpp 的顺序选择已安装且可用的 engine；MLX 仅接受显式选择。
 
 除统一参数外，其余参数原样透传到底层 engine server。
 
@@ -124,7 +124,7 @@ Qwen 模型通过 mineru-vl-utils 的公开路径准备接口生成独立兼容�
 原始配置和权重不变，临时目录在服务退出后清理。MLX server 不修改上游函数。
 
 Gradio 已包含在 MinerU 基础包；手动添加 MLX 时请同时解析 `mineru` 与 `mlx-vlm>=0.7.0,<0.8.0`。
-mlx-vlm 0.7.0 要求 Starlette 1.x，Gradio 6.8.0 与其不兼容；本次验收使用 Gradio 6.26.0。
+mlx-vlm 0.7.0 要求 Starlette 1.x，与当前 `gradio>=6.21,<7` 的依赖范围兼容；此前验收使用 Gradio 6.26.0。
 
 ## 8. 推理服务与 Parse API 的接口区别
 

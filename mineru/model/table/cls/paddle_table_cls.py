@@ -10,11 +10,13 @@ from ...runtime.onnx import table_ort_session
 
 
 class PaddleTableClsModel:
-    def __init__(self, *, model_path: str | None = None) -> None:
+    def __init__(self, *, model_path: str | None = None, small_backend: str | None = None) -> None:
         """加载所选模型栈的表格分类文件，使用表格专用设备策略。"""
         from ...runtime.contracts import AtomicModelName
 
-        self.sess = table_ort_session(model_path or str(small_model_repo().paddle_table_cls.ensure()))
+        self.sess = table_ort_session(
+            model_path or str(small_model_repo(small_backend).paddle_table_cls.ensure()), small_backend=small_backend
+        )
         self.less_length = 256
         self.cw, self.ch = 224, 224
         self.std = [0.229, 0.224, 0.225]

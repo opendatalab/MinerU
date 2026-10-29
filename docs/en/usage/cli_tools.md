@@ -66,6 +66,27 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 
 Open `http://127.0.0.1:8000/docs` for the generated OpenAPI documentation. The supported API is `/v1/*`; the removed legacy `/file_parse` and `/tasks` routes are not available.
 
+### Hardware diagnostics
+
+Hardware recommendations and diagnostics:
+
+```bash
+mineru-kit hardware detect --json
+mineru-kit hardware info --json
+```
+
+In 4.1, detect shares recommendations with `api-server --tier auto` and may trigger ONNX calibration. info reads environment and existing calibration records. See [Tiers and runtimes](tiers.md) for ceilings and device rules.
+
+### Synchronous single-file service
+
+For synchronous single-file HTTP responses, start the separate wrapper:
+
+```bash
+mineru-kit file-parse-server --api-url http://127.0.0.1:8000
+```
+
+The wrapper defaults to port 8003, accepts multipart, and calls upstream Tasks; see the [file-parse API](file_parse.md).
+
 ### Gradio WebUI
 
 ```bash
@@ -73,6 +94,8 @@ mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
 Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-webui` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
+
+Gradio accepts only `--tier auto|flash|basic|standard|advanced`, defaulting to `auto`, for the managed API Server ceiling. The old `--api-server-tier` option has been removed. The UI and Tasks share the Standard → Basic → Flash → Advanced default order; Advanced is automatic only when it is the sole available tier.
 
 ### Router and VLM server
 
@@ -94,7 +117,8 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`: PDF rendering timeout and worker count.
 - `MINERU_PROCESSING_WINDOW_SIZE`: processing window size used for large documents. Flash native text parsing renders only pages with visual blocks, preserving this window boundary, rendering timeout, and worker settings. A 32 MiB pixel budget can split batches further. OCR and other tiers still render entire windows.
 - `MINERU_MALLOC_TRIM`: disabled by default; only `1/true/yes/on` enable it, ignoring case and surrounding whitespace. On Linux, when available, it attempts to return the current process's free glibc heap pages after inference windows and PDF document cleanup. Flash native parsing only attempts trimming at document completion. Unsupported platforms or missing symbols are a no-op. It does not release live objects, GPU memory, or render-worker memory. See [memory benchmarking](./pdf_memory.md).
-- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`: Per-session ONNX intra-op / inter-op thread counts, defaulting to `4` / `1`, including CPU fallback from table CUDA sessions. Explicit positive arguments or session thread settings take precedence over environment variables; missing, non-integer, or non-positive environment values use the defaults. These settings do not cap the process's total thread count or automatically detect container CPU quotas.
+- `MINERU_MODEL_ONNX_DEVICE`: 4.1 ONNX device choice, `auto/cpu/gpu`, overriding file configuration. Torch and VLM devices are configured independently.
+- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`: Per-session ONNX intra-op / inter-op thread counts, defaulting to `4` / `1`, including CPU operators in GPU sessions. Explicit positive arguments or session thread settings take precedence over environment variables; missing, non-integer, or non-positive environment values use the defaults. These settings do not cap the process's total thread count or automatically detect container CPU quotas.
 
 Prefer each command's `--help` output and [model source documentation](./model_source.md) for current defaults.
 

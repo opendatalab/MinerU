@@ -62,7 +62,7 @@ def runtime_options_for_tier(tier: Tier) -> ParserRuntimeOptions:
 
 def required_modules_for_tier(tier: DeploymentTier, *, vlm_config: VlmConfig | None = None) -> list[str]:
     """按独立后端组合预检依赖，远程 VLM 不要求本地引擎。"""
-    from ..config import config
+    from ..config import get_config
     from ..model.runtime.device import TORCH_REQUIRED_MODULES, resolve_small_model_backend
     from ..model.vlm.selector import VLM_REQUIRED_MODULES, resolve_vlm_engine
 
@@ -71,7 +71,7 @@ def required_modules_for_tier(tier: DeploymentTier, *, vlm_config: VlmConfig | N
     modules = ["onnxruntime"]
     if resolve_small_model_backend() == "torch":
         modules.extend(TORCH_REQUIRED_MODULES)
-    settings = vlm_config if vlm_config is not None else config.model.vlm
+    settings = vlm_config if vlm_config is not None else get_config().model.vlm
     if tier == "standard" and not settings.server_url:
         modules.extend(VLM_REQUIRED_MODULES[resolve_vlm_engine(settings.engine)])
     return list(dict.fromkeys(modules))

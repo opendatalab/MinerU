@@ -219,12 +219,6 @@ def persist_parse_result(
     """保存图片已物化的语义副本，并生成 Markdown、Structured Content 和预览文件。"""
     artifacts = create_run_artifacts(source_path, output_root)
     shutil.copyfile(source_path, artifacts.source_path)
-    if result._model_output is not None:
-        model_output = result._model_output.to_dict(skip_defaults=False)
-        (artifacts.root / "model_output.json").write_text(
-            json.dumps(model_output, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
 
     with _output_stage("origin_pdf", artifacts):
         origin_pdf, page_indices = _prepare_origin_pdf(

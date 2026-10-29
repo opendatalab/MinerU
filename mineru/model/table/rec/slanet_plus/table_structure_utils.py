@@ -35,6 +35,7 @@ class OrtInferSession:
         self.session = table_ort_session(
             model_path,
             sess_options=self._init_sess_opts(config),
+            small_backend=config.get("small_backend"),
         )
 
     @staticmethod

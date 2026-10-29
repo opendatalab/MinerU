@@ -133,7 +133,7 @@ def test_vlm_options_forward_including_empty_values(monkeypatch: pytest.MonkeyPa
 def test_api_cli_merges_vlm_without_mutating_global(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
     """底层 CLI 按字段覆盖全局设置，并保持 API Key、全局配置和环境变量隔离。"""
     settings = VlmConfig(server_url="http://global.test", api_key="global-key", model="global-model", max_concurrency=7)
-    monkeypatch.setattr(api_server.mineru_config.model, "vlm", settings)
+    monkeypatch.setattr(api_server.get_config().model, "vlm", settings)
     seen: dict[str, Any] = {}
 
     def capture_app(**kwargs: Any) -> object:
@@ -159,8 +159,8 @@ def test_vlm_app_and_parser_snapshot_configuration(tmp_path: Path, monkeypatch: 
     """应用及解析器捕获独立副本，显式空配置完整覆盖全局远程设置。"""
     monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
     settings = VlmConfig(server_url="http://remote.test", model="alias")
-    monkeypatch.setattr(api_server.mineru_config.model, "vlm", settings)
-    app = api_server.create_app(upload_dir=str(tmp_path))
+    monkeypatch.setattr(api_server.get_config().model, "vlm", settings)
+    app = api_server.create_app(tiers=("flash", "basic", "standard", "advanced"), upload_dir=str(tmp_path))
     parser = MinerUParser()
     local_parser = MinerUParser(vlm_config=VlmConfig())
     settings.model = "changed"

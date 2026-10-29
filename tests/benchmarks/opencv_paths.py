@@ -51,13 +51,13 @@ def main() -> None:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["MINERU_LANG"] = "en"
     args.out.mkdir(parents=True, exist_ok=True)
-    from mineru.config import VlmConfig, config
+    from mineru.config import VlmConfig, get_config
     import mineru
 
     assert Path(mineru.__file__).resolve().parent == (args.root / "mineru").resolve()
 
-    config.llm_aided.features.title_leveling = False
-    config.llm_aided.features.cross_page_table_cell_merge = False
+    get_config().llm_aided.features.title_leveling = False
+    get_config().llm_aided.features.cross_page_table_cell_merge = False
 
     def fingerprint(value: Any) -> Any:
         """完整记录模型输入数组及相关参数，不使用有损数值归一化。"""
@@ -187,7 +187,6 @@ def main() -> None:
             continue
         middle = result.middle_json.model_dump_json()
         (args.out / "middle.json").write_text(middle)
-        (args.out / "model.json").write_text(result._model_output.model_dump_json())
         digests = {}
         for output_format in RenderFormat:
             value = render(result.middle_json, output_format)

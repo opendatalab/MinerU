@@ -61,7 +61,7 @@ def _predict(backend: str, probabilities: np.ndarray) -> dict[str, Any]:
     return _onnx_predictions(rows[::-1], [len(rows)])[0]
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 @pytest.mark.parametrize("cls_id", range(len(PP_DOCLAYOUT_V2_LABELS)), ids=PP_DOCLAYOUT_V2_LABELS)
 def test_class_threshold_boundaries(backend: str, cls_id: int) -> None:
     """逐类验证低于阈值拒绝，等于阈值和高于阈值均可保留。"""
@@ -75,7 +75,22 @@ def test_class_threshold_boundaries(backend: str, cls_id: int) -> None:
     np.testing.assert_allclose(result["scores"], [threshold, threshold + 0.001], rtol=0, atol=1e-7)
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
+def test_inline_formula_uses_045_without_changing_other_class_thresholds(backend: str) -> None:
+    """行内公式低于 0.45 时拒绝，行间公式和正文仍保留 0.4 以上的候选。"""
+    probabilities = np.full((7, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
+    for query, (cls_id, score) in enumerate(
+        [(15, 0.425), (15, 0.449), (15, 0.45), (15, 0.451), (5, 0.425), (22, 0.425), (0, 0.475)]
+    ):
+        probabilities[query, cls_id] = score
+
+    result = _predict(backend, probabilities)
+
+    assert result["labels"].tolist() == [15, 15, 5, 22]
+    np.testing.assert_allclose(result["scores"], [0.45, 0.451, 0.425, 0.425], rtol=0, atol=1e-7)
+
+
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_invalid_primary_class_cannot_be_reintroduced_by_secondary_label(backend: str) -> None:
     """摘要主类别未达标时，即使次高正文类别达标也不能重新进入输出。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
@@ -88,7 +103,7 @@ def test_invalid_primary_class_cannot_be_reintroduced_by_secondary_label(backend
     assert result["labels"].tolist() == [17]
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_summary_page_scores_restore_title_and_four_paragraphs(backend: str) -> None:
     """用第八页实测分数复现大摘要框抢序和低分第二段丢失，验证分类筛选修复。"""
     probabilities = np.full((10, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
@@ -104,7 +119,7 @@ def test_summary_page_scores_restore_title_and_four_paragraphs(backend: str) -> 
     np.testing.assert_allclose(result["scores"][1], 0.4426, rtol=0, atol=1e-7)
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_valid_primary_keeps_only_secondary_labels_above_their_own_threshold(backend: str) -> None:
     """有效候选保留达到自身阈值的次高正文标签，拒绝未达标的页眉标签。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
@@ -117,7 +132,7 @@ def test_valid_primary_keeps_only_secondary_labels_above_their_own_threshold(bac
     assert set(result["labels"].tolist()) == {0, 22}
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 @pytest.mark.parametrize(("first_cls", "second_cls", "expected"), [(0, 22, []), (6, 8, [6])])
 def test_primary_class_ties_use_the_smallest_class_id(
     backend: str, first_cls: int, second_cls: int, expected: list[int]
@@ -131,6 +146,7 @@ def test_primary_class_ties_use_the_smallest_class_id(
     assert result["labels"].tolist() == expected
 
 
+@pytest.mark.torch
 def test_torch_uses_loaded_model_thresholds() -> None:
     """Torch 按已加载模型配置筛选，不以共享默认常量覆盖模型自带阈值。"""
     probabilities = np.full((1, 1, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
@@ -143,6 +159,7 @@ def test_torch_uses_loaded_model_thresholds() -> None:
     assert result["labels"].tolist() == []
 
 
+@pytest.mark.torch
 @pytest.mark.parametrize("query_count", [0, 2])
 def test_torch_empty_and_all_rejected_candidates(query_count: int) -> None:
     """无候选和全部未达标的批次均保留逐页空结果与框数组形状。"""
@@ -185,7 +202,7 @@ def test_onnx_candidate_validity_is_isolated_by_page() -> None:
     assert all(result["boxes"].shape == (0, 4) for result in results[:2])
 
 
-@pytest.mark.parametrize("backend", ["torch", "onnx"])
+@pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 def test_layout_constructor_rejects_removed_uniform_conf(backend: str) -> None:
     """包装类明确移除统一 conf 参数，禁止调用方再次覆盖分类阈值。"""
     if backend == "torch":

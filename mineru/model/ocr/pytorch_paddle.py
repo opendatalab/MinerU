@@ -17,7 +17,7 @@ from .._internal.pytorchocr.infer.predict_system import TextSystem
 from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
 from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
 from .language import normalize_ocr_model_lang
-from .seal_crop import CropByPolys, SortPolyBoxes
+from .seal_crop import CropByPolys, SortPolyBoxes, filter_valid_seal_crops
 from .resources import PPOCRV6_DICT_PATH
 import argparse
 from typing import Any
@@ -155,15 +155,17 @@ class PytorchPaddleOCR(TextSystem):
         with open(os.path.join(sample_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False, indent=2)
 
-    def ocr(self,
-            img,
-            det=True,
-            rec=True,
-            mfd_res=None,
-            tqdm_enable=False,
-            tqdm_desc="OCR-rec Predict",
-            tqdm_progress_bar=None,
-            ):
+    def ocr(
+        self,
+        img: np.ndarray | list[np.ndarray] | str | bytes,
+        det: bool = True,
+        rec: bool = True,
+        mfd_res: list[dict[str, Any]] | None = None,
+        tqdm_enable: bool = False,
+        tqdm_desc: str = "OCR-rec Predict",
+        tqdm_progress_bar: Any = None,
+    ) -> list[list[Any] | None] | None:
+        """按模式执行 OCR，印章裁剪同步过滤无效轮廓并保持调试数据对应。"""
         assert isinstance(img, (np.ndarray, list, str, bytes))
         if isinstance(img, list) and det:
             logger.error('When input a list of images, det must be false')
@@ -195,6 +197,7 @@ class PytorchPaddleOCR(TextSystem):
                     if self.is_seal:
                         dt_boxes = self._seal_sort_boxes(dt_boxes)
                         img_crop_list = self._seal_crop_by_polys(img, dt_boxes)
+                        dt_boxes, img_crop_list = filter_valid_seal_crops(dt_boxes, img_crop_list)
                         self._dump_seal_debug_artifacts(img, dt_boxes, img_crop_list)
                     else:
                         dt_boxes = sorted_boxes(dt_boxes)
@@ -222,8 +225,10 @@ class PytorchPaddleOCR(TextSystem):
                     ocr_res.append(rec_res)
                 return ocr_res
 
-    def __call__(self, img, mfd_res=None):
-
+    def __call__(
+        self, img: np.ndarray | None, mfd_res: list[dict[str, Any]] | None = None
+    ) -> tuple[list[np.ndarray] | None, list[tuple[str, float]] | None]:
+        """执行检测与识别，跳过无效裁片时同步移除检测框，避免文字错配。"""
         if img is None:
             logger.debug("no valid image provided")
             return None, None
@@ -240,6 +245,9 @@ class PytorchPaddleOCR(TextSystem):
         if self.is_seal:
             dt_boxes = self._seal_sort_boxes(dt_boxes)
             img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+            dt_boxes, img_crop_list = filter_valid_seal_crops(dt_boxes, img_crop_list)
+            if not img_crop_list:
+                return [], []
         else:
             img_crop_list = []
 
@@ -254,10 +262,17 @@ class PytorchPaddleOCR(TextSystem):
 
             # Standard text OCR rotates tall crops before recognition.
             # Seal OCR keeps its dedicated poly-crop path above.
+            crop_boxes = []
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
+                if img_crop is None:
+                    continue
                 img_crop_list.append(img_crop)
+                crop_boxes.append(dt_boxes[bno])
+            dt_boxes = crop_boxes
+            if not img_crop_list:
+                return [], []
 
         rec_res, elapse = self.text_recognizer(img_crop_list)
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))

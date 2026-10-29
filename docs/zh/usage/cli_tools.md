@@ -66,6 +66,27 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 
 在浏览器打开 `http://127.0.0.1:8000/docs` 查看自动生成的 OpenAPI 文档。当前服务接口统一位于 `/v1/*`；已删除的 `/file_parse` 和 `/tasks` 不再提供。
 
+### 硬件诊断
+
+硬件推荐和诊断：
+
+```bash
+mineru-kit hardware detect --json
+mineru-kit hardware info --json
+```
+
+4.1 的 detect 与 `api-server --tier auto` 共用推荐逻辑，可能触发 ONNX 校准；info 只读报告环境与已有校准记录。档位上限和设备规则见[档位与运行环境](tiers.md)。
+
+### 单文件同步服务
+
+需要单文件同步 HTTP 返回时，另行启动包装服务：
+
+```bash
+mineru-kit file-parse-server --api-url http://127.0.0.1:8000
+```
+
+包装服务默认端口为 8003，接收 multipart 并通过 Tasks 调用上游；详见 [file-parse 接口](file_parse.md)。
+
 ### Gradio WebUI
 
 ```bash
@@ -73,6 +94,8 @@ mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-webui` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
+
+Gradio 只保留 `--tier auto|flash|basic|standard|advanced`，默认 `auto`，仅用于自托管 API Server 的上限。旧参数 `--api-server-tier` 已移除。界面与 Tasks 共享默认选档顺序 Standard → Basic → Flash → Advanced；仅开放 Advanced 时自动选择它。
 
 ### Router 与 VLM Server
 
@@ -94,7 +117,8 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`：PDF 渲染超时和 worker 数量。
 - `MINERU_PROCESSING_WINDOW_SIZE`：大文档处理窗口大小。Flash 原生文本路径仅渲染有视觉块的页面，仍遵守该窗口边界、渲染超时和 worker 配置，并按 32 MiB 像素预算进一步分批。OCR 和其他档位保持整窗口渲染。
 - `MINERU_MALLOC_TRIM`：默认关闭；仅 `1/true/yes/on` 启用，忽略大小写和首尾空白。Linux 上可用时，在推理窗口及 PDF 文档清理后尝试归还当前进程的 glibc 空闲堆页；Flash 原生路径仅在文档结束时尝试。其他平台或缺少符号时为空操作，不释放存活对象、GPU 显存或渲染子进程内存。参见[内存压测方法](./pdf_memory.md)。
-- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`：每个 ONNX 会话的算子内 / 算子间线程数，默认分别为 `4` / `1`，包括表格 CUDA 的 CPU 回退路径。显式正数参数或会话线程配置优先于环境变量；环境变量缺失、非整数或非正数时使用默认值。这不是整个进程的线程总数上限，也不会自动检测容器 CPU 配额。
+- `MINERU_MODEL_ONNX_DEVICE`：4.1 ONNX 设备选择 `auto/cpu/gpu`，覆盖文件配置；Torch 与 VLM 独立配置。
+- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`：每个 ONNX 会话的算子内 / 算子间线程数，默认分别为 `4` / `1`，包括 GPU 会话中的 CPU 算子。显式正数参数或会话线程配置优先于环境变量；环境变量缺失、非整数或非正数时使用默认值。这不是整个进程的线程总数上限，也不会自动检测容器 CPU 配额。
 
 当前默认值以各命令的 `--help` 和[模型源说明](./model_source.md)为准。
 

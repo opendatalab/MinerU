@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Python package
 
 on:
@@ -12,105 +9,98 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 
 jobs:
 
-  update-version:
+  validate-source:
+    if: github.repository == 'opendatalab/MinerU'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: master
-          fetch-depth: 0
-          # Push to master must authenticate as the PAT; the default GITHUB_TOKEN
-          # only has contents:read and is rejected with 403.
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - name: Verify release source before running the matrix
+        run: uv run --no-project --with packaging python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
 
-      - name: Update version.py
-        run: |
-          python -m pip install packaging
-          python update_version.py
-
-      - name: Verify version.py
-        run: |
-          ls -l mineru/version.py
-          cat mineru/version.py
-
-      - name: Commit changes
-        id: commit_changes
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mineru/version.py
-          if git diff-index --quiet HEAD; then
-            echo "No changes to commit"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-          else
-            git commit -m "Update version.py with new version"
-            echo "committed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push changes
-        if: steps.commit_changes.outputs.committed == 'true'
-        run: |
-          git push origin HEAD:master
+  tests:
+    needs: validate-source
+    uses: ./.github/workflows/cli.yml
 
   check-install:
-    needs: [ update-version ]
-    runs-on: ubuntu-latest
+    needs: [ build ]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
+    - name: Download release wheel
+      uses: actions/download-artifact@v7
       with:
-        ref: master
-        fetch-depth: 0
-
-    - name: Verify version.py
-      run: |
-        ls -l mineru/version.py
-        cat mineru/version.py
+        name: wheel-file
+        path: dist
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install mineru
+    - name: Install and verify release wheel
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[core]
+        python -m pip install --only-binary=docvortex dist/*.whl
+        python -m pip check
+        python -I -c "from mineru.parser import MinerUParser, MinerUApiParser, parse, parse_async; from mineru.render import render; from mineru.types import MiddleJson"
+        mineru version --json
+        mineru-kit --version
 
   build:
-    needs: [ check-install ]
+    needs: [ tests ]
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: [ "3.10"]
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
 
     steps:
 
     - name: Checkout code
       uses: actions/checkout@v6
       with:
-        ref: master
-        fetch-depth: 0
+        ref: ${{ github.sha }}
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
 
     - name: Install build tools
       run: |
         python -m pip install wheel
         pip install build twine
+
+    - name: Verify tagged source
+      run: python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
 
     - name: Build wheel
       run: |
@@ -119,6 +109,8 @@ jobs:
     - name: Check wheel metadata
       run: |
         python -m twine check --strict dist/*.whl
+        python scripts/ci/check_release.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA" \
+          --wheel-dir dist --output build/release.json
 
     - name: Upload artifact
       uses: actions/upload-artifact@v6
@@ -127,9 +119,17 @@ jobs:
         path: dist/*.whl
         retention-days: 30
 
+    - name: Upload release provenance
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-provenance
+        path: build/release.json
+        if-no-files-found: error
+        retention-days: 30
+
   publish:
-    needs: [ build ]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [ tests, build, check-install ]
+    if: github.repository == 'opendatalab/MinerU' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -143,13 +143,77 @@ jobs:
           name: wheel-file
           path: dist
 
+      - name: Download release provenance
+        uses: actions/download-artifact@v7
+        with:
+          name: release-provenance
+          path: provenance
+
       - name: Create and Upload Release
         id: create_release
         uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
         with:
-          files: './dist/*.whl'
+          files: |
+            dist/*.whl
+            provenance/release.json
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  sync-issue-template:
+    needs: [ publish ]
+    if: startsWith(github.ref, 'refs/tags/') && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Download published wheel
+        uses: actions/download-artifact@v7
+        with:
+          name: wheel-file
+          path: ${{ runner.temp }}/mineru-issue-template-dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Sync and commit latest stable version hint
+        shell: bash
+        env:
+          RELEASE_WHEEL_DIR: ${{ runner.temp }}/mineru-issue-template-dist
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            # 此 job 的独立 checkout 每次基于最新分支重新生成，避免覆盖并发提交。
+            git fetch origin "$RELEASE_BRANCH"
+            git reset --hard FETCH_HEAD
+            uv run --no-project --python 3.12 scripts/sync_issue_template_version.py \
+              --wheel "$RELEASE_WHEEL_DIR" --tag "$RELEASE_TAG"
+            git add -- .github/ISSUE_TEMPLATE/bug_report.yml
+            if git diff --cached --quiet -- .github/ISSUE_TEMPLATE/bug_report.yml; then
+              echo "Issue template already reflects the latest stable release."
+              exit 0
+            fi
+            git commit -m "chore: sync latest stable release in issue template"
+            if git push origin "HEAD:$RELEASE_BRANCH"; then
+              exit 0
+            fi
+            echo "Push attempt $attempt failed; regenerating from the latest default branch."
+          done
+          echo "::error::Could not synchronize the issue template after three push attempts."
+          exit 1

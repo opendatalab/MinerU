@@ -160,90 +160,6 @@ def is_escaped(text, pos):
     return backslash_count % 2 == 1
 
 
-def fix_unbalanced_braces(latex_formula):
-    """
-    检测LaTeX公式中的花括号是否闭合，并删除无法配对的花括号
-
-    Args:
-        latex_formula (str): 输入的LaTeX公式
-
-    Returns:
-        str: 删除无法配对的花括号后的LaTeX公式
-    """
-    stack = []  # 存储左括号的索引
-    unmatched = set()  # 存储不匹配括号的索引
-    i = 0
-
-    while i < len(latex_formula):
-        # 检查是否是转义的花括号
-        if latex_formula[i] in ['{', '}']:
-            # 计算前面连续的反斜杠数量
-            backslash_count = 0
-            j = i - 1
-            while j >= 0 and latex_formula[j] == '\\':
-                backslash_count += 1
-                j -= 1
-
-            # 如果前面有奇数个反斜杠，则该花括号是转义的，不参与匹配
-            if backslash_count % 2 == 1:
-                i += 1
-                continue
-
-            # 否则，该花括号参与匹配
-            if latex_formula[i] == '{':
-                stack.append(i)
-            else:  # latex_formula[i] == '}'
-                if stack:  # 有对应的左括号
-                    stack.pop()
-                else:  # 没有对应的左括号
-                    unmatched.add(i)
-
-        i += 1
-
-    # 所有未匹配的左括号
-    unmatched.update(stack)
-
-    # 构建新字符串，删除不匹配的括号
-    return ''.join(char for i, char in enumerate(latex_formula) if i not in unmatched)
-
-
-def process_latex(input_string):
-    """
-        处理LaTeX公式中的反斜杠：
-        1. 如果\后跟特殊字符(#$%&~_^\\{})或空格，保持不变
-        2. 如果\后跟两个小写字母，保持不变
-        3. 其他情况，在\后添加空格
-
-        Args:
-            input_string (str): 输入的LaTeX公式
-
-        Returns:
-            str: 处理后的LaTeX公式
-        """
-
-    def replace_func(match):
-        # 获取\后面的字符
-        next_char = match.group(1)
-
-        # 如果是特殊字符或空格，保持不变
-        if next_char in "#$%&~_^|\\{} \t\n\r\v\f":
-            return match.group(0)
-
-        # 如果是字母，检查下一个字符
-        if 'a' <= next_char <= 'z' or 'A' <= next_char <= 'Z':
-            pos = match.start() + 2  # \x后的位置
-            if pos < len(input_string) and ('a' <= input_string[pos] <= 'z' or 'A' <= input_string[pos] <= 'Z'):
-                # 下一个字符也是字母，保持不变
-                return match.group(0)
-
-        # 其他情况，在\后添加空格
-        return '\\' + ' ' + next_char
-
-    # 匹配\后面跟一个字符的情况
-    pattern = r'\\(.)'
-
-    return re.sub(pattern, replace_func, input_string)
-
 # 常见的在KaTeX/MathJax中可用的数学环境
 ENV_TYPES = ['array', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix',
              'Bmatrix', 'Vmatrix', 'cases', 'aligned', 'gathered', 'align', 'align*']
@@ -290,26 +206,6 @@ def fix_mathring_font_arguments(s: str) -> str:
     return MATHRING_FONT_ARGUMENT_PATTERN.sub(_replace, s)
 
 
-REPLACEMENTS_PATTERNS = {
-    re.compile(r'\\underbar'): r'\\underline',
-    re.compile(r'\\Bar'): r'\\hat',
-    re.compile(r'\\Hat'): r'\\hat',
-    re.compile(r'\\Tilde'): r'\\tilde',
-    re.compile(r'\\slash'): r'/',
-    re.compile(r'\\textperthousand'): r'‰',
-    re.compile(r'\\sun'): r'☉',
-    re.compile(r'\\textunderscore'): r'\\_',
-    re.compile(r'\\fint'): r'⨏',
-    re.compile(r'\\up '): r'\\ ',
-    re.compile(r'\\vline = '): r'\\models ',
-    re.compile(r'\\vDash '): r'\\models ',
-    re.compile(r'\\sq \\sqcup '): r'\\square ',
-    re.compile(r'\\copyright'): r'©',
-    re.compile(r'\\Dot'): r'\\dot',
-}
-QQUAD_PATTERN = re.compile(r'\\qquad(?!\s)')
-
-
 def remove_up_commands(s: str):
     """Remove unnecessary up commands from LaTeX code."""
     UP_PATTERN = re.compile(r'\\up([a-zA-Z]+)')
@@ -328,7 +224,7 @@ def remove_unsupported_commands(s: str):
 
 
 def _apply_shared_latex_repairs(s: str, *, fix_delimiter: bool) -> str:
-    """执行 PP-FormulaNet 与 UniMERNet 共有的 LaTeX 修复步骤。"""
+    """执行公式识别所需的通用 LaTeX 修复步骤。"""
     s = fix_latex_left_right(s, fix_delimiter=fix_delimiter)
     s = fix_latex_environments(s)
     s = fix_mathring_font_arguments(s)
@@ -339,28 +235,6 @@ def _apply_shared_latex_repairs(s: str, *, fix_delimiter: bool) -> str:
 def fix_pp_formulanet_latex(s: str) -> str:
     """执行 PP-FormulaNet 专用 LaTeX 后处理，不补写 left/right 分隔符。"""
     return _apply_shared_latex_repairs(s, fix_delimiter=False)
-
-
-def fix_unimernet_latex(s: str) -> str:
-    """执行 UniMERNet 专用 LaTeX 后处理与输出规范化。"""
-    s = fix_unbalanced_braces(s)
-    s = _apply_shared_latex_repairs(s, fix_delimiter=True)
-
-    # 应用所有替换
-    for pattern, replacement in REPLACEMENTS_PATTERNS.items():
-        s = pattern.sub(replacement, s)
-
-    # 处理LaTeX中的反斜杠和空格
-    s = process_latex(s)
-
-    # \qquad后补空格
-    s = QQUAD_PATTERN.sub(r'\\qquad ', s)
-
-    # 如果字符串以反斜杠结尾，去掉最后的反斜杠
-    while s.endswith('\\'):
-        s = s[:-1]
-
-    return s
 
 
 def largest_power_of_two_leq(value: int) -> int:

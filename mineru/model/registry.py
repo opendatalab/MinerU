@@ -138,7 +138,7 @@ def model_repos_for_tier(
     vlm_config: VlmConfig | None = None,
 ) -> tuple[ModelRepo, ...]:
     """组合档位需要的资源；远程 VLM 不要求本地权重，显式引擎可覆盖远程配置。"""
-    from ..config import config
+    from ..config import get_config
 
     resolved_tier = validate_model_tier(tier)
     if vlm_engine is not None:
@@ -147,7 +147,7 @@ def model_repos_for_tier(
         # basic 不加载 VLM，但仍拒绝模型管理命令中的非法显式引擎名称。
         vlm_engine = resolve_vlm_engine(vlm_engine)
     repos = (small_model_repo(small_backend),)
-    settings = vlm_config if vlm_config is not None else config.model.vlm
+    settings = vlm_config if vlm_config is not None else get_config().model.vlm
     if resolved_tier == "standard" and (vlm_engine is not None or not settings.server_url):
         repos += (vlm_model_repo(vlm_engine if vlm_engine is not None else settings.engine),)
     return repos

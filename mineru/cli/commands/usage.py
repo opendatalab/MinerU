@@ -64,7 +64,11 @@ def _render_remote_usage(view: RemoteUsageOutput) -> RenderableOutput:
         "  " + t("Jobs created: {count}", count=usage.current.jobs_created),
         "",
         t("Limits"),
-        "  " + t("Max pages per file: {count}", count=usage.limits.max_pages_per_file),
+        "  "
+        + t(
+            "Max pages per file: {count}",
+            count=usage.limits.max_pages_per_file if usage.limits.max_pages_per_file is not None else t("unlimited"),
+        ),
         "  " + t("Max file size: {size}", size=_format_bytes(usage.limits.max_file_size_bytes)),
         "  " + t("Max files per job: {count}", count=usage.limits.max_files_per_job),
         "  " + t("Max concurrent jobs: {count}", count=usage.limits.max_concurrent_jobs),
@@ -91,7 +95,10 @@ def _format_utc_timestamp(value: str) -> str:
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _format_bytes(value: int) -> str:
+def _format_bytes(value: int | None) -> str:
+    """将明确的无限制值显示为文案，保留有上限部署的 MiB 展示。"""
+    if value is None:
+        return t("unlimited")
     mib = value / (1024 * 1024)
     return f"{mib:g} MiB"
 

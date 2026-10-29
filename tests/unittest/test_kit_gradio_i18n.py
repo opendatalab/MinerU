@@ -91,7 +91,7 @@ def test_conversion_preserves_all_preview_components_until_success(
     outcome: str,
 ) -> None:
     """暂停普通转换请求，确认处理期间不发送预览更新且失败保留已有四种预览。"""
-    from mineru.kit.gradio import app as app_module
+    from mineru.kit.gradio import document_io
 
     source = tmp_path / "document.csv"
     source.write_text("a,b\n1,2\n", encoding="utf-8")
@@ -115,7 +115,7 @@ def test_conversion_preserves_all_preview_components_until_success(
             raise OSError("test output failure")
 
         if outcome == "output_failure":
-            monkeypatch.setattr(app_module, "persist_parse_result", fail_output)
+            monkeypatch.setattr(document_io.artifacts, "persist_parse_result", fail_output)
         demo = build_gradio_app(
             SimpleNamespace(parse_file=parse_file),
             V1ServerCapabilities("http://localhost:1", ("flash",), ("zip",), ("file_id",)),

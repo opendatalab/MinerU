@@ -1,6 +1,6 @@
 # 旧平台适配（MinerU <4）
 
-以下 13 个平台保留已有适配方案，**仅适用于 MinerU <4**。主线 4.0 的依赖、模型和命令变更不自动扩展这些平台的兼容范围。
+以下 12 个平台保留已有适配方案，**仅适用于 MinerU <4**。主线 4.0 的依赖、模型和命令变更不自动扩展这些平台的兼容范围。
 
 9 个专用 Dockerfile 的 MinerU 依赖为原 extras 与 `>=3.4.0,<4`。例如：
 
@@ -23,7 +23,6 @@ python -m pip install "mineru[core]>=3.4.0,<4"
 - [昆仑芯 / Kunlunxin](acceleration_cards/Kunlunxin.md)
 - [太初元碁 / Tecorigin](acceleration_cards/Tecorigin.md)
 - [壁仞 / Biren](acceleration_cards/Biren.md)
-- [AMD](acceleration_cards/AMD.md)
 - [瀚博 / VastAI](acceleration_cards/VastAI.md)
 
 ## 旧版入口与资料

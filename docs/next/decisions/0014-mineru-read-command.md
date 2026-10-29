@@ -21,7 +21,7 @@ mineru read <locator>
 新增 `mineru read` 顶级命令:
 
 ```bash
-mineru read <locator> [--format markdown|image] [--limit 30000] [--context N] [--output PATH] [--json] [--no-marker]
+mineru read <locator> [--after CURSOR] [--format markdown|image] [--limit 30000] [--context N] [--output PATH] [--json] [--no-marker]
 ```
 
 `parse` 与 `read` 的职责边界:
@@ -59,6 +59,8 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
 - `doc:{short_id}` 会解析为当前可用的默认高质量 tier；不会静默把 `flash` 当作高质量读取结果。
 - `doc:{short_id}/tier:{tier}` 明确读取指定 tier 的已有结果。
+
+请求定位器的 `page:` 同步采用输入页范围语法：数字、`rN`、区间、逗号组合与 `all`，具体规则见 [ADR-0012](0012-doclib-block-locator.md#请求页选择与稳定块引用)。返回引用仍使用实际页码；block/char 和图片读取必须选择单页，多页选择不支持非零 context。
 
 ## Markdown 读取语义
 
@@ -168,7 +170,8 @@ class DocContentResponse(DoclibModel):
 - locator read 的 `request_scope.locator` 填入规范化 locator。
 - locator read 的 `request_scope.context` 填入实际生效的 context。
 - parse read 的 `next_request` 只写 `page_range` / `after`，不写 `locator`。
-- read 的 `next_request` 只写 `locator`，不写 `page_range` / `after`。
+- 单点 read 的 `next_request` 只写 `locator`；范围内截断时保留范围 `locator` 并携带绝对块/字符 `after`，可通过 `mineru read <locator> --after <cursor>` 继续读取。
+- 范围 read 读完后 `next_request=null`，续读不会进入未选择的页面；已有单点 read 的续读行为保持不变。
 - image 输出时 `content=""`，asset 信息写入 `asset`，不把图片路径塞进 `content`。
 
 parse read 返回示例:

@@ -85,7 +85,7 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
         output_dir=str(tmp_path),
         enable_example=False,
         enable_api=True,
-        api_server_tier="standard",
+        tier="standard",
         api_server_concurrency=1,
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,
@@ -132,7 +132,7 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
         output_dir=str(tmp_path),
         enable_example=False,
         enable_api=True,
-        api_server_tier="standard",
+        tier="standard",
         api_server_concurrency=2,
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,
@@ -149,21 +149,15 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
     assert captured["stopped"] is True
 
 
-@pytest.mark.parametrize("remote_tiers", [("basic", "standard"), ("basic", "standard", "advanced"), ("flash", "standard")])
-@pytest.mark.parametrize("failure_stage", [None, "remote", "start", "local", "missing_flash", "build", "launch"])
-def test_launch_remote_flash_fallback_and_cleanup(
+@pytest.mark.parametrize("remote_tiers", [("standard",), ("basic", "standard"), ("flash", "standard")])
+@pytest.mark.parametrize("failure_stage", [None, "remote", "build", "launch"])
+def test_launch_remote_preserves_capabilities_without_local_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, remote_tiers: tuple[str, ...], failure_stage: str | None
 ) -> None:
-    """验证能力发现决定是否补充 Flash，且发现、启动、构建和运行失败均清理托管进程。"""
-    needs_local = "flash" not in remote_tiers
-    if not needs_local and failure_stage in {"start", "local", "missing_flash"}:
-        pytest.skip("远程已有 Flash 时不进入本地服务阶段")
+    """所有远端档位集合均使用唯一服务，发现或界面失败也不会补起本地进程。"""
     events: list[str] = []
     failure = V1ArtifactError("startup failure", code="server_start_failed")
-    remote_cap = V1ServerCapabilities("http://remote.test", remote_tiers, ("zip",), ("file_id",))
-    local_tiers = ("basic",) if failure_stage == "missing_flash" else ("flash",)
-    local_cap = V1ServerCapabilities("http://local.test", local_tiers, ("zip",), ("file_id",))
-
+    remote_cap = V1ServerCapabilities("http://remote.test", remote_tiers, ("default",), ("upload",))
     async def discover_remote() -> V1ServerCapabilities:
         """记录主服务完成能力发现的时间点。"""
         events.append("remote")
@@ -171,25 +165,9 @@ def test_launch_remote_flash_fallback_and_cleanup(
             raise failure
         return remote_cap
 
-    async def discover_local() -> V1ServerCapabilities:
-        """记录本地服务完成能力发现的时间点。"""
-        events.append("local")
-        if failure_stage == "local":
-            raise failure
-        return local_cap
-
-    def start() -> str:
-        """记录本地进程启动，并可模拟启动失败。"""
-        events.append("start")
-        if failure_stage == "start":
-            raise failure
-        return local_cap.base_url
-
     remote = SimpleNamespace(capabilities=remote_cap, discover=AsyncMock(side_effect=discover_remote))
-    local = SimpleNamespace(capabilities=local_cap, discover=AsyncMock(side_effect=discover_local))
-    factory = Mock(side_effect=[remote, local])
-    server = Mock(start=Mock(side_effect=start))
-    server_factory = Mock(return_value=server)
+    factory = Mock(return_value=remote)
+    server_factory = Mock(side_effect=AssertionError("must not start local fallback"))
     demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={})
     build = Mock(return_value=demo)
     if failure_stage == "build":
@@ -208,7 +186,7 @@ def test_launch_remote_flash_fallback_and_cleanup(
         "output_dir": str(tmp_path),
         "enable_example": False,
         "enable_api": True,
-        "api_server_tier": "standard",
+        "tier": "standard",
         "api_server_concurrency": 2,
         "api_server_disable_image_analysis": True,
         "api_server_preload_models": True,
@@ -218,23 +196,12 @@ def test_launch_remote_flash_fallback_and_cleanup(
             gradio_app.launch_gradio(**options)
     else:
         gradio_app.launch_gradio(**options)
-        expected = tuple(tier for tier in ("flash", "basic", "standard", "advanced") if tier in (*remote_tiers, "flash"))
-        assert build.call_args.args[1].tiers == expected
+        assert build.call_args.args[1].tiers == remote_tiers
     assert remote.capabilities is remote_cap
     assert factory.call_args_list[0].kwargs == {"api_url": remote_cap.base_url, "api_key": "remote-secret"}
-    if needs_local and failure_stage != "remote":
-        server_factory.assert_called_once_with(
-            tier="flash", concurrency=2, disable_image_analysis=True, preload_models=True, api_key=""
-        )
-        server.stop.assert_called_once()
-        assert events[:2] == ["remote", "start"]
-        if failure_stage != "start":
-            assert events == ["remote", "start", "local"]
-            assert factory.call_args_list[1].kwargs == {"api_url": local_cap.base_url, "api_key": ""}
-    else:
-        server_factory.assert_not_called()
-        assert events == ["remote"]
-    if failure_stage in {"remote", "start", "local", "missing_flash", "build"}:
+    server_factory.assert_not_called()
+    assert factory.call_count == 1 and events == ["remote"]
+    if failure_stage in {"remote", "build"}:
         demo.launch.assert_not_called()
 
 

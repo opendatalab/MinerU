@@ -8,7 +8,7 @@
 
 ## 1. 定位
 
-`mineru-kit api-server` 是正式的 self-hosted parse-server 启动入口。`--tier` 是单值启动能力上限，只接受 `flash`、`basic` 或 `standard`；不传时默认以 `standard` 启动，并暴露全部四个请求 tier。
+`mineru-kit api-server` 是正式的 self-hosted parse-server 启动入口。`--tier` 是 PDF/图片的最高开放档位，接受 `flash/basic/standard/advanced/auto`；省略时根据硬件推荐上限。所有服务都支持现有原生文档格式，固定使用 flash。
 
 `mineru doclib` 可以通过 HTTP 调用它执行解析任务。
 
@@ -41,26 +41,65 @@ api-server 负责：
 
 api-server 必须提供能力发现接口，让 doclib 或客户端知道当前服务支持哪个 tier。
 
-裸 api-server 的请求默认 tier 由启动配置决定：
+启动上限包含自身及全部较低档位。`/v1/tiers` 仅发布 PDF/图片可选档位，不用于判断原生文档能否解析。
 
-| api-server 启动配置 | `/v1/tiers` | 请求未指定 tier 时 |
+| api-server 启动配置 | PDF/图片公开档位 | PDF/image 请求未指定 tier 时 |
 |---------------------|-------------|--------------------|
-| `--tier flash` | `flash` | 返回 `quality_tier_unavailable`，除非请求显式传 `tier=flash` |
+| `--tier flash` | `flash` | `flash` |
 | `--tier basic` | `flash`、`basic` | `basic` |
-| `--tier basic --no-flash` | `basic` | `basic` |
-| `--tier basic --no-advanced` | `flash`、`basic` | `basic` |
-| `--tier standard` 或未传 `--tier` | `flash`、`basic`、`standard`、`advanced` | `standard` |
-| `--tier standard --no-flash` | `basic`、`standard`、`advanced` | `standard` |
-| `--tier standard --no-advanced` | `flash`、`basic`、`standard` | `standard` |
-| `--tier standard --no-flash --no-advanced` | `basic`、`standard` | `standard` |
+| `--tier standard` | `flash`、`basic`、`standard` | `standard` |
+| `--tier advanced` | 全部四档 | `standard` |
 
-因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时不应静默使用 `flash`。需要 `flash` 时调用方必须显式传 `tier=flash`；非 PDF/image 文件的批量归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
+Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `null` 时按 `standard -> basic -> flash -> advanced` 选择，仅开放 advanced 时也可使用默认值。所有服务均支持 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等现有原生格式，固定使用 flash，不检查公开列表中是否有 flash。非法枚举或空字符串仍报错。完整规则见 [Tasks](../api/tasks.md#tier默认选择与文件作用范围)。
 
-`--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
+### 自动推荐
 
-`--no-advanced` 会同时关闭 Advanced 能力发现和执行：`GET /v1/tiers` 不再发布 `advanced`，显式 Advanced 请求返回该 tier 不可用。Advanced 不是启动 tier，因此它与 `--tier flash` 或 `--tier basic` 组合时不会改变原有能力；Standard 仍保留自身所需的共享模型。
+省略 `--tier` 等价于 `--tier auto`。启动时取推荐集合的最高档作为上限并展开，运行中不重新选档：
 
-如果不同启动能力需要不同硬件、并发或生命周期策略，应启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。Doclib managed server 固定使用 `--no-flash`，因为 Flash 在 doclib 进程内执行。
+| 硬件条件 | 启动上限 | PDF/图片公开集合 |
+|----------|----------|------------------|
+| 进程可用 CPU 数不足 4，且无达标 GPU | flash | `flash` |
+| 进程可用 CPU 数至少 4，且无达标 GPU | basic | `flash,basic` |
+| GPU 已确认可用，且选定设备显存／预算至少 5.5 GiB（CPU 核数不限） | advanced | 全部四档 |
+
+CPU 数按逻辑 CPU 计算，并考虑进程亲和性和 Linux cgroup 配额。集显沿用有效 OCR 校准的 GPU 时间不高于 CPU 时间 0.8 倍的判定。探测失败或设备身份不明确时按 CPU 条件推荐。显式上限可以覆盖推荐，随后仍执行正常依赖预检。
+
+5.5 GiB 按 `5_905_580_032` 字节比较，不四舍五入、不累加多卡，也不使用 `MINERU_VIRTUAL_VRAM_SIZE`。独显读取专用显存总量；Apple 统一内存使用 Metal 推荐工作集，Windows/Linux 集显分别使用 DXGI 本地预算与 Vulkan `heapBudget`。预算比较使用上限，不减去当前用量；未知预算不以系统总内存替代。容量证据可通过 `mineru-kit hardware detect --json` 的 `gpu_memory` 查看。
+
+GPU 类型与 OCR、llama.cpp 和硬件诊断使用共享分类；目标运行后端可见且原生身份确认的独显可以免测速，但仍须满足 5.5 GiB 内存门槛才能开放 Standard/Advanced。ggml 的通用 GPU 标志、未知类型及虚拟 GPU 均不直接视为独显；同型号多卡无法唯一关联时保持保守结果。各后端可以选择不同 GPU，共用分类和优先级，不强制跨后端同卡。
+
+自动推荐先解析有效小模型后端。Torch（包括 auto 最终选择 Torch）验证实际设备可用性及容量：选中 CUDA/MPS/XPU 等设备的显存／预算至少 5.5 GiB 时推荐 advanced；显式 CPU 或设备不可用时按 CPU 条件推荐，不下载 ONNX 校准模型或改写其配置/记录。Torch 推荐不依赖 llama.cpp 库存。
+
+ONNX 分支先探测硬件并读取已有校准记录。如果 CPU 至少 4 核或存在内存达标的兼容 GPU 候选，Windows/Linux 会在发布服务能力前同步执行现有 ONNX 设备选择流程，再根据实际选择和容量确定最终上限。CPU 不足 4 核且无内存达标候选、macOS 及其他平台跳过这一步；显式 `--tier` 和 Python 精确集合也不触发这项启动校准。
+
+启动选型继续遵守 `model.onnx_device`：`auto` 才按设备策略决定是否测速，显式或已保存的 `cpu/gpu` 不强制重新校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均跳过 OCR 校准；首次真实 GPU 会话成功后才保存设备偏好。集显或类型无法确认的候选继续按 0.8 阈值测速。需要测速时会按正常模型生命周期准备或下载 OCR rec 权重，并复用已有进程缓存、文件锁、采样阈值及失败回退。下载和模型准备不计入 15 秒校准子进程超时。校准失败或结果不稳定不会阻止后续推荐，但不作为 GPU 胜出证据。
+
+实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`，仅复用设备、运行时版本与 CPU 配置匹配的有效结果；旧 cpu/gpu 偏好及手动 GPU 设置不视为校准证据。启动阶段产生的新证据在本次最终推荐中生效，之后 `/v1/tiers` 在服务生命周期内固定。
+
+远程 VLM 配置不自动扩大推荐上限或放宽本机内存门槛，也不增加 VLM 性能测试。上述 OCR 选型不要求 `--preload-models`；该参数仍另外控制完整模型或 VLM 客户端的提前初始化。
+
+`mineru-kit hardware detect` 使用同一结构化推荐流程；`hardware info` 只读输出诊断报告，详见 [hardware 命令](mineru-kit-hardware.md)。API 工厂的 VLM 配置覆盖也参与推荐，避免与实际运行配置不一致。
+
+### 内嵌部署与 SaaS
+
+Python 工厂保留 `create_app(tiers={"standard"})` 的非空精确集合接口。这里的集合只约束 PDF/图片：上述服务只发布 standard，却仍能解析原生文档并返回实际 flash 结果。`tiers=None` 使用硬件推荐上限。空集合、裸字符串和未知档位均报错。
+
+SaaS 可按共同契约仅发布 standard，原生文档由同一服务解析。无需新增原生能力声明、额外请求字段或本地补充服务。Router 对原生文件仅检查 worker 健康状态、来源和输出格式，转发时省略 tier；PDF/图片继续携带已确定的档位。
+
+### 参数与托管迁移
+
+`--tiers`、`--no-flash`、`--no-advanced` 均不接受，也不保留别名。
+
+| 原完整集合 | 新启动上限 |
+|------------|------------|
+| `--tiers flash` | `--tier flash` |
+| `--tiers flash,basic` | `--tier basic` |
+| `--tiers flash,basic,standard` | `--tier standard` |
+| `--tiers flash,basic,standard,advanced` | `--tier advanced` |
+
+非连续精确集合只用于 Python 工厂或部署方自己的服务配置，不能通过本地 CLI 表达。原 `--tiers standard` 只开放 standard，与新 `--tier standard` 的上限展开语义不同。
+
+WebUI、Router、Doclib 的托管 standard 均只开放到 standard，不再隐含 advanced；需要时显式配置 advanced。WebUI 默认配置为 auto，Router、Doclib 仍为 standard。Doclib 的 `parse_server.local.managed_tier` 支持 basic、standard、advanced，其原生执行路径保持现状。Advanced 的模型检查与下载使用 Standard 模型配置。
 
 ## 4. self-hosted 与 managed
 
@@ -73,23 +112,22 @@ managed 是生命周期管理方式，不是用户直接执行的命令模式。
 
 ## 5. Usage
 
-api-server 启动时可使用单个 `--tier` 指定能力上限：
+启动示例：
 
 ```bash
-mineru-kit api-server --tier basic --port 16580
-mineru-kit api-server --tier standard --port 15982
-mineru-kit api-server --tier standard --no-flash --port 8000
-mineru-kit api-server --tier standard --no-advanced --port 8000
-mineru-kit api-server --tier standard --no-flash --no-advanced --port 8000
-mineru-kit api-server --tier standard --preload-models
-mineru-kit api-server --tier standard --disable-image-analysis
+mineru-kit api-server
+mineru-kit api-server --tier auto
+mineru-kit api-server --tier standard --port 8000
+mineru-kit api-server --tier advanced --preload-models
+mineru-api --tier basic
+python -m mineru.parser.api_server --tier flash
 ```
 
-未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
+Standard/Advanced 上限复用 Standard 模型配置，Basic 上限使用 Basic 配置，共享模型只预加载一次。原生文档始终保留独立 Flash 执行路径，内部 Flash 能力不会额外开放 PDF 的 Flash 请求。
 
-OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
+OCR 模式通过每次 `POST /v1/tasks` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
 
-模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
+模型默认在首次解析时懒加载。`--preload-models` 会在 Basic、Standard 或 Advanced 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
 
 ### 服务日志级别
 
@@ -162,9 +200,7 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 ### 稳定公开参数
 
 - host / port
-- tier，单值 `flash` / `basic` / `standard`
-- no-flash
-- no-advanced
+- tier，单值 `auto` / `flash` / `basic` / `standard` / `advanced`
 - preload-models
 - API key
 - vlm-server-url / vlm-api-key / vlm-model / vlm-http-timeout / vlm-max-concurrency
@@ -176,8 +212,6 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 - upload-dir
 - retention-seconds（默认 86400 秒，0 关闭自动回收）
 - url-timeout
-- allow-local-source
-- max-inline-bytes
 - allow-http-source
 
 ### 专家参数
@@ -241,3 +275,9 @@ Torch 小模型首次初始化时限制 CPU 线程，并传播到后续工作线
 配置优先，否则依次使用 `MINERU_CPU_NUM_THREADS`、`MINERU_INTRA_OP_NUM_THREADS`、8。
 按 CPU 亲和性及 cgroup 配额裁剪，且不调高已有更低值。单独设置 OpenBLAS 不视为 Torch
 线程限制。纯 ONNX/Flash 的启动路径保持惰性加载。
+
+### 文件准备与解析排队
+
+Tasks 使用 waiting-file 表示等待上传、服务端下载或校验，准备完成后进入 pending，取得解析名额后进入 running。
+URL 输入由独立准备阶段处理，其并发上限沿用 concurrency；等待解析名额的已准备输入也占准备预算，防止源字节无界缓冲。准备阶段不占解析名额，已上传就绪的文件可以正常执行。
+文件 duration_ms 包含实际下载、校验、解析和导出耗时，不包含准备或解析队列等待时间。

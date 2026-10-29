@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from doclib_test_utils import create_parse_services
+
+from task_test_utils import execution_request
+from task_test_utils import stored_source, execution_output
+
 import asyncio
 import json
 from io import BytesIO
@@ -16,10 +21,9 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import api_server, parse, parse_async
-from mineru.parser.api_server import CreateJobRequest, FileStore
+from mineru.parser.api_server import FileStore
 
 
 @pytest.mark.parametrize(
@@ -128,29 +132,13 @@ def test_odf_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
     source = tmp_path / "sample.odt"
     source.write_bytes(build_odt_fixture())
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["markdown", "middle_json", "structured_content"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-            allow_local_source=True,
-        )
-    )
-    parsed_file = record.files[0]
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
+    parsed_file = record
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
-    assert middle_record.sha256sum is not None
-    payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    payload = json.loads(middle_data)
     assert payload["metadata"]["file_suffix"] == "odt"
     assert payload["extensions"]["mineru"]["tier"] == "flash"
     assert payload["extensions"]["mineru"]["parse_mode"] == "txt"
@@ -178,7 +166,7 @@ def test_doclib_ingests_odf_as_local_flash(
         """执行隔离 SQLite 入库并检查文档与解析任务。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_services(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
@@ -187,7 +175,7 @@ def test_doclib_ingests_odf_as_local_flash(
         )
         source = tmp_path / f"sample.{suffix}"
         source.write_bytes(payload)
-        response = await service.request_parse(str(source), tier="flash")
+        response = await service.queue.request_parse(str(source), tier="flash")
         doc = await db.fetchone(
             "SELECT file_type, page_count FROM docs WHERE sha256=?",
             (response.sha256,),
@@ -215,7 +203,7 @@ def test_doclib_rejects_odf_remote_parse(tmp_path: Path) -> None:
         """创建隔离 doclib 并断言稳定错误码。"""
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(
+        service = create_parse_services(
             db=db,
             fts=FTSManager(db),
             config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
@@ -225,7 +213,7 @@ def test_doclib_rejects_odf_remote_parse(tmp_path: Path) -> None:
         source = tmp_path / "sample.odt"
         source.write_bytes(build_odt_fixture())
         with pytest.raises(InvalidRequestError) as exc_info:
-            await service.request_parse(str(source), tier="flash", remote=True)
+            await service.queue.request_parse(str(source), tier="flash", remote=True)
         assert exc_info.value.code == "remote_unsupported_for_file_type"
         assert exc_info.value.param == "remote"
 

@@ -82,7 +82,9 @@ def parse_cmd(
         exit_with_message("invalid_request", str(exc))
 
     if api_url:
-        parser = MinerUApiParser(api_url=api_url, api_key=api_key, tier=parse_tier, include_images=True)
+        parser = MinerUApiParser(
+            api_url=api_url, api_key=api_key, tier=parse_tier, ocr_mode=parse_ocr_mode, include_images=True
+        )
         parse_one = partial(parser.parse, page_range=pages or "")
     else:
         is_batch = has_directory_input or len(paths) > 1

@@ -16,6 +16,7 @@ from urllib.parse import unquote
 
 import pytest
 
+from mineru.kit.gradio import document_io
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
 from mineru.kit.gradio.conversion import ConversionRun, SessionConversions
@@ -201,6 +202,21 @@ def test_frontend_conversion_receipts() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_source_preview_and_conversion_follow_frontend_preparation(tmp_path: Path) -> None:
+    """两个后端入口都在前端准备后串联，票据更新自身不能额外触发任务。"""
+    app = _application(tmp_path, SimpleNamespace())
+    dependencies = {item["id"]: item for item in app.config["dependencies"]}
+    for name in ("prepare_source_preview", "convert_ui"):
+        callback = next(fn for fn in app.fns.values() if fn.name == name)
+        event = dependencies[callback._id]
+        begin = dependencies[event["trigger_after"]]
+        ticket = callback.inputs[-1]
+        assert begin["backend_fn"] is False and begin["queue"] is False and begin["js"]
+        assert ticket._id in begin["outputs"]
+        assert event["api_visibility"] == "private"
+        assert not any((ticket._id, "change") in item["targets"] for item in dependencies.values())
+
+
 def test_conversion_and_poll_are_full_non_generator_responses(tmp_path: Path) -> None:
     """通过 Gradio process_api 反复序列化，确认结果不会创建生成器差分缓存。"""
     from gradio import Request
@@ -265,7 +281,7 @@ def test_cancelled_sync_output_keeps_slot_until_thread_exits(tmp_path: Path, mon
     source = tmp_path / "source.pdf"
     source.write_bytes(_pdf_bytes())
     started, release = threading.Event(), threading.Event()
-    persist = gradio_app.persist_parse_result
+    persist = document_io.artifacts.persist_parse_result
     client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
     calls = 0
 
@@ -278,7 +294,7 @@ def test_cancelled_sync_output_keeps_slot_until_thread_exits(tmp_path: Path, mon
             assert release.wait(10)
         return persist(*args, **kwargs)
 
-    monkeypatch.setattr(gradio_app, "persist_parse_result", slow_output)
+    monkeypatch.setattr(document_io.artifacts, "persist_parse_result", slow_output)
     app = _application(tmp_path, client)
     convert, poll, cancel = (_callback(app, name) for name in ("convert_ui", "read_conversion_status", "cancel_ui_conversion"))
     request = SimpleNamespace(session_hash="same-session")

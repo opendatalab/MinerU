@@ -10,15 +10,15 @@
 
 错误码体系负责统一 API、CLI 和 SDK 对错误的表达。调用方应该能稳定地区分请求校验、文件上传、认证配额、解析执行、任务生命周期、服务端异常和本地运行错误。
 
-解析 API 层的错误码由本地 parse-server 和 `mineru.net/api` 共用。CLI 透传 server 返回的错误；只有在连接建立前或通信层失败时，才产生 CLI 本地错误。CLI 本地错误仍使用同一套 `error` envelope，不另起一套错误码体系。
+解析 API 层的错误码由本地 parse-server 和 `mineru.net/api` 共用。公共 HTTP 错误协议以 [响应与错误](api/responses.md) 为准，只包含必填 `code/message` 和可选 `param`，不包含 `type`。CLI/Doclib 内部保留原有分类；本页的 `type` 与内部扩展字段不构成公共 API 字段承诺。
 
 错误码也是 Agent 的控制协议。Agent 看到错误后，应能判断下一步是重试、启动 server、显式加 `--remote`、选择 `--tier flash`，还是停止并把问题交给用户。
 
 ## 2. 设计原则
 
-- API、CLI 和 SDK 共享同一套 `type + code`。
+- API、CLI 和 SDK 使用稳定的 `code` 判断错误，`type` 仅保留于内部 CLI/Doclib 分类。
 - CLI 透传 server 返回的错误；只在调用 server 前或通信层产生本地错误。
-- 错误格式兼容 OpenAI API。
+- 公共 API 使用简化的统一错误结构，具体字段以 [响应与错误](api/responses.md) 为准。
 - `message` 面向人类，`code`、`param`、`retryable` 和 `user_action` 面向程序。
 - 不显式 `--remote` 时，不用错误恢复逻辑静默上传文档。
 - PDF/image 的默认选择策略不能降级为 `flash`；找不到非 `flash` 质量 tier 时必须报错。OFD/EPUB/Office/HTML/MHTML/CSV/TSV 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)。其它文本文件无需解析，显式 parse 请求返回 `parse_not_required`。
@@ -26,7 +26,21 @@
 
 ## 3. 错误响应格式
 
-基础格式与 OpenAI 兼容：
+公共解析 API 示例：
+
+```json
+{
+  "error": {
+    "code": "page_range_invalid",
+    "message": "Invalid page range",
+    "param": "files.0.page_range"
+  }
+}
+```
+
+`code` 必须是非空字符串，`message` 必填，`param` 无值时省略；接收端允许 `param` 缺省或为 `null`。HTTP 错误和 Tasks 逐文件错误遵守同一结构。
+
+以下示例和字段表仅描述内部 CLI/Doclib 的错误分类及扩展设计，不用于校验公共 HTTP 响应：
 
 ```json
 {
@@ -52,9 +66,9 @@
 | `user_action` | string \| null | 建议 | Agent/CLI 可执行的下一步动作 |
 | `docs_url` | string \| null | 否 | 指向错误说明或修复文档 |
 
-`retryable`、`user_action` 和 `docs_url` 是 MinerU 扩展字段。OpenAI-compatible 客户端可以忽略它们。
+`retryable`、`user_action` 和 `docs_url` 是内部扩展设计字段，不属于公共 API 的 `ErrorDetail`。
 
-## 4. Type 枚举
+## 4. 内部 Type 枚举
 
 | type | 含义 | HTTP |
 |------|------|------|

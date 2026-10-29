@@ -17,11 +17,11 @@
 | 并发任务 | 10+ | 10+ |
 | 队列优先级 | 默认 | 优先 |
 | `tier` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` |
-| 高级输出格式 | 不支持 `html`、`latex`、`docx` | 支持 |
-| `callback` | 不支持 | 支持 |
+| Tasks 输出格式 | default/docx/html/latex | default/docx/html/latex |
+| Tasks callback | 不支持 | 不支持 |
 | 产物保留期 | 30 天 | 30 天 |
 
-anonymous 与 registered 的主要差异是限流、高级输出格式和 callback。请求高级输出格式或 callback 但没有 API Key 时，返回 `403 feature_requires_api_key`。
+Tasks 四种输出格式不设置额外权限门槛；服务启用认证后所有解析请求均需有效 API Key。Tasks 不接受 callback。部署方可独立配置限流。
 
 ## 限流
 
@@ -29,10 +29,9 @@ anonymous 与 registered 的主要差异是限流、高级输出格式和 callba
 
 | 类别 | 范围 | anonymous | registered |
 |------|------|-----------|------------|
-| `parse` | `POST /v1/parse/jobs` | 5/min | 30/min |
-| `upload` | `POST /v1/uploads`、complete、cancel | 10/min | 60/min |
+| `parse` | `POST /v1/tasks` | 5/min | 30/min |
 | `chat` | `POST /v1/chat/completions`、`POST /v1/responses` | 10/min | 60/min |
-| `read` | 其他 GET/DELETE endpoint | 60/min | 300/min |
+| `read` | 其他 GET endpoint，以及 `POST /v1/tasks/{task_id}/cancel`（取消沿用控制请求配额） | 60/min | 300/min |
 
 响应头携带当前 endpoint 类别的限流状态:
 
@@ -57,10 +56,8 @@ Header 说明:
 ```json
 {
   "error": {
-    "type": "rate_limit_error",
     "code": "rate_limit_exceeded",
-    "message": "Parse rate limit (5/min) exceeded. Retry in 12s.",
-    "param": null
+    "message": "Parse rate limit (5/min) exceeded. Retry in 12s."
   }
 }
 ```
@@ -92,8 +89,8 @@ Authorization: Bearer <MINERU_API_KEY>
     "jobs_created": 12
   },
   "limits": {
-    "max_pages_per_file": 1000,
-    "max_file_size_bytes": 209715200,
+    "max_pages_per_file": null,
+    "max_file_size_bytes": null,
     "max_files_per_job": 100,
     "max_concurrent_jobs": 10,
     "max_file_retention_days": 30
@@ -112,8 +109,8 @@ Authorization: Bearer <MINERU_API_KEY>
 | `current.pages_processed` | integer | 当前周期累计处理页数。 |
 | `current.files_processed` | integer | 当前周期累计处理文件数。 |
 | `current.jobs_created` | integer | 当前周期累计创建任务数。 |
-| `limits.max_pages_per_file` | integer | 单文件最大页数。 |
-| `limits.max_file_size_bytes` | integer | 单文件最大字节数。 |
+| `limits.max_pages_per_file` | integer 或 null | 单文件最大页数；null 表示未设置固定上限。 |
+| `limits.max_file_size_bytes` | integer 或 null | 上传文件最大字节数；null 表示未设置固定上限。 |
 | `limits.max_files_per_job` | integer | 单任务最大文件数。 |
 | `limits.max_concurrent_jobs` | integer | 最大并发任务数。 |
 | `limits.max_file_retention_days` | integer 或 null | 文件保留天数。 |
@@ -131,6 +128,8 @@ Authorization: Bearer <MINERU_API_KEY>
 
 Local Parse Server 的 usage 不表达计费周期，而是表达本地进程视角:
 
+- `max_pages_per_file` 与 `max_file_size_bytes` 为 `null`，本地不套用 SaaS 上传大小或页数策略。URL/inline 来源仍受各自专用配置约束。
+
 - `billing_period.start` 是服务进程启动时间。
 - `billing_period.end` 为 `null`。
 - `current.*` 是自启动以来的累计值。
@@ -139,3 +138,5 @@ Local Parse Server 的 usage 不表达计费周期，而是表达本地进程视
 - `access_level` 取决于是否启用并通过 API Key 鉴权。
 
 本地 server 可以不实现公网同等级别的限流。若实现限流，也应复用同一错误 envelope、`Retry-After` 和 `X-RateLimit-*` 响应头。
+
+当前本地服务和 Router 的 jobs_created/max_concurrent_jobs 保持字段名，计数对象是内部逐文件执行，不能作为父 Task 数量；max_files_per_job 对应清单文件数上限。

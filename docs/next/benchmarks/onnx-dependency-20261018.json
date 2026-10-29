@@ -1,0 +1,461 @@
+{
+  "date": "2026-10-18",
+  "scope": "Windows x64 installation acceptance using pinned DocVortex source; cross-platform resolution and wheel checks only",
+  "docvortex": {
+    "version": "0.5.16",
+    "repository": "https://github.com/myhloli/DocVortex",
+    "commit": "545570c4bffa2a668b7db03b5d3117e7a13faf8c",
+    "native_extension": false,
+    "source_dirty_before_build": false
+  },
+  "packages": {
+    "mineru": "4.0.12",
+    "docvortex": "0.5.16",
+    "mineru-magika": "1.0.3",
+    "mineru-vl-utils": "2.0.7",
+    "onnxruntime-directml": "1.24.4"
+  },
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "owners": {
+    "magika": [
+      "mineru-magika"
+    ],
+    "onnxruntime": [
+      "onnxruntime-directml"
+    ]
+  },
+  "ort": {
+    "version": "1.24.4",
+    "path": "D:\\projects\\20260914magicpdf\\Magic-PDF\\.venv\\Lib\\site-packages\\onnxruntime\\__init__.py",
+    "providers": [
+      "DmlExecutionProvider",
+      "CPUExecutionProvider"
+    ]
+  },
+  "wheel_sha256": {
+    "docvortex-0.5.16-py3-none-any.whl": "94cde0320fac4be4af474cac78adc33bb57affc2d9d2aa56a02ba263169b785b",
+    "mineru-4.0.12-py3-none-any.whl": "199ac6229cf443672dc16f49d6e377cbdd599d4702cb25274529090ea5f38eb0",
+    "mineru_magika-1.0.3-py3-none-any.whl": "1b67e05769f48c28d4d5dda0869ece4f4acce769ec7ab6ed169ed34ee5b58343",
+    "mineru_vl_utils-2.0.7-py3-none-any.whl": "3bf184c359d69e78d0509f58324c58ad323037cf97bd4086cacb9caf53db0db7"
+  },
+  "pip_check": {
+    "success": true,
+    "checked_packages": 159,
+    "installation_resolved_packages": 121
+  },
+  "tests": {
+    "mineru": 762,
+    "docvortex": 71,
+    "warnings": "Two third-party deprecations in MinerU suite; no failures"
+  },
+  "rec": {
+    "threshold": 0.8,
+    "new_processes": 3,
+    "validation_passed": true,
+    "runs": [
+      {
+        "cpu_elapsed": 0.259271000046283,
+        "gpu_elapsed": 0.14191849995404482,
+        "ratio": 0.5473751400222572,
+        "selected": "gpu",
+        "outputs_match": true,
+        "ort_version": "1.24.4",
+        "ort_path": "D:\\projects\\20260914magicpdf\\Magic-PDF\\.venv\\Lib\\site-packages\\onnxruntime\\__init__.py",
+        "gpu_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "cpu_elapsed": 0.26189600001089275,
+        "gpu_elapsed": 0.13717320002615452,
+        "ratio": 0.5237697407384962,
+        "selected": "gpu",
+        "outputs_match": true,
+        "ort_version": "1.24.4",
+        "ort_path": "D:\\projects\\20260914magicpdf\\Magic-PDF\\.venv\\Lib\\site-packages\\onnxruntime\\__init__.py",
+        "gpu_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "cpu_elapsed": 0.262668399955146,
+        "gpu_elapsed": 0.1418222999200225,
+        "ratio": 0.53992905101733,
+        "selected": "gpu",
+        "outputs_match": true,
+        "ort_version": "1.24.4",
+        "ort_path": "D:\\projects\\20260914magicpdf\\Magic-PDF\\.venv\\Lib\\site-packages\\onnxruntime\\__init__.py",
+        "gpu_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      }
+    ]
+  },
+  "native": {
+    "html_type": "html",
+    "html_pages": 1,
+    "html_text_preserved": true,
+    "pdf_pages": 1,
+    "pdf_markdown_characters": 71977,
+    "html_execution": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    },
+    "pdf_execution": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    }
+  },
+  "document": {
+    "pages": 19,
+    "wall_s": 145.46046650002245,
+    "comparison": {
+      "pages_equal": true,
+      "markdown_text_equal": true,
+      "markdown_bytes_equal_with_matching_serialization": true,
+      "baseline_newline": "CRLF",
+      "initial_newline": "LF",
+      "baseline_sha256": "6fa409c5986b5207a4cadff8d106a063c977180758babe615fc5ce58ebd86b49",
+      "current_lf_sha256": "7e541eba607dc12b2d2a6aa48ed5041be926db9f66d855f45e32c494b6fb6418",
+      "current_crlf_sha256": "6fa409c5986b5207a4cadff8d106a063c977180758babe615fc5ce58ebd86b49",
+      "note": "Initial helper used write_bytes while the baseline helper used Windows write_text; only newline serialization differed. The comparison preserves the original LF output and writes a separate CRLF artifact."
+    },
+    "sessions": [
+      {
+        "key": "('onnx', 'cpu', ('ocr', 0.5, 'ch', 1.5, True), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "text_recognizer",
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', ('ocr', 0.5, 'ch', 1.5, True), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "text_detector",
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', ('layout', 'cpu'), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "session",
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', ('ocr', 0.5, 'ch', 1.6, False), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "text_recognizer",
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', ('ocr', 0.5, 'ch', 1.6, False), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "text_detector",
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', ('mfr', 'cpu'), OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "session",
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      {
+        "key": "('onnx', 'cpu', 'table_cls', OnnxSelection(device='gpu', adapter=GpuAdapter(index=0, luid='00000000:0000f3be', name='Intel(R) Arc(TM) 130T GPU (16GB)', vendor_id=32902, device_id=32081, uma=None, preference=0), reason='configured_gpu'))",
+        "name": "sess",
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      }
+    ]
+  },
+  "platform_matrix": [
+    {
+      "platform": "linux",
+      "python": "3.10",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "linux",
+      "python": "3.11",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "linux",
+      "python": "3.12",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "linux",
+      "python": "3.13",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "linux",
+      "python": "3.14",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos-intel",
+      "python": "3.10",
+      "extra": "base",
+      "success": false,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [
+        "cryptography==50.0.2: no wheel for macos-intel Python 3.10"
+      ],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos-intel",
+      "python": "3.11",
+      "extra": "base",
+      "success": false,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [
+        "cryptography==50.0.2: no wheel for macos-intel Python 3.11"
+      ],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos-intel",
+      "python": "3.12",
+      "extra": "base",
+      "success": false,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [
+        "cryptography==50.0.2: no wheel for macos-intel Python 3.12"
+      ],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos-intel",
+      "python": "3.13",
+      "extra": "base",
+      "success": false,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [
+        "cryptography==50.0.2: no wheel for macos-intel Python 3.13"
+      ],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos-intel",
+      "python": "3.14",
+      "extra": "base",
+      "success": false,
+      "resolver_succeeded": false,
+      "identity": [],
+      "errors": [],
+      "diagnostics": "  × No solution found when resolving dependencies:\n  ╰─▶ Because onnxruntime{(platform_machine != 'AMD64' and platform_machine\n      != 'amd64' and platform_machine != 'x86_64') or sys_platform !=\n      'win32'}>=1.20.1,<=1.23.2 has no wheels with a matching Python\n      ABI tag (e.g., `cp314`) and only the following versions of\n      onnxruntime{(platform_machine != 'AMD64' and platform_machine !=\n      'amd64' and platform_machine != 'x86_64') or sys_platform != 'win32'}\n      are available:\n          onnxruntime{(platform_machine != 'AMD64' and platform_machine\n      != 'amd64' and platform_machine != 'x86_64') or sys_platform !=\n      'win32'}<=1.23.2\n          onnxruntime{(platform_machine != 'AMD64' and platform_machine\n      != 'amd64' and platform_machine != 'x86_64') or sys_platform !=\n      'win32'}>=1.24.1\n      we can conclude that onnxruntime{(platform_machine != 'AMD64' and\n      platform_machine != 'amd64' and platform_machine != 'x86_64') or\n      sys_platform != 'win32'}>=1.20.1,<1.24.1 cannot be used.\n      And because onnxruntime{(platform_machine != 'AMD64' and\n      platform_machine != 'amd64' and platform_machine != 'x86_64') or\n      sys_platform != 'win32'}>=1.24.1 has no wheels with a matching\n      platform tag (e.g., `macosx_14_0_x86_64`) and mineru==4.0.12 depends on\n      onnxruntime{(platform_machine != 'AMD64' and platform_machine != 'amd64'\n      and platform_machine != 'x86_64') or sys_platform != 'win32'}>=1.20.1,\n      we can conclude that mineru==4.0.12 cannot be used.\n      And because only mineru==4.0.12 is available and you require mineru, we\n      can conclude that your requirements are unsatisfiable.\n\nhint: You require CPython 3.14 (`cp314`), but we only found wheels for `onnxruntime` (v1.23.2) with the following Python ABI tags: `cp310`, `cp311`, `cp312`, `cp313`, `cp313t`\nhint: Wheels are available for `onnxruntime` (v1.31.0) on the following platforms: `manylinux_2_28_aarch64`, `manylinux_2_28_x86_64`, `macosx_14_0_arm64`, `win_amd64`, `win_arm64`\n"
+    },
+    {
+      "platform": "macos",
+      "python": "3.10",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.23.2"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos",
+      "python": "3.11",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos",
+      "python": "3.12",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos",
+      "python": "3.13",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "macos",
+      "python": "3.14",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime==1.31.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "windows",
+      "python": "3.10",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime-directml==1.23.0"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "windows",
+      "python": "3.11",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime-directml==1.24.4"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "windows",
+      "python": "3.12",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime-directml==1.24.4"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "windows",
+      "python": "3.13",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime-directml==1.24.4"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    },
+    {
+      "platform": "windows",
+      "python": "3.14",
+      "extra": "base",
+      "success": true,
+      "resolver_succeeded": true,
+      "identity": [
+        "mineru-magika==1.0.3",
+        "onnxruntime-directml==1.24.4"
+      ],
+      "errors": [],
+      "diagnostics": ""
+    }
+  ],
+  "pypi_default_control": {
+    "accepted": false,
+    "selected": [
+      "docvortex==0.5.16",
+      "magika==1.0.3",
+      "onnxruntime==1.31.0",
+      "onnxruntime-directml==1.24.4"
+    ],
+    "reason": "PyPI docvortex 0.5.16 still has old CPU ORT and upstream magika requirements; use pinned compatible source until a new compatible release and minimum-version update"
+  },
+  "raw_evidence_directory": "output\\onnx-dependency-acceptance-20261018",
+  "source_install_used_no_deps": false
+}

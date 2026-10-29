@@ -1,10 +1,10 @@
 # Quick Start
 
-This guide targets the **MinerU 4.0 stable release**. Existing AMD and vendor accelerator adaptations remain on `<4`; use the [legacy platform guides](../usage/compatibility.md).
+This guide targets **MinerU 4.x**, including 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
 
 ## Install MinerU
 
-The MinerU package supports Python `>=3.10,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
+The MinerU package supports Python `>=3.11,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
 
 ```bash
 uv venv --python 3.12 .venv
@@ -22,7 +22,7 @@ Activate in Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-Install the base package:
+Install the latest published 4.x base package:
 
 ```bash
 uv pip install -U "mineru>=4.0,<5"
@@ -31,6 +31,8 @@ uv pip install -U "mineru>=4.0,<5"
 Alternatively, run `python -m pip install -U "mineru>=4.0,<5"` in the activated environment. A package mirror can be selected with the installer's `-i` option.
 
 The base package includes the WebUI, ONNX small-model runtime, and llama.cpp VLM. Apple Silicon automatically includes Torch dependencies. For Torch small models or higher-throughput VLM serving, see [extension modules](extension_modules.md) for the `torch` and `full` extras. Do not use 3.x extras.
+
+4.1 uses DirectML on Windows x64 and WebGPU on Linux x86_64 to select a compatible GPU or CPU automatically. Apple Silicon defaults to Torch/MPS and llama.cpp/Metal. Use `mineru-kit hardware detect` for tier recommendations or `hardware info --json` for diagnostics. Initial ONNX calibration may download the recognition model; see [Tiers and runtimes](../usage/tiers.md).
 
 ## First conversion
 
@@ -79,11 +81,11 @@ Open the [local WebUI](http://127.0.0.1:7860). `mineru-webui` is the standalone 
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ```
 
-Inspect the running service through its [OpenAPI documentation](http://127.0.0.1:8000/docs).
+Inspect the running service through its [OpenAPI documentation](http://127.0.0.1:8000/docs). Use [Tasks](../usage/tasks.md) for asynchronous batches; start the separate [file-parse service](../usage/file_parse.md) to upload one file and receive an attachment directly.
 
 ## Install from source
 
-Run from a repository checkout containing the 4.0 source:
+Run from a checkout of the corresponding version:
 
 ```bash
 uv pip install -e .
@@ -97,4 +99,5 @@ Confirm a 4.x version; a development checkout may report a prerelease. For NVIDI
 - [Tiers and runtimes](../usage/tiers.md)
 - [Model downloads and configuration](../usage/model_source.md)
 - [3.x → 4.0 migration](../reference/migration_4.md)
-- [Official application](https://mineru.net/) and [online demos](../demo/index.md)
+- [4.0.x → 4.1 migration](../reference/migration_4_1.md)
+- [Official application](https://mineru.net/) and [online demos](https://huggingface.co/spaces/opendatalab/MinerU)

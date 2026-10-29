@@ -8,13 +8,13 @@
 
     ### Windows CUDA 加速 {#windows-cuda-acceleration}
 
-    基础包默认可使用 ONNX / CPU 与 llama.cpp。需要 Torch 小模型和 LMDeploy 时，在原虚拟环境中安装 `"mineru[full]>=4.0,<5"`，并核对 Torch 的 CUDA 支持、显卡驱动及引擎 wheel 的 Python 范围。
+    4.1 基础包在 Windows x64 可自动选择 ONNX DirectML 或 CPU，VLM 使用 llama.cpp。可用 `mineru-kit hardware info --json` 检查环境与已有校准证据。需要 Torch 小模型和 LMDeploy 时，在原虚拟环境中安装 `"mineru[full]>=4.0,<5"`，并核对 Torch 的 CUDA 支持、显卡驱动及引擎 wheel 的 Python 范围。
 
-    4.0 使用 `lmdeploy>=0.17.0,<0.18` 和 Transformers 5；不要套用旧版 LMDeploy 0.11.x 的 wheel 或跳过依赖检查。详见[扩展模块](../quick_start/extension_modules.md)和[档位说明](../usage/tiers.md)。
+    当前版本使用 `lmdeploy>=0.17.0,<0.19` 和 Transformers 5；不要套用旧版 LMDeploy 0.11.x 的 wheel 或跳过依赖检查。详见[扩展模块](../quick_start/extension_modules.md)和[档位说明](../usage/tiers.md)。
 
 ??? question "升级后旧命令、API 或配置不再工作怎么办？"
 
-    4.0 WebUI 使用 `mineru-kit webui` / `mineru-webui`，解析 API 使用 `/v1/*`，配置使用 `config.yaml`。旧 `/file_parse`、`/tasks` 和 `model.stack` 不能直接沿用。见[迁移指南](../reference/migration_4.md)。
+    4.x WebUI 使用 `mineru-kit webui` / `mineru-webui`，解析 API 使用 `/v1/*`，配置使用 `config.yaml`。旧 `/file_parse`、`/tasks` 和 `model.stack` 不能直接沿用，见 [3.x 迁移指南](../reference/migration_4.md)。4.1 将独立 uploads/jobs 替换为 Tasks，见 [4.1 迁移说明](../reference/migration_4_1.md)和独立 [file-parse 接口](../usage/file_parse.md)。
 
 ??? question "在WSL2的Ubuntu22.04中遇到报错`ImportError: libGL.so.1: cannot open shared object file: No such file or directory`"
 

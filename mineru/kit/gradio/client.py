@@ -10,17 +10,18 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import httpx
 
-from ...parser.api_client import ApiJobStatus, MinerUApiParser, should_trust_env_for_url
+from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_env_for_url
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
+from ...types import SERVER_STARTUP_TIERS, TIERS, ServerStartupTier, Tier
+from ...filetypes import is_flash_only_parse_extension
 from ...utils.stdio import utf8_subprocess_env
 from .status import (
     STATUS_CHECKING_SERVER,
@@ -31,6 +32,7 @@ from .status import (
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_ON_SERVER,
     STATUS_SUBMITTING_TASK,
+    STATUS_PREPARING_FILE,
     ParseStatusUpdate,
 )
 
@@ -145,16 +147,16 @@ class V1ArtifactClient:
             raise V1ArtifactError("V1 health response did not report status=ok", code="invalid_response")
         if not isinstance(features, dict):
             raise V1ArtifactError("V1 health response is missing features", code="invalid_response")
-        output_formats = _string_tuple(features.get("output_formats"), "features.output_formats")
+        output_formats = _string_tuple(features.get("task_output_formats"), "features.task_output_formats")
         sources = _string_tuple(features.get("sources"), "features.sources")
-        if "zip" not in output_formats:
+        if "default" not in output_formats:
             raise V1ArtifactError(
-                "The configured V1 API server does not advertise zip output, which is required by Gradio.",
+                "The configured V1 API server does not advertise default task output, which is required by Gradio.",
                 code="unsupported_output_format",
             )
-        if "file_id" not in sources:
+        if "upload" not in sources:
             raise V1ArtifactError(
-                "The configured V1 API server does not advertise file_id uploads, which are required by Gradio.",
+                "The configured V1 API server does not advertise task uploads, which are required by Gradio.",
                 code="unsupported_source",
             )
 
@@ -187,7 +189,7 @@ class V1ArtifactClient:
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
-        """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
+        """通过 V1 API 解析单个文件，并返回带图片素材的 `ParseResult`。"""
         page_range = normalize_page_range_input(page_range)
         if not path.is_file():
             raise FileNotFoundError(path)
@@ -199,23 +201,24 @@ class V1ArtifactClient:
         if self._capabilities is None:
             emit(STATUS_CHECKING_SERVER)
             await self.discover()
-        if self._capabilities is None or tier not in self._capabilities.tiers:
+        native_document = is_flash_only_parse_extension(path)
+        if self._capabilities is None or (not native_document and tier not in self._capabilities.tiers):
             raise V1ArtifactError(f"Tier '{tier}' is not available in the configured V1 API server", code="tier_unavailable")
 
         emit(STATUS_SUBMITTING_TASK)
         parser = MinerUApiParser(
             api_url=self.base_url,
             api_key=self.api_key,
-            tier=cast(Tier, tier),
+            tier=None if native_document else cast(Tier, tier),
             ocr_mode=ocr_mode,
             include_images=True,
-            include_model_output=True,
         )
 
-        def on_job_status(status: ApiJobStatus) -> None:
+        def on_job_status(status: ApiTaskStatus) -> None:
             """将真实 V1 状态映射到卡片阶段，服务端完成仅代表开始下载。"""
-            messages: dict[ApiJobStatus, str] = {
-                "queued": STATUS_QUEUED_ON_SERVER,
+            messages: dict[ApiTaskStatus, str] = {
+                "waiting-file": STATUS_PREPARING_FILE,
+                "pending": STATUS_QUEUED_ON_SERVER,
                 "running": STATUS_PROCESSING_ON_SERVER,
                 "completed": STATUS_DOWNLOADING_RESULT,
                 "partial": STATUS_DOWNLOADING_RESULT,
@@ -230,7 +233,11 @@ class V1ArtifactClient:
 
         try:
             result = await parser.parse_async(
-                path, page_range=page_range, status_callback=on_job_status, duration_callback=on_job_duration
+                path,
+                page_range=page_range,
+                status_callback=on_job_status,
+                duration_callback=on_job_duration,
+                cancel_on_cancel=True,
             )
         except Exception as exc:
             emit(f"Failed: {exc}")
@@ -247,23 +254,18 @@ class V1ArtifactClient:
 
 
 class GradioArtifactClient:
-    """合并已发现的服务能力，并将缺失的 Flash 请求路由到本地 V1 服务。"""
+    """使用唯一连接服务解析文件，公开档位只约束 PDF/图片。"""
 
-    def __init__(self, primary: V1ArtifactClient, *, local_flash: V1ArtifactClient | None = None) -> None:
-        """根据独立能力快照建立明确的档位映射，不修改任何服务声明。"""
-        capabilities = primary.capabilities
-        if capabilities is None:
+    def __init__(self, primary: V1ArtifactClient) -> None:
+        """保存已发现的服务与能力快照，不合并额外的本地 Flash 服务。"""
+        if primary.capabilities is None:
             raise ValueError("Discover the primary V1 API capabilities before constructing the Gradio client")
-        self._clients_by_tier = dict.fromkeys(capabilities.tiers, primary)
-        if local_flash is not None and "flash" not in self._clients_by_tier:
-            if local_flash.capabilities is None or "flash" not in local_flash.capabilities.tiers:
-                raise V1ArtifactError("The local V1 API server did not advertise Flash", code="tier_unavailable")
-            self._clients_by_tier["flash"] = local_flash
-        self._capabilities = replace(capabilities, tiers=tuple(tier for tier in TIERS if tier in self._clients_by_tier))
+        self._primary = primary
+        self._capabilities = primary.capabilities
 
     @property
     def capabilities(self) -> V1ServerCapabilities:
-        """返回供界面使用的有效档位集合，主服务地址和协议能力保持原值。"""
+        """返回所连接服务实际发布的 PDF/图片档位及协议能力。"""
         return self._capabilities
 
     async def parse_file(
@@ -275,13 +277,8 @@ class GradioArtifactClient:
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
-        """仅向该档位对应的服务提交文件，复用原有状态、取消和产物流程。"""
-        if tier not in TIERS:
-            raise V1ArtifactError(f"Unsupported parse tier: {tier}", code="invalid_request")
-        client = self._clients_by_tier.get(tier)
-        if client is None:
-            raise V1ArtifactError(f"Tier '{tier}' is not available in Gradio", code="tier_unavailable")
-        return await client.parse_file(
+        """文件类型与档位校验由唯一 V1 客户端完成，复用取消和产物流程。"""
+        return await self._primary.parse_file(
             path, tier=tier, page_range=page_range, ocr_mode=ocr_mode, status_callback=status_callback
         )
 
@@ -306,14 +303,14 @@ class ManagedLocalApiServer:
     def __init__(
         self,
         *,
-        tier: ServerTier = "standard",
+        tier: ServerStartupTier = "auto",
         concurrency: int = 1,
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
     ) -> None:
         """保存显式启动配置，但不在构造阶段创建目录或启动进程。"""
-        if tier not in SERVER_TIERS:
+        if tier not in SERVER_STARTUP_TIERS:
             raise ValueError(f"Unsupported API server tier: {tier}")
         if concurrency <= 0:
             raise ValueError("API server concurrency must be positive")

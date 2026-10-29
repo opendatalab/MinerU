@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from task_test_utils import execution_request
+from task_test_utils import stored_source, execution_output
+
 import asyncio
 import json
 from pathlib import Path
@@ -9,7 +12,7 @@ from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.parser import api_server, parse, parse_async
-from mineru.parser.api_server import CreateJobRequest, FileStore
+from mineru.parser.api_server import FileStore
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
 from mineru.types import TableBlock, TableBodyBlock
@@ -91,37 +94,20 @@ def test_tsv_parse_server_job_emits_structured_outputs_with_independent_suffix(t
     source = tmp_path / "sample.tsv"
     source.write_text("name\tage\nAlice\t30\n", encoding="utf-8")
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["markdown", "middle_json"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-            allow_local_source=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None
-    assert parsed_file.output_files.markdown is not None
-    assert parsed_file.output_files.middle_json is not None
 
-    markdown_record = file_store.get_file(parsed_file.output_files.markdown.file_id)
-    markdown = file_store.read_blob(markdown_record.sha256sum).decode()
+    markdown_data = execution_output(file_store, record, "markdown.md")
+    markdown = markdown_data.decode()
     assert "| name | age |" in markdown
 
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
-    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    middle_payload = json.loads(middle_data)
     assert middle_payload["metadata"]["file_suffix"] == "tsv"
     assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
     assert middle_payload["extensions"]["mineru"]["parse_mode"] == "txt"
@@ -132,46 +118,25 @@ def test_csv_parse_server_job_emits_structured_outputs_with_flash_metadata(tmp_p
     source = tmp_path / "sample.csv"
     source.write_text("name,age\nAlice,30\n", encoding="utf-8")
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["markdown", "middle_json", "structured_content"],
-        }
-    )
-    record = api_server.JobStore().create(request, file_store)
+    request = execution_request(file_store, stored_source(file_store, source), tier="standard", output_formats=["default"])
+    record = api_server.ExecutionStore().create(request, file_store)
 
-    asyncio.run(
-        api_server._run_job(
-            record,
-            request,
-            file_store,
-            image_analysis=True,
-            allow_local_source=True,
-        )
-    )
+    asyncio.run(api_server._run_execution(record, file_store, image_analysis=True))
 
-    parsed_file = record.files[0]
+    parsed_file = record
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None
-    assert parsed_file.output_files.markdown is not None
-    assert parsed_file.output_files.middle_json is not None
-    assert parsed_file.output_files.structured_content is not None
 
-    markdown_record = file_store.get_file(parsed_file.output_files.markdown.file_id)
-    assert markdown_record.sha256sum is not None
-    markdown = file_store.read_blob(markdown_record.sha256sum).decode()
+    markdown_data = execution_output(file_store, record, "markdown.md")
+    markdown = markdown_data.decode()
     assert "| name | age |" in markdown
 
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
-    assert middle_record.sha256sum is not None
-    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    middle_payload = json.loads(middle_data)
     assert middle_payload["metadata"]["file_suffix"] == "csv"
     assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
     assert middle_payload["extensions"]["mineru"]["parse_mode"] == "txt"
 
-    structured_record = file_store.get_file(parsed_file.output_files.structured_content.file_id)
-    assert structured_record.sha256sum is not None
-    structured_payload = json.loads(file_store.read_blob(structured_record.sha256sum))
+    structured_data = execution_output(file_store, record, "structured_content.json")
+    structured_payload = json.loads(structured_data)
     assert structured_payload["metadata"]["file_suffix"] == "csv"
     assert structured_payload["pages"][0]["blocks"][0]["type"] == "table"

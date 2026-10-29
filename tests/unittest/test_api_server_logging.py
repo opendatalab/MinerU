@@ -40,7 +40,7 @@ def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: s
     expected_server_level = (level or "debug").lower()
     configure_global = MagicMock(return_value="debug")
     server = SimpleNamespace(run=MagicMock(), should_exit=False)
-    monkeypatch.setattr(api_server.mineru_config.log, "level", "debug")
+    monkeypatch.setattr(api_server.get_config().log, "level", "debug")
     monkeypatch.setattr(api_server, "create_app", create_app)
     monkeypatch.setattr(api_server, "configure_global_log_level", configure_global)
     monkeypatch.setattr(kit_api, "configure_global_log_level", MagicMock(return_value="debug"))

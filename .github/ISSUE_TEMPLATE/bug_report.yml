@@ -2,9 +2,7 @@ name: 🐛 Bug Report
 description: Create a bug report for MinerU | MinerU 的 Bug 反馈
 labels: bug
 
-# We omit `title: "..."` so that the field defaults to blank. If we set it to
-# empty string, Github seems to reject this .yml file.
-
+# 不设置默认标题，让反馈者直接描述具体问题。
 body:
   - type: markdown
     attributes:
@@ -15,88 +13,92 @@ body:
     attributes:
       label: 🔎 Search before asking | 提交之前请先搜索
       description: >
-        Please search the MinerU [Readme](https://github.com/opendatalab/MinerU), [Issues](https://github.com/opendatalab/MinerU/issues) and [Discussions](https://github.com/opendatalab/MinerU/discussions) to see if a similar bug report already exists.
+        Please search the MinerU [README](https://github.com/opendatalab/MinerU),
+        [Issues](https://github.com/opendatalab/MinerU/issues) and
+        [Discussions](https://github.com/opendatalab/MinerU/discussions) for similar reports.
+        请先搜索 README、Issues 和 Discussions，确认是否已有类似反馈。
       options:
-        - label: I have searched the MinerU [Readme](https://github.com/opendatalab/MinerU) and found no similar bug report.
+        - label: I have searched the MinerU [README](https://github.com/opendatalab/MinerU) for similar reports. | 我已搜索 README。
           required: true
-        - label: I have searched the MinerU [Issues](https://github.com/opendatalab/MinerU/issues) and found no similar bug report.
+        - label: I have searched the MinerU [Issues](https://github.com/opendatalab/MinerU/issues) for similar reports. | 我已搜索 Issues。
           required: true
-        - label: I have searched the MinerU [Discussions](https://github.com/opendatalab/MinerU/discussions) and found no similar bug report.
+        - label: I have searched the MinerU [Discussions](https://github.com/opendatalab/MinerU/discussions) for similar reports. | 我已搜索 Discussions。
           required: true
 
   - type: checkboxes
     attributes:
-      label: 🤖 Consult the online AI assistant for assistance | 在线 AI 助手咨询
+      label: 🤖 Online AI assistant (optional) | 在线 AI 助手咨询（可选）
       description: >
-        This [online AI assistant](https://deepwiki.com/opendatalab/MinerU) is specifically trained to help with MinerU and related topics! It's available 24/7 and ready to provide insights.
+        You may consult the [online AI assistant](https://deepwiki.com/opendatalab/MinerU) before reporting.
+        提交前也可以咨询在线 AI 助手，此项不影响提交。
       options:
-        - label: I have consulted the [online AI assistant](https://deepwiki.com/opendatalab/MinerU) but was unable to obtain a solution to the issue.
-          required: true
+        - label: I consulted the online AI assistant but could not find a solution. | 我已咨询在线 AI 助手，但未找到解决方案。
+          required: false
 
   - type: textarea
     id: description
     attributes:
       label: Description of the bug | 错误描述
       description: |
-        Provide console output with error messages and/or screenshots of the bug. | 请提供详细报错信息或者截图
-      placeholder: |
-        💡 ProTip! Include as much information as possible (screenshots, logs, tracebacks etc.) to receive the most helpful response.
+        Describe the expected and actual behavior. Include relevant logs, full tracebacks, or screenshots.
+        请说明预期结果与实际结果，并提供相关日志、完整报错堆栈或截图。
     validations:
       required: true
-  
+
   - type: textarea
     id: reproduce
     attributes:
       label: How to reproduce the bug | 如何复现
-      
-      # Should not word-wrap this description here.
       description: |
-        If you have questions about the parsing results or encounter errors during execution: | 如对解析结果有疑问或在运行中出现报错等异常:
-        * Provide a minimal reproducible example. | 请提供一个最小可复现的demo。 
-        * The demo should include the complete steps, code, and the PDF file to be parsed. | demo需要包含完整的操作步骤，代码，以及需要解析的PDF文件。
-        * When reporting parsing result anomalies and runtime errors, reproducible PDF files are essential. If the document is too large or confidential, you can print the problematic page(s) via the browser and submit the corresponding example file.
-        * 在反馈解析结果异常和运行时报错时，可复现的PDF文件是必不可少的，如文档过大或涉密，您可通过浏览器打印出出现问题的某一页或某几页再提交相应的示例文件。
-        
-        
-        For problems when building or installing MinerU: | 在构建或安装 MinerU 时遇到的问题:
-        * Give the **exact** build/install commands that were run. | 提供**确切**的构建/安装命令。
-        * Give the **complete** output from these commands. | 提供这些命令的**完整**输出。
-  
+        For parsing or runtime problems: | 对于解析结果异常或运行问题：
+        * Provide the original sample document (PDF, image, Office, EPUB, HTML, or another supported format).
+        * 请提供原始样例文件，支持 PDF、图片、Office、EPUB、HTML 等格式。
+        * Include complete commands or code, relevant configuration, input page ranges, and problematic pages or regions.
+        * 请提供完整命令或代码、相关配置、输入页范围，以及出现问题的页码或区域。
+        * If the document is large or confidential, provide a minimal anonymized sample in the original format that still reproduces the issue.
+        * 文件过大或涉密时，请提供原格式的最小脱敏样例，并确认该样例仍能复现问题。
+
+        For installation or build problems: | 对于安装或构建问题：
+        * Include the exact installation/build commands and their complete output; a document sample is not needed.
+        * 请提供确切的安装或构建命令及其完整输出，无需提供文档样例。
     validations:
       required: true
 
-#  - type: markdown
-#    attributes:
-#      value: |
-#        # The information below is required.
-
+  - type: dropdown
+    id: usage_entry
+    attributes:
+      label: Usage entry | 使用入口
+      options:
+        - mineru CLI
+        - mineru-kit CLI
+        - Python SDK
+        - API / Router
+        - WebUI
+        - Installation / build | 安装或构建
+        - Other / unknown | 其他或不清楚
+    validations:
+      required: true
 
   - type: dropdown
     id: os_mode
     attributes:
-      label: Operating System Mode | 操作系统类型
-      #multiple: true
+      label: Operating system | 操作系统类型
       options:
-        -
         - Windows
         - Linux
-        - MacOS
+        - macOS
+        - Other / unknown | 其他或不清楚
     validations:
       required: true
 
   - type: textarea
     id: os_name_version
     attributes:
-      label: Operating System Version| 操作系统版本
-      #multiple: true
+      label: Operating system version | 操作系统版本
       description: |
-        * 如果您使用的是Linux系统，请提供Linux系统的**发行版名称**和**版本号**来帮助开发人员排查问题。 
-        * If you are using a Linux system, please provide the Linux distribution and version number to help developers troubleshoot the issue.
-        * 如果您使用的是Windows或MacOS系统，请提供操作系统的**版本号**来帮助开发人员排查问题。
-        * If you are using a Windows or MacOS system, please provide the version number of the operating system to help developers troubleshoot the issue.
-        * 例如：Ubuntu 22.04, CentOS 7.9, MacOS 15.1, Windows 11
-        * For example: Ubuntu 22.04, CentOS 7.9, MacOS 15.1, Windows 11.
-
+        Include the distribution and version, and indicate Docker/WSL or remote deployment if applicable.
+        请填写系统或发行版名称及版本；使用 Docker、WSL 或远程部署时，请一并说明。
+        Examples | 示例：Ubuntu 24.04, macOS 15, Windows 11 / WSL Ubuntu 24.04.
     validations:
       required: true
 
@@ -104,54 +106,76 @@ body:
     id: python_version
     attributes:
       label: Python version | Python 版本
-      #multiple: true
-      # Need quotes around `3.10` otherwise it is treated as a number and shows as `3.1`.
+      description: Python >=3.11,<3.15; see python --version. | 支持 Python >=3.11,<3.15，可通过 python --version 查看。
       options:
-        -
+        - "3.14"
         - "3.13"
         - "3.12"
         - "3.11"
-        - "3.10"
+        - Other / unknown | 其他或不清楚
     validations:
       required: true
 
-  - type: dropdown
+  - type: textarea
     id: software_version
     attributes:
-      label: Software version | 软件版本 (mineru --version)
-      #multiple: false
-      options:
-        -
-        - "`<2.2.0`"
-        - "`2.2.x`"
-        - "`>=2.5`"
-        - "4.0.0.dev20260625"
-        - "4.0.0.dev20260626"
+      label: MinerU version | MinerU 版本
+      # BEGIN MINERU_LATEST_STABLE_VERSION
+      description: |
+        Latest stable release: 4.0.12 | 最新正式版本：4.0.12
+        Paste the output of mineru --version from the environment with the issue, including old or development versions.
+        请粘贴出现问题的环境中 mineru --version 的输出，旧版和开发版也请填写实际版本。
+        If installation failed, state the version you attempted to install and that the command is unavailable.
+        如果安装失败，请说明尝试安装的版本以及该命令不可用的情况。
+      # END MINERU_LATEST_STABLE_VERSION
+      placeholder: |
+        MinerU version: <your installed version / 实际安装版本>
+        Python version: <your Python version / 实际 Python 版本>
     validations:
       required: true
 
   - type: dropdown
-    id: backend_name
+    id: tier
     attributes:
-      label: Backend name | 解析后端
-      #multiple: false
+      label: Parsing tier | 解析档位
+      description: Include --tier or the API/SDK tier value. | 请填写 --tier 或 API/SDK 的 tier 值。
       options:
-        -
-        - "vlm"
-        - "pipeline"
+        - flash
+        - basic
+        - standard
+        - advanced
+        - Default selection | 未显式指定
+        - Not applicable / unknown | 不适用或不清楚
     validations:
       required: true
 
   - type: dropdown
+    id: parse_mode
+    attributes:
+      label: OCR / parsing mode (optional) | OCR / 解析模式（可选）
+      description: Include --ocr-mode or the API/SDK parsing mode if known. | 如已知，请填写 --ocr-mode 或 API/SDK 的解析模式。
+      options:
+        - auto
+        - txt
+        - ocr
+        - Not applicable / unknown | 不适用或不清楚
+
+  - type: textarea
     id: device_mode
     attributes:
-      label: Device mode | 设备模式
-      #multiple: true
-      options:
-        -
-        - cpu
-        - cuda
-        - mps
-        - npu
+      label: Hardware diagnostics | 硬件与运行环境诊断
+      description: |
+        Run `mineru-kit hardware info` in the environment where the issue occurs and paste the complete text output below.
+        请在出现问题的环境中运行 `mineru-kit hardware info`，并在下方粘贴完整文本输出。
+        For Docker, WSL, or remote deployments, run the command where MinerU actually runs.
+        使用 Docker、WSL 或远程部署时，请在实际运行 MinerU 的环境中执行该命令。
+        If installation failed, your version does not support the command, or you cannot access the server, explain why.
+        如果安装失败、旧版本不支持该命令或无法访问服务端，请说明原因。
+        Include any available error output and known environment details (OS, Python/MinerU versions, device, and backend).
+        同时提供可获得的错误输出及已知环境信息（操作系统、Python/MinerU 版本、设备和推理后端）。
+      placeholder: |
+        Paste the complete output of mineru-kit hardware info here.
+        请在此粘贴 mineru-kit hardware info 的完整输出。
+      render: text
     validations:
       required: true

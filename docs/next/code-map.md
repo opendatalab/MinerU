@@ -42,16 +42,16 @@
 cli/commands/parse.py parse_cmd（--remote 选项 :100）
   → DoclibClient（doclib/client.py）经 UDS（$MINERU_HOME/doclib.sock；UDS 不可用回退
     TCP 127.0.0.1:15980，见 config.py 与 doclib/endpoint.py）
-  → doclib/server.py → ParseService.request_parse（services/parse_svc.py:719：校验 tier/privacy/
-    page_range/扩展名；privacy = "remote"|"local" :754）写入 parses 表任务队列
-  → ParseWorkerPool（background/parse_worker.py:15）→ process_doc（parse_svc.py:931）按 tier 分派：
-    · flash   → 进程内本地 flash 解析（parse_svc.py:971 附近，"local(flash)"）
-    · basic/standard/advanced → _parse_via_api（parse_svc.py:1146）三选一：
-        managed（doclib 自动拉起 `python -m mineru.parser.api_server`，
-                 managed 进程参数见 background/parse_server_health.py:98-113；TCP 127.0.0.1:16580）
+  → doclib/server.py → ParseQueueService.request_parse（services/parse_queue_svc.py）
+    校验 tier/privacy/page_range/扩展名，通过 IngestService 刷新源文件并写入 parses 队列
+  → ParseWorkerPool（background/parse_worker.py）通过队列服务抢占批次
+  → ParseExecutionService.process_doc（services/parse_execution_svc.py）按 tier 分派：
+    · flash → 进程内统一 Parser 的原生/Flash 路由（_parse_via_local）
+    · basic/standard/advanced → _parse_via_api 按既有配置选择：
+        managed（doclib 托管本地 parse-server）
         self_hosted（parse_server.local.self_hosted_url）
         remote（parse_server.remote.url）
-      均不可用时抛 no_engine（parse_svc.py:1239）
+      没有可用目标时沿用原有错误，不从本地静默转发远端
   → parse-server 侧：parser/api_server.py → MinerUParser（parser/mineru_parser.py，按后缀路由）
     → doc_analyze（backend/analyze.py）→ analysis/<格式> → postprocess → MiddleJson(schema 2.0)
     → 解析产物写回 doclib（background/compaction.py 合并批次）

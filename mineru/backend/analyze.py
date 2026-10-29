@@ -9,7 +9,7 @@ from docvortex.document.contracts import HtmlSourceContext
 from docvortex.schema import DocumentMetadata, DocumentProperties, Producer
 from loguru import logger
 
-from ..config import VlmConfig, config
+from ..config import VlmConfig, get_config
 from ..integrations.docvortex import build_metadata, read_source_properties
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..utils.async_utils import run_sync
@@ -87,7 +87,7 @@ def doc_analyze(
 
     middle_json = model_json_to_middle_json(
         model_json,
-        llm_aided_config=config.llm_aided,
+        llm_aided_config=get_config().llm_aided,
     )
     return middle_json, model_json
 
@@ -137,7 +137,7 @@ async def aio_doc_analyze(
         vlm_config=vlm_config,
     )
     model_json = await run_sync(_build_model_json, result, file_suffix, page_index_map, source_properties)
-    middle_json = await aio_model_json_to_middle_json(model_json, llm_aided_config=config.llm_aided)
+    middle_json = await aio_model_json_to_middle_json(model_json, llm_aided_config=get_config().llm_aided)
     return middle_json, model_json
 
 

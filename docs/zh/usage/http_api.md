@@ -1,92 +1,48 @@
 # V1 HTTP API
 
-自部署 V1 API 与 Python SDK、WebUI 使用同一套接口。本页说明一次完整请求周期——创建上传、上传字节、提交解析任务、轮询到终态、下载产物——并指向一个经过测试的示例脚本。Python 客户端见 [Python SDK](sdk_api.md)。
-
-先启动本地服务，或将示例指向任意 V1 部署（包括官方云服务）：
+4.1 使用 Tasks 作为唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](tasks.md)。
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
+MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_task_example.sh a.pdf b.pdf
+OUTPUT_FORMATS=default,docx MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_api_example.sh a.pdf
 ```
 
-## 一次请求解析与异步 tasks
+## 文件清单与上传
 
-API server 和 Router 都提供 `/v1/tasks`、`/v1/file_parse`，与现有 Job 共用后台解析和任务 ID：
+Tasks 与 Files JSON 统一使用 `file_name`；旧字段 `manifest`、`filename` 及新旧混传返回 400。
 
-```bash
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&ocr_mode=txt' \
-  -F 'files=@document.pdf' -o result.json
+向 `POST /v1/tasks` 提交 `application/json`：files 每项包含逻辑 file_name、上传文件的 bytes 和可选 sha256sum/page_range，也可提供 URL（bytes 可省略）。禁止传入 client_file_id 或 file_id；服务端生成唯一 file_id，按输入顺序返回，并在上传、查询、取消和产物下载中保持不变。解析选项为 tier/ocr_mode/page_range/output_formats。
 
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&response_format=zip' \
-  -F 'files=@document.pdf' -o result.zip
+创建返回稳定的 `task_id`；仅需要客户端上传的文件携带 `upload`，包含 `url/headers/expires_at`，其他文件省略该字段。客户端固定使用 PUT 上传缺失文件，使用响应指定的 PUT 地址及请求头，无需 complete。每个文件就绪即独立排队，其他文件等待上传不会阻塞它。
+同机也使用相同流程。SDK 总是计算 hash；已完成上传的有效缓存可以免传。并发首次请求允许重复传输，但源字节去重。缓存默认保留 24 小时、每 5 分钟扫描，正在执行及传输的引用受保护。
 
-MINERU_API_URL=http://127.0.0.1:8002 MODE=async RESPONSE_FORMAT=zip \
-  bash scripts/http_task_example.sh document.pdf
-```
+上传链接固定有效一小时，查询不会续期。截止前已受理上传可继续完成。中断后先查询，进入 pending/running/completed 后跳过上传；waiting-file 且 upload 省略 时只等待，有有效上传目标时才有限重试。过期文件进入 failed，错误码为 upload_expired。
 
-同步等待默认 300 秒，`wait_timeout` 支持 1–3600 秒；超时返回 `202` 和 `task_id/status_url/result_url`，任务继续执行。
-异步提交使用 `POST /v1/tasks`，通过返回的 V1 地址查询状态和结果。JSON 内联 `files[].content`，同时保留逐文件错误和产物引用。
-异步 ZIP 必须提交时请求 `output_formats=zip`；同步 ZIP 自动请求。部分成功返回 `200` 和 `partial`，批量 ZIP 含分目录产物及 manifest。
+## 状态与结果
 
-上传可以是 multipart 或原始字节，也可使用与 V1 Job 相同的 JSON 来源。上传解析参数放查询串，JSON 参数放主体。
-每文件最多 200 MiB，每任务最多 100 文件；批量上传共用页范围，逐文件配置使用 JSON。原始字节需提供 `filename` 和 `Content-Length`。
-上述脚本自动计算 SHA-256 并使用 `Expect: 100-continue`；命中缓存且及时响应时，可跳过主体传输。
-代理缓冲和客户端等待预算会影响省流量效果；直接复用 `file_id` 或现有 uploads 预检仍可可靠避免重复上传。
+使用配置的 API 基址（保留代理前缀）和编码后的 task_id 构造 `GET /v1/tasks/{task_id}` 轮询。父任务状态为 `waiting-file/pending/running/completed/partial/failed/canceled`；通过创建回执中的 `file_id` 对应输入。逐文件使用同一组状态但没有 partial，不再返回 upload_status。waiting-file 包括上传、服务端下载和校验，pending 表示输入已就绪并排队等待解析。
+每个成功文件在 `files[].result_url` 提供唯一下载地址，即使父任务尚未完成也可下载。顶层没有 result_url，不生成跨输入文件的总 ZIP。
 
-Router 的 V1 上传和便捷上传共享按调用方隔离的源字节缓存。上传按负载分配、同负载轮询；任务在上游网络等待前预占名额。
-文件归属仅在最低负载候选中享有优先权，哈希命中也不能把任务固定到繁忙 worker。
-一个批量任务仍整体交给一台 API，需要多 worker 并行时提交多个独立任务。
-外置 worker 当前按容量 1 计权；本地 worker 容量来自 `--worker-concurrency`。这些路由属于当前自部署服务，云端支持情况以具体部署为准。
+| output_formats | 内容 |
+|---|---|
+| default | ZIP：Markdown、Middle JSON、Structured Content、images/ |
+| docx | 图片内嵌的 DOCX |
+| html | 图片内嵌的 HTML |
+| latex | TEX 与 images/ 的 ZIP |
+| 多种 | 对应文件平铺在一个 ZIP 中 |
 
-## 经过测试的示例脚本
+ModelJson 仅在解析内部使用，API、SDK、CLI 和 Gradio 均不输出模型文件。`include_model_output` 已删除，提交该字段返回 400。
+`POST /v1/tasks/{task_id}/cancel` 取消未完成文件。任务和文件列表已移除；Files 保留按 ID 查询元数据和下载结果；不提供任务记录或产物删除接口。逐文件 `parse` 在完成前省略，成功后包含实际 `tier`、耗时和解析器版本；响应顶层不再有 tier。逐文件响应不回显 hash、页范围、底层源缓存 ID 或重复的 name；请求参数仍保留。
 
-包含超时、响应校验、有界轮询、退出码和凭据隔离的完整闭环，以仓库中单一经过测试的脚本维护：
+客户端原样使用结果链接：本地/Router 返回 Files 地址，SaaS 可返回对象存储签名地址。只为 API 同源请求附加 API Key，每次重定向重新判断；签名失效可重新查询结果链接。
 
-> [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/master/scripts/http_api_example.sh)
+## 示例客户端与迁移
 
-```bash
-export MINERU_API_URL=http://127.0.0.1:8000
-export MINERU_API_KEY=secret-key        # 匿名本地访问时省略
-./scripts/http_api_example.sh document.pdf
-```
+两个 shell 示例入口都复用标准库 Python Tasks 客户端。`RESULT_DIR` 指定逐文件目录；`OUTPUT_FORMATS` 默认为 default，`SEND_HASH=0` 可关闭预检 hash。
+使用相同文件顺序设置 `TASK_ID` 可继续原任务。创建请求不自动重试；`MAX_POLLS/POLL_INTERVAL` 限制轮询，`CONNECT_TIMEOUT/REQUEST_TIMEOUT` 限制单次传输。
+退出码为 0（全部成功）、2（部分成功）、1（失败或取消）、124（轮询耗尽）。已下载产物保留。
 
-脚本行为由 `tests/unittest/test_http_api_example_script.py` 在真实 Flash 服务和脚本化 mock 服务上验证，无需下载模型。退出码面向自动化保持稳定：
+旧独立上传和 Jobs 接口已移除，客户端与服务端需协调升级，详见 [4.1 迁移说明](../reference/migration_4_1.md)。需要同步单文件返回时使用独立的 [file-parse 包装服务](file_parse.md)。
 
-| 码 | 含义 |
-| --- | --- |
-| `0` | 任务 completed，全部请求产物已保存 |
-| `1` | 脚本、传输、协议、下载或本地写入失败 |
-| `2` | 任务 partial：已先保存成功文件的产物 |
-| `3` | 任务 failed |
-| `4` | 任务 canceled |
-| `124` | 轮询预算耗尽；打印 `job_id`，可继续轮询 |
-
-## 鉴权与字节上传
-
-服务以 `--api-key` 启动时，`/v1/*` 请求携带 `Authorization: Bearer $MINERU_API_KEY`；匿名本地访问可省略该头。
-
-字节上传原样使用 `POST /v1/uploads` 返回的方法、URL 和请求头：
-
-- 自部署服务返回同源 URL（如 `/v1/uploads/{id}/content`）。同源指 scheme + host + 有效端口，由客户端判断而非假设；同源上传在服务要求鉴权时必须携带 API 鉴权。
-- 官方 API 返回自带授权的预签名对象存储 URL。**不要**向不同源的 URL 附加 MinerU API Key——那会泄露凭据。服务返回的上传头（`upload_headers`）始终原样保留。
-
-示例脚本实现了与 Python SDK（`api_client._same_origin_upload_headers`）相同的规则：相对 URL 先按 API 基地址解析，再比较 scheme + host + 有效端口，仅对同源上传附加 MinerU Key。相对 URL 解析后即同源；同一主机的不同端口按不同源处理。
-
-下载走 `GET /v1/files/{file_id}/content`，可能返回 `302` 重定向。示例跟随重定向但不使用 `--location-trusted`，凭据不会被重新发送到不同源（包括同主机不同端口；要求 curl >= 7.83.0）。
-
-## 脚本刻意覆盖的请求周期细节
-
-- **上传生命周期。** 创建上传时传 `sha256sum` 可启用完整性校验和秒传；命中已存在文件时响应直接为 `completed` 并内嵌 `file` 对象，跳过字节上传和完成两步。
-- **HTTP 200 不等于合法响应。** 脚本在每一步校验 JSON 结构：ID 必须是非空字符串、状态必须属于支持集合；否则立即失败，而不是带着 null ID 进入轮询。
-- **有界轮询。** `MAX_POLLS` 限制轮询请求次数（每次还包括请求超时和轮询间隔）；预算耗尽时脚本退出 `124` 并打印 `job_id`——任务未被取消，可直接继续轮询。
-- **终态。** `completed`、`partial`、`failed`、`canceled` 都是终态。`partial` 表示部分文件成功：脚本先保存成功文件的产物、打印含错误的逐文件结果，然后才退出 `2`；`failed` 退出 `3`，`canceled` 退出 `4`。
-- **原子下载。** 产物先写 `*.part`，成功后才移到最终文件名；`completed` 任务若有产物下载失败或缺失，不会退出 `0`。
-- **产物。** 所有产物都是 `purpose:"parse_output"` 的文件；内容一律通过 `GET /v1/files/{file_id}/content`、用 `files[].output_files` 下的 id 获取。以 `GET /v1/health`（`features.sources`、`features.output_formats`）为当前部署实际能力的依据；渲染器支持的格式不代表 API 暴露。
-
-## 生产部署注意事项
-
-- 谨慎绑定 `--host`。默认 `127.0.0.1` 只监听回环；使用 `0.0.0.0` 暴露到网络时，应配合 `--api-key` 或带鉴权的反向代理。
-- 存储与重启边界：文件字节保存在 `--upload-dir` 下（未配置时为临时目录，正常关闭即删除），但上传/文件/任务的资源索引是进程内状态。即使保留了目录，服务重启后旧的 `upload_id`/`file_id`/任务 ID 也不保证可用。该 API 不是可恢复的持久化任务服务；持久化阅读、索引和缓存需求使用文档库——但文档库不是这套上传/任务接口的透明持久化替代品。
-- `--concurrency` 限制并发解析任务数；超出后表现为 `queued` 时间变长，而不是失败。
-- `GET /v1/usage` 报告用量。用 `/v1/health` 和 `/docs`（启用时）的 OpenAPI 文档区分服务端故障与客户端错误；重试 `failed` 任务前先查看服务端日志。
-
-便捷解析使用 `/v1/file_parse`、`/v1/tasks`；根路径旧接口不提供，旧客户端迁移见[迁移指南](../reference/migration_4.md)。
+POST 创建、GET 详情、POST cancel 和本地 PUT 分别返回创建回执、查询详情、逐文件取消结果和上传确认；Tasks 成功响应省略 null，但保留零值和空集合。POST cancel 取消未完成文件，成功文件的产物仍可直接下载。

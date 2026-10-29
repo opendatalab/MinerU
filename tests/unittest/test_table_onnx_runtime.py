@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
 from mineru.model.runtime import onnx
 
 
@@ -102,7 +103,7 @@ def test_cuda_selection_and_other_onnx_models_stay_cpu(monkeypatch: pytest.Monke
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"]))
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
-    onnx.table_ort_session("model.onnx")
+    onnx.table_ort_session("model.onnx", small_backend="torch")
     call = factory.call_args.kwargs
     assert call["providers"][0][0] == "CUDAExecutionProvider"
     assert call["providers"][0][1]["cudnn_conv_algo_search"] == "HEURISTIC"
@@ -122,6 +123,17 @@ def test_explicit_cpu_overrides_available_cuda_provider(monkeypatch: pytest.Monk
     assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
 
 
+def test_explicit_onnx_stack_keeps_tables_cpu_even_with_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-model backend overrides must win over a globally selected Torch backend."""
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cuda")
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    session = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
+    factory = Mock(return_value=session)
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    assert onnx.table_ort_session("table.onnx", small_backend="onnx") is session
+    assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
+
+
 @pytest.mark.parametrize("device", ["auto", "cuda"])
 @pytest.mark.parametrize("mode", ["unavailable", "exception", "silent"])
 def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.MonkeyPatch, mode: str, device: str) -> None:
@@ -137,7 +149,7 @@ def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.
     warning = Mock()
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     monkeypatch.setattr(onnx.logger, "warning", warning)
-    assert onnx.table_ort_session("table.onnx") is cpu
+    assert onnx.table_ort_session("table.onnx", small_backend="torch") is cpu
     assert warning.called == (mode != "unavailable" or device == "cuda")
     for call in factory.call_args_list:
         opts = call.kwargs["sess_options"]
@@ -172,6 +184,7 @@ def test_all_table_wrappers_use_shared_factory(monkeypatch: pytest.MonkeyPatch, 
     utils.OrtInferSession({"model_path": str(path)})
     assert factory.call_count == 3
     assert all(call.args == (str(path),) for call in factory.call_args_list)
+    assert [call.kwargs.get("model_kind") for call in factory.call_args_list] == [None, None, "unet"]
 
 
 @pytest.mark.parametrize("explicit", [False, True])
@@ -187,7 +200,7 @@ def test_table_structure_entrypoints_use_shared_threads(
     monkeypatch.setenv("MINERU_INTER_OP_NUM_THREADS", "3")
     model = tmp_path / "table.onnx"
     model.touch()
-    config = {"model_path": str(model)}
+    config = {"model_path": str(model), "small_backend": "onnx"}
     if explicit:
         config.update(intra_op_num_threads=2, inter_op_num_threads=1)
     original = config.copy()
@@ -205,3 +218,49 @@ def test_table_structure_entrypoints_use_shared_threads(
         opts = call.kwargs["sess_options"]
         assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == ((2, 1) if explicit else (8, 3))
         assert opts.enable_cpu_mem_arena is False
+
+
+def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from mineru.model.runtime.onnx_device import OnnxSelection
+    from mineru.model.runtime.windows_gpu import GpuAdapter
+    from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet
+
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu")
+    monkeypatch.setenv("MINERU_ONNX_PROFILE_DIR", str(tmp_path / "profiles"))
+    monkeypatch.setenv("MINERU_INTRA_OP_NUM_THREADS", "8")
+    select = Mock(
+        return_value=OnnxSelection(
+            "gpu", with_gpu_classification(GpuAdapter(7, "id", "intel", 0x8086, 1, 0), classify_d3d12_gpu(True)), backend="dml"
+        )
+    )
+    monkeypatch.setattr(onnx, "resolve_onnx_device", select)
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
+    native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())
+    factory = Mock(return_value=native)
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    model = TSRUnet({"model_path": "unet.onnx", "small_backend": "onnx", "intra_op_num_threads": 2})
+    assert isinstance(model.session.session, onnx.DirectMLSession)
+    select.assert_called_once_with(intra_op_num_threads=2, inter_op_num_threads=1)
+    opts = factory.call_args.kwargs["sess_options"]
+    assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == (2, 1)
+    assert not opts.enable_cpu_mem_arena and not opts.enable_mem_pattern
+    assert opts.execution_mode == onnx.ort.ExecutionMode.ORT_SEQUENTIAL
+    assert opts.enable_profiling and Path(opts.profile_file_prefix).parent == tmp_path / "profiles"
+    assert factory.call_args.kwargs["providers"][0] == (
+        "DmlExecutionProvider",
+        {"device_id": 7, "disable_metacommands": "true"},
+    )
+    native.disable_fallback.assert_called_once()
+
+
+@pytest.mark.parametrize("legacy_device", ["cpu", "auto", "cuda"])
+def test_torch_unet_retains_legacy_table_device(monkeypatch: pytest.MonkeyPatch, legacy_device: str) -> None:
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", legacy_device)
+    monkeypatch.setattr(onnx, "resolve_onnx_device", Mock(side_effect=AssertionError("ONNX selection")))
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    onnx.table_ort_session("unet.onnx", small_backend="torch", model_kind="unet")
+    assert factory.call_args.kwargs["providers"][0][0] == (
+        "CPUExecutionProvider" if legacy_device == "cpu" else "CUDAExecutionProvider"
+    )

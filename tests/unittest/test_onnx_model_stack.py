@@ -40,7 +40,7 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
     whole_repo: bool,
 ) -> None:
     """用固定的单来源仓库验证拒绝不可用来源时，已有模型和完整标记均不受影响。"""
-    monkeypatch.setattr(download.config.model, "base_dir", str(tmp_path))
+    monkeypatch.setattr(download.get_config().model, "base_dir", str(tmp_path))
     # 不依赖生产仓库是否已发布到 ModelScope，避免新增来源使负向测试失效。
     repo = download.ModelRepo(
         name="test-huggingface-only",
@@ -71,7 +71,7 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
 
 def test_onnx_required_paths_cannot_be_satisfied_by_legacy_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """旧缓存与根标记均不能替代新 ONNX 仓库的实际文件。"""
-    monkeypatch.setattr(download.config.model, "base_dir", str(tmp_path))
+    monkeypatch.setattr(download.get_config().model, "base_dir", str(tmp_path))
     (tmp_path / "PDF-Extract-Kit-1.0").mkdir()
     repo = registry.MINERU_4_MODELS_ONNX
     repo.local_dir().mkdir()
@@ -100,6 +100,7 @@ def test_ort_providers_remain_cpu_on_accelerated_hosts(monkeypatch: pytest.Monke
 def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """字符顺序、CTC blank 和尾部空格不得重复或错位。"""
     from mineru.model.ocr import pp_ocr_v6_onnx as ocr
+    from mineru.model.runtime.onnx_rec import CompactRecModel
 
     dictionary = tmp_path / "dict.txt"
     dictionary.write_text("中\nA\n", encoding="utf-8")
@@ -107,16 +108,15 @@ def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.M
         get_inputs=lambda: [SimpleNamespace(name="image")],
         get_outputs=lambda: [SimpleNamespace(shape=["batch", "width", 4])],
     )
-    monkeypatch.setattr(ocr, "ort_session", lambda *args: session)
+    monkeypatch.setattr(ocr, "ort_session", lambda *args, **kwargs: session)
+    monkeypatch.setattr(ocr, "prepare_rec_model", lambda path: CompactRecModel("compact.onnx", 4, "source", "compact"))
     recognizer = ocr.TextRecognizerONNX("rec.onnx", str(dictionary))
     logits = np.eye(4, dtype=np.float32)[[1, 1, 0, 2, 3, 3, 0, 1]]
-    assert recognizer._decode(logits) == ("中A 中", 1.0)
-    with pytest.raises(ValueError, match="CTC output shape"):
-        recognizer._decode(np.zeros((3, 5)))
+    assert recognizer._decode(logits.argmax(-1), logits.max(-1)) == ("中A 中", 1.0)
     dictionary.write_text("中\nA\nB\n", encoding="utf-8")
     with pytest.raises(ValueError, match="dictionary requires"):
         ocr.TextRecognizerONNX("rec.onnx", str(dictionary))
-    assert len(PPOCRV6_DICT_PATH.read_text().splitlines()) == 18708
+    assert len(PPOCRV6_DICT_PATH.read_text(encoding="utf-8").splitlines()) == 18708
 
 
 def test_formula_invalid_boxes_do_not_shift_latex_between_items(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,6 +124,7 @@ def test_formula_invalid_boxes_do_not_shift_latex_between_items(monkeypatch: pyt
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     monkeypatch.setattr(model, "_infer_batch", lambda crops, batch_size: ["first", "second"])
     source = [
         [{"label": "display_formula", "bbox": [-8, 0, -1, 5]}, {"label": "inline_formula", "bbox": [1, 1, 8, 8]}],
@@ -165,6 +166,7 @@ def test_formula_eos_stops_before_trailing_tokens() -> None:
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     model.decoder = Mock(return_value=["x"])
     assert model._decode_tokens(np.array([[0, 17, 2, 99, 1]])) == "x"
     np.testing.assert_array_equal(model.decoder.call_args.args[0], [[0, 17, 2]])
@@ -333,6 +335,7 @@ def test_formula_cpu_batch_eight_sorts_and_restores_order(monkeypatch: pytest.Mo
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     model.input_name = "image"
     calls = []
 

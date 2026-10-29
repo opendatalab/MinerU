@@ -1,8 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """ONNX 后端的 PP-FormulaNet-Plus-M 推理封装。
 
-与 ``UnimernetModel``（torch/transformers 后端）公开接口完全一致，
-内部用 onnxruntime CPU 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
+与 ``FormulaRecognizer``（torch/transformers 后端）公开接口完全一致，
+内部用 ONNX Runtime 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
 
 ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 bake 进计算图，
 一次前向推理即可得到完整 LaTeX token 序列。
@@ -13,6 +13,7 @@ ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 b
 from __future__ import annotations
 
 import math
+import threading
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
@@ -21,7 +22,7 @@ import yaml
 from loguru import logger
 from tqdm import tqdm
 
-from ..runtime.onnx import ort_session
+from ..runtime.onnx import create_ort_session, ort_session
 from .pp_formulanet.processors import LatexImageFormat, UniMERNetDecode, UniMERNetImgDecode, UniMERNetTestTransform
 
 __all__ = ["PPFormulaNetPlusMONNX", "CPU_BATCH_SIZE"]
@@ -34,7 +35,7 @@ _EOS_TOKEN_ID = 2
 class PPFormulaNetPlusMONNX:
     """PP-FormulaNet-Plus-M 的 ONNX 推理封装。
 
-    与 ``UnimernetModel`` 的 ``predict`` / ``batch_predict`` 接口完全一致。
+    与 ``FormulaRecognizer`` 的 ``predict`` / ``batch_predict`` 接口完全一致。
 
     差异：
     - 构造函数接收 onnx 文件路径 + yml 配置路径，而非 HF 模型目录
@@ -49,9 +50,14 @@ class PPFormulaNetPlusMONNX:
         device: Optional[str] = None,
         intra_op_num_threads: int = 0,
     ) -> None:
-        """初始化 CPU 公式模型，并复用 Torch Plus-M 的纯 Python 处理器。"""
+        """初始化统一选型的公式模型，并复用 Plus-M 的纯 Python 处理器。"""
         self.device = "cpu"
-        self.session = ort_session(model_path, device, intra_op_num_threads)
+        self.session = ort_session(model_path, device, intra_op_num_threads, model_kind="mfr")
+        self.cpu_tail_enabled = self.session.get_providers()[0] in {"DmlExecutionProvider", "WebGpuExecutionProvider"}
+        self._cpu_tail_session = None
+        self._cpu_tail_lock = threading.Lock()
+        self._model_path = model_path
+        self._intra_op_num_threads = intra_op_num_threads
         self.input_name = self.session.get_inputs()[0].name
 
         # 从 yml 加载 tokenizer
@@ -72,7 +78,7 @@ class PPFormulaNetPlusMONNX:
         )
 
     # ------------------------------------------------------------------
-    # bbox 工具（与 UnimernetModel._normalize_bbox 一致）
+    # bbox 工具（与 FormulaRecognizer._normalize_bbox 一致）
     # ------------------------------------------------------------------
     @staticmethod
     def _normalize_bbox(bbox: Any, image: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
@@ -155,7 +161,7 @@ class PPFormulaNetPlusMONNX:
     # 推理
     # ------------------------------------------------------------------
     def _infer_batch(self, crops: List[np.ndarray], batch_size: int = CPU_BATCH_SIZE) -> List[str]:
-        """按原图面积排序，以最多 8 张的 CPU 批次推理，再恢复原顺序。"""
+        """按原图面积排序，以最多 8 张合批；GPU 路线不足 8 张时用 CPU，最后恢复原顺序。"""
         if not crops:
             return []
 
@@ -177,7 +183,15 @@ class PPFormulaNetPlusMONNX:
             step = min(CPU_BATCH_SIZE, max(1, batch_size))
             for start in range(0, len(valid_inputs), step):
                 inputs = np.concatenate(valid_inputs[start : start + step], axis=0).astype(np.float32)
-                preds = self.session.run(None, {self.input_name: inputs})[0]
+                session = self.session
+                if self.cpu_tail_enabled and inputs.shape[0] < CPU_BATCH_SIZE:
+                    with self._cpu_tail_lock:
+                        if self._cpu_tail_session is None:
+                            self._cpu_tail_session = create_ort_session(
+                                self._model_path, intra_op_num_threads=self._intra_op_num_threads
+                            )
+                        session = self._cpu_tail_session
+                preds = session.run(None, {self.input_name: inputs})[0]
                 if preds.ndim != 2 or preds.shape[0] != inputs.shape[0]:
                     raise ValueError("Formula ONNX output batch does not match input batch")
                 for offset, tokens in enumerate(preds):
@@ -187,7 +201,7 @@ class PPFormulaNetPlusMONNX:
         return results
 
     # ------------------------------------------------------------------
-    # 公开接口（与 UnimernetModel 一致）
+    # 公开接口（与 FormulaRecognizer 一致）
     # ------------------------------------------------------------------
     def predict(
         self,

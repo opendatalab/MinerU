@@ -5,6 +5,9 @@ This section provides detailed reference materials for MinerU project. Here you 
 ## Table of Contents
 
 - [3.x → 4.0 migration](migration_4.md)
+- [4.0.x → 4.1 migration](migration_4_1.md)
+- [Tasks API](../usage/tasks.md)
+- [Synchronous file-parse API](../usage/file_parse.md)
 - [Python SDK](../usage/sdk_api.md)
 
 - [Output Files Documentation](./output_files.md) - Detailed explanation of all output files and their formats

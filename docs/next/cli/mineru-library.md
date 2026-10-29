@@ -55,15 +55,20 @@ JSON 输出中的每条结果至少包含:
 ```bash
 mineru find "report"
 mineru find "report" --ext pdf
+mineru find "report" --ext pdf --limit 50 --offset 100
 ```
 
 行为：
 
 - 查询 `fts_filenames` 和文件 metadata。
 - 支持按 `ext` 过滤。
+- 默认对最后一个查询词进行前缀匹配，例如 `bench` 可匹配 `bench1.pdf`；多词查询仅最后一词匹配前缀。显式 `bench*` 等价。
+- 支持 `--limit/-n`（默认 50）和 `--offset`（默认 0）；limit 必须为正，offset 必须非负。
+- 在扩展名过滤、文件状态刷新后分页，`total` 表示全部有效匹配数，不受单页大小或 200 条候选上限影响。
+- 按相关性及 file id 稳定排序；同一 SHA256 的不同文件路径仍是独立搜索结果。
 - 可返回同一 SHA256 的多个路径。
 - 可用于解析前确认目标文件。
-- 当前 `find` 只暴露 `--ext`、`--limit/-n` 和 `--json`。
+- 超出结果末尾时返回空列表及正确的总数。
 
 `find` JSON 输出中的每条结果至少包含:
 

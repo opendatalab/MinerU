@@ -15,7 +15,7 @@ def render_markdown(
     image_renderer: ImageRenderer | None = None,
 ) -> str:
     """惰性加载 Markdown 实现并渲染严格 MiddleJson。"""
-    from ..config import config
+    from ..config import get_config
     from docvortex.render.markdown import render_markdown as _render_markdown
 
     return _render_markdown(
@@ -23,7 +23,7 @@ def render_markdown(
         mode=mode,
         asset_base_url=asset_base_url,
         image_renderer=image_renderer,
-        latex_delimiters=config.render.latex_delimiters,
+        latex_delimiters=get_config().render.latex_delimiters,
     )
 
 

@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import os
-import re
 import signal
 import sys
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
@@ -19,40 +14,33 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from ..config import config
+from ..config import Config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
-from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
-from ..parser.page_range import (
-    expand_page_range as _expand_page_range,
-    format_page_range as _page_numbers_to_range_str,
-    normalize_page_range_input,
-    normalize_result_page_range,
-)
-from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
-from docvortex.render.markdown import build_markdown_image
-from docvortex.render.markdown import render_single_block
-from docvortex.assets import parse_image_data_uri_strict, transcode_image
-from docvortex.content.tree import iter_image_payloads
-from ..types import (
-    DEPLOYMENT_TIERS,
-    TIERS,
-    BlockBase,
-    BlockType,
-    DeploymentTier,
-    PageBlock,
-    PageInfo,
-    Tier,
-    select_highest_cached_tier,
-)
+from ..filetypes import TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..model.download import verify_model_repo
 from ..model.registry import ModelRepo, model_repos_for_tier
-from docvortex.document.pdf import PDFDocument
+from ..parser.page_range import (
+    expand_page_range as _expand_page_range,
+)
+from ..parser.page_range import (
+    normalize_page_range_input,
+    normalize_result_page_range,
+    parse_page_range_set,
+)
+from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
+from ..parser.server_tiers import model_tier_for_server_tiers
+from ..types import (
+    MANAGED_SERVER_TIERS,
+    ManagedServerTier,
+    Tier,
+)
 from ..version import __version__
-from .background.parse_server_health import get_health, get_managed_parse_server_tier
+from .background.parse_server_health import get_managed_parse_server_tier
+from .parse_server_state import ParseServerHealth
 from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
-from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
+from .core.parse_artifacts import parse_batch_is_readable, parse_coverage
 from .remote_api import REMOTE_API_KEY_CONFIG, resolve_remote_api_key
 from .rows import (
     ContentSearchResultRow,
@@ -61,7 +49,6 @@ from .rows import (
     ExcludeRuleRow,
     FilenameSearchResultRow,
     FileRow,
-    ParseBatchRow,
     ParseRow,
     ParsingRuleRow,
     RecentScanRow,
@@ -71,13 +58,7 @@ from .rows import (
     WatchStatsFileRow,
     WatchTargetRow,
 )
-from .services.parse_svc import (
-    _json_batch_is_readable,
-    accessible_file_for_sha256,
-    filter_pages_by_user_range,
-    load_pages_from_done_batches,
-    parse_page_range_set,
-)
+from .services.content_read_svc import ContentReadService
 from .telemetry.buckets import pages_bucket, results_bucket
 from .types import (
     FILE_STATUS_ACTIVE,
@@ -104,11 +85,7 @@ from .types import (
     ConfigSource,
     ConfigUnsetResponse,
     ConfigValueResponse,
-    ContentAsset,
     ContentFormat,
-    ContentNextRequest,
-    ContentRange,
-    ContentRequestScope,
     DocContentExportRequest,
     DocContentExportResponse,
     DocContentResponse,
@@ -173,63 +150,16 @@ from .types import (
 )
 from .utils.route_utils import get_route_info, has_route_info, route
 
-
-@dataclass(frozen=True)
-class _RenderedContent:
-    content: str
-    content_ranges: list[ContentRange]
-    truncated: bool
-    last_page_no: int
-    next_page_no: int | None = None
-    cut_inside_page: bool = False
-
-
-@dataclass(frozen=True)
-class _ReadPlan:
-    sha256: str
-    short_id: str
-    tier: Tier
-    page_range: str | None
-    after: str | None
-    locator: str | None
-    context: int
-    limit: int
-    format: ContentFormat
-    no_marker: bool
-    image_format: ImageFormat = "jpeg"
-    target: ContentCursor | None = None
-    next_mode: str = "parse"
-
-
 _NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
-
-_VISUAL_BLOCK_LABELS = {
-    BlockType.IMAGE: "Image block",
-    BlockType.TABLE: "Table block",
-    BlockType.CHART: "Chart block",
-    BlockType.EQUATION: "Formula block",
-}
-
-
-@dataclass(frozen=True)
-class _BlockImageSource:
-    kind: str
-    data_uri: str | None = None
-
-
-@dataclass(frozen=True)
-class _LocatorParts:
-    short_id: str
-    tier: Tier | None = None
-    page_no: int | None = None
-    block_no: int | None = None
-    char_offset: int | None = None
 
 
 class DoclibServer(AsyncDoclibInterface):
     """Async doclib server whose routes are declared on interface methods."""
 
-    def __init__(self, state: Any, *, title: str = "MinerU Doclib API") -> None:
+    def __init__(self, state: Any, *, config: Config, health: ParseServerHealth, title: str = "MinerU Doclib API") -> None:
+        """绑定宿主的配置快照和健康状态，不读取进程默认实例。"""
+        self.config = config
+        self.health = health
         self.state = state
         self.app = FastAPI(
             title=title,
@@ -240,6 +170,14 @@ class DoclibServer(AsyncDoclibInterface):
         self.app.add_exception_handler(MineruError, _mineru_error_handler)
         self.app.add_exception_handler(Exception, _unexpected_error_handler)
         self.app.include_router(self._build_router())
+
+    def _content_read_service(self) -> ContentReadService:
+        """将当前应用已初始化的数据库与产物目录传给内容服务。"""
+        return ContentReadService(
+            self.state.db,
+            data_dir=_effective_data_dir(self.state, self.config),
+            latex_delimiters=self.config.render.latex_delimiters,
+        )
 
     def _build_router(self) -> APIRouter:
         endpoints = []
@@ -282,14 +220,18 @@ class DoclibServer(AsyncDoclibInterface):
         watches = await self.state.config_svc.list_watches()
         uptime = time.time() - self.state.start_time if hasattr(self.state, "start_time") else 0
         sqlite_path = getattr(self.state, "sqlite_path", "")
-        log_path = getattr(self.state, "log_path", "")
-        access_log_path = getattr(self.state, "access_log_path", "")
-        stdout_log_path = getattr(self.state, "stdout_log_path", "")
-        stderr_log_path = getattr(self.state, "stderr_log_path", "")
-        parse_server_stdout_log_path = getattr(self.state, "parse_server_stdout_log_path", "")
-        parse_server_stderr_log_path = getattr(self.state, "parse_server_stderr_log_path", "")
+        log_path = getattr(self.state, "log_path", "") or self.config.doclib.log.resolved_app_path
+        access_log_path = getattr(self.state, "access_log_path", "") or self.config.doclib.log.resolved_access_path
+        stdout_log_path = getattr(self.state, "stdout_log_path", "") or self.config.doclib.log.resolved_stdout_path
+        stderr_log_path = getattr(self.state, "stderr_log_path", "") or self.config.doclib.log.resolved_stderr_path
+        parse_server_stdout_log_path = (
+            getattr(self.state, "parse_server_stdout_log_path", "") or self.config.doclib.log.resolved_parse_server_stdout_path
+        )
+        parse_server_stderr_log_path = (
+            getattr(self.state, "parse_server_stderr_log_path", "") or self.config.doclib.log.resolved_parse_server_stderr_path
+        )
         sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
-        health = get_health()
+        health = self.health
 
         return ServerStatusResponse(
             running=True,
@@ -330,7 +272,7 @@ class DoclibServer(AsyncDoclibInterface):
             ),
             files_total=files_total["cnt"] if files_total else 0,
             docs_total=docs_total["cnt"] if docs_total else 0,
-            parse_queue_length=await self.state.parse_svc.get_queue_length(),
+            parse_queue_length=await self.state.parse_queue_svc.get_queue_length(),
             ingest_queue_length=ingest_q["cnt"] if ingest_q else 0,
             parse_server=_parse_server_status(
                 local_mode=local_mode,
@@ -368,7 +310,7 @@ class DoclibServer(AsyncDoclibInterface):
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "parse.request.count")
         try:
-            result = await self.state.parse_svc.request_parse(
+            result = await self.state.parse_queue_svc.request_parse(
                 request.path,
                 tier=request.tier,
                 page_range=request.page_range,
@@ -420,9 +362,9 @@ class DoclibServer(AsyncDoclibInterface):
             row
             for row in rows
             if row["status"] != PARSE_STATUS_DONE
-            or _json_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            or parse_batch_is_readable(_effective_data_dir(self.state, self.config), row["sha256"], row["tier"], row)
         ]
-        coverage = _parse_coverage(page_range, coverage_rows) if resolved_sha256 and tier and page_range else None
+        coverage = parse_coverage(page_range, coverage_rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
             parses=[_parse_info(row, coverage=coverage) for row in rows],
             coverage=coverage,
@@ -449,7 +391,7 @@ class DoclibServer(AsyncDoclibInterface):
         file_row: FileRow | None = None
         sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
-            file_row = await self.state.parse_svc.ensure_ingested(request.path)
+            file_row = await self.state.ingest_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
@@ -461,7 +403,7 @@ class DoclibServer(AsyncDoclibInterface):
             )
 
         short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
-        count = await self.state.parse_svc.invalidate(sha256, request.tier)
+        count = await self.state.parse_queue_svc.invalidate(sha256, request.tier)
         return InvalidateResponse(
             target=request.target, sha256=sha256, short_id=short_id, tier=request.tier, invalidated_count=count
         )
@@ -574,7 +516,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/docs/by-path", tags=("docs",))
     async def get_doc_by_path(self, path: str) -> DocInfo:
-        await self.state.parse_svc.ensure_ingested(path)
+        await self.state.ingest_svc.ensure_ingested(path)
         row = await self.state.db.fetchone(
             "SELECT d.* FROM docs d JOIN files f ON f.sha256=d.sha256 WHERE f.path=? AND f.status=?",
             (path, FILE_STATUS_ACTIVE),
@@ -605,16 +547,14 @@ class DoclibServer(AsyncDoclibInterface):
         dims = {"content_mode": "read", "output_format": _telemetry_output_format(format), "tier": tier}
         await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
         try:
-            response = await self._execute_read_plan(
-                await self._build_read_plan_from_parse(
-                    doc_ref,
-                    tier=tier,
-                    page_range=page_range,
-                    after=after,
-                    limit=limit,
-                    format=format,
-                    no_marker=no_marker,
-                )
+            response = await self._content_read_service().read_document(
+                doc_ref,
+                tier=tier,
+                page_range=page_range,
+                after=after,
+                limit=limit,
+                format=format,
+                no_marker=no_marker,
             )
             finished_dims = dims | {"status": "succeeded"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
@@ -631,25 +571,26 @@ class DoclibServer(AsyncDoclibInterface):
         self,
         locator: str,
         *,
+        after: str | None = None,
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
         image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
+        """读取共享语法的页选择；范围续读只访问选择中的未完成内容。"""
         start_ms = _now_ms()
         dims = {"content_mode": "read", "output_format": _telemetry_output_format(format), "tier": "unknown"}
         await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
         try:
-            response = await self._execute_read_plan(
-                await self._build_read_plan_from_locator(
-                    locator,
-                    context=context,
-                    limit=limit,
-                    format=format,
-                    image_format=image_format,
-                    no_marker=no_marker,
-                )
+            response = await self._content_read_service().read_locator(
+                locator,
+                after=after,
+                context=context,
+                limit=limit,
+                format=format,
+                image_format=image_format,
+                no_marker=no_marker,
             )
             finished_dims = dims | {"status": "succeeded", "tier": response.tier}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
@@ -661,125 +602,17 @@ class DoclibServer(AsyncDoclibInterface):
             await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
             raise
 
-    async def _build_read_plan_from_parse(
-        self,
-        doc_ref: str,
-        *,
-        tier: Tier,
-        page_range: str | None,
-        after: str | None,
-        limit: int,
-        format: str,
-        no_marker: bool,
-    ) -> _ReadPlan:
-        if format != "markdown":
-            raise InvalidRequestError("invalid_request", "Only markdown is currently implemented for parse content.", "format")
-        limit = max(1, limit)
-        doc = await self._doc_for_ref(doc_ref, param="doc_ref")
-
-        normalized_page_range = _normalize_content_page_range(page_range, after, doc)
-        after_cursor = _parse_after_cursor(after)
-        if after_cursor:
-            _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
-        return _ReadPlan(
-            sha256=doc["sha256"],
-            tier=tier,
-            short_id=doc["short_id"],
-            page_range=normalized_page_range,
-            after=after,
-            limit=limit,
-            format="markdown",
-            no_marker=no_marker,
-            locator=None,
-            context=0,
-            target=None,
-            next_mode="parse",
-        )
-
-    async def _build_read_plan_from_locator(
-        self,
-        locator: str,
-        *,
-        context: int,
-        limit: int,
-        format: ContentFormat,
-        image_format: ImageFormat,
-        no_marker: bool,
-    ) -> _ReadPlan:
-        limit = max(1, limit)
-        context = max(0, context)
-        cursor = _parse_doc_locator(locator)
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (cursor.short_id,)))
-        if doc is None:
-            raise NotFoundError("doc_not_found", f"Document {cursor.short_id} not found.", "locator")
-        if doc["file_type"] in TEXT_FILE_TYPES:
-            raise InvalidRequestError(
-                "parse_not_required",
-                "Text files do not require MinerU parsing. Read the file directly.",
-                "locator",
-            )
-
-        tier = cursor.tier or await self._default_read_tier(doc["sha256"])
-        if tier is None:
-            raise NotFoundError(
-                "tier_not_cached",
-                f"No current parsed tier is cached for document {cursor.short_id}; reparse the source document.",
-                "locator",
-            )
-        if format == "image" and context:
-            raise InvalidRequestError("context_not_applicable", "context is not supported for image reads.", "context")
-        if cursor.page_no is None and context:
-            raise InvalidRequestError("context_not_applicable", "context requires a page, block, or char locator.", "context")
-
-        page_range = _locator_page_range(cursor, doc, context)
-        return _ReadPlan(
-            sha256=doc["sha256"],
-            short_id=doc["short_id"],
-            tier=tier,
-            page_range=page_range,
-            after=_locator_after(cursor, tier),
-            locator=_canonical_locator(doc["short_id"], tier, cursor),
-            context=context,
-            limit=limit,
-            format=format,
-            image_format=image_format,
-            no_marker=no_marker,
-            target=ContentCursor(
-                short_id=doc["short_id"],
-                tier=tier,
-                page_no=cursor.page_no or 1,
-                block_no=cursor.block_no,
-                char_offset=cursor.char_offset,
-            )
-            if cursor.page_no is not None
-            else None,
-            next_mode="read",
-        )
-
     @route("POST", "/docs/{doc_ref}/exports", tags=("docs",))
     async def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
         start_ms = _now_ms()
         dims = {"content_mode": "export", "output_format": _telemetry_output_format(request.format), "tier": request.tier}
         await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
         try:
-            doc = await self._doc_for_ref(doc_ref, param="doc_ref")
-            content = await self._render_doc_content(
-                doc["sha256"],
-                tier=request.tier,
-                page_range=request.page_range,
-                format=request.format,
-                no_marker=request.no_marker,
-            )
-            output_path = os.path.abspath(request.output)
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            response = await self._content_read_service().export_document(doc_ref, request)
             finished_dims = dims | {"status": "succeeded"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
             await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
-            return DocContentExportResponse(
-                sha256=doc["sha256"], short_id=doc["short_id"], tier=request.tier, output=output_path
-            )
+            return response
         except Exception:
             finished_dims = dims | {"status": "failed"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
@@ -823,7 +656,8 @@ class DoclibServer(AsyncDoclibInterface):
             raise
 
     @route("GET", "/find", tags=("search",))
-    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
+        """返回完整有效匹配数，并按调用方指定的偏移量分页。"""
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "find.request.count")
         try:
@@ -831,7 +665,8 @@ class DoclibServer(AsyncDoclibInterface):
                 query=query,
                 ext=ext,
                 limit=limit,
-                refresh_file=self.state.parse_svc.refresh_file,
+                offset=offset,
+                refresh_file=self.state.ingest_svc.refresh_file,
             )
             response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
@@ -847,7 +682,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/files/by-path", tags=("files",))
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
-        await self.state.parse_svc.ensure_ingested(path)
+        await self.state.ingest_svc.ensure_ingested(path)
         file_row = await self.state.db.fetchone(
             """
             SELECT f.*, d.short_id AS short_id
@@ -879,7 +714,7 @@ class DoclibServer(AsyncDoclibInterface):
             _tier_parse_info(row)
             for row in parse_rows
             if row["status"] == PARSE_STATUS_DONE
-            and _json_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            and parse_batch_is_readable(_effective_data_dir(self.state, self.config), row["sha256"], row["tier"], row)
         ]
         active_parses = [
             _parse_info(row) for row in parse_rows if row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}
@@ -931,8 +766,24 @@ class DoclibServer(AsyncDoclibInterface):
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
+        if key in {"parse_server.local.managed_tier", "parse_server.local.mode"}:
+            await self._refresh_managed_tier_transition()
         value, source = await self._effective_config_value(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _refresh_managed_tier_transition(self) -> None:
+        """按最新有效配置撤销旧托管服务探测结果，并唤醒串行重启任务。"""
+        mode = await self.state.config_svc.get("parse_server.local.mode")
+        if mode != "managed":
+            return
+        tier = await get_managed_parse_server_tier(self.state.config_svc)
+        health = self.health
+        if health.local_mode == "managed" and health.managed_tier == tier and health.running_managed_tier == tier:
+            return
+        health.begin_managed_tier_transition(tier)
+        health_check = getattr(self.state, "health_check", None)
+        if health_check is not None:
+            health_check.wakeup()
 
     async def _effective_config_value(self, key: str) -> tuple[str | None, ConfigSource]:
         if key == REMOTE_API_KEY_CONFIG:
@@ -956,6 +807,8 @@ class DoclibServer(AsyncDoclibInterface):
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
         removed = await self.state.config_svc.unset(key)
+        if key in {"parse_server.local.managed_tier", "parse_server.local.mode"}:
+            await self._refresh_managed_tier_transition()
         value, source = await self._effective_config_value(key)
         return ConfigUnsetResponse(key=key, value=_mask_config_value(key, value or ""), source=source, removed=removed)
 
@@ -1218,172 +1071,6 @@ class DoclibServer(AsyncDoclibInterface):
         total = total_row["cnt"] if total_row else 0
         return rows, total, limit, offset
 
-    async def _render_doc_content(
-        self,
-        sha256: str,
-        *,
-        tier: Tier,
-        page_range: str | None,
-        format: str,
-        no_marker: bool,
-    ) -> str:
-        if format != "markdown":
-            raise InvalidRequestError("invalid_request", "Only markdown is currently implemented.", "format")
-        data_dir = _effective_data_dir(self.state)
-        rows = await self.state.db.fetchall(
-            "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
-            (sha256, tier, PARSE_STATUS_DONE),
-        )
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
-        if doc is None:
-            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
-        page_range = normalize_page_range_input(page_range)
-        if page_range and doc["page_count"] is not None:
-            page_range = _expand_page_range(page_range, doc["page_count"])
-        requested = parse_page_range_set(page_range) if page_range and page_range != "all" else None
-        loaded_pages = load_pages_from_done_batches(
-            data_dir,
-            sha256,
-            tier,
-            cast(list[ParseBatchRow], rows),
-            requested_page_numbers=requested,
-        )
-        if requested is not None:
-            loaded_pages = [page for page in loaded_pages if page.page_idx + 1 in requested]
-        if not loaded_pages:
-            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
-        output: list[str] = []
-        page_count = doc["page_count"]
-        for page in loaded_pages:
-            if not no_marker:
-                output.append(_page_marker(page.page_idx + 1, page_count))
-            output.extend(
-                text
-                for _, text in _page_markdown_blocks(
-                    page,
-                    short_id=doc["short_id"],
-                    tier=tier,
-                )
-            )
-        return "\n\n".join(output)
-
-    async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
-        data_dir = _effective_data_dir(self.state)
-        rows = await self.state.db.fetchall(
-            "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
-            (plan.sha256, plan.tier, PARSE_STATUS_DONE),
-        )
-        loaded_pages = load_pages_from_done_batches(
-            data_dir,
-            plan.sha256,
-            plan.tier,
-            cast(list[ParseBatchRow], rows),
-            requested_page_numbers=parse_page_range_set(plan.page_range) if plan.page_range else None,
-        )
-        if plan.page_range:
-            loaded_pages = filter_pages_by_user_range(loaded_pages, plan.page_range)
-        if not loaded_pages:
-            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
-
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (plan.sha256,)))
-        if plan.format == "image":
-            return await self._render_image_response(plan, loaded_pages)
-
-        pages_for_render = _select_context_pages(loaded_pages, plan.target, plan.context)
-        rendered = _render_progressive_markdown(
-            pages_for_render,
-            short_id=plan.short_id,
-            tier=plan.tier,
-            after=_parse_after_cursor(plan.after),
-            limit=plan.limit,
-            add_markers=not plan.no_marker,
-            target=plan.target,
-            context=plan.context,
-            page_count=doc["page_count"] if doc else None,
-        )
-        if not rendered.content_ranges:
-            raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
-
-        page_count = doc["page_count"] if doc else None
-        paginated = _is_paginated_doc(doc) if doc else True
-        next_request = (
-            _next_read_request(rendered, plan.short_id, plan.tier, page_count)
-            if plan.next_mode == "read"
-            else _next_content_request(
-                rendered=rendered,
-                request_page_range=plan.page_range,
-                after=plan.after,
-                page_count=page_count,
-                paginated=paginated,
-            )
-        )
-        return DocContentResponse(
-            sha256=plan.sha256,
-            short_id=plan.short_id,
-            tier=plan.tier,
-            format="markdown",
-            content=rendered.content,
-            request_scope=ContentRequestScope(
-                page_range=plan.page_range,
-                after=plan.after,
-                limit=plan.limit,
-                locator=plan.locator,
-                context=plan.context,
-            ),
-            content_ranges=rendered.content_ranges,
-            truncated=rendered.truncated,
-            next_request=next_request,
-        )
-
-    async def _render_image_response(
-        self,
-        plan: _ReadPlan,
-        loaded_pages: list[PageInfo],
-    ) -> DocContentResponse:
-        if plan.target is None or plan.target.page_no is None:
-            raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
-        if plan.page_range and len(parse_page_range_set(plan.page_range)) != 1:
-            raise InvalidRequestError("multi_page_image_not_supported", "image format supports only one page.", "locator")
-        page = _find_page(loaded_pages, plan.target.page_no)
-        if page is None:
-            raise NotFoundError("page_not_cached", f"Page {plan.target.page_no} is not cached.", "locator")
-
-        if plan.target.block_no is None:
-            asset = await self._render_source_image_asset(plan, page)
-        else:
-            block = _find_block_by_no(page, plan.target.block_no)
-            if block is None:
-                raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
-            source = _resolve_block_image_source(block)
-            if source is None:
-                raise NotFoundError("asset_not_available", "Block image asset is not available.", "locator")
-            if source.kind == "source_bbox":
-                asset = await self._render_source_image_asset(plan, page)
-            else:
-                assert source.data_uri is not None
-                asset = self._render_base64_image_asset(plan, source.data_uri)
-
-        target_ref = plan.locator or page_ref(plan.short_id, plan.tier, plan.target.page_no)
-        return DocContentResponse(
-            sha256=plan.sha256,
-            short_id=plan.short_id,
-            tier=plan.tier,
-            format="image",
-            content="",
-            request_scope=ContentRequestScope(
-                page_range=plan.page_range,
-                after=plan.after,
-                limit=plan.limit,
-                locator=plan.locator,
-                context=plan.context,
-                image_format=plan.image_format,
-            ),
-            content_ranges=[ContentRange(page_range=str(plan.target.page_no), start=target_ref, end=target_ref)],
-            truncated=False,
-            next_request=None,
-            asset=asset,
-        )
-
     async def _sha256_for_path(self, path: str) -> str | None:
         row = cast(
             Sha256Row | None,
@@ -1398,10 +1085,8 @@ class DoclibServer(AsyncDoclibInterface):
         return row
 
     async def _maybe_doc_for_ref(self, doc_ref: str) -> DocRow | None:
-        row = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (doc_ref,)))
-        if row is not None:
-            return row
-        return cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (doc_ref,)))
+        """通过内容服务统一解析完整和短文档标识。"""
+        return await self._content_read_service().find_document(doc_ref)
 
     async def _resolve_doc_filter_sha256(self, doc_ref: str | None) -> str | None:
         if doc_ref is None:
@@ -1431,150 +1116,6 @@ class DoclibServer(AsyncDoclibInterface):
             ),
         )
         return [_file_info(row) for row in rows]
-
-    async def _default_read_tier(self, sha256: str) -> Tier | None:
-        rows = cast(
-            list[ParseRow],
-            await self.state.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
-                (sha256, PARSE_STATUS_DONE),
-            ),
-        )
-        tiers: set[Tier] = {
-            row["tier"]
-            for row in rows
-            if row["tier"] in TIERS
-            and row["tier"] != "flash"
-            and _json_batch_is_readable(_effective_data_dir(self.state), sha256, row["tier"], row)
-        }
-        if not tiers:
-            return None
-        return select_highest_cached_tier(tiers)
-
-    async def _render_source_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
-        """查找源文件并调用公共图像输出，保留 Doclib 定位与错误协议。"""
-        if plan.target is None:
-            raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
-        file_row = await accessible_file_for_sha256(self.state.db, plan.sha256)
-        if file_row is None:
-            raise NotFoundError("no_accessible_file", "No active source file found for this document.", "locator")
-        source_path = file_row["path"]
-        source_ext = str(file_row.get("ext") or Path(source_path).suffix).lower().lstrip(".")
-        source_bytes = Path(source_path).read_bytes()
-        if source_ext == "pdf":
-            doc = PDFDocument(source_bytes)
-        elif source_ext in IMAGE_EXTENSIONS:
-            doc = PDFDocument.from_image(source_bytes)
-        else:
-            raise InvalidRequestError(
-                "format_not_supported",
-                "Page and bbox image output is only supported for PDF and image sources.",
-                "format",
-            )
-        with doc:
-            bbox = None
-            if plan.target.block_no is not None:
-                block = _find_block_by_no(page, plan.target.block_no)
-                if block is None:
-                    raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
-                if block.bbox is None or _is_empty_bbox(block.bbox):
-                    raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
-                bbox = block.bbox
-            artifact = doc.render_image(plan.target.page_no - 1, bbox=bbox, image_format=plan.image_format)
-        return _write_temp_asset(
-            self.state.data_dir,
-            plan.short_id,
-            artifact.extension,
-            artifact.data,
-            mime_type=artifact.mime_type,
-            width=artifact.width,
-            height=artifact.height,
-        )
-
-    def _render_base64_image_asset(self, plan: _ReadPlan, data_uri: str) -> ContentAsset:
-        """通过公共素材接口解码并转码，Doclib 只负责临时资产写出。"""
-        image_bytes, _extension = parse_image_data_uri_strict(data_uri)
-        artifact = transcode_image(image_bytes, image_format=plan.image_format)
-        return _write_temp_asset(
-            self.state.data_dir,
-            plan.short_id,
-            artifact.extension,
-            artifact.data,
-            mime_type=artifact.mime_type,
-            width=artifact.width,
-            height=artifact.height,
-        )
-
-
-_READ_LOCATOR_RE = re.compile(
-    r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"(?:/tier:(?P<tier>flash|basic|standard|advanced)"
-    r"(?:/page:(?P<page_no>[1-9][0-9]*)"
-    r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
-)
-
-
-def _parse_doc_locator(locator: str) -> _LocatorParts:
-    match = _READ_LOCATOR_RE.match(locator)
-    if match is None:
-        raise InvalidRequestError("invalid_locator", f"Invalid doclib locator: {locator}", "locator")
-    page_no = match.group("page_no")
-    block_no = match.group("block_no")
-    char_offset = match.group("char_offset")
-    return _LocatorParts(
-        short_id=match.group("short_id"),
-        tier=cast(Tier | None, match.group("tier")),
-        page_no=int(page_no) if page_no is not None else None,
-        block_no=int(block_no) if block_no is not None else None,
-        char_offset=int(char_offset) if char_offset is not None else None,
-    )
-
-
-def _canonical_locator(short_id: str, tier: Tier, locator: _LocatorParts) -> str:
-    if locator.page_no is None:
-        return f"doc:{short_id}/tier:{tier}"
-    if locator.block_no is None:
-        return page_ref(short_id, tier, locator.page_no)
-    if locator.char_offset is None:
-        return block_ref(short_id, tier, locator.page_no, locator.block_no)
-    return block_char_ref(short_id, tier, locator.page_no, locator.block_no, locator.char_offset)
-
-
-def _locator_after(locator: _LocatorParts, tier: Tier) -> str | None:
-    if locator.page_no is None:
-        return None
-    if locator.block_no is None:
-        return None
-    return _canonical_locator(locator.short_id, tier, locator) if locator.char_offset is not None else None
-
-
-def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
-    page_count = doc.get("page_count") or 1
-    if locator.page_no is None:
-        return _normalize_content_page_range(None, None, doc)
-    if locator.page_no > page_count:
-        return _normalize_page_range(str(locator.page_no), page_count)
-    start = max(1, locator.page_no - context)
-    end = min(page_count, locator.page_no + context)
-    return _range_str(start, end)
-
-
-def _parse_after_cursor(after: str | None) -> ContentCursor | None:
-    if not after:
-        return None
-    try:
-        return parse_content_cursor(after)
-    except ValueError as exc:
-        raise InvalidRequestError("invalid_locator", str(exc), "after") from None
-
-
-def _validate_cursor_for_doc(cursor: ContentCursor, doc: DocRow, tier: Tier, page_range: str | None) -> None:
-    if cursor.short_id != doc["short_id"]:
-        raise InvalidRequestError("invalid_request", "after cursor does not belong to this document.", "after")
-    if cursor.tier != tier:
-        raise InvalidRequestError("invalid_request", "after cursor tier does not match request tier.", "after")
-    if page_range and cursor.page_no not in parse_page_range_set(page_range):
-        raise InvalidRequestError("invalid_request", "after cursor is outside requested page_range.", "after")
 
 
 def _mask_config(config: dict[str, str]) -> dict[str, str]:
@@ -1622,7 +1163,7 @@ def _parse_server_status(
         local=LocalParseServerStatus(
             mode=local_mode,
             healthy=health.local.probe.healthy,
-            starting=health.local_starting,
+            starting=health.local_starting or (local_mode == "managed" and getattr(health, "managed_tier_transition", False)),
             started_at=health.local_started_at or None,
             url=local_url,
             port=_port_from_url(local_url),
@@ -1653,17 +1194,23 @@ def _parse_server_status(
     )
 
 
-def _ensure_managed_parse_server_tier_available(tier: DeploymentTier, param: str) -> None:
+def _ensure_managed_parse_server_tier_available(tier: ManagedServerTier, param: str) -> None:
+    """按托管上限检查模型配置，Advanced 复用 Standard 依赖。"""
+    model_tier = model_tier_for_server_tiers((tier,))
+    assert model_tier is not None
     try:
-        ensure_tier_runtime_dependencies(tier)
+        ensure_tier_runtime_dependencies(model_tier)
     except TierDependencyError as exc:
         raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
     _ensure_managed_parse_server_models_ready(tier, param)
 
 
-def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) -> None:
+def _ensure_managed_parse_server_models_ready(tier: ManagedServerTier, param: str) -> None:
+    """检查上限所需的共享模型，并给出真实可用的模型下载参数。"""
+    model_tier = model_tier_for_server_tiers((tier,))
+    assert model_tier is not None
     missing_repos: list[str] = []
-    for repo in model_repos_for_tier(tier):
+    for repo in model_repos_for_tier(model_tier):
         result = verify_model_repo(repo)
         if result.ready:
             continue
@@ -1676,7 +1223,7 @@ def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) 
     raise InvalidRequestError(
         "parse_server_model_not_ready",
         f"Local managed tier '{tier}' requires model files that are not ready. {details}. "
-        f"Run: mineru-kit models download --tier {tier}",
+        f"Run: mineru-kit models download --tier {model_tier}",
         param,
     )
 
@@ -1686,14 +1233,14 @@ def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str
     return f"{repo.name} missing: {missing}"
 
 
-def _validate_managed_parse_server_tier(value: str, param: str) -> DeploymentTier:
-    if value not in DEPLOYMENT_TIERS:
+def _validate_managed_parse_server_tier(value: str, param: str) -> ManagedServerTier:
+    if value not in MANAGED_SERVER_TIERS:
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: basic, standard.",
+            "parse_server.local.managed_tier must be one of: basic, standard, advanced.",
             param,
         )
-    return cast(DeploymentTier, value)
+    return cast(ManagedServerTier, value)
 
 
 def _port_from_url(url: str | None) -> int | None:
@@ -1728,396 +1275,7 @@ async def _sqlite_journal_mode(db: DatabaseManager) -> str | None:
     return cast(str | None, row.get("journal_mode"))
 
 
-def _is_paginated_doc(doc: DocRow) -> bool:
-    page_count = doc.get("page_count")
-    return page_count is not None and page_count > 1
-
-
-def _normalize_content_page_range(page_range: str | None, after: str | None, doc: DocRow) -> str | None:
-    page_range = normalize_page_range_input(page_range)
-    page_count = doc.get("page_count") or 1
-    if _is_paginated_doc(doc):
-        if page_range and page_range.strip() == "all":
-            return _expand_page_range("all", page_count)
-        if page_range:
-            return _normalize_page_range(page_range, page_count)
-        if after:
-            cursor = _parse_after_cursor(after)
-            assert cursor is not None
-            end = min(page_count, cursor.page_no + 9)
-            return _range_str(cursor.page_no, end)
-        end = min(page_count, 10)
-        return _range_str(1, end)
-    if page_range and page_range.strip() == "all":
-        return None
-    return _normalize_page_range(page_range, page_count) if page_range else None
-
-
-def _normalize_page_range(page_range: str, page_count: int) -> str:
-    return _expand_page_range(page_range, page_count)
-
-
-def _select_context_pages(pages: list[PageInfo], target: ContentCursor | None, context: int) -> list[PageInfo]:
-    if target is None or target.page_no is None or context <= 0:
-        return pages
-    start = target.page_no - context
-    end = target.page_no + context
-    return [page for page in pages if start <= page.page_idx + 1 <= end]
-
-
-def _find_page(pages: list[PageInfo], page_no: int) -> PageInfo | None:
-    return next((page for page in pages if page.page_idx + 1 == page_no), None)
-
-
-def _find_block_by_no(page: PageInfo, block_no: int) -> PageBlock | None:
-    target_index = block_no - 1
-    return next((block for block in page.blocks if block.index == target_index), None)
-
-
-def _is_empty_bbox(bbox: object) -> bool:
-    if not isinstance(bbox, (tuple, list)) or len(bbox) != 4:
-        return True
-    try:
-        values = [float(v) for v in bbox]
-    except (TypeError, ValueError):
-        return True
-    if not all(math.isfinite(value) for value in values):
-        return True
-    return values[0] >= values[2] or values[1] >= values[3]
-
-
-def _resolve_block_image_source(block: BlockBase) -> _BlockImageSource | None:
-    if not _is_empty_bbox(block.bbox):
-        return _BlockImageSource(kind="source_bbox")
-    for payload in iter_image_payloads(block):
-        if payload.image_base64:
-            return _BlockImageSource(kind="base64", data_uri=payload.image_base64)
-    return None
-
-
-def _make_doclib_image_renderer(
-    *,
-    short_id: str,
-    tier: Tier,
-    page_no: int,
-) -> Callable[[BlockBase], str]:
-    def _render(block: BlockBase) -> str:
-        label = _VISUAL_BLOCK_LABELS.get(block.type, "Image block")
-        source = _resolve_block_image_source(block)
-        if source is not None:
-            block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
-            return build_markdown_image(block_ref(short_id, tier, page_no, block_no), label)
-        remote_url = next((payload.image_url for payload in iter_image_payloads(block) if payload.image_url), None)
-        return build_markdown_image(remote_url, label) if remote_url is not None else f"![{label}]()"
-
-    return _render
-
-
-def _write_temp_asset(
-    data_dir: str,
-    short_id: str,
-    ext: str,
-    image_bytes: bytes,
-    *,
-    mime_type: str,
-    width: int | None,
-    height: int | None,
-) -> ContentAsset:
-    safe_ext = ext.lower().lstrip(".") or "png"
-    output_dir = Path(os.path.expanduser(data_dir)) / "temp" / "read-assets"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{short_id}-{int(time.time() * 1000)}.{safe_ext}"
-    path.write_bytes(image_bytes)
-    return ContentAsset(
-        path=str(path),
-        mime_type=mime_type,
-        size_bytes=len(image_bytes),
-        width=width,
-        height=height,
-    )
-
-
-def _render_progressive_markdown(
-    pages: list[PageInfo],
-    *,
-    short_id: str,
-    tier: Tier,
-    after: Any,
-    limit: int,
-    add_markers: bool,
-    target: ContentCursor | None = None,
-    context: int = 0,
-    page_count: int | None = None,
-) -> _RenderedContent:
-    output: list[str] = []
-    ranges: list[ContentRange] = []
-    started = after is None
-    last_page_no = 0
-    next_page_no: int | None = None
-    cut_inside_page = False
-
-    for page in pages:
-        page_no = page.page_idx + 1
-        if after and page_no < after.page_no:
-            continue
-        page_blocks = _page_markdown_blocks(
-            page,
-            short_id=short_id,
-            tier=tier,
-        )
-        if target and target.block_no is not None and page_no == target.page_no:
-            start_block_no = max(1, target.block_no - context)
-            end_block_no = target.block_no + context
-            page_blocks = [(index, text) for index, text in page_blocks if start_block_no <= index + 1 <= end_block_no]
-        page_output: list[str] = []
-        page_start_cursor = page_ref(short_id, tier, page_no)
-        page_end_cursor = page_ref(short_id, tier, page_no)
-        page_started = False
-        empty_page_selected = False
-
-        for block_index, block_text in page_blocks:
-            block_no = block_index + 1
-            if after and page_no == after.page_no:
-                if after.block_no is None:
-                    continue
-                if block_no < after.block_no:
-                    continue
-                if block_no == after.block_no and after.char_offset is None:
-                    continue
-            started = True
-            text = block_text
-            block_start_offset = 0
-            if after and page_no == after.page_no and after.block_no == block_no and after.char_offset is not None:
-                block_start_offset = after.char_offset
-                text = text[block_start_offset:]
-            if not text:
-                continue
-            block_start_cursor = (
-                block_char_ref(short_id, tier, page_no, block_no, block_start_offset)
-                if block_start_offset
-                else block_ref(short_id, tier, page_no, block_no)
-            )
-            if not page_started:
-                page_start_cursor = block_start_cursor if after and after.block_no is not None else page_start_cursor
-                page_started = True
-            candidate_page = [*page_output, text]
-            candidate_content = _join_markdown([*output, *candidate_page])
-            if len(candidate_content) <= limit:
-                page_output.append(text)
-                page_end_cursor = block_ref(short_id, tier, page_no, block_no)
-                continue
-
-            if page_output and not output:
-                cut_inside_page = True
-                break
-            if output:
-                next_page_no = page_no
-                return _RenderedContent(
-                    content=_join_markdown(output),
-                    content_ranges=_merge_content_ranges(ranges),
-                    truncated=True,
-                    last_page_no=last_page_no,
-                    next_page_no=next_page_no,
-                    cut_inside_page=False,
-                )
-
-            cut = _soft_cut(text, limit)
-            if cut <= 0:
-                cut = min(len(text), limit)
-            page_output.append(text[:cut])
-            end_offset = block_start_offset + cut
-            page_end_cursor = block_char_ref(short_id, tier, page_no, block_no, end_offset)
-            cut_inside_page = True
-            break
-
-        if not page_output and after and page_no == after.page_no:
-            continue
-        if not page_output and (target is None or target.block_no is None):
-            started = True
-            empty_page_selected = True
-            if add_markers:
-                page_output.append(_page_marker(page_no, page_count))
-
-        if not started or (not page_output and not empty_page_selected):
-            continue
-        if add_markers:
-            marker = _page_marker(page_no, page_count)
-            if not page_output or page_output[0] != marker:
-                page_output.insert(0, marker)
-        if page_output:
-            output.extend(page_output)
-        last_page_no = page_no
-        ranges.append(ContentRange(page_range=str(page_no), start=page_start_cursor, end=page_end_cursor))
-        if cut_inside_page:
-            next_page_no = page_no
-            return _RenderedContent(
-                content=_join_markdown(output),
-                content_ranges=_merge_content_ranges(ranges),
-                truncated=True,
-                last_page_no=last_page_no,
-                next_page_no=next_page_no,
-                cut_inside_page=True,
-            )
-        # Keep whole pages as the normal truncation boundary for paginated docs.
-        if len(_join_markdown(output)) >= limit:
-            next_page_no = page_no + 1
-            return _RenderedContent(
-                content=_join_markdown(output),
-                content_ranges=_merge_content_ranges(ranges),
-                truncated=next_page_no <= (pages[-1].page_idx + 1),
-                last_page_no=last_page_no,
-                next_page_no=next_page_no,
-                cut_inside_page=False,
-            )
-
-    return _RenderedContent(
-        content=_join_markdown(output),
-        content_ranges=_merge_content_ranges(ranges),
-        truncated=False,
-        last_page_no=last_page_no,
-        next_page_no=None,
-        cut_inside_page=False,
-    )
-
-
-def _page_marker(page_no: int, page_count: int | None) -> str:
-    if page_count is None:
-        return f"<!-- page {page_no} -->"
-    return f"<!-- page {page_no} of {page_count} -->"
-
-
-def _page_markdown_blocks(
-    page: PageInfo,
-    *,
-    short_id: str = "",
-    tier: Tier = "standard",
-) -> list[tuple[int, str]]:
-    from ..config import config
-
-    result: list[tuple[int, str]] = []
-    image_renderer = _make_doclib_image_renderer(
-        short_id=short_id,
-        tier=tier,
-        page_no=page.page_idx + 1,
-    )
-    delimiters = config.render.latex_delimiters
-    for block in page.blocks:
-        rendered = render_single_block(
-            block,
-            delimiters=delimiters,
-            asset_base_url="",
-            image_renderer=image_renderer,
-        )
-        text = rendered.strip() if rendered else ""
-        if text:
-            # TODO: simplify after BlockBase.index type narrows to int (top-level blocks always have index)
-            block_index = block.index if block.index is not None else -1
-            result.append((block_index, text))
-    return result
-
-
-def _join_markdown(parts: list[str]) -> str:
-    return "\n\n".join(part for part in parts if part)
-
-
-def _soft_cut(text: str, limit: int) -> int:
-    if len(text) <= limit:
-        return len(text)
-    window = text[:limit]
-    for pattern in ("\n\n", "\n", "。", ". ", " "):
-        pos = window.rfind(pattern)
-        if pos > max(0, limit // 2):
-            return pos + len(pattern)
-    return limit
-
-
-def _merge_content_ranges(ranges: list[ContentRange]) -> list[ContentRange]:
-    if not ranges:
-        return []
-    merged: list[ContentRange] = []
-    current = ranges[0]
-    for item in ranges[1:]:
-        if current.page_range and item.page_range:
-            current_page_numbers = parse_page_range_set(current.page_range)
-            item_page_numbers = parse_page_range_set(item.page_range)
-            if max(current_page_numbers) + 1 == min(item_page_numbers):
-                current = ContentRange(
-                    page_range=_page_numbers_to_range_str(current_page_numbers | item_page_numbers),
-                    start=current.start,
-                    end=item.end,
-                )
-                continue
-        merged.append(current)
-        current = item
-    merged.append(current)
-    return merged
-
-
-def _next_content_request(
-    *,
-    rendered: _RenderedContent,
-    request_page_range: str | None,
-    after: str | None,
-    page_count: int | None,
-    paginated: bool,
-) -> ContentNextRequest | None:
-    if not rendered.content_ranges:
-        return None
-    if not paginated:
-        if rendered.truncated:
-            return ContentNextRequest(after=rendered.content_ranges[-1].end)
-        return None
-
-    total_page_count = page_count or rendered.last_page_no
-    if rendered.truncated:
-        if rendered.cut_inside_page:
-            start = rendered.next_page_no or rendered.last_page_no
-            end = _last_requested_page(request_page_range) or start
-            return ContentNextRequest(page_range=_range_str(start, end), after=rendered.content_ranges[-1].end)
-        start = rendered.next_page_no or (rendered.last_page_no + 1)
-        end = _last_requested_page(request_page_range) or min(total_page_count, start + 9)
-        if start <= end:
-            return ContentNextRequest(page_range=_range_str(start, end))
-        if after:
-            return ContentNextRequest(page_range=request_page_range, after=rendered.content_ranges[-1].end)
-        return None
-
-    start = rendered.last_page_no + 1
-    if start > total_page_count:
-        return None
-    end = min(total_page_count, start + 9)
-    return ContentNextRequest(page_range=_range_str(start, end))
-
-
-def _next_read_request(
-    rendered: _RenderedContent,
-    short_id: str,
-    tier: Tier,
-    page_count: int | None,
-) -> ContentNextRequest | None:
-    if not rendered.content_ranges:
-        return None
-    if rendered.truncated:
-        return ContentNextRequest(locator=rendered.content_ranges[-1].end)
-    total_page_count = page_count or rendered.last_page_no
-    next_page_no = rendered.last_page_no + 1
-    if next_page_no > total_page_count:
-        return None
-    return ContentNextRequest(locator=page_ref(short_id, tier, next_page_no))
-
-
-def _last_requested_page(page_range: str | None) -> int | None:
-    if not page_range:
-        return None
-    page_numbers = parse_page_range_set(page_range)
-    return max(page_numbers) if page_numbers else None
-
-
-def _range_str(start: int, end: int) -> str:
-    return _page_numbers_to_range_str(range(start, end + 1))
-
-
-def _effective_data_dir(state: Any) -> str:
+def _effective_data_dir(state: Any, config: Config) -> str:
     data_dir = getattr(state, "data_dir", "")
     if data_dir:
         return os.path.expanduser(data_dir)
@@ -2125,7 +1283,7 @@ def _effective_data_dir(state: Any) -> str:
 
 
 def _tail_log(log_path: str, lines: int = 100) -> list[str]:
-    log_path = os.path.expanduser(log_path) if log_path else os.path.expanduser(config.doclib.log.resolved_app_path)
+    log_path = os.path.expanduser(log_path)
     if not os.path.isfile(log_path):
         return []
     with open(log_path, encoding="utf-8", errors="replace") as fh:
@@ -2335,22 +1493,3 @@ def _search_result(row: ContentSearchResultRow) -> SearchResult:
 
 def _find_result(row: FilenameSearchResultRow) -> FindResult:
     return FindResult.model_validate(row)
-
-
-def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> ParseCoverage:
-    requested_page_numbers = parse_page_range_set(request_page_range)
-    done_page_numbers: set[int] = set()
-    active_page_numbers: set[int] = set()
-    for row in rows:
-        row_page_numbers = parse_page_range_set(row["page_range"]) & requested_page_numbers
-        if row["status"] == PARSE_STATUS_DONE:
-            done_page_numbers |= row_page_numbers
-        elif row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}:
-            active_page_numbers |= row_page_numbers
-    active_page_numbers -= done_page_numbers
-    missing_page_numbers = requested_page_numbers - done_page_numbers - active_page_numbers
-    return ParseCoverage(
-        done_page_range=_page_numbers_to_range_str(done_page_numbers),
-        active_page_range=_page_numbers_to_range_str(active_page_numbers),
-        missing_page_range=_page_numbers_to_range_str(missing_page_numbers),
-    )

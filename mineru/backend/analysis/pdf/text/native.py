@@ -12,7 +12,7 @@ from typing import Any, Callable, cast
 
 import numpy as np
 from docvortex.analyzers.pdf import PDF_NATIVE_SCRIPT_MARKUP_KEY, ScriptRole, classify_char_script_roles
-from docvortex.analyzers.pdf import is_generated_cjk_space, join_tight_text, needs_tight_space
+from docvortex.analyzers.pdf import is_generated_cjk_space, is_ligature_expansion_space, join_tight_text, needs_tight_space
 from docvortex.assets import calculate_contrast
 from docvortex.document.pdf import Char, PDFPage, get_lines_from_chars
 from docvortex.geometry import calculate_overlap_area_in_bbox1_area_ratio
@@ -567,6 +567,7 @@ def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: floa
     functions = (
         needs_tight_space,
         is_generated_cjk_space,
+        is_ligature_expansion_space,
         chars_to_content,
         __replace_unicode,
         __replace_ligatures,
@@ -606,7 +607,7 @@ def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: floa
         list(CONTROL_LINE_BREAK_CHARS),
         _SPACING_DIACRITIC_TO_COMBINING,
         threshold,
-        (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),
+        ((PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),),
         [span.metadata.get("_native_tight_spacing", True) for span in spans],
     )
 
@@ -761,6 +762,7 @@ def fill_char_in_spans(
 
 
 LINE_STOP_FLAG = (
+    "\u0002",  # PDFium 字符接口中的短横占位符必须先归属行尾，再由既有清洗规则转为连字符。
     ".",
     "!",
     "?",
@@ -1100,7 +1102,10 @@ def chars_to_content(
             if (
                 span.metadata.get("_native_tight_spacing", True)
                 and 0 < idx < len(chars) - 1
-                and is_generated_cjk_space(chars[idx - 1], char1, chars[idx + 1], origins=origins)
+                and (
+                    is_generated_cjk_space(chars[idx - 1], char1, chars[idx + 1], origins=origins)
+                    or is_ligature_expansion_space(chars, idx, tight_bboxes=tight_bboxes, origins=origins)
+                )
             ):
                 # 原始相邻项仍是空格，旧字距分支也不会重新插入被忽略的生成空格。
                 continue
@@ -1140,6 +1145,7 @@ def chars_to_content(
 _STANDARD_CONTENT_FUNCTIONS = (
     needs_tight_space,
     is_generated_cjk_space,
+    is_ligature_expansion_space,
     chars_to_content,
     __replace_unicode,
     __replace_ligatures,

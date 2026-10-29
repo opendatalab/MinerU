@@ -26,7 +26,7 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
 [![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
+[![Ask DeepWiki](https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docs/images/deepwiki.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -43,7 +43,20 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 </div>
 
-# MinerU 4.0
+# MinerU
+
+## Overview
+
+### MinerU 4.1
+
+- **Automatic acceleration across major platforms and GPUs:** Windows and Linux gain automatic ONNX acceleration for compatible Intel, AMD, and NVIDIA GPUs, alongside existing MPS/Metal support on macOS. MinerU detects devices, prioritizes discrete GPUs, and selects GPU or CPU execution for integrated graphics based on performance and compatibility. Representative core inference workloads run at approximately **2–3× CPU speed**.
+- **A unified asynchronous Tasks API:** `/v1/tasks` replaces the previous `/v1/uploads` and `/v1/parse/jobs` workflow, with file manifests, URL inputs, cached-upload reuse, per-file execution and downloads, status queries, and cancellation. This is a breaking API update; review the [Tasks API reference](https://opendatalab.github.io/MinerU/usage/tasks/) before upgrading.
+- **Recoverable synchronous file parsing:** The standalone `file-parse-server` provides `/v1/file_parse` for single-file uploads and attachment responses. Requests remain queryable after a wait timeout, and request IDs support recovery of known tasks. See the [file-parse API reference](https://opendatalab.github.io/MinerU/usage/file_parse/).
+- **Hardware diagnostics and tier recommendations:** New `mineru-kit hardware detect` and `hardware info` commands help select a suitable service tier and inspect devices, runtime versions, and calibration information.
+
+**Upgrade note:** Supported Python versions are now **3.11–3.14**. Deployments using the previous HTTP APIs should upgrade servers, Routers, SDKs, and clients together. See the [4.1 migration guide](https://opendatalab.github.io/MinerU/reference/migration_4_1/) for upgrade steps.
+
+### MinerU 4.0
 
 MinerU 4.0 brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
 
@@ -68,7 +81,7 @@ Install or update the global `mineru` skill. First, run `npx skills add opendata
 
 ### Install Manually
 
-Python `>=3.10,<3.15`. Install MinerU 4.0 stable in a virtual environment:
+Python `>=3.11,<3.15`. Install the latest stable 4.x release in a virtual environment:
 
 ```bash
 pip install uv
@@ -85,6 +98,12 @@ uv pip install -U "mineru>=4.0,<5"
 mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
+
+The default installation supports CPU inference on Windows, Linux, and macOS, as well as accelerated inference on compatible Intel, AMD, NVIDIA, and Apple Silicon GPUs, including integrated graphics.
+
+> [!TIP]
+> 1. For high-throughput NVIDIA deployments on Linux and Windows, use `mineru[full]`.
+> 2. On Windows, NVIDIA deployments using `mineru[full]` require a separately installed GPU-enabled build of `torch`.
 
 ### Python SDK
 
@@ -115,8 +134,6 @@ print(content.content)
 `DoclibClient` also covers search, watched directories, locators for
 page/block continuation, and result invalidation — see
 `help(DoclibClient)` or the [SDK and API guide](https://opendatalab.github.io/MinerU/usage/sdk_api/).
-
-The default install works out of the box: small models run ONNX CPU inference and the VLM runs llama.cpp in Vulkan mode, which offers good compatibility on the vast majority of devices. If the device has an NVIDIA GPU, install `mineru[full]>=4.0` for the best throughput. Note that on Windows the GPU build of torch must be installed separately, while on macOS the default install is already the best-throughput package and `[full]` is not needed. On other non-NVIDIA devices, you need to install an accelerated build of torch plus vllm/lmdeploy yourself to get the best inference speed and throughput.
 
 For the document library and agent reading, use `mineru parse document.pdf --json`. It defaults to the first 10 PDF pages; continue with returned locators. Stateless `mineru-kit parse` defaults to all pages.
 
@@ -256,9 +273,11 @@ mineru version --json
 
 If `mineru version --json` fails, try `mineru --version` for older CLIs. If the detected version does not meet this requirement, tell the user which version was found and ask before upgrading it. If approved, upgrade with the same installer and environment, then check the version again. If declined, stop and do not run this skill's commands. Never assume compatibility when the version cannot be determined.
 
-MinerU requires Python `>=3.10,<3.15`.
+MinerU requires Python `>=3.11,<3.15`.
 
 ### Upgrade An Existing Installation
+
+If the existing environment uses Python older than 3.11, stop MinerU services and recreate the environment with Python 3.11–3.14 using the same environment manager before reinstalling MinerU. Update interpreter paths in service startup configuration and verify the result with `mineru version --json`. Python 3.12 remains the recommended starting point.
 
 Before upgrading, determine which tool owns the resolved `mineru` executable. Check `uv tool list`, then `pipx list --short`; otherwise, identify the Python environment containing the executable. Do not use an unrelated `pip` or install a second copy.
 
@@ -292,7 +311,6 @@ uv python find 3.12
 uv python find 3.13
 uv python find 3.14
 uv python find 3.11
-uv python find 3.10
 ```
 
 If all `uv python find` commands failed, download Python 3.12 with `uv`:
@@ -318,13 +336,13 @@ PIPX_DEFAULT_PYTHON="$(pipx environment --value PIPX_DEFAULT_PYTHON)"
 "$PIPX_DEFAULT_PYTHON" --version
 ```
 
-Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.15`, install with `pipx`:
+Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.11,<3.15`, install with `pipx`:
 
 ```bash
 pipx install "mineru>=4.0,<5"
 ```
 
-If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.15`.
+If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.11,<3.15`.
 
 ```bash
 command -v python3.12
@@ -343,11 +361,11 @@ pipx install --python 3.12 --fetch-python=missing "mineru>=4.0,<5"
 If neither `uv` nor `pipx` is available, but `pip` or `pip3` is available, check the Python version of the `pip` command, and ask the user before installing into the global python environment:
 
 ```bash
-which -a pip pip3 pip3.10 pip3.11 pip3.12 pip3.13 pip3.14  # find all available pips
+which -a pip pip3 pip3.11 pip3.12 pip3.13 pip3.14  # find all available pips
 pip --version
 ```
 
-If a `pip` command reports Python `>=3.10,<3.15`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
+If a `pip` command reports Python `>=3.11,<3.15`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
 
 ```bash
 pip install "mineru>=4.0,<5"
@@ -355,7 +373,7 @@ pip install "mineru>=4.0,<5"
 
 ### If No Supported Installer Is Available
 
-If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.10,<3.15`, recommend that the user install `uv` first.
+If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.11,<3.15`, recommend that the user install `uv` first.
 
 ### After Installation
 

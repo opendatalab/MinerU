@@ -14,6 +14,8 @@ from PIL import Image
 from mineru.backend.analysis.pdf.formulas import _build_formula_inputs
 from mineru.backend.analysis.pdf.layout import _build_vl_style_layout_blocks
 
+pytestmark = pytest.mark.torch
+
 pytest.importorskip("torch")
 pytest.importorskip("transformers", minversion="5.10.1")
 
