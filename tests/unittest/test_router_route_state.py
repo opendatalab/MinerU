@@ -179,7 +179,9 @@ def test_failed_lease_refresh_does_not_block_other_tasks_on_same_worker(monkeypa
                 previous_refresh = healthy.lease.refreshed_at
                 await tasks.maintain_task_result_leases(registry, pool)
                 assert seen.count("/v1/tasks/healthy-task") == round_number
-                assert healthy.lease.refreshed_at > previous_refresh
+                # Windows 单调时钟的相邻读数可能相等；逐轮请求次数验证实际续租已执行。
+                assert healthy.lease.refreshed_at > 0
+                assert healthy.lease.refreshed_at >= previous_refresh
                 assert slow.lease.refreshed_at == 0
         finally:
             await pool.client.aclose()
