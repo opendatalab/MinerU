@@ -18,7 +18,7 @@ import typing
 from pathlib import Path
 
 from ...model.registry import vlm_model_repo
-from ...model.runtime.llama_device import LlamaSelection, resolve_llama_device
+from ...model.runtime.llama_device import DEFAULT_GPU_THREADS, LlamaSelection, default_llama_threads, resolve_llama_device
 
 DEFAULT_PORT = "30000"
 DEFAULT_N_GPU_LAYERS = 99
@@ -58,6 +58,7 @@ MODEL_SOURCE_ENV = (
 PROJECTOR_SELECTOR_FLAGS = ("-mm", "--mmproj", "-mmu", "--mmproj-url")
 PROJECTOR_SOURCE_ENV = ("LLAMA_ARG_MMPROJ", "LLAMA_ARG_MMPROJ_URL")
 PARALLEL_FLAGS = ("-np", "--parallel")
+THREAD_FLAGS = ("-t", "--threads")
 # router 模式的模型来源（llama-server 未指定模型时按目录/预设自组路由）：
 # 视为用户已提供模型，注入默认 -m 会关掉 router 模式并强制下载官方模型。
 ROUTER_SOURCE_FLAGS = ("--models-dir", "--models-preset")
@@ -268,6 +269,20 @@ def _apply_device_policy(args: list[str], selection: LlamaSelection) -> None:
             args.append("--mmproj-offload")
 
 
+def _apply_thread_policy(args: list[str], selection: LlamaSelection) -> None:
+    """仅补 GPU 主模型的生成线程数，批处理默认继承；用户 CLI/env 优先。"""
+    if _has_arg(args, *THREAD_FLAGS) or _has_env("LLAMA_ARG_THREADS"):
+        return
+    threads = default_llama_threads(selection)
+    if selection.reason == "explicit_projector":
+        # _apply_device_policy 已把 CPU 主模型的各种显式选择规范化为 ngl=0。
+        # CPU 主模型 + GPU 投影仍保留主模型的自动线程数。
+        if _flag_value(args, "--n-gpu-layers", "-ngl", "--gpu-layers") != "0":
+            threads = DEFAULT_GPU_THREADS
+    if threads is not None:
+        args.extend(["--threads", str(threads)])
+
+
 def main() -> None:
     args = sys.argv[1:]
 
@@ -337,6 +352,7 @@ def main() -> None:
     # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户 CLI 或环境变量设定时逐项让位）----
     selection = _device_policy(args)
     _apply_device_policy(args, selection)
+    _apply_thread_policy(args, selection)
     user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS) or _has_env("LLAMA_ARG_N_PARALLEL")
     user_defined_ctx = _has_arg(args, "-c", "--ctx-size") or _has_env("LLAMA_ARG_CTX_SIZE")
     if not user_defined_parallel:

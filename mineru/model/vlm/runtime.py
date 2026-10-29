@@ -273,17 +273,20 @@ class ModelSingleton:
 
             # Engine-specific kwargs are pulled out of **kwargs so they
             # are not forwarded to MinerUClient (which doesn't accept
-            # them). Defaults mirror Engine's own constructor defaults.
+            # them). CPU threads default to 4 on GPU, otherwise Engine's auto.
             engine_kwargs = {}
             for key in ("n_ctx_seq", "n_gpu_layers", "n_parallel", "verbosity", "n_threads"):
                 if key in kwargs:
                     engine_kwargs[key] = kwargs.pop(key)
 
-            from ..runtime.llama_device import llama_engine_scope, resolve_llama_device
+            from ..runtime.llama_device import default_llama_threads, llama_engine_scope, resolve_llama_device
 
             selection = resolve_llama_device(n_gpu_layers=engine_kwargs.get("n_gpu_layers"))
             if selection.device == "cpu":
                 engine_kwargs["n_gpu_layers"] = 0
+            default_threads = default_llama_threads(selection)
+            if default_threads is not None:
+                engine_kwargs.setdefault("n_threads", default_threads)
             try:
                 from mineru_llama_cpp import Engine
             except ImportError:

@@ -17,6 +17,7 @@ from .intel_gpu import INTEL_VENDOR_ID, intel_architecture
 from .vulkan import vulkan_environment_lock
 
 SERIALIZE_ENV = "GGML_VK_SERIALIZE_SUBMISSIONS"
+DEFAULT_GPU_THREADS = 4
 _lock = threading.RLock()
 _runtime_environment: tuple[int, tuple[tuple[str, str | None], ...]] | None = None
 _BACKEND_ENV = (
@@ -37,6 +38,13 @@ class LlamaSelection:
     device: Literal["native", "cpu", "gpu"] = "native"
     reason: str = "native"
     environment: tuple[tuple[str, str], ...] = ()
+
+
+def default_llama_threads(selection: LlamaSelection) -> int | None:
+    """GPU 减少 CPU 线程开销；CPU 和未决原生路由保留 llama.cpp 的自动计算。"""
+    if selection.device == "gpu" or selection.reason == "explicit_gpu":
+        return DEFAULT_GPU_THREADS
+    return None
 
 
 def resolve_llama_device(
@@ -120,4 +128,4 @@ def llama_engine_scope(selection: LlamaSelection) -> Iterator[None]:
                     os.environ[name] = value
 
 
-__all__ = ["LlamaSelection", "llama_engine_scope", "resolve_llama_device"]
+__all__ = ["DEFAULT_GPU_THREADS", "LlamaSelection", "default_llama_threads", "llama_engine_scope", "resolve_llama_device"]

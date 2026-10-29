@@ -201,8 +201,9 @@ def test_environment_restored_and_cached_vulkan_setting_cannot_change() -> None:
     "chip,forced,calibrated_gpu",
     [(0x4680, False, False), (0x4680, True, False), (0x7D51, False, False), (0x7D51, True, False), (0x7D51, False, True)],
 )
+@pytest.mark.parametrize("threads", [None, -1, 6])
 def test_real_model_factory_applies_plan_at_engine_construction(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, chip: int, forced: bool, calibrated_gpu: bool
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, chip: int, forced: bool, calibrated_gpu: bool, threads: int | None
 ) -> None:
     from mineru.model.vlm import runtime
 
@@ -223,10 +224,14 @@ def test_real_model_factory_applies_plan_at_engine_construction(
         runtime, "vlm_model_repo", lambda name: SimpleNamespace(paths={"main": "main.gguf", "mmproj": "mmproj.gguf"})
     )
     monkeypatch.setattr(runtime, "MinerUClient", lambda **kwargs: SimpleNamespace())
-    runtime.ModelSingleton()._create_model("llama-cpp-engine", str(tmp_path), None, **({"n_gpu_layers": 99} if forced else {}))
+    options = {"n_gpu_layers": 99} if forced else {}
+    if threads is not None:
+        options["n_threads"] = threads
+    runtime.ModelSingleton()._create_model("llama-cpp-engine", str(tmp_path), None, **options)
     kwargs, serialize, backend = captured[0]
     use_gpu = forced or calibrated_gpu
     assert kwargs.get("n_gpu_layers") == (99 if forced else None if use_gpu else 0)
+    assert kwargs.get("n_threads") == (threads if threads is not None else 4 if use_gpu else None)
     assert serialize == ("1" if calibrated_gpu and not forced else None)
     assert backend == (None if use_gpu else "cpu")
     assert policy.SERIALIZE_ENV not in os.environ and "MINERU_LLAMA_CPP_BACKEND" not in os.environ
