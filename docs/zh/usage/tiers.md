@@ -23,10 +23,10 @@ mineru-kit parse saved-page.mhtml -o saved-page.md --tier flash
 
 - `mineru-kit parse` 和本地 Python `parse()` 的 PDF 默认档位为 Standard。
 - 文档库发现服务能力后，PDF/图片默认优先 Standard，其次 Basic；不可用时报 `quality_tier_unavailable`，不会静默降为 Flash 或上传到官网。
-- Advanced 需要显式请求；它与 Standard 共用模型，不单独下载一套 Advanced 权重。服务需开放 Advanced 才能接受相应 PDF/图片请求。
+- Tasks 与 Gradio 默认按 Standard → Basic → Flash → Advanced 选档，仅开放 Advanced 时自动选择它；Advanced 与 Standard 共用模型，不单独下载一套 Advanced 权重。服务需开放 Advanced 才能接受相应 PDF/图片请求。
 - 文档库 `read` 读取已有缓存，不发起新解析；未指定档位时优先已有的 Advanced、Standard、Basic 结果。
 
-API 启动 `--tier` 表示开放上限，包含自身和较低档位；`--tier standard` 不开放 Advanced。省略或 `--tier auto` 按实际后端和硬件推荐，ONNX 路径可能在启动时执行设备校准。HTTP 请求省略 tier 时按 Standard → Basic → Flash 选择；原生文档固定 Flash，不受 PDF/图片开放档位限制。完整规则见 [Tasks](tasks.md)。
+API 启动 `--tier` 表示开放上限，包含自身和较低档位；`--tier standard` 不开放 Advanced。省略或 `--tier auto` 按实际后端和硬件推荐，ONNX 路径可能在启动时执行设备校准。HTTP 请求省略 tier 时按 Standard → Basic → Flash → Advanced 选择；原生文档固定 Flash，不受 PDF/图片开放档位限制。完整规则见 [Tasks](tasks.md)。
 
 ## 后端与引擎
 

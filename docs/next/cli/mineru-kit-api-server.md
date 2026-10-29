@@ -50,7 +50,7 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 | `--tier standard` | `flash`、`basic`、`standard` | `standard` |
 | `--tier advanced` | 全部四档 | `standard` |
 
-Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `null` 时按 `standard -> basic -> flash` 选择，advanced 必须显式请求。所有服务均支持 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等现有原生格式，固定使用 flash，不检查公开列表中是否有 flash。非法枚举或空字符串仍报错。完整规则见 [Tasks](../api/tasks.md#tier默认选择与文件作用范围)。
+Tasks 的请求 `tier` 仍可选，只对 PDF/图片生效。省略或 JSON `null` 时按 `standard -> basic -> flash -> advanced` 选择，仅开放 advanced 时也可使用默认值。所有服务均支持 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等现有原生格式，固定使用 flash，不检查公开列表中是否有 flash。非法枚举或空字符串仍报错。完整规则见 [Tasks](../api/tasks.md#tier默认选择与文件作用范围)。
 
 ### 自动推荐
 
@@ -99,7 +99,7 @@ SaaS 可按共同契约仅发布 standard，原生文档由同一服务解析。
 
 非连续精确集合只用于 Python 工厂或部署方自己的服务配置，不能通过本地 CLI 表达。原 `--tiers standard` 只开放 standard，与新 `--tier standard` 的上限展开语义不同。
 
-WebUI、Router、Doclib 的托管 standard 均只开放到 standard，不再隐含 advanced；需要时显式配置 advanced。默认配置值仍为 standard。Doclib 的 `parse_server.local.managed_tier` 支持 basic、standard、advanced，其原生执行路径保持现状。Advanced 的模型检查与下载使用 Standard 模型配置。
+WebUI、Router、Doclib 的托管 standard 均只开放到 standard，不再隐含 advanced；需要时显式配置 advanced。WebUI 默认配置为 auto，Router、Doclib 仍为 standard。Doclib 的 `parse_server.local.managed_tier` 支持 basic、standard、advanced，其原生执行路径保持现状。Advanced 的模型检查与下载使用 Standard 模型配置。
 
 ## 4. self-hosted 与 managed
 

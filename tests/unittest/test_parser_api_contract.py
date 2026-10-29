@@ -41,6 +41,7 @@ from mineru.types import (
     PARSING_RULE_TIER_SELECTION_ORDER,
     QUALITY_TIERS,
     SERVER_TIERS,
+    SERVER_STARTUP_TIERS,
     TIER_ORDER,
     TIERS,
     TIERS_BY_SERVER_TIER,
@@ -426,6 +427,7 @@ def test_public_tier_literals_match_product_contract() -> None:
 
 def test_server_and_deployment_tier_constants_match_product_contract() -> None:
     assert SERVER_TIERS == ("flash", "basic", "standard", "advanced")
+    assert SERVER_STARTUP_TIERS == ("auto", "flash", "basic", "standard", "advanced")
     assert DEPLOYMENT_TIERS == ("basic", "standard")
     assert TIERS_BY_SERVER_TIER == {
         "flash": ("flash",),
@@ -779,7 +781,7 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
         (("standard",), "standard"),
         (("basic",), "basic"),
         (("flash",), "flash"),
-        (("advanced",), None),
+        (("advanced",), "advanced"),
     ],
 )
 def test_api_server_explicit_capability_matrix(

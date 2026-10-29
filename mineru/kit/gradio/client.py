@@ -20,7 +20,7 @@ from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_en
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
+from ...types import SERVER_STARTUP_TIERS, TIERS, ServerStartupTier, Tier
 from ...filetypes import is_flash_only_parse_extension
 from ...utils.stdio import utf8_subprocess_env
 from .status import (
@@ -303,14 +303,14 @@ class ManagedLocalApiServer:
     def __init__(
         self,
         *,
-        tier: ServerTier = "standard",
+        tier: ServerStartupTier = "auto",
         concurrency: int = 1,
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
     ) -> None:
         """保存显式启动配置，但不在构造阶段创建目录或启动进程。"""
-        if tier not in SERVER_TIERS:
+        if tier not in SERVER_STARTUP_TIERS:
             raise ValueError(f"Unsupported API server tier: {tier}")
         if concurrency <= 0:
             raise ValueError("API server concurrency must be positive")

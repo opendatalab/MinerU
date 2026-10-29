@@ -95,6 +95,8 @@ mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 
 Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-webui` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
 
+Gradio accepts only `--tier auto|flash|basic|standard|advanced`, defaulting to `auto`, for the managed API Server ceiling. The old `--api-server-tier` option has been removed. The UI and Tasks share the Standard → Basic → Flash → Advanced default order; Advanced is automatic only when it is the sole available tier.
+
 ### Router and VLM server
 
 ```bash

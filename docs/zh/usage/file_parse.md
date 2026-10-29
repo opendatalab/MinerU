@@ -40,7 +40,7 @@ mineru-kit file-parse-server --api-url http://127.0.0.1:8000
 | `wait_timeout` | `3600` | 整数秒，范围 0–3600。 |
 | `request_id` | 自动生成 | 1–64 位字母、数字、下划线或短横线；预先指定并保存以便断连后恢复。 |
 
-省略 tier 时由上游按 Standard → Basic → Flash 选择 PDF/图片档位；Advanced 必须显式请求。显式不支持的 PDF/图片档位返回错误，不自动改档。现有原生文档固定使用 Flash，即使传入上游未开放的合法档位。表单空字符串或字符串 `"null"` 不等于省略，均为非法 tier。
+省略 tier 时由上游按 Standard → Basic → Flash → Advanced 选择 PDF/图片档位；仅开放 Advanced 时默认选择 Advanced。显式不支持的 PDF/图片档位返回错误，不自动改档。现有原生文档固定使用 Flash，即使传入上游未开放的合法档位。表单空字符串或字符串 `"null"` 不等于省略，均为非法 tier。
 
 `output_formats` 不接受 JSON 字符串或逗号分隔值；多格式使用多个同名表单字段。`include_model_output` 已移除，传入即返回 400。
 

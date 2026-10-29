@@ -163,7 +163,7 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
 @pytest.mark.parametrize(
     ("script", "entrypoint", "expected_options"),
     [
-        ("mineru-webui", webui.main, ("--api-url", "--api-server-tier")),
+        ("mineru-webui", webui.main, ("--api-url", "--tier")),
         ("mineru-openai-server", vlm_server.main, ("--engine",)),
         (
             "mineru-models-download",
@@ -367,7 +367,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     ("command", "expected_options"),
     [
         ("parse", ("--output", "--format", "--tier")),
-        ("webui", ("--api-url", "--server-name", "--api-server-tier")),
+        ("webui", ("--api-url", "--server-name", "--tier")),
         ("api-server", ("--host", "--port", "--tier", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),

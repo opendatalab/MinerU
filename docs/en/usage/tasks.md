@@ -45,7 +45,7 @@ Requests must omit `file_id/client_file_id`, including null values. The server a
 
 ### Tier selection
 
-- For PDFs/images, an omitted or null tier selects the first supported value in **standard → basic → flash** order. Advanced requires an explicit request. An Advanced-only service returns `503 quality_tier_unavailable` when the tier is omitted.
+- For PDFs/images, an omitted or null tier selects the first supported value in **standard → basic → flash → advanced** order. Advanced is selected automatically only when it is the sole available tier.
 - An explicitly unsupported PDF/image tier rejects the entire creation request with `400 invalid_request`, `error.param="tier"`. No work is accepted and no tier substitution occurs.
 - Every normally available compatible service supports existing native document formats. Office, HTML, and other native documents always use Flash, regardless of `/v1/tiers` or a valid requested tier. Empty strings and unknown enum values are still invalid.
 - Mixed batches select tiers per file. On a Standard-capable service, a PDF + DOCX request without a tier uses Standard and Flash respectively. Selection is fixed at admission, not repeated during queuing or forwarding. Successful files report the actual value in `parse.tier`.

@@ -95,6 +95,8 @@ mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 
 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-webui` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
 
+Gradio 只保留 `--tier auto|flash|basic|standard|advanced`，默认 `auto`，仅用于自托管 API Server 的上限。旧参数 `--api-server-tier` 已移除。界面与 Tasks 共享默认选档顺序 Standard → Basic → Flash → Advanced；仅开放 Advanced 时自动选择它。
+
 ### Router 与 VLM Server
 
 ```bash

@@ -335,7 +335,7 @@ def test_unknown_creation_is_never_replayed(tmp_path: Path, failure: str) -> Non
 @pytest.mark.parametrize(
     "tiers,tier,code,upstream_status",
     [
-        (("advanced",), None, "quality_tier_unavailable", 503),
+        (("advanced",), "standard", "invalid_request", 400),
         (("flash",), "basic", "invalid_request", 400),
     ],
 )

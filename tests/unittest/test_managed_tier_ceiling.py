@@ -14,7 +14,7 @@ from mineru.errors import InvalidRequestError
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio.client import ManagedLocalApiServer, V1ServerCapabilities
 from mineru.kit.router.workers import ManagedLocalWorker, RouterSettings
-from mineru.types import ManagedServerTier
+from mineru.types import SERVER_STARTUP_TIERS, ManagedServerTier, ServerStartupTier
 from pathlib import Path
 
 
@@ -56,7 +56,10 @@ def test_advanced_missing_models_suggests_standard_download(monkeypatch: pytest.
     assert "--tier advanced" not in str(error.value)
 
 
-def test_remote_standard_only_gradio_never_starts_local_server(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("tier", SERVER_STARTUP_TIERS)
+def test_remote_standard_only_gradio_never_starts_local_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tier: ServerStartupTier
+) -> None:
     """连接 SaaS 仅 Standard 能力时只使用远端，不补起本地服务或扩展档位。"""
     capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("default",), ("upload",))
     client = SimpleNamespace(capabilities=capabilities, discover=AsyncMock(return_value=capabilities))
@@ -74,7 +77,7 @@ def test_remote_standard_only_gradio_never_starts_local_server(monkeypatch: pyte
         output_dir=str(tmp_path),
         enable_example=False,
         enable_api=True,
-        api_server_tier="standard",
+        tier=tier,
         api_server_concurrency=1,
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,

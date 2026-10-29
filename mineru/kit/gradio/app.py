@@ -22,7 +22,7 @@ from ...filetypes import (
     PARSEABLE_EXTENSIONS,
     PDF_EXTENSIONS,
 )
-from ...types import TIERS
+from ...types import TIERS, ServerStartupTier, Tier, select_default_task_tier
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, render_download
@@ -72,7 +72,6 @@ _DOWNLOAD_ICON_PATHS: dict[str, str] = {
     "epub": "M12 6c-3-2-6-2-10-2v15c4 0 7 0 10 2 3-2 6-2 10-2V4c-4 0-7 0-10 2v15",
     "pdf": "M14 3H5v18h14V8l-5-5v5h5M8 17c3-4 5-8 4-8-2 0-1 7 4 7 3 0-5-3-8 1-1 2 1 1 2 0",
 }
-_DEFAULT_TIER = "standard"
 _DOWNLOAD_ICON_HTML = f"""
 <button type="button" class="mineru-kit-download-icon" title="Download results" aria-label="Download results"
         data-mineru-i18n-key="download_results" data-mineru-i18n-attr="title aria-label"
@@ -308,14 +307,12 @@ def _supported_file_types() -> list[str]:
     return [f".{extension}" for extension in sorted(PARSEABLE_EXTENSIONS)]
 
 
-def _default_tier(capabilities: V1ServerCapabilities) -> str:
-    """按服务能力选择默认 tier，优先保持 Standard 语义。"""
-    if _DEFAULT_TIER in capabilities.tiers:
-        return _DEFAULT_TIER
-    for tier in ("advanced", "standard", "basic", "flash"):
-        if tier in capabilities.tiers:
-            return tier
-    return capabilities.tiers[0]
+def _default_tier(capabilities: V1ServerCapabilities) -> Tier:
+    """根据服务能力复用 Tasks 默认选档，空能力集合无法构建解析界面。"""
+    tier = select_default_task_tier(capabilities.tiers)
+    if tier is None:
+        raise ValueError("V1 API server did not advertise any parsing tier")
+    return tier
 
 
 def _file_suffix(path_value: str | Path | None) -> str:
@@ -1124,7 +1121,7 @@ def launch_gradio(
     output_dir: str,
     enable_example: bool,
     enable_api: bool,
-    api_server_tier: str,
+    tier: ServerStartupTier = "auto",
     api_server_concurrency: int,
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
@@ -1142,7 +1139,7 @@ def launch_gradio(
     try:
         if resolved_api_url is None:
             managed_server = ManagedLocalApiServer(
-                tier=api_server_tier,  # type: ignore[arg-type]
+                tier=tier,
                 concurrency=api_server_concurrency,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
