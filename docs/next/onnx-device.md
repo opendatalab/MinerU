@@ -14,12 +14,12 @@ llama.cpp 自动模式复用这里的 CPU/GPU 结论。
 
 ### 共享 GPU 分类与选型
 
-OCR、auto tier 和硬件诊断共用 `discrete / integrated / virtual / unknown` 分类。
+OCR 和硬件诊断共用 `discrete / integrated / virtual / unknown` 分类；auto tier 直接复用 OCR 设备选择的最终结果。
 Windows 的分类依据为 D3D12 UMA，Linux 为 Vulkan 原生设备类型，macOS 复用现有系统显示设备信息。
 统一内存属性单独保存，不将 Apple Silicon 的集显分类解释为低性能设备。
 
 ONNX 先应用显式配置、设备可见性及兼容限制，再按“确认独显 → 确认集显 → 虚拟 GPU → 类型未知”排序；
-同类设备保留 Windows 高性能排序或 Vulkan 原生顺序。显存证据只取 ONNX 实际选中的设备。
+同类设备保留 Windows 高性能排序或 Vulkan 原生顺序。自动 tier 不再查询显存容量。
 身份匹配优先使用 LUID、PCI 地址，再使用双方唯一的厂商/设备型号；名称只用于原生库存的唯一关联。
 重复库存或原生查询失败时保留未知类型，不据此授予独显免校准资格。
 
@@ -99,7 +99,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 
 本机双卡及仅 Intel ICD 的验证见 [Intel 架构过滤报告](onnx-intel-architecture-policy-validation.md)。
 
-通常在首次实际使用 ONNX 模型时选型。API 使用 `--tier auto`（或省略），有效小模型后端为 ONNX，且可用逻辑 CPU 至少 4 核或存在显存／预算达到 5.5 GiB 的兼容 GPU 候选时，Windows/Linux 会提前同步调用相同的设备选择流程，并直接采用本次设备选型结果，不依赖 `--preload-models`。实际选中 GPU 且内存达标时开放 Standard/Advanced；auto tier 不增加独立测速，也不额外检查历史校准是否胜出。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均免测速，校准记录缺失、损坏、过期或 GPU 较慢不阻止内存达标的已选 GPU 开放高级档位。CPU 不足 4 核且无内存达标 GPU 候选、显式启动档位或 macOS 不增加这项启动选型。有效小模型后端为 Torch 时采用实际设备可用性和内存证据并跳过 OCR 校准，不修改 ONNX 设备偏好或证据；llama.cpp 自动模式也遵循这处分流，且不要求另一次显卡匹配。
+通常在首次实际使用 ONNX 模型时选型。API/WebUI 使用自动 tier 且有效小模型后端为 ONNX 时，会在所有 CPU 核数下提前同步调用相同的设备选择流程，不依赖 `--preload-models`。选中 GPU 就开放全部四档；选中 CPU 时，可用逻辑核至少 10 开放到 Standard，4–9 核开放到 Basic，不足 4 核只开放 Flash。推荐不查询显存、不增加独立测速，也不额外要求历史校准证据。`onnx_device=gpu` 无论来自用户偏好还是自动选型写入，均不强制测速。显式启动档位和 Python 精确集合跳过推荐。有效小模型后端为 Torch 时采用已验证的加速设备结论，不调用 ONNX 或修改其配置/证据。llama.cpp 自动模式也复用相同的小模型设备选择入口。
 
 `mineru-kit hardware detect` 与 API 自动启动共享推荐逻辑；`hardware info` 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
@@ -107,7 +107,7 @@ MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会�
 实际设备或物理绑定改变后，诊断报告会显示旧记录不再匹配；这不会覆盖配置中的设备偏好，也不会单独限制已选 GPU 的档位。
 Windows/Linux 免校准独显都只在首次真实 GPU 会话成功后保存 `gpu`；仅运行硬件推荐时仍保留 `auto`，
 不下载校准权重、不生成性能校准记录。初始化错误或静默回退 CPU 不保存 GPU 偏好。
-环境变量覆盖不写入文件；只读配置保留本进程选择。测速失败不保存为 CPU 性能优胜，同进程不重复尝试。写入 `onnx_device=gpu` 不要求达到 5.5 GiB，该内存门槛只用于 auto tier 开放 Standard/Advanced；较小的 GPU 仍可用于 ONNX 加速。
+环境变量覆盖不写入文件；只读配置保留本进程选择。测速失败不保存为 CPU 性能优胜，同进程不重复尝试。设备偏好和自动 tier 均不设置显存容量门槛。
 Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或输出不一致时保留 `auto`。
 通过环境变量强制 `auto` 时，每个新进程重新选择，并使用选择锁避免同时测速。
 显式或已保存的 `cpu` 不会因后来接入独显而改变。
@@ -135,8 +135,8 @@ MinerU 才在初始化期间补充 `GGML_VK_SERIALIZE_SUBMISSIONS=1`。依据来
 临时环境设置使用互斥锁并在成功或异常后恢复；不生成 `GGML_VK_VISIBLE_DEVICES`。
 离线 server 仍禁止为自动选型下载校准模型，缺少本地权重时沿用现有 ONNX CPU 回退。
 
-档位推荐只看小模型后端、其实际选型及显存预算，不受 llama 专用后端参数或诊断失败影响。
-CPU 核数、5.5 GiB 显存门槛及默认 Standard 的规则保持不变。
+档位推荐只消费小模型后端的 GPU/CPU 结论和进程可用逻辑核数，不受 llama 专用后端参数或诊断失败影响。
+GPU 开放全部四档；CPU 至少 10 核开放到 Standard，至少 4 核开放到 Basic，否则只开放 Flash。存在 Standard 时请求默认仍为 Standard。
 
 ## 模型预设
 
