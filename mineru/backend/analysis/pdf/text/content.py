@@ -33,6 +33,7 @@ from .native import (
     __replace_unicode,
     _clear_post_ocr_fallback,
     _is_supported_rotation,
+    _replace_private_use_chars,
     _restore_post_ocr_fallback,
     txt_spans_extract,
 )
@@ -407,6 +408,15 @@ def _line_content_parts(line: _AnalyzeLine) -> list[tuple[str, str]]:
     return parts
 
 
+def _replace_residual_private_use_text(block_lines: dict[int, list[_AnalyzeLine]]) -> None:
+    """后置 OCR 及失败恢复完成后清理正文 PUA，避免提前替换影响检测或紧排。"""
+    for lines in block_lines.values():
+        for line in lines:
+            for span in line.spans:
+                if span.type == ContentType.TEXT:
+                    span.content = _replace_private_use_chars(span.content)
+
+
 def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     """将真实行折叠为统一 block content，保留目录/代码换行并处理自然语言跨行连接。"""
     content_lines = [parts for line in lines if (parts := _line_content_parts(line))]
@@ -628,6 +638,8 @@ def _fill_window_block_content_and_lines(
         page_size,
         evidence,
     ) in page_block_line_results:
+        if parse_mode == "txt":
+            _replace_residual_private_use_text(block_lines)
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
