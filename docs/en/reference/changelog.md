@@ -2,6 +2,13 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.1.2
+
+- **Hardware diagnostics and output:** `mineru-kit hardware info` runs isolated runtime probes concurrently and flushes text sections in a fixed order as they become available. Capacity formatting and device summaries are clearer, while JSON retains full diagnostics and adds the read-only ONNX device candidate and selection reason.
+- **On-demand CLI help:** Root help, hardware help, and version queries no longer initialize the runtime or read user configuration. Command entry points load only when executed.
+- **Issue reporting:** Separate English and Chinese forms require less information, default the parsing tier to “Unknown,” and automatically offer the three most recent stable versions after each release.
+- **CI and release workflows:** Issue-form changes use lightweight checks, while release reruns retain the full test suite and are protected from cancellation by later branch pushes.
+
 ## 4.1.1
 
 - **Windows GPU identification:** Match GPUs and memory information by physical PCI address, improving identification on systems with multiple GPUs or identical models.
