@@ -16,7 +16,7 @@
     * [模型源配置](./model_source.md) - 模型源的详细配置说明  
     * [命令行工具](./cli_tools.md) - 命令行工具的详细参数说明
     * [命令行进阶参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
-- [旧平台适配（MinerU <4）](compatibility.md) - AMD 与国产卡保留原适配
+- [旧平台适配（MinerU <4）](compatibility.md) - 国产卡保留原适配
 - 插件与生态（保留原集成说明，不代表已支持 4.0 V1 API）
     * [Cherry Studio](plugin/Cherry_Studio.md)
     * [Sider](plugin/Sider.md)

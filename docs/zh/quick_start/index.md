@@ -1,6 +1,6 @@
 # 快速入门
 
-本指南面向 MinerU **4.x**，包含 4.1 自动设备选择与 API 更新。已有部署请阅读 [4.1 迁移说明](../reference/migration_4_1.md)。AMD 专用软件栈和国产卡的旧适配教程仍适用于 `<4`，见[旧平台指南](../usage/compatibility.md)。
+本指南面向 MinerU **4.x**，包含 4.1 自动设备选择与 API 更新。已有部署请阅读 [4.1 迁移说明](../reference/migration_4_1.md)。国产卡的旧适配教程仍适用于 `<4`，见[旧平台指南](../usage/compatibility.md)。
 
 ## 安装 MinerU
 
@@ -100,4 +100,4 @@ mineru version --json
 - [模型下载与配置](../usage/model_source.md)
 - [3.x → 4.0 迁移](../reference/migration_4.md)
 - [4.0.x → 4.1 迁移](../reference/migration_4_1.md)
-- [官网](https://mineru.net/)与[在线演示](../demo/index.md)
+- [官网](https://mineru.net/)与[在线演示](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
