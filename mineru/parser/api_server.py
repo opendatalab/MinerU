@@ -50,7 +50,7 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..types import DeploymentTier, PageInfo, Tier
+from ..types import DeploymentTier, PageInfo, Tier, select_default_task_tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.runtime.ownership import RuntimeOwner, runtime_owner
 from ..model.vlm.errors import is_fatal_engine_error
@@ -1818,7 +1818,7 @@ def create_app(
     server_tiers = resolve_server_tiers(tiers, vlm_config=vlm_config)
     model_tier = model_tier_for_server_tiers(server_tiers)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
-    default_tier = next((tier for tier in ("standard", "basic", "flash") if tier in server_tiers), None)
+    default_tier = select_default_task_tier(server_tiers)
     _preflight_tier_dependencies(model_tier, vlm_config)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))

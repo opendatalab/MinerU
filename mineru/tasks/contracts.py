@@ -84,8 +84,9 @@ class UploadTaskOptions(BaseModel):
     tier: Tier | None = Field(
         default=None,
         description=(
-            "PDF/image tier only. Omitted or null selects the highest supported tier in the order "
-            "standard, basic, flash; advanced requires an explicit request. Explicit unsupported tiers are rejected. "
+            "PDF/image tier only. Omitted or null selects the first supported tier in the order "
+            "standard, basic, flash, advanced; advanced is automatic only when it is the sole available tier. "
+            "Explicit unsupported tiers are rejected. "
             "All servers support native document formats with flash, independently of /v1/tiers "
             "and ignoring any valid tier value."
         ),

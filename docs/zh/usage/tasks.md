@@ -45,7 +45,7 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier auto
 
 ### 档位选择
 
-- PDF/图片省略 `tier` 或传入 null，按 **standard → basic → flash** 选择支持的默认值；Advanced 必须显式指定。仅支持 Advanced 的服务在省略档位时返回 `503 quality_tier_unavailable`。
+- PDF/图片省略 `tier` 或传入 null，按 **standard → basic → flash → advanced** 选择支持的默认值；仅支持 Advanced 的服务在省略档位时默认选择 Advanced。
 - 显式请求不支持的 PDF/图片档位，整次创建返回 `400 invalid_request`，`error.param="tier"`，不会接单或自动升降档。
 - 所有正常可用的兼容服务都支持现有原生文档格式。Office、HTML 等固定使用 Flash，不受 `/v1/tiers` 或合法请求档位限制；空字符串和未知枚举仍非法。
 - 混合批次分别确定档位。例如服务支持 Standard，未指定 tier 的 PDF + DOCX 分别使用 Standard、Flash。档位在接单时确定，排队或转发时不重新选择；实际执行值见成功文件的 `parse.tier`。

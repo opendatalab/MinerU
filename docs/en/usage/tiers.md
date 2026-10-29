@@ -23,10 +23,10 @@ mineru-kit parse saved-page.mhtml -o saved-page.md --tier flash
 
 - `mineru-kit parse` and local Python `parse()` default to Standard for PDFs.
 - After discovering service capabilities, the document library prefers Standard, then Basic for PDF/images. If neither is available, it returns `quality_tier_unavailable` rather than silently choosing Flash or uploading to the official service.
-- Advanced requires an explicit request. It shares models with Standard rather than downloading separate Advanced weights; the service must enable Advanced to accept corresponding PDF/image requests.
+- Tasks and Gradio share the Standard → Basic → Flash → Advanced preference, selecting Advanced automatically only when it is the sole available tier. Advanced shares models with Standard rather than downloading separate Advanced weights; the service must enable Advanced to accept corresponding PDF/image requests.
 - Library `read` consumes cached results without starting a new parse. Without an explicit tier, it prefers cached Advanced, Standard, then Basic results.
 
-The API startup `--tier` is a ceiling including itself and lower tiers; `--tier standard` does not enable Advanced. Omission or `--tier auto` recommends a ceiling from the effective backend and hardware, potentially calibrating ONNX at startup. HTTP requests without a tier choose Standard → Basic → Flash. Native documents always use Flash, independently of the enabled PDF/image tiers. See [Tasks](tasks.md) for the full rules.
+The API startup `--tier` is a ceiling including itself and lower tiers; `--tier standard` does not enable Advanced. Omission or `--tier auto` recommends a ceiling from the effective backend and hardware, potentially calibrating ONNX at startup. HTTP requests without a tier choose Standard → Basic → Flash → Advanced. Native documents always use Flash, independently of the enabled PDF/image tiers. See [Tasks](tasks.md) for the full rules.
 
 ## Backends and engines
 

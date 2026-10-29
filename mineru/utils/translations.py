@@ -480,7 +480,9 @@ ZH_MESSAGES: dict[str, str] = {
     "Maximum pages per PDF conversion; omitted: unlimited": "PDF 单次转换的最大页数;省略时不限制",
     "Show local examples": "显示本地示例",
     "Expose the Gradio event API": "开放 Gradio 事件 API",
-    "Managed API server tier ceiling": "托管 API server 的档位上限",
+    "Managed API server tier ceiling: auto, flash, basic, standard, advanced; ignored with --api-url": (
+        "托管 API server 的档位上限：auto、flash、basic、standard、advanced；指定 --api-url 时忽略"
+    ),
     "Managed server job concurrency": "托管服务的任务并发数",
     "Disable managed server image analysis": "禁用托管服务的图像分析",
     "Preload managed server models": "预加载托管服务的模型",

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ...types import TIERS, Tier
+from ...types import TIERS, Tier, select_default_task_tier
 from .cpu_threads import effective_cpu_count
 from .device import resolve_small_model_backend, resolve_torch_device
 from .gpu import is_discrete_gpu, match_gpu_identities
@@ -247,7 +247,8 @@ def recommend_tiers(*, vlm_config: VlmConfig | None = None) -> TierRecommendatio
         hardware.reason,
     )
     ordered = tuple(tier for tier in TIERS if tier in tiers)
-    default = next(tier for tier in ("standard", "basic", "flash") if tier in tiers)
+    default = select_default_task_tier(tiers)
+    assert default is not None  # 硬件推荐始终包含 Flash，必定存在请求默认档位。
     return TierRecommendation(
         ordered[-1],
         ordered,

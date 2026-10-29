@@ -102,8 +102,9 @@ def _request_schema() -> dict[str, Any]:
         "type": "string",
         "enum": list(TIERS),
         "description": (
-            "Optional PDF/image tier. Omit this multipart field to let the server choose standard, basic, then flash; "
-            "advanced requires an explicit request. Explicit unsupported PDF/image tiers are rejected. "
+            "Optional PDF/image tier. Omit this multipart field to let the server choose "
+            "standard, basic, flash, then advanced; "
+            "advanced is automatic only when it is the sole available tier. Explicit unsupported PDF/image tiers are rejected. "
             "Supported native documents always use flash. Empty strings and the literal string 'null' are invalid."
         ),
     }

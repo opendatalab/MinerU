@@ -156,7 +156,7 @@ Tier 对象字段:
 
 v1 协议中面向用户读取文档的质量档位以 [解析 Tier](../tiers.md) 为准。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
 
-请求创建 Task 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 按 `standard -> basic -> flash` 选择默认值，advanced 只接受显式请求；OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 的批量规则归一为 `flash`，其它 text 不作为解析输入。
+请求创建 Task 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 按 `standard -> basic -> flash -> advanced` 选择默认值，仅开放 advanced 时自动选择 advanced；OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 的批量规则归一为 `flash`，其它 text 不作为解析输入。
 
 更完整产品语义见 [解析 Tier](../tiers.md)。
 

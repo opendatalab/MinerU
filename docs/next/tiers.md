@@ -94,8 +94,8 @@ Doclib 主动解析 PDF/image 的默认选择策略不会解析为 `flash`。如
 
 ### 3.3 HTTP Tasks 的默认选择
 
-Tasks（包括 HTTP `MinerUApiParser` 和 file_parse）省略 tier 时，由接单服务按 `standard -> basic -> flash` 选择支持的档位。JSON Tasks 的 `null` 也表示省略；file_parse 使用 multipart，应直接省略表单字段。
-advanced 只接受显式选择：只有 advanced 时没有默认档位，返回结构化错误。显式指定的 PDF/image 档位不受支持时拒绝请求，不自动升降档。
+Tasks（包括 HTTP `MinerUApiParser` 和 file_parse）省略 tier 时，由接单服务按 `standard -> basic -> flash -> advanced` 选择支持的档位。Gradio 初始选档共享同一函数。JSON Tasks 的 `null` 也表示省略；file_parse 使用 multipart，应直接省略表单字段。
+advanced 仅在它是服务唯一可用档位时自动选择。显式指定的 PDF/image 档位不受支持时拒绝请求，不自动升降档。
 已支持的原生文档固定使用 flash，忽略合法的显式 tier。任务受理后固定选档，实际结果逐文件记录在 `files[].parse.tier`。该策略不改变 Doclib 的主动阅读和缓存选择规则，详见 [Tasks](api/tasks.md#tier默认选择与文件作用范围)。
 
 ### 3.4 API 服务启动推荐
@@ -106,7 +106,7 @@ advanced 只接受显式选择：只有 advanced 时没有默认档位，返回�
 
 显存按原始字节比较，不取整、不累加多卡，不使用虚拟显存覆盖。统一／共享内存使用 Metal 推荐工作集、DXGI 本地预算或 Vulkan `heapBudget`，不以系统总内存替代。最终集合在启动时固定；`mineru-kit hardware detect` 共享推荐与内存证据，`hardware info` 只读收集环境信息。
 
-`--tier standard` 等显式上限开放自身和全部较低档位，允许覆盖硬件推荐。`/v1/tiers` 只约束 PDF/图片，原生文档在任何正常可用服务上均固定使用 flash。请求默认仍优先 standard，advanced 不参与默认选档。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
+`--tier standard` 等显式上限开放自身和全部较低档位，允许覆盖硬件推荐。`/v1/tiers` 只约束 PDF/图片，原生文档在任何正常可用服务上均固定使用 flash。请求默认仍优先 standard；仅开放 advanced 的精确集合以 advanced 为默认档位。详见 [启动配置与迁移说明](cli/mineru-kit-api-server.md)。
 
 ## 4. Flash
 
@@ -182,12 +182,12 @@ MinerU 的 tier 策略同时遵守隐私优先和质量优先。
 | 请求 | 默认执行路径 |
 |------|--------------|
 | watch 自动发现文件 | 本地 `flash` |
-| `mineru-kit api-server` 未传 `--tier` | 硬件推荐开放集合；HTTP 请求按 standard → basic → flash 选档 |
+| `mineru-kit api-server` 未传 `--tier` | 硬件推荐开放集合；HTTP 请求按 standard → basic → flash → advanced 选档 |
 | `mineru-kit parse` local 模式未传 `--tier` | PDF/image 直接按 `standard` 解析；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按 `flash` 语义处理；其它 text 不作为解析输入 |
 | watch 命中 parsing-rule 且 rule 指定 tier | PDF 按 rule 中的 tier、页码范围和 remote 配置执行；image 按 tier 和 remote 整文件执行并忽略 page_range；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 忽略 rule tier、page_range 和 remote，按 `flash` 整本解析；其它 text 只入库和索引 |
 | watch 命中 parsing-rule 但 rule 未指定 tier | PDF/image 按 `standard` -> `basic` -> `flash` 选择；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按 `flash`；其它 text 只入库和索引 |
 | Doclib 用户主动 parse，未指定 tier | PDF/image 有能力发现上下文时按 `standard` -> `basic` 选择；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`；其它 text 不进入解析 |
-| HTTP Tasks 省略 tier 或传 JSON `null`；HTTP SDK 传 `None`；file_parse 省略 tier | PDF/image 按 `standard` -> `basic` -> `flash` 选择；已支持的原生文档固定 flash；advanced 必须显式指定 |
+| HTTP Tasks 省略 tier 或传 JSON `null`；HTTP SDK 传 `None`；file_parse 省略 tier | PDF/image 按 `standard` -> `basic` -> `flash` -> `advanced` 选择；已支持的原生文档固定 flash；仅开放 advanced 时默认选 advanced |
 | 用户主动指定 `--tier flash` | 本地 `flash` |
 | 用户主动指定 `--tier basic` | 本地 basic；不可用时报错 |
 | 用户主动指定 `--tier standard` | 本地 standard；显式 remote 时使用 `mineru.net/api` standard |
@@ -203,9 +203,9 @@ CLI、API 和 SDK 暴露 tier 时，应遵守同一语义：
 - 对用户显示 tier，不显示具体 backend 名称作为主要选择项。
 - 公开 tier 取值包括 `flash`、`basic`、`standard`、`advanced`。
 - CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null`、Python SDK 传 `None`，表示使用当前入口按文件类型定义的默认选择策略。
-- 没有能力列表的启动服务或直接解析场景默认使用 `standard`。
+- 直接本地解析默认使用 `standard`；API Server 和 Gradio 自托管服务启动默认使用 `auto` 推荐上限。
 - Doclib 主动解析 PDF/image 时按 `standard` -> `basic` 选择，默认阅读质量不能静默降级到 `flash`。
-- HTTP Tasks 及其客户端默认按 `standard` -> `basic` -> `flash` 选择，不自动选择 advanced。
+- HTTP Tasks 及其客户端默认按 `standard` -> `basic` -> `flash` -> `advanced` 选择，仅开放 advanced 时默认选 advanced。
 - 显式请求的 PDF/image tier 不可用时，应返回结构化错误，不自动升降档。
 - 当用户显式选择 `flash` 时，可以返回 `flash` 内容。
 - `--remote` 或等价字段必须是显式选择。

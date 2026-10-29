@@ -119,6 +119,10 @@ SERVER_TIERS: tuple[ServerTier, ...] = (
     "advanced",
 )
 
+# 启动模式包含自动推荐；实体档位与上限映射仍只包含四个解析档位。
+ServerStartupTier = Literal["auto", "flash", "basic", "standard", "advanced"]
+SERVER_STARTUP_TIERS: tuple[ServerStartupTier, ...] = ("auto", *SERVER_TIERS)
+
 TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]] = {
     "flash": ("flash",),
     "basic": ("flash", "basic"),
@@ -142,6 +146,7 @@ DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = (
 
 
 DEFAULT_QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic")
+DEFAULT_TASK_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic", "flash", "advanced")
 QUALITY_TIERS: frozenset[Tier] = frozenset(("basic", "standard", "advanced"))
 CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("advanced", "standard", "basic", "flash")
 PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*DEFAULT_QUALITY_TIER_SELECTION_ORDER, "flash")
@@ -159,6 +164,12 @@ def _validated_tier_set(available_tiers: Iterable[object] | str) -> set[Tier]:
     if isinstance(available_tiers, str):
         return {validate_tier(available_tiers)}
     return {validate_tier(str(item)) for item in available_tiers}
+
+
+def select_default_task_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """共享 Tasks 与界面的默认选档；仅剩 Advanced 时才自动选择该档位。"""
+    available = _validated_tier_set(available_tiers)
+    return next((tier for tier in DEFAULT_TASK_TIER_SELECTION_ORDER if tier in available), None)
 
 
 def select_default_quality_tier(available_tiers: Iterable[object] | str) -> Tier | None:
@@ -316,17 +327,21 @@ __all__ = [
     "TIER_ORDER",
     "ServerTier",
     "SERVER_TIERS",
+    "ServerStartupTier",
+    "SERVER_STARTUP_TIERS",
     "TIERS_BY_SERVER_TIER",
     "ManagedServerTier",
     "MANAGED_SERVER_TIERS",
     "DeploymentTier",
     "DEPLOYMENT_TIERS",
     "DEFAULT_QUALITY_TIER_SELECTION_ORDER",
+    "DEFAULT_TASK_TIER_SELECTION_ORDER",
     "QUALITY_TIERS",
     "CACHED_TIER_SELECTION_ORDER",
     "PARSING_RULE_TIER_SELECTION_ORDER",
     "validate_tier",
     "select_default_quality_tier",
+    "select_default_task_tier",
     "select_highest_cached_tier",
     "select_parsing_rule_tier",
 ]

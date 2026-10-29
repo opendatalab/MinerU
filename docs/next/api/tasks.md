@@ -42,8 +42,8 @@ ModelJson 仅用于内部解析与后处理，不属于 HTTP 或 SDK 结果。�
 
 ### tier：默认选择与文件作用范围
 
-省略 `tier` 或传入 JSON `null` 时，服务端从支持的档位中按 **standard → basic → flash** 选择第一个，advanced 只能显式指定。
-仅开放 flash 的服务可以直接接收未指定 tier 的 PDF/图片；仅开放 advanced 时，未指定 tier 返回 `503 quality_tier_unavailable`，需显式传入 `advanced`。
+省略 `tier` 或传入 JSON `null` 时，服务端从支持的档位中按 **standard → basic → flash → advanced** 选择第一个；仅服务只开放 advanced 时默认选择 advanced。
+仅开放 flash 的服务可以直接接收未指定 tier 的 PDF/图片；仅开放 advanced 时，未指定 tier 默认使用 `advanced`。
 
 请求包含 PDF/图片且显式提供 tier 时，服务支持该档位就原样使用；不支持则在创建阶段返回 `400 invalid_request`，`error.param="tier"`，整个请求不接单、不分配上传链接，也不自动升档或降档。
 空字符串和未知枚举始终是参数错误，包括纯原生文档请求。

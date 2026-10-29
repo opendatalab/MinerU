@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,15 +11,18 @@ from unittest.mock import Mock
 
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 from typer.testing import CliRunner as TyperRunner
 
 from mineru.kit.commands.api_server import main as standalone_main
 from mineru.kit.main import app as kit_app
+from mineru.kit.gradio.app import build_gradio_app
+from mineru.kit.gradio.client import ManagedLocalApiServer, V1ArtifactClient
 from mineru.model.runtime import tier_recommendation
 from mineru.parser import api_server
 from mineru.parser.server_tiers import parse_server_tier
-from mineru.types import TIERS, TIERS_BY_SERVER_TIER, Tier
+from mineru.types import TIERS, TIERS_BY_SERVER_TIER, Tier, select_default_task_tier
 
 
 @pytest.fixture
@@ -47,7 +51,12 @@ def test_every_explicit_subset_is_exact(
         assert tuple(item["id"] for item in client.get("/v1/tiers").json()["data"]) == tiers
         assert tuple(app.state.tier_runtime_options) == tiers
         assert not hasattr(app.state, "flash_enabled")
-        assert app.state.default_tier == next((t for t in ("standard", "basic", "flash") if t in tiers), None)
+        expected_default = next(t for t in ("standard", "basic", "flash", "advanced") if t in tiers)
+        assert app.state.default_tier == select_default_task_tier(tiers) == expected_default
+        for options in ({}, {"tier": None}):
+            response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
+            assert response.status_code == 202, response.text
+            assert app.state.task_store._records[response.json()["task_id"]].options.tier == expected_default
     recommend.assert_not_called()
 
 
@@ -79,6 +88,30 @@ def test_auto_server_accepts_task_with_standard_default(
         response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
         assert response.status_code == 202, response.text
         assert app.state.task_store._records[response.json()["task_id"]].options.tier == expected
+
+
+@pytest.mark.parametrize("tiers,expected", [(("flash",), "flash"), (("flash", "basic"), "basic"), (TIERS, "standard")])
+def test_gradio_discovers_auto_server_and_matches_task_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preflight: Mock, tiers: tuple[Tier, ...], expected: Tier
+) -> None:
+    """串联托管命令、自动推荐、真实能力发现、界面构建与 Tasks 默认接单。"""
+    recommend = Mock(return_value=SimpleNamespace(pdf_image_tiers=tiers))
+    monkeypatch.setattr(tier_recommendation, "recommend_tiers", recommend)
+    command = ManagedLocalApiServer()._command(8000, tmp_path)
+    startup_tier = command[command.index("--tier") + 1]
+    assert startup_tier == "auto"
+    app = api_server.create_app(upload_dir=str(tmp_path), tiers=parse_server_tier(startup_tier))
+    with TestClient(app) as client:
+        artifact_client = V1ArtifactClient(api_url="http://testserver", transport=httpx.ASGITransport(app=app))
+        capabilities = asyncio.run(artifact_client.discover())
+        assert capabilities.tiers == tiers
+        demo = build_gradio_app(artifact_client, capabilities, output_root=tmp_path, enable_example=False)
+        slider = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Slider")
+        assert tiers[int(slider.value)] == app.state.default_tier == expected
+        response = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}]})
+        assert response.status_code == 202, response.text
+        assert app.state.task_store._records[response.json()["task_id"]].options.tier == expected
+    recommend.assert_called_once_with(vlm_config=app.state.vlm_config)
 
 
 @pytest.mark.parametrize("value", ["", ",", "standard,", "flash,,basic", "ultra", "auto,flash"])

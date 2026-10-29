@@ -22,7 +22,7 @@ uv pip install -U "mineru[full]>=4.0,<5"
 
 ## 可选引擎约束
 
-4.0 当前声明 `torch>=2.7.0,<3`、`transformers>=5.10.1,<6`、Linux `vllm>=0.19.1,<0.29.0`、Windows `lmdeploy>=0.17.0,<0.18`。Python 支持范围还应与这些依赖实际提供的 wheel 取交集。升级已有厂商环境前，先确认它是否属于[旧平台适配](../usage/compatibility.md)。
+当前声明 `torch>=2.7.0,<3`、`transformers>=5.10.1,<6`、Linux `vllm>=0.19.1,<0.31.0`、Windows `lmdeploy>=0.17.0,<0.19`。Python 支持范围还应与这些依赖实际提供的 wheel 取交集。升级已有厂商环境前，先确认它是否属于[旧平台适配](../usage/compatibility.md)。
 
 Apple Silicon 的默认 VLM 是 llama.cpp。
 

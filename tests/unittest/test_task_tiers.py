@@ -25,7 +25,7 @@ from mineru.parser.tier import runtime_options_for_tier
 from mineru.tasks.contracts import TaskFileInput, UploadTaskOptions
 from mineru.tasks.errors import ApiServerError
 from mineru.tasks.service import TERMINAL_TASK_STATUSES, resolve_task_tier
-from mineru.types import TIERS, MiddleJson, PageInfo, Tier, select_default_quality_tier
+from mineru.types import TIERS, MiddleJson, PageInfo, Tier, select_default_task_tier
 
 
 class _RecordingTransport(httpx.AsyncBaseTransport):
@@ -47,7 +47,7 @@ def _set_tiers(app: FastAPI, tiers: tuple[Tier, ...]) -> None:
     """显式设置测试部署能力，避免初始化真实推理模型或依赖启动档位展开。"""
     app.state.tier_runtime_options = {tier: runtime_options_for_tier(tier) for tier in tiers}
     app.state.tiers = api_server._tiers_for_server_tiers(list(tiers))
-    app.state.default_tier = select_default_quality_tier(tiers)
+    app.state.default_tier = select_default_task_tier(tiers)
 
 
 @asynccontextmanager
@@ -154,19 +154,19 @@ def _stub_inference(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Tier]]:
         (("flash", "basic"), "basic"),
         (("flash",), "flash"),
         (("flash", "advanced"), "flash"),
-        (("advanced",), None),
+        (("advanced",), "advanced"),
         ((), None),
     ],
 )
 def test_task_default_tier_matrix(tiers: tuple[Tier, ...], expected: Tier | None) -> None:
-    """覆盖非连续能力集合，Tasks 默认值包含 flash 且永远不自动选 advanced。"""
+    """覆盖非连续能力集合，仅剩 Advanced 时才默认选择该档位。"""
     inputs = [TaskFileInput(file_name="input.pdf", bytes=1)]
     if expected is None:
         with pytest.raises(ApiServerError) as error:
             resolve_task_tier(UploadTaskOptions(), inputs, set(tiers))
         assert error.value.status_code == 503
         assert error.value.error.code == "quality_tier_unavailable"
-        assert "pass tier explicitly" in str(error.value)
+        assert "No parsing tier is available" in str(error.value)
     else:
         assert resolve_task_tier(UploadTaskOptions(), inputs, set(tiers)) == expected
 
@@ -193,7 +193,7 @@ def test_task_explicit_tier_is_not_upgraded_or_downgraded(tier: Tier) -> None:
         (("flash",), {"tier": "advanced"}, ["input.pdf", "input.docx"], 400, "tier"),
         (("flash",), {"tier": ""}, ["input.docx"], 400, "tier"),
         (("flash",), {"tier": "unknown"}, ["input.docx"], 400, "tier"),
-        (("advanced",), {}, ["input.pdf"], 503, None),
+        (("advanced",), {}, ["input.pdf"], 202, None),
         (("standard",), {}, ["input.pdf", "input.docx"], 202, None),
         (("standard",), {"tier": "flash"}, ["input.pdf", "input.docx"], 400, "tier"),
         (("standard",), {"tier": "basic"}, ["input.png"], 400, "tier"),
@@ -222,7 +222,7 @@ def test_task_tier_preflight_and_schema(
             assert response.status_code == status, response.text
             if status == 202:
                 record = app.state.task_store._records[response.json()["task_id"]]
-                assert record.options.tier == ("standard" if "standard" in tiers else "flash")
+                assert record.options.tier == select_default_task_tier(tiers)
             else:
                 assert "type" not in response.json()["error"]
                 if param is None:
@@ -233,6 +233,27 @@ def test_task_tier_preflight_and_schema(
                 assert all(not service.state.task_store._records for service in apps)
                 assert not submissions
                 assert "files" not in response.json()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("deployment", ["api", "router", "cascade"])
+@pytest.mark.parametrize(
+    "tiers,expected",
+    [(("advanced", "flash"), "flash"), (("advanced", "basic"), "basic"), (("advanced",), "advanced")],
+)
+@pytest.mark.parametrize("options", [{}, {"tier": None}])
+def test_non_contiguous_default_tier_across_deployments(
+    tmp_path: Path, deployment: str, tiers: tuple[Tier, ...], expected: Tier, options: dict[str, None]
+) -> None:
+    """真实 API 与两层 Router 接单时共享缺档默认顺序，不把 Advanced 提前。"""
+
+    async def scenario() -> None:
+        """通过公开接口创建任务并检查持久到接单记录中的实际档位。"""
+        async with _deployment(tmp_path, deployment, {"worker": tiers}) as (client, app, _apps, _calls):
+            response = await client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], **options})
+            assert response.status_code == 202, response.text
+            assert app.state.task_store._records[response.json()["task_id"]].options.tier == expected
 
     asyncio.run(scenario())
 

@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import zipfile
+from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -45,7 +46,19 @@ from mineru.kit.gradio.status import STATUS_COMPLETED, ParseStatusUpdate, Status
 from mineru.parser import api_client as parser_api_client
 from mineru.parser import api_server as parser_api_server
 from mineru.parser.base import ParseResult
-from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson, ModelJson, PageInfo, TextBlock, TextSpan
+from mineru.types import (
+    SERVER_STARTUP_TIERS,
+    TIERS,
+    BlockType,
+    ImageBlock,
+    ImageBodyBlock,
+    MiddleJson,
+    ModelJson,
+    PageInfo,
+    TextBlock,
+    TextSpan,
+    select_default_task_tier,
+)
 from mineru.version import __version__
 
 runner = CliRunner()
@@ -153,7 +166,8 @@ def test_webui_command_is_registered_and_help_is_available() -> None:
     # CI 强制彩色输出时，Rich 会在参数名内部插入 ANSI 样式码。
     help_text = unstyle(gradio_result.output)
     assert "--api-url" in help_text
-    assert "--api-server-tier" in help_text
+    assert "--tier" in help_text
+    assert "--api-server-tier" not in help_text
     assert "Disable Advanced on" not in help_text
     assert "Disable Flash on" not in help_text
 
@@ -172,6 +186,7 @@ def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
 @pytest.mark.parametrize(
     "flag",
     [
+        "--api-server-tier",
         "--api-server-no-flash",
         "--no-flash",
         "--api-server-no-advanced",
@@ -179,12 +194,12 @@ def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
     ],
 )
 @pytest.mark.parametrize("standalone", [False, True])
-def test_gradio_rejects_removed_tier_disable_options(
+def test_gradio_rejects_removed_tier_options(
     monkeypatch: pytest.MonkeyPatch,
     flag: str,
     standalone: bool,
 ) -> None:
-    """验证两个命令入口在启动服务前拒绝所有已移除的禁用档位参数。"""
+    """验证两个命令入口在启动服务前拒绝旧档位参数名及禁用开关。"""
     launch = Mock()
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
 
@@ -198,6 +213,38 @@ def test_gradio_rejects_removed_tier_disable_options(
         assert result.exit_code == 2, result.output
         assert "No such option" in result.output
     launch.assert_not_called()
+
+
+@pytest.mark.parametrize("standalone", [False, True])
+@pytest.mark.parametrize("tier", [None, *SERVER_STARTUP_TIERS, "unknown"])
+def test_webui_startup_tier_options(monkeypatch: pytest.MonkeyPatch, standalone: bool, tier: str | None) -> None:
+    """两个入口统一默认 auto，并将合法档位原样交给托管启动链。"""
+    launch = Mock()
+    monkeypatch.setattr(gradio_app, "launch_gradio", launch)
+    options = [] if tier is None else ["--tier", tier]
+    expected_code = 1 if tier == "unknown" else 0
+    if standalone:
+        monkeypatch.setattr(sys, "argv", ["mineru-webui", *options])
+        with pytest.raises(SystemExit) as stopped:
+            webui_command.main()
+        assert stopped.value.code == expected_code
+    else:
+        result = runner.invoke(app, ["webui", *options])
+        assert result.exit_code == expected_code, result.output
+    if expected_code:
+        launch.assert_not_called()
+    else:
+        launch.assert_called_once()
+        assert launch.call_args.kwargs["tier"] == (tier or "auto")
+        assert "api_server_tier" not in launch.call_args.kwargs
+
+
+@pytest.mark.parametrize("tier", [None, *SERVER_STARTUP_TIERS])
+def test_gradio_managed_startup_tier_command(tier: str | None, tmp_path: Path) -> None:
+    """托管服务默认与显式 auto 都传给正式 API 命令，不在 Gradio 内重复探测。"""
+    server = ManagedLocalApiServer() if tier is None else ManagedLocalApiServer(tier=tier)
+    command = server._command(8123, tmp_path)
+    assert command[command.index("--tier") + 1] == (tier or "auto")
 
 
 @pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
@@ -1166,13 +1213,10 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     ("tiers", "default_position", "default_tier", "maximum"),
     [
-        (("advanced", "flash", "standard", "basic"), 2, "standard", 3),
-        (("advanced", "standard", "basic"), 1, "standard", 2),
-        (("flash", "basic", "standard"), 2, "standard", 2),
-        (("advanced", "flash"), 1, "advanced", 1),
-        (("basic", "flash"), 1, "basic", 1),
-        (("flash",), 0, "flash", 1),
-        (("advanced",), 0, "advanced", 1),
+        (tuple(reversed(tiers)), tiers.index(default), default, max(1, len(tiers) - 1))
+        for size in range(1, 5)
+        for tiers in combinations(TIERS, size)
+        for default in [next(tier for tier in ("standard", "basic", "flash", "advanced") if tier in tiers)]
     ],
 )
 def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
@@ -1187,6 +1231,7 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     label = next(block for block in demo.blocks.values() if "mineru-tier-label" in (block.elem_classes or []))
     assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
     assert slider.value == default_position
+    assert default_tier == select_default_task_tier(tiers)
     assert slider.interactive is (len(tiers) > 1)
     assert slider.visible is (len(tiers) > 1)
     assert (

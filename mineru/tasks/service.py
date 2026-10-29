@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ..filetypes import is_flash_only_parse_extension
 from ..task_types import TaskFileState, TaskStatus
-from ..types import Tier
+from ..types import Tier, select_default_task_tier
 from ..utils.async_utils import drain_future, run_sync
 from .contracts import ErrorDetail, TaskFileInput, TaskFileItem, UploadTaskOptions
 from .errors import ApiServerError, invalid_task_request
@@ -23,7 +23,6 @@ from .execution import TaskBackend, TaskExecution, TaskUpload, execution_timesta
 
 TASK_UPLOAD_TTL = 3600
 TERMINAL_TASK_STATUSES = frozenset({"completed", "partial", "failed", "canceled"})
-_DEFAULT_TASK_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic", "flash")
 logger = logging.getLogger(__name__)
 
 
@@ -36,11 +35,11 @@ def resolve_task_tier(options: UploadTaskOptions, inputs: list[TaskFileInput], t
         if options.tier not in tiers:
             invalid_task_request(f"Tier '{options.tier}' is not available", param="tier")
         return options.tier
-    for tier in _DEFAULT_TASK_TIER_SELECTION_ORDER:
-        if tier in tiers:
-            return tier
+    default_tier = select_default_task_tier(tiers)
+    if default_tier is not None:
+        return default_tier
     invalid_task_request(
-        "No default tier is available (standard, basic, or flash); pass tier explicitly",
+        "No parsing tier is available for PDF/image tasks",
         code="quality_tier_unavailable",
         status_code=503,
     )

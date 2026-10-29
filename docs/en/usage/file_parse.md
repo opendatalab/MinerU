@@ -40,7 +40,7 @@ The wrapper has its own `/docs` and `/openapi.json`. The routes below exist only
 | `wait_timeout` | `3600` | Integer seconds, 0–3600. |
 | `request_id` | Generated | 1–64 letters, digits, underscores, or hyphens; supply and save it before submission to recover after a disconnect. |
 
-Omitting tier lets the upstream choose Standard → Basic → Flash for PDFs/images; Advanced requires an explicit request. An explicitly unsupported PDF/image tier returns an error without substitution. Existing native documents always use Flash, even when a valid requested tier is not advertised upstream. Empty form strings and the literal string `"null"` are invalid tiers, not omissions.
+Omitting tier lets the upstream choose Standard → Basic → Flash → Advanced for PDFs/images; Advanced is selected automatically only when it is the sole available tier. An explicitly unsupported PDF/image tier returns an error without substitution. Existing native documents always use Flash, even when a valid requested tier is not advertised upstream. Empty form strings and the literal string `"null"` are invalid tiers, not omissions.
 
 `output_formats` is neither a JSON string nor a comma-separated value: use repeated form fields. `include_model_output` is removed and returns 400 when supplied.
 

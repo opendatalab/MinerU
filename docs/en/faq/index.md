@@ -10,7 +10,7 @@ For unresolved problems, join our [Discord](https://discord.gg/Tdedn9GTXq) or [W
 
     The 4.1 base package can automatically use ONNX DirectML or CPU on Windows x64, with llama.cpp for the VLM. Use `mineru-kit hardware info --json` to inspect the environment and existing calibration evidence. For Torch small models and LMDeploy, install `"mineru[full]>=4.0,<5"` in the owning environment, then check Torch CUDA support, GPU drivers, and the Python range of engine wheels.
 
-    4.0 uses `lmdeploy>=0.17.0,<0.18` and Transformers 5. Do not reuse old LMDeploy 0.11.x wheel recipes or bypass dependency checks. See [extension modules](../quick_start/extension_modules.md) and [tiers](../usage/tiers.md).
+    The current version uses `lmdeploy>=0.17.0,<0.19` and Transformers 5. Do not reuse old LMDeploy 0.11.x wheel recipes or bypass dependency checks. See [extension modules](../quick_start/extension_modules.md) and [tiers](../usage/tiers.md).
 
 ??? question "What changed in commands, APIs, and configuration?"
 
