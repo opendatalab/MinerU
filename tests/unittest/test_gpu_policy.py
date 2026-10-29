@@ -19,6 +19,7 @@ from mineru.model.runtime.gpu import (
     GpuClassification,
     GpuIdentity,
     GpuKind,
+    PciAddress,
     classify_d3d12_gpu,
     classify_macos_gpu,
     classify_vulkan_gpu,
@@ -114,6 +115,29 @@ def test_identity_matching_requires_mutual_uniqueness() -> None:
     first, second = replace(card, luid="a"), replace(card, luid="b")
     assert match_gpu_identities((first, second), (second, first)) == (1, 0)
     assert gpu_identities_match(GpuIdentity(bus_id="00000000:01:00.0"), GpuIdentity(bus_id="0000:01:00.0"))
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_physical_pci_match_beats_duplicate_name(reverse: bool) -> None:
+    """有效 PCI 坐标优先于同名无物理地址的 DXGI 条目，不依赖枚举顺序。"""
+    selected = GpuIdentity(name="8060S", pci_address=PciAddress(195, 0, domain=0))
+    physical = GpuIdentity(0x1002, 5510, luid="physical", name="8060S", pci_address=PciAddress(195, 0, function=0))
+    duplicate = replace(physical, luid="duplicate", pci_address=None)
+    targets = (physical, duplicate) if not reverse else (duplicate, physical)
+    assert match_gpu_identities((selected,), targets, allow_name=True) == (int(reverse),)
+    assert match_gpu_identities((selected, selected), targets, allow_name=True) == (None, None)
+
+
+def test_partial_pci_address_does_not_guess_domain_or_function() -> None:
+    """Torch 不提供 function、Windows 不提供 domain 时，只比较已知坐标并保留多解。"""
+    selected = GpuIdentity(name="GPU", pci_address=PciAddress(195, 0, domain=0))
+    function_zero = GpuIdentity(name="GPU", bus_id="0000:c3:00.0")
+    function_one = replace(function_zero, bus_id="0000:c3:00.1")
+    assert match_gpu_identities((selected,), (function_one,), allow_name=True) == (0,)
+    assert match_gpu_identities((selected,), (function_zero, function_one), allow_name=True) == (None,)
+    for conflict in ("0001:c3:00.0", "0000:c4:00.0", "0000:c3:01.0"):
+        assert not gpu_identities_match(selected, replace(function_zero, bus_id=conflict), allow_name=True)
+    assert not gpu_identities_match(replace(selected, luid="one"), replace(function_zero, luid="two"), allow_name=True)
 
 
 @pytest.mark.parametrize("platform", ["linux", "win32"])
@@ -255,5 +279,33 @@ sys.meta_path.insert(0, BlockRuntime())
 from mineru.model.runtime.gpu import GPU_KIND_ORDER, GpuIdentity, match_gpu_identities
 assert GPU_KIND_ORDER[0] == "discrete"
 assert match_gpu_identities((GpuIdentity(1, 2),), (GpuIdentity(1, 2),)) == (0,)
+"""
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)
+
+
+def test_windows_memory_query_without_torch_or_other_inference_dependencies() -> None:
+    """基础安装的 Windows 原生查询和 LUID 匹配无需导入任何推理后端。"""
+    code = """
+import importlib.abc
+import sys
+from types import SimpleNamespace
+class BlockRuntime(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'torch', 'torchvision', 'onnxruntime', 'mineru_llama_cpp'}:
+            raise AssertionError(fullname)
+sys.meta_path.insert(0, BlockRuntime())
+from mineru.model.runtime import gpu_memory, windows_gpu
+from mineru.model.runtime.gpu import GpuIdentity
+gpu_memory.sys = SimpleNamespace(platform='win32')
+rows = [
+    {'vendor_id': 4098, 'device_id': 5510, 'name': '8060S', 'luid': luid,
+     'kind': 'integrated', 'memory_budget_bytes': budget, 'pci_address': None}
+    for luid, budget in [('other', 128 * 1024**3), ('selected', 8 * 1024**3)]
+]
+windows_gpu.inspect_gpus = lambda **kwargs: rows
+memory = gpu_memory.native_gpu_memory(GpuIdentity(luid='selected'), device='dml:gpu')
+assert memory.memory_bytes == 8 * 1024**3
+assert memory.source == 'dxgi.local_budget' and memory.identity.luid == 'selected'
+assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
 """
     subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)

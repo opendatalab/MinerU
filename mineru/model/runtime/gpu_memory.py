@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 import sys
 from typing import Literal
 
-from .gpu import GpuIdentity, match_gpu_identities
+from .gpu import GpuIdentity, PciAddress, match_gpu_identities
 
 MIN_GPU_MEMORY_BYTES = 11 * 1024**3 // 2  # 5.5 GiB，始终使用整数字节比较。
 
@@ -44,7 +44,16 @@ def native_gpu_memory(identity: GpuIdentity, *, device: str) -> GpuMemory:
             from .windows_gpu import inspect_gpus
 
             rows = inspect_gpus(include_memory_budget=True)
-            identities = [GpuIdentity(row["vendor_id"], row["device_id"], luid=row["luid"], name=row["name"]) for row in rows]
+            identities = [
+                GpuIdentity(
+                    row["vendor_id"],
+                    row["device_id"],
+                    luid=row["luid"],
+                    name=row["name"],
+                    pci_address=PciAddress(**row["pci_address"]) if row.get("pci_address") is not None else None,
+                )
+                for row in rows
+            ]
             matched = match_gpu_identities((identity,), identities, allow_name=True)[0]
             if matched is not None:
                 row = rows[matched]
@@ -103,11 +112,21 @@ def torch_gpu_memory(device: str) -> GpuMemory:
         index = int(index_text) if index_text else api.current_device()
         properties = api.get_device_properties(index)
         selected = f"{kind}:{index}"
+        bus = getattr(properties, "pci_bus_id", None)
+        slot = getattr(properties, "pci_device_id", None)
+        pci_address = None
+        if type(bus) is int and type(slot) is int:
+            # ROCm 给出整数 bus/device/domain，没有 function；不能把 bus 编号当完整 BDF 字符串。
+            try:
+                pci_address = PciAddress(bus, slot, domain=getattr(properties, "pci_domain_id", None))
+            except ValueError:
+                pass  # 可选身份字段不可用，不影响独显直接读取容量；原生匹配仍需唯一。
         identity = GpuIdentity(
             vendor_id=0x8086 if kind == "xpu" else None,
             device_id=getattr(properties, "device_id", None),
-            bus_id=getattr(properties, "pci_bus_id", None),
+            bus_id=bus if isinstance(bus, str) else None,
             name=getattr(properties, "name", None),
+            pci_address=pci_address,
         )
         integrated = getattr(properties, "is_integrated_gpu", getattr(properties, "is_integrated", None))
         if integrated or (kind == "xpu" and integrated is None):

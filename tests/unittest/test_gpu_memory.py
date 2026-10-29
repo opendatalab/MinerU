@@ -12,7 +12,7 @@ from unittest.mock import Mock
 import pytest
 
 from mineru.model.runtime import gpu_memory, vulkan, windows_gpu
-from mineru.model.runtime.gpu import GpuIdentity
+from mineru.model.runtime.gpu import GpuIdentity, PciAddress
 
 
 @pytest.mark.parametrize("device", ["cuda:1", "cuda"])
@@ -112,6 +112,75 @@ def test_xpu_integrated_uses_native_budget(monkeypatch: pytest.MonkeyPatch) -> N
     result = gpu_memory.torch_gpu_memory("xpu:1")
     assert result.memory_bytes == 4 * 1024**3 and not result.sufficient
     query.assert_called_once_with(GpuIdentity(0x8086, 1, name="Intel GPU"), device="xpu:1")
+
+
+@pytest.mark.parametrize("device", ["cuda:1", "cuda"])
+@pytest.mark.parametrize("amount", [None, 5_905_580_032 - 1, 5_905_580_032])
+def test_rocm_integrated_reads_matching_dxgi_budget(monkeypatch: pytest.MonkeyPatch, device: str, amount: int | None) -> None:
+    """整数 PCI 字段定位真实 DXGI 适配器，重复条目或 Torch 大容量都不替代其预算。"""
+    monkeypatch.setattr(gpu_memory, "sys", SimpleNamespace(platform="win32"))
+    properties = Mock(
+        return_value=SimpleNamespace(
+            name="8060S", is_integrated=1, pci_bus_id=195, pci_device_id=0, pci_domain_id=0, total_memory=96 * 1024**3
+        )
+    )
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(current_device=lambda: 1, get_device_properties=properties))
+    )
+    physical = {
+        "vendor_id": 0x1002,
+        "device_id": 5510,
+        "name": "8060S",
+        "luid": "physical",
+        "pci_address": {"bus": 195, "device": 0, "domain": None, "function": 0},
+        "kind": "integrated",
+        "dedicated_memory_bytes": 32 * 1024**3,
+        "shared_memory_bytes": 128 * 1024**3,
+        "memory_budget_bytes": amount,
+    }
+    duplicate = {**physical, "luid": "duplicate", "pci_address": None, "memory_budget_bytes": 128 * 1024**3}
+    monkeypatch.setattr(windows_gpu, "inspect_gpus", lambda **kwargs: [duplicate, physical])
+    result = gpu_memory.torch_gpu_memory(device)
+    assert result.memory_bytes == amount and result.sufficient is (amount == 5_905_580_032)
+    assert result.device == "cuda:1" and result.identity.luid == "physical"
+    assert result.source == "dxgi.local_budget" and result.kind == "budget"
+    properties.assert_called_once_with(1)
+
+
+@pytest.mark.parametrize("stage", ["success", "open", "query", "invalid", "close"])
+def test_windows_pci_query_abi_and_handle_lifetime(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
+    """验证系统接口结构布局，失败/无效地址均不伪造坐标，已打开句柄始终关闭。"""
+
+    def open_adapter(output: Any) -> int:
+        assert output._obj.luid.low == 0x1709C and output._obj.luid.high == 1
+        output._obj.handle = 123
+        return -1 if stage == "open" else 0
+
+    def query_adapter(output: Any) -> int:
+        query = output._obj
+        assert query.handle == 123 and query.type == 6 and query.size == 12
+        address = ct.cast(query.data, ct.POINTER(windows_gpu._AdapterAddress)).contents
+        address.bus, address.device, address.function = (0xFFFFFFFF, 0xFFFF, 0xFFFF) if stage == "invalid" else (195, 0, 1)
+        return -1 if stage == "query" else 0
+
+    def close_adapter(output: Any) -> int:
+        assert output._obj.handle == 123
+        return -1 if stage == "close" else 0
+
+    library = SimpleNamespace(
+        D3DKMTOpenAdapterFromLuid=Mock(side_effect=open_adapter),
+        D3DKMTQueryAdapterInfo=Mock(side_effect=query_adapter),
+        D3DKMTCloseAdapter=Mock(side_effect=close_adapter),
+    )
+    monkeypatch.setattr(windows_gpu.C, "WinDLL", lambda *args, **kwargs: library, raising=False)
+    if stage == "success":
+        assert windows_gpu._pci_address(windows_gpu._Luid(0x1709C, 1)) == PciAddress(195, 0, function=1)
+    else:
+        with pytest.raises(ValueError if stage == "invalid" else OSError):
+            windows_gpu._pci_address(windows_gpu._Luid(0x1709C, 1))
+    assert library.D3DKMTCloseAdapter.call_count == int(stage != "open")
+    assert ct.sizeof(windows_gpu._OpenAdapterFromLuid) == 12
+    assert windows_gpu._QueryAdapterInfo.data.offset == 8
 
 
 @pytest.mark.parametrize("native", [False, True])

@@ -27,6 +27,8 @@ mineru-kit hardware info --json > hardware-info.json
 
 内存检查只使用确认设备的原始字节值，不四舍五入、不累加多卡，也不读取 `MINERU_VIRTUAL_VRAM_SIZE`。独显按专用显存总量判断；Apple Metal 按推荐工作集预算，Windows 集显按 DXGI 本地预算，Linux 集显按 Vulkan `heapBudget` 判断。预算比较使用上限，不减去当前用量。不能唯一关联设备、容量未知、预算扩展不可用或查询失败时按 CPU 条件推荐；系统总内存和共享内存理论上限不能替代 GPU 预算。
 
+Windows 原生查询不依赖 Torch。DXGI 库存通过系统 `D3DKMTOpenAdapterFromLuid` / `D3DKMTQueryAdapterInfo(KMTQAITYPE_ADAPTERADDRESS)` 补充物理 PCI 位置，内存仍来自该适配器的 DXGI 查询。ONNX 已选设备按 LUID 关联；可选 Torch/ROCm 后端的整数 PCI 字段作为部分坐标参与关联，不把 bus 编号当作完整 BDF，不猜测缺失的 domain/function。匹配优先采用 LUID 和已知 PCI 坐标，最后才使用唯一型号或名称；同名但无物理地址的条目不能覆盖明确的 PCI 匹配。无效地址、查询失败或多个同等匹配继续保留未知，不按容量大小或枚举顺序猜测。可用性和实际推理验证仍由各后端负责，读取预算成功不代表模型推理已验证。
+
 `small_backend=auto` 最终选择 Torch 时同样免校准。显式设备字符串必须经过实际可用性检查；检查失败会给出保守结果及原因，不修改设备配置。Torch 推荐不依赖 llama.cpp 库存，不下载 ONNX 校准权重，也不写入 `model.onnx_device` 或 OCR 校准记录。
 
 ONNX 分支保留既有兼容策略、0.8 阈值和进程缓存。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均免 OCR 校准，报告 `status=skipped, reason=discrete_gpu`；首次真实 GPU 会话成功后才保存 `gpu`，硬件推荐本身不生成校准记录。`onnx_device=auto` 时，集显或类型无法确认的候选继续沿用现有设备选型测速，首次可能下载 OCR rec 模型；下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定导致本次设备选型回退 CPU 时，按 CPU 条件推荐，并携带警告。
