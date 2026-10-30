@@ -1,10 +1,10 @@
-# Docker 部署（MinerU 4.0 / NVIDIA）
+# Docker 部署（MinerU 4.x / NVIDIA）
 
 通用 Docker 面向 Linux NVIDIA 环境（Windows 使用 WSL2）。Apple Silicon 使用 macOS 原生安装；此 Docker 流程不提供 MPS 加速。非 NVIDIA 设备的 Docker 部署方案待更新，期间可参考[旧平台指南](../usage/compatibility.md)，其专用 Docker 保持 `mineru<4`。
 
 ## 构建镜像
 
-在包含本次 4.0 Dockerfile 的仓库根目录执行：
+在包含本次 4.x Dockerfile 的仓库根目录执行：
 
 ```bash
 docker build -t mineru:4 -f docker/china/Dockerfile .
@@ -23,29 +23,28 @@ docker build -t mineru:4 -f docker/china/Dockerfile .
 | 正式版镜像（`docker/global/Dockerfile`、`docker/china/Dockerfile`） | 包索引区间 `mineru[torch]>=4.0,<5` | 生产部署 |
 | 源码调试容器（正式版镜像 + 挂载 checkout） | 你的工作副本 / 提交 | 验证开发分支、调试、复现补丁 |
 
-建议给镜像打上实际版本号的 tag，而不是只用 `mineru:4`，并在构建后断言实际安装的版本——断言用于发现 tag 与版本不一致，不能让区间构建变得可复现：
+先构建区间版本镜像，再读取实际安装版本并添加相应 tag。镜像 tag 本身不固定 pip 的依赖选择：
 
 ```bash
-docker build -t mineru:4.0.0 -f docker/china/Dockerfile .
-docker run --rm mineru:4.0.0 python3 -c '
-from mineru.version import __version__
-expected = "4.0.0"
-print(f"actual={__version__}, expected={expected}")
-raise SystemExit(0 if __version__ == expected else 1)'
+docker build -t mineru:4 -f docker/china/Dockerfile .
+MINERU_IMAGE_VERSION=$(docker run --rm mineru:4 python3 -c 'from mineru.version import __version__; print(__version__)')
+docker tag mineru:4 "mineru:${MINERU_IMAGE_VERSION}"
 ```
+
+需要固定 MinerU 版本时，在所用 Dockerfile 的安装行将 `mineru[torch]>=4.0,<5` 改为经过验证的精确版本，例如 `mineru[torch]==4.1.2`，然后重新构建并核对安装版本。完整可复现构建还需要固定基础镜像 digest 和依赖解析结果。
 
 要测试特定源码版本，先构建正式版镜像，再在**源码调试容器**内安装 checkout。它依赖宿主机挂载，不可分发：
 
 ```bash
 docker run --gpus all --shm-size 32g --ipc=host -it \
-  -v "$PWD":/src mineru:4.0.0 /bin/bash -c \
+  -v "$PWD":/src mineru:4 /bin/bash -c \
   "python3 -m pip install -e '/src[torch]' && mineru-kit parse /src/document.pdf -o /src/document.md"
 ```
 
 可分发的源码镜像应在构建时复制源码；tag 记录提交 SHA：
 
 ```dockerfile
-FROM mineru:4.0.0
+FROM mineru:4
 COPY . /src
 RUN python3 -m pip install "/src[torch]"
 ```

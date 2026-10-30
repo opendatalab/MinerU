@@ -1,5 +1,7 @@
 # ADR-0001: JSON 输出格式命名
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted
 日期: 2026-06-09
 相关文档: ../cli/mineru-parse.md, ../api/tasks.md, ../sdk/parse-result.md, ../middle-json.md

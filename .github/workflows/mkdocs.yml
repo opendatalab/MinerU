@@ -43,7 +43,9 @@ jobs:
           uv pip install -r docs/requirements.txt
       - name: Build docs (strict)
         if: steps.changes.outputs.docs == 'true'
-        run: uv run --no-project --no-sync python -m mkdocs build --strict
+        run: |
+          uv run --no-project --no-sync python -m mkdocs build --strict
+          uv run --no-project --no-sync python docs/_hooks/check_site.py site
       - name: Retain the verified site
         if: >-
           steps.changes.outputs.docs == 'true' && github.event_name == 'push' &&

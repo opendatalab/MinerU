@@ -33,7 +33,7 @@ markdown = render(
 | `LATEX` | `LatexRenderOptions(asset_base_path, document_title)` | `str` |
 | `DOCX` | `DocxRenderOptions(asset_resolver)` | `bytes` |
 | `EPUB` | `EpubRenderOptions(title, authors, language, identifier, modified_at, asset_resolver)` | `bytes` |
-| `PDF` | `PdfRenderOptions(asset_resolver, document_title)` | `bytes` |
+| `PDF` | `PdfRenderOptions(layout, asset_resolver, document_title)` | `bytes` |
 | `STRUCTURED_CONTENT` | `StructuredContentRenderOptions(asset_base_url)` | `dict[str, Any]` |
 | `CONTENT_LIST` | `ContentListRenderOptions(asset_base_url)` | `list[dict[str, Any]]` |
 | `CONTENT_LIST_V2` | `ContentListV2RenderOptions(asset_base_url)` | `list[list[dict[str, Any]]]` |
@@ -51,10 +51,8 @@ markdown = render(
 ### 内部依赖边界
 
 `markdown.py`、`html.py`、`latex.py`、`docx.py`、`epub.py`、`pdf.py`、`content_list.py`、`content_list_v2.py` 和
-`structured_content.py` 是稳定公共门面；实现代码位于非公共
-`mineru.render._internal`。`common` 只保存跨格式 AST、解析、列表/目录语义和 render planner，
-不得依赖任一格式实现。各格式私有子包只能依赖 `common`、基础层与自身模块，彼此
-不交叉导入。`_internal` 路径不属于 SDK 兼容承诺。
+`structured_content.py` 是稳定公共门面；七种通用 renderer 的实现归 DocVortex；MinerU 保留 Content List V1/V2 及专用选项，
+通过 DocVortex 公开片段接口复用共享能力。不得导入 DocVortex 私有实现，也不在 MinerU 保留第二份通用 renderer。
 
 ## Markdown
 
@@ -406,7 +404,7 @@ structured_content = render_structured_content(
 ```
 
 `render_structured_content()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
-文档级 dict。顶层保留 `pages/is_full_document/file_suffix/effort/parse_mode/mineru_version`，每页保留
+文档级 dict。顶层保留 `pages/is_full_document/metadata/extensions`，每页保留
 `page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它没有 `mode` 参数，也不使用
 Markdown/HTML 的展示型 planner，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
 列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。
@@ -459,10 +457,9 @@ anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.
       ]
     }
   ],
-  "file_suffix": "pdf",
-  "effort": "flash",
-  "parse_mode": "txt",
-  "mineru_version": "3.4.0"
+  "is_full_document": true,
+  "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": "4.1.2"}},
+  "extensions": {"mineru": {"tier": "flash", "parse_mode": "txt"}}
 }
 ```
 

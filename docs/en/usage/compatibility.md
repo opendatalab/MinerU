@@ -12,20 +12,20 @@ This illustrates the version bound, not a universal vendor installation recipe. 
 
 ## Platform guides
 
-The retained platform guides are in Chinese.
+The Chinese guides are archived snapshots for legacy versions, not current mainline instructions.
 
-- [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/)
-- [THead](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/)
-- [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/)
-- [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
-- [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
-- [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
-- [IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
-- [Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
-- [Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
-- [Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)
-- [Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
-- [VastAI](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/VastAI/)
+- [Ascend](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Ascend.md)
+- [THead](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/THead.md)
+- [METAX](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/METAX.md)
+- [Hygon](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Hygon.md)
+- [Enflame](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Enflame.md)
+- [MooreThreads](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/MooreThreads.md)
+- [IluvatarCorex](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/IluvatarCorex.md)
+- [Cambricon](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Cambricon.md)
+- [Kunlunxin](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Kunlunxin.md)
+- [Tecorigin](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Tecorigin.md)
+- [Biren](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/Biren.md)
+- [VastAI](https://github.com/opendatalab/MinerU/blob/master/docs/archive/platforms/VastAI.md)
 
 ## Legacy commands and references
 

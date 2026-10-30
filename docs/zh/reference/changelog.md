@@ -13,7 +13,7 @@
 
 - **Windows GPU 识别**：通过物理 PCI 地址关联 GPU 与显存信息，改善多显卡和同型号设备的匹配。
 - **llama.cpp 运行策略**：Linux 和 Windows 自动模式复用小模型后端的 CPU/GPU 选择，由 llama.cpp 选择具体显卡；这些平台上的 GPU 主模型默认使用 4 个生成线程，保留用户显式设置。
-- **自动档位推荐**：根据小模型后端实际选择的设备推荐档位，不再以显存容量作为准入条件。GPU 可开放全部档位；CPU 可用核数至少 4 核开放 Basic，至少 12 核开放 Standard。默认请求仍按 Standard → Basic → Flash 选择，Advanced 需要显式指定。
+- **自动档位推荐**：根据小模型后端实际选择的设备推荐档位，不再以显存容量作为准入条件。GPU 可开放全部档位；CPU 可用核数至少 4 核开放 Basic，至少 12 核开放 Standard。默认请求仍按 Standard → Basic → Flash → Advanced 选择；仅开放 Advanced 时才自动选择 Advanced。
 - **PDF 文本清理**：原生正文在后置 OCR 和失败恢复后，将残留的 Unicode 私用区字符替换为空格，覆盖基本和补充私用区。
 
 ## 4.1.0

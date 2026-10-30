@@ -1,10 +1,10 @@
-# Docker Deployment (MinerU 4.0 / NVIDIA)
+# Docker Deployment (MinerU 4.x / NVIDIA)
 
 The general Docker setup targets Linux with NVIDIA GPUs (WSL2 on Windows). Install directly on macOS for Apple Silicon; this Docker workflow does not provide MPS acceleration. Docker deployment for non-NVIDIA devices is pending an update; see the [legacy guides](../usage/compatibility.md) in the meantime — their dedicated Dockerfiles stay on `mineru<4`.
 
 ## Build the image
 
-Run from a repository root containing the 4.0 Dockerfile:
+Run from a repository root containing the 4.x Dockerfile:
 
 ```bash
 docker build -t mineru:4 -f docker/global/Dockerfile .
@@ -23,29 +23,28 @@ The image installs the package-index range `mineru[torch]>=4.0,<5`; it does **no
 | Release image (`docker/global/Dockerfile`, `docker/china/Dockerfile`) | Package-index range `mineru[torch]>=4.0,<5` | Production deployments |
 | Source-debug container (release image + mounted checkout) | Your working copy / commit | Verifying a development branch, debugging, reproducing a patch |
 
-Tag images with the actual version instead of only `mineru:4`, and assert the installed version after building — this detects a tag/version mismatch; it does not make a range build reproducible:
+Build the range-based image, read the installed version, and add a matching tag. An image tag does not pin pip dependency resolution:
 
 ```bash
-docker build -t mineru:4.0.0 -f docker/global/Dockerfile .
-docker run --rm mineru:4.0.0 python3 -c '
-from mineru.version import __version__
-expected = "4.0.0"
-print(f"actual={__version__}, expected={expected}")
-raise SystemExit(0 if __version__ == expected else 1)'
+docker build -t mineru:4 -f docker/global/Dockerfile .
+MINERU_IMAGE_VERSION=$(docker run --rm mineru:4 python3 -c 'from mineru.version import __version__; print(__version__)')
+docker tag mineru:4 "mineru:${MINERU_IMAGE_VERSION}"
 ```
+
+To pin MinerU, change `mineru[torch]>=4.0,<5` in the selected Dockerfile to an exact validated version, such as `mineru[torch]==4.1.2`, then rebuild and verify the installed version. Fully reproducible builds also require a pinned base-image digest and dependency resolution.
 
 To test a specific source revision, build the release image once, then install your checkout inside a **source-debug container**. It depends on the host mount and is not distributable:
 
 ```bash
 docker run --gpus all --shm-size 32g --ipc=host -it \
-  -v "$PWD":/src mineru:4.0.0 /bin/bash -c \
+  -v "$PWD":/src mineru:4 /bin/bash -c \
   "python3 -m pip install -e '/src[torch]' && mineru-kit parse /src/document.pdf -o /src/document.md"
 ```
 
 A distributable source image instead copies the source at build time; keep the commit SHA in the tag:
 
 ```dockerfile
-FROM mineru:4.0.0
+FROM mineru:4
 COPY . /src
 RUN python3 -m pip install "/src[torch]"
 ```

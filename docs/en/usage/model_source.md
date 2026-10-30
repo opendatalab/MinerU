@@ -65,13 +65,15 @@ Use `basic` as the download tier when no VLM is needed. Advanced has no separate
 
 `local` uses ready local models and fails on missing assets without downloading. An explicit `models download` is a download operation: even with `local` configured, it temporarily resolves a remote source automatically.
 
+Explicit `mlx` is also supported for local VLM inference. It is never selected by auto mode and is not a MinerU extra. See [extension modules](../quick_start/extension_modules.md) for its separate installation.
+
 ## Remote VLM service
 
 An existing `model.vlm.server_url` takes priority and removes the local VLM weight requirement. This is a model inference endpoint, not the MinerU V1 document parsing API. Small-model requirements still depend on the tier. The full field set:
 
 | Field | Default | Purpose |
 | --- | --- | --- |
-| `model.vlm.engine` | `auto` | Local engine selection: `auto/llama-cpp/vllm/lmdeploy`; not used while a remote `server_url` is set |
+| `model.vlm.engine` | `auto` | Local engine selection: `auto/llama-cpp/vllm/lmdeploy/mlx`; not used while a remote `server_url` is set |
 | `model.vlm.server_url` | (unset) | Remote VLM inference endpoint. Must be HTTP(S) without credentials, query, or fragment; a trailing `/v1` is stripped and the URL is kept ending with `/` (reverse-proxy path prefixes are preserved) |
 | `model.vlm.api_key` | (unset) | Bearer key for the remote VLM service; environment variable `MINERU_MODEL_VLM_API_KEY` |
 | `model.vlm.model` | (unset) | Model name requested from the remote service; environment variable `MINERU_MODEL_VLM_MODEL` |

@@ -2,7 +2,7 @@
 
 ![MinerU](../images/MinerU-logo.png){ width="300" }
 
-## MinerU 4.1.0：自动加速与解析接口升级
+## MinerU 4.1：自动加速与解析接口升级
 
 - **主流平台与 GPU 自动加速**：Windows、Linux 新增面向 Intel、AMD、NVIDIA 兼容 GPU 的 ONNX 自动加速，结合 macOS 已有的 MPS/Metal 路径，进一步简化跨平台部署。自动识别设备、优先选择独显，并根据集显性能与兼容性选择 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
 - **统一 Tasks 异步接口**：以 `/v1/tasks` 替换旧 `/v1/uploads`、`/v1/parse/jobs` 工作流，支持文件清单、URL 输入、缓存免传、逐文件执行与结果下载，并统一状态查询和取消操作。此次包含破坏性接口变更，升级前请查阅 [4.1 迁移说明](reference/migration_4_1.md)和 [Tasks 接口详情](usage/tasks.md)。
@@ -13,7 +13,7 @@
 
 ## 产品概览
 
-MinerU 4.0 将多格式文档解析、文档库和服务工具整合到统一工作流，面向文档转换、应用集成和 Agent 阅读。
+MinerU 4.x 将多格式文档解析、文档库和服务工具整合到统一工作流，面向文档转换、应用集成和 Agent 阅读。
 
 - **四档解析**：Flash 用于快速预览与索引，Basic 提供基础 OCR/模型解析，Standard 与 Advanced 面向更复杂的版面和更高的质量需求。
 - **多格式输入**：PDF、图片，以及 DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、OFD、HTML/MHTML、CSV/TSV。原生文档由 [DocVortex](https://github.com/myhloli/docvortex) 提供解析能力。

@@ -2,12 +2,11 @@
 
 兼容仅用于 Doclib 已持久化的 Middle JSON。新写出的文档仍采用
 `docvortex.middle` 及当前共享协议，不恢复旧字段或旧格式导出。
-通用 ParseResult 与 DocVortex codec 继续严格读取新协议；HTTP/ZIP 临时兼容
-3.x remote server 的历史 middle_json，待 remote server 升级到 4.0 后移除该兼容。
+通用 ParseResult、DocVortex codec 与 HTTP/ZIP 客户端严格读取新协议，不再提供 3.x remote server 的临时兼容。
 
 ## 唯一读取边界
 
-`mineru.doclib.core.middle_json.read_cached_middle_json(payload)` 返回当前
+`mineru.doclib.core.middle_json.read_cached_middle_json(path)` 返回当前
 `MiddleJson`。缓存读取、缓存命中、覆盖范围、默认读取档位、FTS 重建与压缩
 统一使用此入口。转换只发生在内存，不改写原文件、数据库记录或历史文件名。
 

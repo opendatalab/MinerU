@@ -1,6 +1,6 @@
 # 输出格式与结果协议
 
-4.0 使用统一文档模型。区分“渲染器能生成什么”与“当前 CLI/API 暴露什么”，不要将渲染层的能力直接当作某个产品入口的参数。
+4.1 使用统一文档模型。区分“渲染器能生成什么”与“当前 CLI/API 暴露什么”，不要将渲染层的能力直接当作某个产品入口的参数。
 
 ## 入口支持范围
 
@@ -9,7 +9,7 @@
 | `mineru parse` | Markdown；`--json` 为含状态、内容、定位和继续阅读信息的命令响应 |
 | `mineru read` | Markdown 或 `--format image`；只读取已缓存内容 |
 | `mineru-kit parse` | `markdown`、`middle_json`、`zip` |
-| 自部署 V1 API | `markdown`、`middle_json`、`structured_content`、`zip`；以服务能力为准 |
+| V1 Tasks / file-parse | `default`、`docx`、`html`、`latex`，支持组合；`default` 是 Markdown、Middle JSON、Structured Content 和图片组成的 ZIP |
 | `ParseResult` | `markdown()`、`structured_content()`、`to_dict()`、`to_json()`、`save(writer)` |
 | `mineru.render.render()` | 下列九种目标格式 |
 
@@ -18,7 +18,7 @@
 ## ZIP 图片命名
 
 `mineru-kit parse --format zip`、V1 API ZIP 和 Gradio 的 Markdown/JSON/LaTeX 下载共用
-DocVortex 图片物化与命名规则（需要 `docvortex>=0.4.19,<1`）。ZIP 文件名和正文成员组织仍由各入口决定。
+DocVortex 图片物化与命名规则。ZIP 文件名和正文成员组织仍由各入口决定。
 
 | 图片位置 | 路径示例 |
 | --- | --- |
@@ -67,7 +67,7 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
 
 `pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-使用 `docvortex>=0.4.19,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+MinerU 当前依赖 `docvortex>=0.6.8,<0.7`；安装范围以对应发行版的 `pyproject.toml` 为准。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path
@@ -165,7 +165,7 @@ Path("report.html").write_text(html, encoding="utf-8")
 
 ## 文件保存、ZIP 与素材
 
-`ParseResult.save(writer)` 先在文档副本上物化图片，再写出 `markdown.md`、`middle_json.json`、`structured_content.json` 和 `images/` 素材；有原始模型结果时还写出 `model_output.json`。自部署 V1 API ZIP 与 `mineru-kit parse --format zip` 共用这一保存入口。包内三种消费格式引用同一组素材，图片字节、源页号、块索引及旋转元数据保持不变。
+`ParseResult.save(writer)` 先在文档副本上物化图片，再写出 `markdown.md`、`middle_json.json`、`structured_content.json` 和 `images/` 素材。`mineru-kit parse --format zip` 使用这一保存入口；Tasks 通过独立的多格式打包流程生成 [default 或其他格式](../usage/tasks.md#outputs-and-downloads)。ModelJson 仅用于内部分析，不进入 SDK、CLI、Tasks 或 Gradio 结果。包内三种消费格式引用同一组素材，图片字节、源页号、块索引及旋转元数据保持不变。
 
 ```python
 from mineru.parser.writer import FileBasedDataWriter

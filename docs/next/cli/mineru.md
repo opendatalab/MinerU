@@ -35,7 +35,7 @@
 | `mineru invalidate` | 标记已完成解析结果为 superseded | [mineru library](mineru-library.md) |
 | `mineru forget` | 忘记本地 path 记录，不删除源文件 | [mineru library](mineru-library.md) |
 | `mineru cleanup` | 清理 deleted file、orphan doc 和临时文件 | [mineru library](mineru-library.md) |
-| `mineru telemetry` | 查看、预览、启停和 flush doclib telemetry | [Telemetry 设计](../telemetry.md) |
+| `mineru telemetry` | 查看、预览、启停和 flush doclib telemetry | [Telemetry 最小规范](../telemetry-minimum.md) |
 | `mineru version` | 输出 MinerU 与 Python 版本 | 本页 |
 
 ## 3. 本地文档库

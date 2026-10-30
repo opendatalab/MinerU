@@ -24,7 +24,7 @@ from mineru.doclib.telemetry import (
     results_bucket,
     set_telemetry_context,
 )
-from mineru.doclib.telemetry.constants import CONSENT_DISABLED, CONSENT_UNSET
+from mineru.doclib.telemetry.constants import TELEMETRY_DISABLED, TELEMETRY_ENABLED
 from mineru.doclib.telemetry.payload import build_period_payload, compact_json_bytes, dimensions_hash
 from mineru.doclib.telemetry.transport import signed_headers
 from mineru.doclib.telemetry import service as telemetry_service_module
@@ -49,7 +49,7 @@ def test_bucket_helpers_use_documented_boundaries() -> None:
     assert results_bucket(101) == "gt_100"
 
 
-def test_store_initializes_installation_id_and_consent_state(tmp_path) -> None:
+def test_store_initializes_installation_id_and_telemetry_state(tmp_path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
@@ -59,7 +59,7 @@ def test_store_initializes_installation_id_and_consent_state(tmp_path) -> None:
         installation_id = await store.installation_id()
         assert installation_id.startswith("inst_")
         assert await store.installation_id() == installation_id
-        assert await store.consent_state() == CONSENT_UNSET
+        assert await store.telemetry_state() == TELEMETRY_ENABLED
 
     asyncio.run(_run())
 
@@ -121,7 +121,7 @@ def test_service_records_aggregates_and_uses_context_dimensions(tmp_path) -> Non
     asyncio.run(_run())
 
 
-def test_disabled_consent_clears_and_blocks_aggregates(tmp_path) -> None:
+def test_disabled_state_clears_and_blocks_aggregates(tmp_path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
@@ -132,7 +132,7 @@ def test_disabled_consent_clears_and_blocks_aggregates(tmp_path) -> None:
         await service.record_count("search.request.count")
         assert await store.list_periods_for_flush()
 
-        await store.set_consent_state(CONSENT_DISABLED)
+        await store.set_telemetry_state(TELEMETRY_DISABLED)
         assert await store.list_periods_for_flush() == []
 
         await service.record_count("search.request.count")
@@ -205,7 +205,7 @@ def test_flush_once_sends_enabled_period_and_deletes_on_success(monkeypatch, tmp
         store = TelemetryStore(db)
         service = TelemetryService(store)
         await service.initialize()
-        await store.set_consent_state("enabled")
+        await store.set_telemetry_state("enabled")
         await service.record_count("search.request.count", timestamp_ms=1_700_000_000_000)
 
         result = await service.flush_once()
@@ -221,7 +221,7 @@ def test_flush_once_sends_enabled_period_and_deletes_on_success(monkeypatch, tmp
     asyncio.run(_run())
 
 
-def test_flush_once_sends_unset_period_during_alpha(monkeypatch, tmp_path) -> None:
+def test_flush_once_sends_default_enabled_period(monkeypatch, tmp_path) -> None:
     async def _run() -> None:
         captured: list[dict] = []
 
@@ -258,7 +258,7 @@ def test_flush_once_keeps_period_on_retry(monkeypatch, tmp_path) -> None:
         store = TelemetryStore(db)
         service = TelemetryService(store)
         await service.initialize()
-        await store.set_consent_state("enabled")
+        await store.set_telemetry_state("enabled")
         await service.record_count("find.request.count", timestamp_ms=1_700_000_000_000)
 
         result = await service.flush_once()

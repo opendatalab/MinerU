@@ -35,6 +35,6 @@ python scripts/benchmark_pdf_memory.py --pdf demo/pdfs/demo1.pdf demo/pdfs/demo2
 
 ## 结果一致性
 
-使用单独输出目录为三组命令追加 `--warmup 0 --rounds 2 --fingerprints`。比较相同输入的 `middle_sha256` 和 `model_sha256`，摘要包含完整素材字段。`--fingerprints` 额外执行序列化，因此不要用这一组数据评估内存和性能。
+使用单独输出目录为三组命令追加 `--warmup 0 --rounds 2 --fingerprints`。比较相同输入的 `middle_sha256`，摘要包含完整素材字段。`--fingerprints` 额外执行序列化，因此不要用这一组数据评估内存和性能。
 
 只有完成真实 Linux 推理负载测量后，才报告对应场景的 RSS 改善。缺少环境、模型或无法获取 USS 时，应在验收记录中明确说明，不将默认开关改为开启。

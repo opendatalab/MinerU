@@ -158,4 +158,4 @@ doclib 启动时应释放 stale ingest 锁，处理崩溃前处于 parsing 状�
 
 ## 未决问题
 
-managed parse-server 重启退避、多用户或多项目 UDS 命名空间，以及 `server status` JSON schema 的稳定发布边界，集中维护在 [开放问题清单](../open-questions.md)。
+managed parse-server 重启退避、多用户或多项目 UDS 命名空间，以及 `server status` JSON schema 的稳定发布边界，集中维护在 [开放问题清单](../backlog.md)。

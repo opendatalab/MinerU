@@ -1,5 +1,7 @@
 # ADR-0023: CLI Runtime 输出、错误与退出码集中契约
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted，已实现
 日期: 2026-06-30
 相关文档: ../cli.md, ../cli/mineru.md, ../errors.md, 0015-cli-output-json-composition.md

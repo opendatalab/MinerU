@@ -929,24 +929,32 @@ class DoclibServer(AsyncDoclibInterface):
     @route("POST", "/telemetry/actions/{action}", tags=("telemetry",))
     async def telemetry_action(self, action: TelemetryAction) -> TelemetryActionResponse:
         if action == "enable":
-            result = await self.state.telemetry_svc.set_consent("enabled")
-            return TelemetryActionResponse(action=action, **result)
+            result = await self.state.telemetry_svc.set_state("enabled")
+            return TelemetryActionResponse(
+                action=action, reason="environment_override" if result["source"] == "environment" else None, **result
+            )
         if action == "disable":
-            result = await self.state.telemetry_svc.set_consent("disabled")
+            result = await self.state.telemetry_svc.set_state("disabled")
+            return TelemetryActionResponse(action=action, **result)
+        if action == "notice-shown":
+            result = await self.state.telemetry_svc.acknowledge_notice()
             return TelemetryActionResponse(action=action, **result)
         status = await self.state.telemetry_svc.status()
         if status["state"] != "enabled":
             return TelemetryActionResponse(
                 action=action,
                 state=status["state"],
+                source=status["source"],
                 installation_id=status["installation_id"],
                 executed=False,
                 reason="telemetry_not_enabled",
             )
         flush_result = await self.state.telemetry_svc.flush_once()
+        status = await self.state.telemetry_svc.status()
         return TelemetryActionResponse(
             action=action,
             state=status["state"],
+            source=status["source"],
             installation_id=status["installation_id"],
             executed=flush_result.status not in {"disabled", "locked", "no_metrics", "failed"},
             reason=None if flush_result.status == "success" else flush_result.status,
