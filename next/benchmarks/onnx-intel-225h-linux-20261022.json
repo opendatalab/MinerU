@@ -1,0 +1,1227 @@
+{
+  "date": "2026-10-22",
+  "environment": {
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.4",
+    "cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           42 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  14\nOn-line CPU(s) list:                     0-13\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) Ultra 5 225H\nCPU family:                              6\nModel:                                   197\nThread(s) per core:                      1\nCore(s) per socket:                      14\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      72%\nCPU max MHz:                             4900.0000\nCPU min MHz:                             400.0000\nBogoMIPS:                                7372.80\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni lam wbnoinvd dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid bus_lock_detect movdiri movdir64b fsrm md_clear serialize arch_lbr ibt flush_l1d arch_capabilities\nVirtualization:                          VT-x\nL1d cache:                               448 KiB (12 instances)\nL1i cache:                               768 KiB (12 instances)\nL2 cache:                                22 MiB (7 instances)\nL3 cache:                                18 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-13\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS Not affected; BHI BHI_DIS_S\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+    "gpu_pci": [
+      "00:02.0 VGA compatible controller [0300]: Intel Corporation Arrow Lake-P [Arc Pro 130T/140T] [8086:7d51] (rev 03)"
+    ],
+    "packages": {
+      "mineru": "4.0.12",
+      "docvortex": "0.5.16",
+      "onnxruntime": "1.31.0",
+      "onnxruntime-ep-webgpu": "0.4.0",
+      "onnx": "1.23.2",
+      "pypdfium2": "5.14.0"
+    },
+    "input": "output/pdf/demo1-demo2-merged.pdf",
+    "input_sha256": "06d0e74125b5d2e1fc04e658bbe4af39422d70abfaa453a87353df4d3dad3432",
+    "pages": 19,
+    "git_commit": "a2a4960b088ac3744a64d2c46dbda4e02b9efa57",
+    "source_sha256": {
+      "mineru/model/runtime/onnx.py": "65c13749a0fa43974c6844bbe70d88669675e4be8450b7c953197e73e77d28b2",
+      "mineru/model/runtime/webgpu.py": "14394cc70d6b0cb4aa7ff714e0b329ec43f3b00be2f30b307f8e3560b1fe457d",
+      "mineru/model/runtime/onnx_rec.py": "f5a39fe197259db8155a5593e657f6b6f528c24a62a4c99cd1a431e0cfb9ee05",
+      "mineru/model/runtime/onnx_device.py": "248fdc64aa244678625d624dab63ab3e78628e1503909a39bfa51a53f9f5c19b",
+      "mineru/model/runtime/onnx_calibration.py": "43619463ab179d70ccaf21fa3bf31e689b6c1eef7e423af70f403669b1656ad9",
+      "mineru/model/ocr/pp_ocr_v6_onnx.py": "5c3914cfeb81dd80bb598480308f95aa7136f1d20e9ab32d22430b0727805de1",
+      "mineru/model/mfr/pp_formulanet_plus_m_onnx.py": "b3e0edcdd868c1446e5af04193848422441de7dc46d9fe91b202180cc34e6e56",
+      "demo/pdfs/demo1.pdf": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+      "demo/pdfs/demo2.pdf": "9e94e95637356e1599510436278747d1150a3dfb822233bdc77a9dcb9a4fc6e4"
+    },
+    "benchmark_script_sha256": "f304bd0092155fbb0d3fe4374c1251b7d4ee24951e5be9ab9b37749c4afaddbe",
+    "ac_online": "1",
+    "battery_status": "Full",
+    "governor": "powersave",
+    "platform_profile": "balanced",
+    "memory": "MemTotal:       31553096 kB\nMemFree:        21332704 kB\nMemAvailable:   25329892 kB\nBuffers:           62872 kB\nCached:          5629504 kB\nSwapCached:            0 kB\nActive:          6480868 kB\nInactive:        1739772 kB\nActive(anon):    3910076 kB\nInactive(anon):        0 kB\nActive(file):    2570792 kB\nInactive(file):  1739772 kB\nUnevictable:     1252456 kB\nMlocked:              48 kB\nSwapTotal:       8388604 kB\nSwapFree:        8388604 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:              3688 kB\nWriteback:             0 kB\nAnonPages:       3781356 kB\nMapped:          1202504 kB\nShmem:           1382088 kB\nKReclaimable:     104360 kB\nSlab:             343220 kB\nSReclaimable:     104360 kB\nSUnreclaim:       238860 kB\nKernelStack:       26752 kB\nPageTables:        81832 kB\nSecPageTables:      4680 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    24165152 kB\nCommitted_AS:   19287756 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       80712 kB\nVmallocChunk:          0 kB\nPercpu:            16832 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:         0 kB\nShmemHugePages:  1093632 kB\nShmemPmdMapped:        0 kB\nFileHugePages:    387072 kB\nFilePmdMapped:     22528 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nGPUActive:             0 kB\nGPUReclaim:            0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:      335020 kB\nDirectMap2M:     5165056 kB\nDirectMap1G:    29360128 kB",
+    "vulkan_packages": "libdrm-intel1:amd64\t2.4.131-1\nlibvulkan1:amd64\t1.4.341.0-1\nmesa-vulkan-drivers:amd64\t26.0.8-1ubuntu0.3\n"
+  },
+  "input_sha256": "06d0e74125b5d2e1fc04e658bbe4af39422d70abfaa453a87353df4d3dad3432",
+  "pages": 19,
+  "tier": "basic",
+  "parse_mode": "ocr",
+  "cpu_threads": [
+    4,
+    1
+  ],
+  "webgpu_options": {
+    "preferredLayout": "NHWC",
+    "enableGraphCapture": "0",
+    "dawnBackendType": "Vulkan",
+    "powerPreference": "high-performance"
+  },
+  "parse_runs_s": {
+    "cpu": [
+      133.46573374199994,
+      153.12416485300002
+    ],
+    "webgpu": [
+      96.22497320100001,
+      93.40937324000004
+    ]
+  },
+  "parse_mean_s": {
+    "cpu": 143.29494929749998,
+    "webgpu": 94.81717322050002
+  },
+  "speedup": 1.5112763271719092,
+  "latency_reduction_percent": 33.83076396946374,
+  "process_runs": [
+    {
+      "label": "cpu-1",
+      "device": "cpu",
+      "observe": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/cpu-1"
+      ],
+      "start_time": "2026-10-22T03:12:54.239045+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "72050",
+        "thermal_x86_pkg_temp": "72000",
+        "thermal_SEN6": "51050",
+        "thermal_TCPU_PCI": "70000",
+        "thermal_SEN4": "54050",
+        "thermal_SEN2": "56050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "43050",
+        "thermal_iwlwifi_1": "48000",
+        "thermal_SEN5": "35050",
+        "thermal_SEN3": "51050"
+      },
+      "process_wall_s": 134.81492022599997,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "88050",
+        "thermal_x86_pkg_temp": "88000",
+        "thermal_SEN6": "60050",
+        "thermal_TCPU_PCI": "88000",
+        "thermal_SEN4": "64050",
+        "thermal_SEN2": "70050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "49050",
+        "thermal_iwlwifi_1": "50000",
+        "thermal_SEN5": "35050",
+        "thermal_SEN3": "59050"
+      },
+      "parse_s": 133.46573374199994
+    },
+    {
+      "label": "webgpu-1",
+      "device": "gpu",
+      "observe": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/webgpu-1"
+      ],
+      "start_time": "2026-10-22T03:15:09.064854+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "79050",
+        "thermal_x86_pkg_temp": "79000",
+        "thermal_SEN6": "60050",
+        "thermal_TCPU_PCI": "79000",
+        "thermal_SEN4": "64050",
+        "thermal_SEN2": "70050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "49050",
+        "thermal_iwlwifi_1": "50000",
+        "thermal_SEN5": "35050",
+        "thermal_SEN3": "59050"
+      },
+      "process_wall_s": 97.594987543,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "79050",
+        "thermal_x86_pkg_temp": "79000",
+        "thermal_SEN6": "59050",
+        "thermal_TCPU_PCI": "79000",
+        "thermal_SEN4": "66050",
+        "thermal_SEN2": "64050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "48050",
+        "thermal_iwlwifi_1": "50000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "60050"
+      },
+      "parse_s": 96.22497320100001
+    },
+    {
+      "label": "webgpu-2",
+      "device": "gpu",
+      "observe": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/webgpu-2"
+      ],
+      "start_time": "2026-10-22T03:16:46.676353+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "72050",
+        "thermal_x86_pkg_temp": "72000",
+        "thermal_SEN6": "59050",
+        "thermal_TCPU_PCI": "72000",
+        "thermal_SEN4": "66050",
+        "thermal_SEN2": "64050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "48050",
+        "thermal_iwlwifi_1": "50000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "60050"
+      },
+      "process_wall_s": 94.78282820200002,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "84050",
+        "thermal_x86_pkg_temp": "84000",
+        "thermal_SEN6": "59050",
+        "thermal_TCPU_PCI": "84000",
+        "thermal_SEN4": "65050",
+        "thermal_SEN2": "63050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "48050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "61050"
+      },
+      "parse_s": 93.40937324000004
+    },
+    {
+      "label": "cpu-2",
+      "device": "cpu",
+      "observe": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/cpu-2"
+      ],
+      "start_time": "2026-10-22T03:18:21.469401+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "76050",
+        "thermal_x86_pkg_temp": "76000",
+        "thermal_SEN6": "59050",
+        "thermal_TCPU_PCI": "76000",
+        "thermal_SEN4": "65050",
+        "thermal_SEN2": "63050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "48050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "61050"
+      },
+      "process_wall_s": 154.48573107999994,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "88050",
+        "thermal_x86_pkg_temp": "88000",
+        "thermal_SEN6": "61050",
+        "thermal_TCPU_PCI": "88000",
+        "thermal_SEN4": "63050",
+        "thermal_SEN2": "70050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "50050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "62050"
+      },
+      "parse_s": 153.12416485300002
+    },
+    {
+      "label": "cpu-observed",
+      "device": "cpu",
+      "observe": true,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/cpu-observed",
+        "--observe"
+      ],
+      "start_time": "2026-10-22T03:20:55.958864+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "81050",
+        "thermal_x86_pkg_temp": "81000",
+        "thermal_SEN6": "61050",
+        "thermal_TCPU_PCI": "81000",
+        "thermal_SEN4": "63050",
+        "thermal_SEN2": "70050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "50050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "37050",
+        "thermal_SEN3": "62050"
+      },
+      "process_wall_s": 175.68568062100007,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "88050",
+        "thermal_x86_pkg_temp": "88000",
+        "thermal_SEN6": "61050",
+        "thermal_TCPU_PCI": "88000",
+        "thermal_SEN4": "63050",
+        "thermal_SEN2": "69050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "50050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "38050",
+        "thermal_SEN3": "61050"
+      },
+      "parse_s": 174.26270823999994
+    },
+    {
+      "label": "webgpu-observed",
+      "device": "gpu",
+      "observe": true,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/benchmark.py",
+        "parse",
+        "--input",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/output/pdf/demo1-demo2-merged.pdf",
+        "--output",
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/intel-225h-basic-ocr-20261022/webgpu-observed",
+        "--observe"
+      ],
+      "start_time": "2026-10-22T03:23:51.648984+08:00",
+      "power_before": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "83050",
+        "thermal_x86_pkg_temp": "83000",
+        "thermal_SEN6": "61050",
+        "thermal_TCPU_PCI": "81000",
+        "thermal_SEN4": "63050",
+        "thermal_SEN2": "69050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "50050",
+        "thermal_iwlwifi_1": "54000",
+        "thermal_SEN5": "38050",
+        "thermal_SEN3": "61050"
+      },
+      "process_wall_s": 120.16771093700004,
+      "returncode": 0,
+      "power_after": {
+        "ac_online": "1",
+        "battery_status": "Full",
+        "platform_profile": "balanced",
+        "governor": "powersave",
+        "thermal_SEN1": "35050",
+        "thermal_acpitz": "27800",
+        "thermal_TCPU": "88050",
+        "thermal_x86_pkg_temp": "88000",
+        "thermal_SEN6": "60050",
+        "thermal_TCPU_PCI": "83000",
+        "thermal_SEN4": "65050",
+        "thermal_SEN2": "64050",
+        "thermal_INT3400 Thermal": "20000",
+        "thermal_SEN7": "49050",
+        "thermal_iwlwifi_1": "52000",
+        "thermal_SEN5": "38050",
+        "thermal_SEN3": "61050"
+      },
+      "parse_s": 118.76139976199988
+    }
+  ],
+  "stages": [
+    {
+      "kind": "layout",
+      "cpu": {
+        "run_s": 12.120013332999974,
+        "calls": 10,
+        "init_s": 0.9919886229999975,
+        "first_run_s": 0.9389820009999994,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 7.016129377000198,
+        "calls": 10,
+        "init_s": 1.0895487039999807,
+        "first_run_s": 0.9671731969999655,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.7274500913182966
+    },
+    {
+      "kind": "mfr",
+      "cpu": {
+        "run_s": 62.7570524329999,
+        "calls": 19,
+        "init_s": 1.366749088000006,
+        "first_run_s": 2.930516080000075,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 39.008246381999925,
+        "calls": 19,
+        "init_s": 2.0547493229998963,
+        "first_run_s": 6.110323361999917,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.6088150135854016
+    },
+    {
+      "kind": "ocr_det",
+      "cpu": {
+        "run_s": 2.5135420270003124,
+        "calls": 84,
+        "init_s": 0.052042844999959925,
+        "first_run_s": 0.18519921500012515,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 3.090277655999671,
+        "calls": 84,
+        "init_s": 0.12105472700000064,
+        "first_run_s": 0.23827000799997222,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 0.8133709351715871
+    },
+    {
+      "kind": "ocr_rec",
+      "cpu": {
+        "run_s": 53.569571213002746,
+        "calls": 336,
+        "init_s": 0.14264686799992887,
+        "first_run_s": 0.1208280770000556,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ],
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 27.232939196997677,
+        "calls": 336,
+        "init_s": 0.15032360700024583,
+        "first_run_s": 0.11542439599998033,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.9670873872809358
+    },
+    {
+      "kind": "unet",
+      "cpu": {
+        "run_s": 0.5227036839999073,
+        "calls": 5,
+        "init_s": 0.0391370460000644,
+        "first_run_s": 0.14007859599996664,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.5168968800001039,
+        "calls": 5,
+        "init_s": 0.05769813500000964,
+        "first_run_s": 0.13600516399992557,
+        "providers": [
+          [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.0112339699164024
+    },
+    {
+      "kind": "table_cls",
+      "cpu": {
+        "run_s": 0.011669101999927989,
+        "calls": 1,
+        "init_s": null,
+        "first_run_s": 0.011669101999927989,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.013476124999897365,
+        "calls": 1,
+        "init_s": null,
+        "first_run_s": 0.013476124999897365,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 0.865909302564117
+    },
+    {
+      "kind": "slanet_plus",
+      "cpu": {
+        "run_s": 0.30482200600010856,
+        "calls": 2,
+        "init_s": null,
+        "first_run_s": 0.17623233200004051,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "webgpu": {
+        "run_s": 0.21137281900018934,
+        "calls": 2,
+        "init_s": null,
+        "first_run_s": 0.1372156840000116,
+        "providers": [
+          [
+            "CPUExecutionProvider"
+          ]
+        ]
+      },
+      "speedup": 1.4421059786302775
+    }
+  ],
+  "mfr_batches": [
+    {
+      "route": "cpu",
+      "batch": 8,
+      "calls": 18,
+      "provider": "CPUExecutionProvider",
+      "run_s": 57.3020555999999
+    },
+    {
+      "route": "cpu",
+      "batch": 7,
+      "calls": 1,
+      "provider": "CPUExecutionProvider",
+      "run_s": 5.454996832999996
+    },
+    {
+      "route": "webgpu",
+      "batch": 8,
+      "calls": 18,
+      "provider": "WebGpuExecutionProvider",
+      "run_s": 34.332424446999994
+    },
+    {
+      "route": "webgpu",
+      "batch": 7,
+      "calls": 1,
+      "provider": "CPUExecutionProvider",
+      "run_s": 4.675821934999931
+    }
+  ],
+  "output_equality": {
+    "cpu-1": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    },
+    "webgpu-1": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    },
+    "webgpu-2": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    },
+    "cpu-2": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    },
+    "cpu-observed": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    },
+    "webgpu-observed": {
+      "files": 50,
+      "byte_identical": true,
+      "different": [],
+      "details": {}
+    }
+  },
+  "output_sha256": {
+    "images/page_13_image_11.jpg": "be117bf500682716150d9dd1f1b3b922200130b39c7cbe5ca620f63ee04632dc",
+    "images/page_14_equation_12.jpg": "657d2d96ba69612291f00774b7a0d5eaa279961441ff29472fd83168909ee925",
+    "images/page_14_equation_14.jpg": "57ef7d35dd9649a0fa5deac616e2ff91ea4587aeaffb1a3e95fca60d1f867054",
+    "images/page_14_equation_9.jpg": "b0c12293bb6d0058b57e2f2c54b1d33b6d3179a1494ed5febbf977ef423a5b9f",
+    "images/page_15_equation_11.jpg": "0a075b375893a207aeb1c7b240ffc9c07acb1afda15c71b477c859235ddcf464",
+    "images/page_15_equation_14.jpg": "2270e1dfc84b58916076cf78cb8f2bc23779cebd03af9a173b2b155b036548a4",
+    "images/page_15_equation_16.jpg": "868742debacf51f77328b76b3c5f8d5fa73a26bef9bad2fe12b14d65611cdcb2",
+    "images/page_15_equation_3.jpg": "11564c2a567e6da0589509a7ef6e585c35492e85c4a9b9fa8fd513b47a9c75d0",
+    "images/page_15_equation_5.jpg": "9daebf881158c3f664f87d7e0496a16fabcd009836b3c9ef51b319e8d8ceeffb",
+    "images/page_15_equation_9.jpg": "08d67ef1776675e989f9573029e19d0c19348868eeb1b3786da3a89da4744fc4",
+    "images/page_16_chart_14.jpg": "d979e20eaf23109d7e54fba34603d4d1caeabb70b6333850e9b43aadeedcfd2e",
+    "images/page_16_chart_16.jpg": "2279720fe903a7f4361f3526202a9704d6990f2f0fd43b9e4e6689191df9a8f8",
+    "images/page_16_chart_18.jpg": "d01c202706b4d448134e1e253fd7f6dd4c14daf76b709cdf8da0d5f46507fe9e",
+    "images/page_16_chart_23.jpg": "6ac062212e9a6fa347a4b28024b23d93099e5fa5408912186b976ddc7a13ff23",
+    "images/page_16_image_1.jpg": "647acd6d3af08d5940c8ef1bfb39bfd9c4c56cf747fdd539c2ba0d9c4e9e9a62",
+    "images/page_16_image_2.jpg": "ab6238c6e9844c4ecfde441abb3963f16f5e7a27257b893a441dd179ecc51513",
+    "images/page_16_image_3.jpg": "cbecc1f8730c93d067205797ee1dbe88260feace7d7ecad485d34ecefe857bbc",
+    "images/page_16_image_4.jpg": "8a4510bc7d8d1f7442f73604c17cb6ed2615c968d2fa61842041c4f283d15287",
+    "images/page_16_image_5.jpg": "3c5903ab9284b355a119ec17588de9754bb6202f42f14bee35060c53443f3ed1",
+    "images/page_16_image_6.jpg": "95d410c578f368239664e599221d283d18ca0e19eb19833d64690cfb43cfb46d",
+    "images/page_16_image_7.jpg": "a8e871bc97ab38db8f5931eec24bb906378e49a554d36e040027029d85b0c3ab",
+    "images/page_16_image_9.jpg": "182194635b484c5fd1b4c456a9d65d32e23a21f7be03253c2ea349ee9a6c88db",
+    "images/page_16_table_21.jpg": "51f55e1584a0c7fa6e9f879a3b9f93e961c9443a6d74e8affc47bda38a3b8319",
+    "images/page_17_image_1.jpg": "e4ea650de3b18db3a173d5ff5d740253fbf1db8f96e6cd17dbff22bb18056251",
+    "images/page_17_image_2.jpg": "6b032342d4b1984e3d5d51ecc5833a529d2d4061c3deb10af9d17a1ffa7c55e4",
+    "images/page_17_table_8.jpg": "394019c1ef702472f2f238e10a1737a6da7c39d6ffdf496c1020327b4c28b1fd",
+    "images/page_1_chart_5.jpg": "d1ee19731defdb300d9580d6d329d958fad630030990f7415c34a3830e54b841",
+    "images/page_2_equation_10.jpg": "c4e81fd6d6915ede281f8690f6c4a41a67f34c06254edd0e9599b358ecd50400",
+    "images/page_2_equation_8.jpg": "c972cd1cb152da6e2a640710f3d4d2749e652969523ebdf4fe2df71892909328",
+    "images/page_3_chart_2.jpg": "8a8b16ea4b86652bb02c00ff10cdace6129adb4dc19d3a36bbbf5750ce061d12",
+    "images/page_3_chart_3.jpg": "c4c90e869a40933316ae48c298101209c14cc5c5ac1a9e0eeb9170f24b34db8b",
+    "images/page_3_equation_12.jpg": "d88b0bc8ba9a653c449065c04fe87fd57c5bb2e6234d1b75bc3a4d16ccc820f5",
+    "images/page_3_equation_15.jpg": "18a2e8bd83607954b3e1eb8a5dd721b90e541c7b9c198b9ad422798aba275883",
+    "images/page_3_equation_17.jpg": "1baa062a34c09942467bcc14c10674293395a7704858749bf453dd77a9a637c0",
+    "images/page_3_equation_7.jpg": "9ccb3c83e55162e7c1280e4a3f54c45aa9001ce9a6bc74adb3f6353d1102d573",
+    "images/page_4_equation_6.jpg": "88f7be69d49ca8ccf85cfd0f8657297eede1a854f5c09460f5d3cfc4d06d7f89",
+    "images/page_4_table_2.jpg": "0dc7186c401c1d905c6d81d46b0ae6445a75268c1d403371ddd31be1f3997203",
+    "images/page_5_table_11.jpg": "cc2b17956f522cd92ca1783f04f09cac27e8ba9967be5e303d99d9d2025f172f",
+    "images/page_5_table_3.jpg": "3111348c57b8e83bc643895dd73402ce69c89fc96aa1198064b3ca56894479e9",
+    "images/page_6_chart_6.jpg": "feb686096d47cc37495d5b21e1cc51f0f3ca3a64c78ea6ae749e436c555e5779",
+    "images/page_7_chart_2.jpg": "c5c21a815198e7506e84d623df06d7f7e3ae20b211f408d50d975e33b27561d1",
+    "images/page_7_table_8.jpg": "9ed42df9904ddcd5d5af2f667b9e5446056925668dbb6d862102f967da29b3d8",
+    "images/page_8_table_3.jpg": "60fe378920ea852fad86de41886800728c5d036efdaade99e1a7289ef2a995d1",
+    "images/page_9_chart_2.jpg": "3c46e7e9e5465ea1cbbf6afaf385320797be53e25b5ba4d15e5c989002539a9c",
+    "images/page_9_chart_3.jpg": "75d98040f6e379bf9a2696c03138a407a49825f68d00e96de3826f661e9c1b90",
+    "images/page_9_chart_4.jpg": "6d805da34431e18db08f93bec3080d7c9ead385e899f68e38f53c2fa6cdb2839",
+    "markdown.md": "5262f9d373c29415f5fc4cc2ae020b4a5e1b82be8da49eea1a49e58f7bbe3add",
+    "middle_json.json": "1542937a60e2126941d60df3c4893243d3ae2395867e9ba3a5278f533cd643aa",
+    "model_output.json": "52c1f64fdcc8ba31b5383c02b98d0a73d405550d0ed92605ce59432d7e97399d",
+    "structured_content.json": "fdff184d81fec92e68827ea6a76490f75290aeedb4987ff8340cfde75b2ac84f"
+  },
+  "previous_amd_output_comparison": {
+    "byte_identical": false,
+    "different": [
+      "markdown.md",
+      "middle_json.json",
+      "model_output.json",
+      "structured_content.json"
+    ],
+    "markdown_diff": "--- previous AMD CPU\n+++ Intel CPU\n@@ -494,7 +494,7 @@\n \n [3] J. Kowalczuk, E. Psota, and L. Perez, “Real-time stereo matching on CUDA using an iterative refinement method for adaptive support-weight correspondences,\" Circuits and Systems for Video Technology, IEEE Transactions on, vol. 23, pp. 94 –104, Jan. 2013.\n \n-[4] K.-J. Yoon and I.-S. Kweon, “\"Locally adaptive support-weight approach for visual correspondence search,\" in CVPR '05: Proceedings of the 2005 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR'05) - Volume 2, (Washington, DC, USA), pp. 924–931, IEEE Computer Society, 2005.\n+[4] K.-J. Yoon and I.-S. Kweon, \"Locally adaptive support-weight approach for visual correspondence search,\" in CVPR '05: Proceedings of the 2005 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR'05) - Volume 2, (Washington, DC, USA), pp. 924–931, IEEE Computer Society, 2005.\n \n [5] L. Wang, M. Liao, M. Gong, R. Yang, and D. Nister, \"High-quality realtime stereo using adaptive cost aggregation and dynamic programming,\" in 3DPVT '06: Proceedings of the Third International Symposium on 3D Data Processing, Visualization, and Transmission (3DPVT'06), (Washington, DC, USA), pp. 798–805, IEEE Computer Society, 2006.\n \n"
+  },
+  "calibration": {
+    "label": "intel-ultra5-225h-linux",
+    "backend": "webgpu",
+    "expected": null,
+    "environment": {
+      "host": "myhloli-ubuntu-ssd",
+      "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+      "cpu": ""
+    },
+    "adapter": {
+      "vendor_id": 32902,
+      "device_id": 32081,
+      "metadata": [
+        [
+          "card_idx",
+          "1"
+        ],
+        [
+          "pci_bus_id",
+          "0000:00:02.0"
+        ]
+      ]
+    },
+    "threshold": null,
+    "runs": [
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:00:02.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.05148585199998479,
+          "first_s": 0.14495732999995425,
+          "timed_s": [
+            0.12514439299997093,
+            0.12817482899998822
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.25331922199995915,
+        "gpu": {
+          "init_s": 0.08668744300001663,
+          "first_s": 0.591208660999996,
+          "timed_s": [
+            0.08950317300002553,
+            0.08457940699997835
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.17408258000000387,
+        "ratio": 0.6872063581500812,
+        "outputs_match": true,
+        "worker_wall_s": 1.791029822999974
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:00:02.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": true,
+        "gpu": {
+          "init_s": 0.0827450230000295,
+          "first_s": 0.12391442699998834,
+          "timed_s": [
+            0.08863595399998303,
+            0.08424584200002982
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.17288179600001286,
+        "cpu": {
+          "init_s": 0.05205527499998652,
+          "first_s": 0.14119484299999385,
+          "timed_s": [
+            0.11943092399997113,
+            0.11995621500000198
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.2393871389999731,
+        "ratio": 0.7221849792023801,
+        "outputs_match": true,
+        "worker_wall_s": 1.2035718129999964
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:00:02.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.04914596899999424,
+          "first_s": 0.14294793200002687,
+          "timed_s": [
+            0.12088648000002422,
+            0.12011787300002652
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.24100435300005074,
+        "gpu": {
+          "init_s": 0.06806390499997406,
+          "first_s": 0.15012804799999913,
+          "timed_s": [
+            0.09431310300004725,
+            0.09648007900000266
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.1907931820000499,
+        "ratio": 0.7916586552277325,
+        "outputs_match": true,
+        "worker_wall_s": 1.2006025690000115
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:00:02.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": true,
+        "gpu": {
+          "init_s": 0.08767959000005021,
+          "first_s": 0.1398530089999781,
+          "timed_s": [
+            0.09082599899994648,
+            0.08884776299998975
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.17967376199993623,
+        "cpu": {
+          "init_s": 0.05180530100000169,
+          "first_s": 0.13981248400000368,
+          "timed_s": [
+            0.11884881199995334,
+            0.1177952750000486
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.23664408700000195,
+        "ratio": 0.7592573483567953,
+        "outputs_match": true,
+        "worker_wall_s": 1.2053205200000434
+      },
+      {
+        "schema_version": 3,
+        "backend": "webgpu",
+        "ep_version": "0.4.0",
+        "webgpu_options": {
+          "preferredLayout": "NHWC",
+          "enableGraphCapture": "0",
+          "dawnBackendType": "Vulkan",
+          "powerPreference": "high-performance"
+        },
+        "adapter": {
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "metadata": [
+            [
+              "card_idx",
+              "1"
+            ],
+            [
+              "pci_bus_id",
+              "0000:00:02.0"
+            ]
+          ]
+        },
+        "input": {
+          "manifest_sha256": "0d98e210345258583f72b784e0114359f9459bbcb1250716566c02e5d1851e06",
+          "input_sha256": "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+          "shape": [
+            6,
+            3,
+            48,
+            1012
+          ],
+          "sample_order": [
+            0,
+            2,
+            4,
+            1,
+            5,
+            3
+          ]
+        },
+        "model_sha256": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+        "source_model_sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "output_format": "ctc-ids-scores-v1",
+        "ort_version": "1.31.0",
+        "ort_path": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/onnxruntime/__init__.py",
+        "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+        "intra_threads": 4,
+        "inter_threads": 1,
+        "rec_metacommands": null,
+        "gpu_first": false,
+        "cpu": {
+          "init_s": 0.04939977499998349,
+          "first_s": 0.1433303109999997,
+          "timed_s": [
+            0.12102065400000583,
+            0.12134854999999334
+          ],
+          "providers": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "cpu_elapsed": 0.24236920399999917,
+        "gpu": {
+          "init_s": 0.07386312400001316,
+          "first_s": 0.16200090299997782,
+          "timed_s": [
+            0.08955807999996068,
+            0.08795696799995767
+          ],
+          "providers": [
+            "WebGpuExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "gpu_elapsed": 0.17751504799991835,
+        "ratio": 0.7324158559348941,
+        "outputs_match": true,
+        "worker_wall_s": 1.2206655979999823
+      }
+    ],
+    "errors": []
+  },
+  "model_sha256": {
+    "ocr_det": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
+    "ocr_rec": "ec2795ae0a82d64c9a7c5ab21dbff6ca797d1a3f40b0211d8176fa4fbcbf99d4",
+    "layout": "cd540dc296ff3115fe78efa65b68501e6a8dc74b198acc9834a725ffaa095aac",
+    "mfr": "20a32595c2b30282dcd069e6295e9fad96115697beb66acb9b681b814006d193",
+    "table_cls": "c84bf1d79c1c74d534b5b12adb14dd12151c42f7ae3e4be4f1042b830f80b949",
+    "slanet_plus": "d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b",
+    "unet": "0ea48d3a17e35ef5c2e498a5e799566073234d39b1079ca21d9f4fafe73c6d20"
+  },
+  "raw_directory": "demo/output/intel-225h-basic-ocr-20261022",
+  "timing_notes": "Two fresh processes/device, CPU -> GPU -> GPU -> CPU, no extra warmup; parse includes model init and first inference, excludes imports/downloads/save. Separate observer runs provide ORT run stage times including first calls, synchronization and CPU graph operators. MFR tail remains CPU. No profiler used in primary timings.",
+  "gpu_hardware_evidence": {
+    "pid": 16807,
+    "samples": [
+      {
+        "monotonic_s": 1098.543040992,
+        "devices": [
+          {
+            "fd": "12",
+            "device": "/dev/dri/renderD128",
+            "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1168\ndrm-driver:\ti915\ndrm-client-id:\t59\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-local0:\t0\ndrm-shared-stolen-local0:\t0\ndrm-active-stolen-local0:\t0\ndrm-resident-stolen-local0:\t0\ndrm-purgeable-stolen-local0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\ndrm-engine-compute:\t0 ns\n"
+          },
+          {
+            "fd": "13",
+            "device": "/dev/dri/renderD128",
+            "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1168\ndrm-driver:\ti915\ndrm-client-id:\t60\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t2790076 KiB\ndrm-shared-system0:\t0\ndrm-active-system0:\t2755172 KiB\ndrm-resident-system0:\t2790076 KiB\ndrm-purgeable-system0:\t8216 KiB\ndrm-total-stolen-local0:\t0\ndrm-shared-stolen-local0:\t0\ndrm-active-stolen-local0:\t0\ndrm-resident-stolen-local0:\t0\ndrm-purgeable-stolen-local0:\t0\ndrm-engine-render:\t7424525524 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\ndrm-engine-compute:\t0 ns\n"
+          }
+        ]
+      },
+      {
+        "monotonic_s": 1100.54416867,
+        "devices": [
+          {
+            "fd": "12",
+            "device": "/dev/dri/renderD128",
+            "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1168\ndrm-driver:\ti915\ndrm-client-id:\t59\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-local0:\t0\ndrm-shared-stolen-local0:\t0\ndrm-active-stolen-local0:\t0\ndrm-resident-stolen-local0:\t0\ndrm-purgeable-stolen-local0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\ndrm-engine-compute:\t0 ns\n"
+          },
+          {
+            "fd": "13",
+            "device": "/dev/dri/renderD128",
+            "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1168\ndrm-driver:\ti915\ndrm-client-id:\t60\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t2329428 KiB\ndrm-shared-system0:\t0\ndrm-active-system0:\t2293396 KiB\ndrm-resident-system0:\t2329428 KiB\ndrm-purgeable-system0:\t7296 KiB\ndrm-total-stolen-local0:\t0\ndrm-shared-stolen-local0:\t0\ndrm-active-stolen-local0:\t0\ndrm-resident-stolen-local0:\t0\ndrm-purgeable-stolen-local0:\t0\ndrm-engine-render:\t8847334288 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\ndrm-engine-compute:\t0 ns\n"
+          }
+        ]
+      }
+    ],
+    "driver": "/sys/bus/pci/drivers/i915"
+  }
+}
