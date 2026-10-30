@@ -127,10 +127,23 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 
 ```json
 {
-  "parse": { "... parse summary ..." },
-  "content": { "... DocContentResponse ..." } | null,
-  "output": { "status": "written", "path": "..." },  // 仅 `-o/--output` 时存在
-  "error": { "... ErrorInfo ..." } | null
+  "parse": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "short_id": "ab12cd3",
+    "tier": "standard",
+    "page_range": "1-10",
+    "status": "pending",
+    "cache_hit": false,
+    "wait_parse_ids": [
+      1
+    ],
+    "created_parse_ids": [
+      1
+    ],
+    "reused_parse_ids": [],
+    "tip": null
+  },
+  "content": null
 }
 ```
 
@@ -161,4 +174,4 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 
 ## 未决问题
 
-Agent marker 语法集中维护在 [开放问题清单](../open-questions.md)。
+Agent marker 语法集中维护在 [开放问题清单](../backlog.md)。

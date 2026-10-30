@@ -57,7 +57,7 @@ model:
     engine: auto
 ```
 
-`small_backend` accepts `auto/onnx/torch`; `engine` accepts `auto/llama-cpp/vllm/lmdeploy`. macOS defaults to llama.cpp.
+`small_backend` accepts `auto/onnx/torch`; `engine` accepts `auto/llama-cpp/vllm/lmdeploy/mlx`. macOS defaults to llama.cpp.
 
 ```bash
 mineru-kit hardware detect --json

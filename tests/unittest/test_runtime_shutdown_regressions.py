@@ -44,7 +44,7 @@ def borrow(owner, backend, model_path, server_url):
 '''
 
 
-def _run_isolated(script: str) -> None:
+def _run_isolated(script: str) -> subprocess.CompletedProcess[str]:
     """把死锁上限限定在单个子进程，失败不遗留线程或污染其它模型缓存测试。"""
     try:
         completed = subprocess.run(
@@ -58,6 +58,43 @@ def _run_isolated(script: str) -> None:
     except subprocess.TimeoutExpired as exc:
         pytest.fail(f"Runtime shutdown did not complete within 10 seconds: {exc.stdout!r}\n{exc.stderr!r}", pytrace=False)
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    return completed
+
+
+@pytest.mark.parametrize("warm_executor", [False, True])
+def test_interpreter_exit_closes_pinned_async_runtime(warm_executor: bool) -> None:
+    """真实解释器退出后仍关闭客户端和引擎，不能向已经停止的线程池提交清理工作。"""
+    completed = _run_isolated(
+        f"warm_executor = {warm_executor!r}\n"
+        + '''
+class ExitClient(Client):
+    """将进程退出阶段的客户端清理写入标准输出，供父进程验证。"""
+
+    async def aclose(self) -> None:
+        """保留异步调度点，验证清理仍在所属循环中完整执行。"""
+        await asyncio.sleep(0)
+        await super().aclose()
+        print("client_closed", flush=True)
+
+def create(self, backend, model_path, server_url, **kwargs):
+    """用真实缓存与异步运行时管理轻量客户端，保留实际 atexit 注册流程。"""
+    return RuntimeHandle(ExitClient(), backend=backend, close_engine=lambda: print("engine_closed", flush=True))
+
+async def warm_default_executor() -> None:
+    """覆盖推理曾经启用过默认线程池的解释器退出路径。"""
+    await asyncio.to_thread(lambda: None)
+
+runtime.ModelSingleton._create_model = create
+predictor = manager.get_model("http-client", None, "http://example.test")
+if warm_executor:
+    predictor._call(warm_default_executor)
+# 故意不显式调用 shutdown，验证真实解释器退出顺序。
+'''
+    )
+    assert completed.stdout.splitlines() == ["client_closed", "engine_closed"]
+    assert "Exception ignored in atexit callback" not in completed.stderr
+    assert "cannot schedule new futures" not in completed.stderr
+    assert "Exception in thread" not in completed.stderr
 
 
 def test_sync_close_callback_rejects_another_key_in_its_closing_batch() -> None:

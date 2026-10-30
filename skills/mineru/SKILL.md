@@ -260,17 +260,15 @@ If the request is sensitive, confidential, legal, medical, financial, personal, 
 
 ## Telemetry
 
-MinerU may collect anonymous, locally aggregated usage and diagnostic telemetry to understand command usage, success or failure rates, tier choices, coarse environment categories, and performance timing buckets.
+Doclib includes usage and diagnostic telemetry, initially enabled. It uses locally aggregated command outcomes, tier choices, coarse environment categories, and performance metrics. Document contents, extracted text or images, file names and paths, search queries, API keys, usernames, hostnames, and raw tracebacks are excluded.
 
-Telemetry does not collect document contents, extracted text or images, file names, file paths, search queries, prompts, snippets, API keys, usernames, hostnames, raw tracebacks, or exact hardware identifiers.
-
-Users can inspect telemetry status and explicitly enable or disable it. To prevent telemetry uploads, disable it explicitly; disabling also stops new aggregation and removes unsent local telemetry data. If the user asks about telemetry, use:
+Use `status` and `preview` to inspect it, or `disable` to stop collection and sending and clear pending data. For startup configuration, set `MINERU_TELEMETRY_DISABLED=1` in the Doclib server environment; this takes precedence without changing the saved preference. Standalone parser SDK, `mineru-kit parse`, and V1 API Server are outside this scope.
 
 ```bash
 mineru telemetry status
-mineru telemetry enable
-mineru telemetry disable
 mineru telemetry preview
+mineru telemetry disable
+mineru telemetry enable
 mineru telemetry flush
 ```
 

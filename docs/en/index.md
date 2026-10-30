@@ -2,7 +2,7 @@
 
 ![MinerU](../images/MinerU-logo.png){ width="300" }
 
-## MinerU 4.1.0: Automatic Acceleration and Updated Parsing APIs
+## MinerU 4.1: Automatic Acceleration and Updated Parsing APIs
 
 - **Automatic acceleration across major platforms and GPUs:** Windows and Linux gain automatic ONNX acceleration for compatible Intel, AMD, and NVIDIA GPUs, alongside existing MPS/Metal support on macOS. MinerU detects devices, prioritizes discrete GPUs, and selects GPU or CPU execution for integrated graphics based on performance and compatibility. Representative core inference workloads run at approximately **2–3× CPU speed**.
 - **A unified asynchronous Tasks API:** `/v1/tasks` replaces the previous `/v1/uploads` and `/v1/parse/jobs` workflow, with file manifests, URL inputs, cached-upload reuse, per-file execution and downloads, status queries, and cancellation. This is a breaking API update; review the [4.1 migration guide](reference/migration_4_1.md) and [Tasks API reference](usage/tasks.md) before upgrading.
@@ -13,7 +13,7 @@
 
 ## Overview
 
-MinerU 4.0 brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
+MinerU 4.x brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
 
 - **Four parsing tiers**: Flash for fast previews and indexing, Basic for OCR and model-based parsing, and Standard / Advanced for more demanding layouts and quality requirements.
 - **Multiple input formats**: PDF, images, DOC/DOCX, PPT/PPTX, XLS/XLSX, RTF, ODT/ODS/ODP, EPUB, OFD, HTML/MHTML, and CSV/TSV. [DocVortex](https://github.com/myhloli/docvortex) provides native document parsing.

@@ -69,6 +69,10 @@ mineru search "关键词" --json
 
 `mineru` 使用文档库和缓存。`mineru parse` 默认读取 PDF 前 10 页，可能按输出长度返回继续阅读请求；按返回的 locator 和 `next_request` 继续。它与直接输出完整文件的 `mineru-kit parse` 是不同工作流，详见[基础使用](../usage/quick_usage.md)。
 
+### 文档库遥测
+
+Doclib 提供使用与诊断遥测，初始设置为启用。可通过 `mineru telemetry status`、`preview` 查看，使用 `mineru telemetry disable` 停止采集和发送；也可在服务启动前设置 `MINERU_TELEMETRY_DISABLED=1`。遥测不包含文档内容、文件名和路径，范围与设置见[遥测说明](../../next/telemetry-minimum.md)。
+
 ## WebUI 与 API
 
 ```bash

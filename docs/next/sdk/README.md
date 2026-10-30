@@ -1,6 +1,6 @@
 # SDK 分层
 
-状态: Draft
+状态: Implemented
 读者: SDK 开发者、集成方、核心开发者
 范围: SDK 层次、职责、消费者和依赖方向
 来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
@@ -37,7 +37,7 @@ mineru-kit api-server
       -> mineru.parser
           -> backend / render / types
 
-mineru doclib
+mineru parse / read / search
   -> mineru.doclib.client
       -> doclib server over UDS or TCP loopback
           -> doclib services
@@ -75,4 +75,4 @@ mineru doclib
 
 ## 未决问题
 
-顶层别名集中维护在 [开放问题清单](../open-questions.md)。`MinerUApiParser` 位置已收敛，保持 `from mineru.parser import MinerUApiParser`。
+新增接口须另行设计，见 [当前待办](../backlog.md)。`MinerUApiParser` 位置已收敛，保持 `from mineru.parser import MinerUApiParser`。

@@ -1,49 +1,39 @@
-# 不变量红线
+# 实现不变量
 
-状态: Draft
-读者: 核心开发、编程 Agent、代码审查者
-范围: Agent / 人类改动**永远不允许违反**的硬约束
-来源: MINERU-1 代码结构分析报告对照代码复核后固化；行号以 commit `317428b8` 为基准。
+## 用户选择与隐私
 
-违反任何一条都视为回归。改动触及这些位置时，PR 描述必须说明不破坏对应不变量。
+没有显式远端配置，不把文档上传到远程解析服务。显式请求的 PDF/图片档位不受支持时返回错误，
+不自动改档。省略档位、硬件推荐与缓存读取的规则分别以 [档位说明](tiers.md) 为准。
 
-## 1. 隐私边界：本地解析失败绝不静默回退 remote
+## 共享文档协议与归属
 
-文档内容默认全本地处理；只有显式 `--remote`（CLI）或 `privacy="remote"` 才把 PDF/图片发往远端 parse-server。
+DocVortex 唯一拥有原生文档解析、PDF 基础访问、schema、确定性后处理、素材与七种通用渲染和导出。
+MinerU 保留模型推理、产品策略、可选 LLM 增强和 Content List V1/V2，不导入 DocVortex 私有实现。
+所有 PDFium 调用遵守共享锁和资源管理；跨进程只传递字节及物化数据。
 
-- `privacy` 二值赋值：`mineru/doclib/services/parse_queue_svc.py:request_parse`
-- 门控集合：remote 仅支持 PDF/图片（`remote_unsupported_for_file_type` `parse_queue_svc.py:request_parse`）、remote 禁 flash（`tier_unsupported_for_remote` `parse_queue_svc.py:request_parse`）、质量 tier 仅限 PDF/图片（`tier_unsupported_for_file_type` `parse_queue_svc.py:request_parse`）
+Middle JSON 的 schema 身份、2.0 版本、metadata 和 Block/InlineSpan 约束见
+[现行规范](middle-json/README.md)。仅 Doclib 已持久化缓存允许历史转换。
+渲染与写出不得修改原语义树，也不能依赖已关闭的源 PDF。
 
-红线：解析失败、引擎不可用、超时等任何情况下，都不得把用户文档自动发往远端。失败路径必须原样报错（如 `no_engine`，`parse_execution_svc.py:_resolve_api_target`），由用户显式改用 `--remote`。
+## API 与错误
 
-## 2. 错误码语义稳定
+Tasks、file-parse、CLI/Doclib 分别遵守自己的响应结构；公共 HTTP 错误没有 type。
+已发布的错误码含义不能随意改变。协议变化同步 [迁移说明](https://opendatalab.github.io/MinerU/zh/reference/migration_4_1/)、
+[API 参考](api/README.md)、消费者及相应测试。未实现字段不得先成为文档中的必需字段。
 
-`mineru/errors.py` 定义了结构化错误协议：code → type 映射（`_ERROR_TYPE_MAP` `errors.py:20`）、code → HTTP 覆盖表（`_ERROR_CODE_STATUS_MAP` `errors.py:118`）、响应构造（`error_response` `errors.py:208`）。
+## 调度与生命周期
 
-红线：
+任务状态、上传、结果租约和清理使用各自的类型及作用域。取消后迟到结果不能恢复为成功。
+清理只释放本实例拥有的资源；启动失败也执行已获得资源的清理，不因后续清理异常覆盖原始错误。
+跨实例配置通过显式参数传递，不依赖进程默认配置的隐式副作用。
 
-- 不得改变既有 error code 的语义或取值集合的成员含义；已发布的 code 视为对外契约。
-- 不得随意改动 code → type 与 code → HTTP 的映射关系；新增 code 必须同时登记进两张表。
-- 响应外层结构（OpenAI 兼容 `{type, code, message, param}`）不得变更；扩展字段见 `docs/next/errors.md` 与 `docs/next/pitfalls.md` 第 3 条。
+## 定位符与缓存
 
-## 3. Middle JSON schema 2.0 输出契约（ADR-0020）
+已发布的 page/block/char 定位符保持可解析，short_id 保持稳定；语法以
+`mineru/doclib/locators.py` 和 [ADR-0012](decisions/0012-doclib-block-locator.md) 为准。
+缓存协议或合并逻辑变化同时验证历史读取、页范围、素材和 compaction。
 
-Middle JSON 的对外 schema 固定为 `2.0`（`mineru/parser/base.py:20` `MIDDLE_JSON_SCHEMA_VERSION`）；稳定的是对外 JSON / Pydantic 模型层，不是 SQLite 表结构（ADR-0020：`docs/next/decisions/0020-doclib-schema-stability-boundary.md`）。
+## 可静态追踪的依赖
 
-红线：
-
-- 不接受旧 `_backend` / `_version_name` / `pdf_info` 等历史文档字段；通用加载统一验证 schema 身份、版本和 metadata。仅 Doclib 的持久化读取边界可转换受支持的历史 MinerU Middle JSON。
-- 改动输出结构即破坏性变更：必须走 ADR 流程，并同步 `docs/next/api/changes.md`、`docs/next/middle-json.md` 与 compaction（`doclib/background/compaction.py:27`）。
-
-## 4. 依赖方向：基础层不得反向引用上层
-
-依赖方向红线以 `CLAUDE.md`「5.1 目录职责」为单一事实源，此处不复述。配套规则 mineru 子模块之间只用 relative import，同样以 `CLAUDE.md`「Import 规范」为准，不在此复制。违反任一即视为回归。
-
-## 5. 定位符协议语法向后兼容
-
-内容定位符语法 `doc:{short_id}/tier:{tier}/page:{n}[/block:{n}[/char:{n}]]` 定义于 `mineru/doclib/locators.py:10-16` 的 `_CURSOR_RE`；构造器 `page_ref` / `block_ref` / `block_char_ref` 在 `locators.py:33-46`。
-
-红线：
-
-- 已发布格式的 locator（含持久化在缓存、续读标记 `<!-- Next: mineru read … -->` 中的）必须永久可解析；扩展语法只能以追加段的方式演进，不得改变既有段语义。
-- `short_id` 取 sha256 十六进制前缀、冲突时延长（`doclib/services/ingest_svc.py:ensure_doc_record`），不得改换派生方式。
+MinerU 子模块使用相对导入；模块边界显式导出 `__all__`，注册和分派使用显式映射。
+公开 API 的 import 不启动服务、读取环境配置、下载模型或导入重推理依赖。

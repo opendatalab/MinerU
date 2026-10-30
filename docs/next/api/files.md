@@ -1,6 +1,6 @@
 # Files
 
-Files 保存源文件视图与已生成的结果，不提供文件列表。异步解析统一使用 [Tasks](tasks.md)，客户端按 `files[].result_url` 下载，不自行拼接存储路径。
+Files 保存源文件视图与已生成的结果，不提供文件列表。异步解析统一使用 [Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/)，客户端按 `files[].result_url` 下载，不自行拼接存储路径。
 
 | 方法 | 地址 | 行为 |
 |---|---|---|
@@ -71,7 +71,7 @@ Content-Disposition: attachment; filename="report.zip"
 | 单独 HTML | `text/html; charset=utf-8`（本地） | UTF-8 HTML 文件字节。 |
 
 下载建议文件名由 `Content-Disposition` 提供，非 ASCII 文件名可能使用标准的 `filename*` 编码。
-JSON 字段使用 `file_name`；HTTP 附件头的标准参数仍是 `filename` 或 `filename*`。ZIP 成员和输出格式见 [Tasks 输出格式与下载](tasks.md#输出格式与下载)。
+JSON 字段使用 `file_name`；HTTP 附件头的标准参数仍是 `filename` 或 `filename*`。ZIP 成员和输出格式见 [Tasks 输出格式与下载](https://opendatalab.github.io/MinerU/zh/usage/tasks/#outputs-and-downloads)。
 本地 API Server 直接流式返回产物；Router 代理 worker 的字节及下载头。Tasks 返回的 SaaS `result_url` 可能直接指向对象存储，不要求经过本路由。
 
 ## 错误与保留期

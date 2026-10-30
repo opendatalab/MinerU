@@ -145,7 +145,7 @@ IndexBlock`。
 
 ## 后处理与 renderer
 
-`backend/postprocess/inline.py` 只提供结构操作：规范化、可见文本提取、相邻合并、
+DocVortex 的 `postprocess.inline` 公共模块 只提供结构操作：规范化、可见文本提取、相邻合并、
 段落连接、裁剪与文字映射。不存在字符串标签 parser 或对应正则。
 
 Markdown、HTML、DOCX 与 Structured Content renderer 按 Span discriminator 直接

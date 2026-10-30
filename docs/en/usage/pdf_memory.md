@@ -34,6 +34,6 @@ Trimming cannot release live results, model caches, other allocators' pools, ano
 
 ## Output parity
 
-In separate output directories, add `--warmup 0 --rounds 2 --fingerprints` to each configuration. Compare `middle_sha256` and `model_sha256` for matching inputs; hashes include full asset fields. Fingerprinting performs extra serialization, so do not use these runs for memory or performance conclusions.
+In separate output directories, add `--warmup 0 --rounds 2 --fingerprints` to each configuration. Compare `middle_sha256` for matching inputs; hashes include full asset fields. Fingerprinting performs extra serialization, so do not use these runs for memory or performance conclusions.
 
 If Linux, models, or USS access are unavailable, record that limitation explicitly and keep trimming disabled by default.

@@ -1,6 +1,6 @@
 # API-backed Parser: `MinerUApiParser`
 
-`MinerUApiParser` 实现 `DocumentParser`，通过 [Tasks](../api/tasks.md) 调用 API Server、Router 或 SaaS，返回严格 Middle JSON 2.0 的 `ParseResult`。它不使用 Doclib 结果缓存，也不自行选择是否允许远端上传。
+`MinerUApiParser` 实现 `DocumentParser`，通过 [Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/) 调用 API Server、Router 或 SaaS，返回严格 Middle JSON 2.0 的 `ParseResult`。它不使用 Doclib 结果缓存，也不自行选择是否允许远端上传。
 
 ```python
 from mineru.parser import MinerUApiParser
@@ -15,7 +15,7 @@ print(result.markdown())
 `tier=None` 和 `ocr_mode=None` 省略对应请求字段；服务默认 OCR 模式是 `auto`。
 `/v1/tiers` 仅描述 PDF/图片档位，原生文档始终可提交给所连接服务并使用 flash。SDK 不自行选择默认 tier：PDF/图片由服务端按 **standard → basic → flash → advanced** 选择支持的档位，仅开放 advanced 时自动选择 advanced。
 显式 tier 原样发送，服务不支持该 PDF/图片档位时返回错误，不自动升降档。
-Office、HTML 等已支持的原生文档始终使用 flash，忽略合法的显式 tier；单文件 HTTP 调用也遵循 [Tasks 规则](../api/tasks.md#tier默认选择与文件作用范围)，与直接本地解析及 Doclib 的选档策略独立。
+Office、HTML 等已支持的原生文档始终使用 flash，忽略合法的显式 tier；单文件 HTTP 调用也遵循 [Tasks 规则](https://opendatalab.github.io/MinerU/zh/usage/tasks/#tier-selection)，与直接本地解析及 Doclib 的选档策略独立。
 `parse()` 和 `parse_async()` 均接收 `page_range/status_callback/duration_callback`。
 
 ## 请求与结果
@@ -41,4 +41,4 @@ HTTP 输入只有上传和 URL；SDK 的路径参数始终代表客户端文件�
 
 结构化业务错误保留 code/message/param。传输失败保留 `_APITransportError` 阶段及超时信息，Doclib 继续区分 `remote_timeout`、`remote_unreachable` 与业务 `parse_failed`。
 
-旧协议客户端不能连接移除旧接口后的服务，更新 worker、Router 和 SDK 后再切换调用方；参见 [迁移说明](../api/changes.md)。
+旧协议客户端不能连接移除旧接口后的服务，更新 worker、Router 和 SDK 后再切换调用方；参见 [迁移说明](https://opendatalab.github.io/MinerU/zh/reference/migration_4_1/)。

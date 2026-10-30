@@ -42,7 +42,7 @@ CLI 的 `--pages`、Python/Doclib/API 的 `page_range` 和 Gradio 转换事件�
 | Doclib 内容读取 | 首次前 10 页；带续读游标时保留现有窗口策略 |
 | Doclib 内容导出 | 导出已有缓存内容 |
 | Python `parse` / `parse_async` | 全部 |
-| V1 Parse Jobs / `MinerUApiParser` | 全部 |
+| V1 Tasks / `MinerUApiParser` | 全部 |
 | `mineru-kit parse` | 全部 |
 | Gradio PDF | 默认全部；配置 `--max-pages M` 后选择前 M 页，不足则全部 |
 
@@ -67,8 +67,8 @@ result = parse("report.pdf", tier="flash", page_range="1,3,r1")
 ```json
 {
   "tier": "flash",
-  "files": [{"source": {"type": "file_id", "file_id": "file-example"}, "page_range": "1-3,r1"}],
-  "output_formats": ["middle_json"]
+  "files": [{"file_name": "report.pdf", "bytes": 12345, "page_range": "1-3,r1"}],
+  "output_formats": ["default"]
 }
 ```
 

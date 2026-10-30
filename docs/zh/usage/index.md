@@ -18,17 +18,17 @@
     * [命令行进阶参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
 - [旧平台适配（MinerU <4）](compatibility.md) - 国产卡保留原适配
 - 插件与生态（保留原集成说明，不代表已支持 4.0 V1 API）
-    * [Cherry Studio](plugin/Cherry_Studio.md)
-    * [Sider](plugin/Sider.md)
-    * [Dify](plugin/Dify.md)
+    * [Cherry Studio](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Cherry_Studio.md)
+    * [Sider](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Sider.md)
+    * [Dify](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Dify.md)
     * [n8n](plugin/n8n.md)
-    * [Coze](plugin/Coze.md)
-    * [FastGPT](plugin/FastGPT.md)
-    * [ModelWhale](plugin/ModelWhale.md)
-    * [DingTalk](plugin/DingTalk.md)
-    * [DataFlow](plugin/DataFlow.md)
-    * [BISHENG](plugin/BISHENG.md)
-    * [RagFlow](plugin/RagFlow.md)
+    * [Coze](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Coze.md)
+    * [FastGPT](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/FastGPT.md)
+    * [ModelWhale](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/ModelWhale.md)
+    * [DingTalk](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/DingTalk.md)
+    * [DataFlow](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/DataFlow.md)
+    * [BISHENG](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/BISHENG.md)
+    * [RagFlow](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/RagFlow.md)
 
 ## 开始使用
 

@@ -49,7 +49,7 @@ Engine 和 `mineru-kit vlm-server` 的 llama 入口共用这套决策。仅自�
 server 的 `--offline` 同样约束 ONNX 校准模型读取，缺少本地模型时沿用 CPU 回退，不发起下载。
 `hardware info` 保留独立 llama 诊断；诊断失败不会降低推荐档位或改变运行设备。
 其他 VLM 引擎和远程 VLM 不使用 llama.cpp 的运行策略，也不会因自动档位推荐而触发 llama 探测。
-详细规则见 [ONNX 设备选择](onnx-device.md#llamacpp-自动模式与手动覆盖)。
+详细规则见 [ONNX 设备选择](onnx-device.md#llama-auto-mode)。
 
 ## 资源结构
 

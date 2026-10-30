@@ -13,11 +13,11 @@
 
 ### CUDA_VISIBLE_DEVICES Basic Usage
 > [!TIP]
-> - In any situation, you can specify visible GPU devices by adding the `CUDA_VISIBLE_DEVICES` environment variable at the beginning of the command line. For example:
+> - For CUDA-backed Torch/vLLM/LMDeploy execution, `CUDA_VISIBLE_DEVICES` selects visible CUDA devices. It does not select ONNX DirectML/WebGPU, Metal, or llama.cpp Vulkan devices. The examples require the corresponding accelerator runtimes:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=1 mineru-kit parse <input_path> -o <output_path>
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=1 mineru-kit parse <input_path> -o <output_path>
 >   ```
-> - This method applies to the model-serving and parsing commands documented below; it does not apply to `mineru-router`.
+> - Router sets worker visibility through `--local-gpus`; auto also consults the detected device family’s visibility mask. Use explicit worker IDs when assigning devices.
 
 ### Common Device Configuration Examples
 > [!TIP]
@@ -27,7 +27,7 @@
 >   CUDA_VISIBLE_DEVICES=0,1  # Devices 0 and 1 will be visible
 >   CUDA_VISIBLE_DEVICES="0,1"  # Same as above, quotation marks are optional
 >   CUDA_VISIBLE_DEVICES=0,2,3  # Devices 0, 2, 3 will be visible; device 1 is masked
->   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
+>   CUDA_VISIBLE_DEVICES=""  # No CUDA GPU will be visible
 >   ```
 
 ## Practical Application Scenarios
@@ -45,9 +45,9 @@
 > - If you have multiple GPUs and need to start two `fastapi` services on GPU 0 and GPU 1, each listening on a different port, you can use the following commands:
 >   ```bash
 >   # In terminal 1
->   CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
 >   # In terminal 2
->   CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
+>   MINERU_MODEL_SMALL_BACKEND=torch MINERU_MODEL_VLM_ENGINE=vllm CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
 >   ```
 > 
 > - If you have multiple GPUs and want to use `router` to launch and manage `fastapi` services across four GPUs, you can use the following command:

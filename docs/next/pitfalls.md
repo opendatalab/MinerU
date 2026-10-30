@@ -1,45 +1,37 @@
-# 开发陷阱清单
+# 开发陷阱
 
-状态: Draft
-读者: 核心开发、编程 Agent、代码审查者
-范围: 4.x 开发中已知的结构性陷阱与兼容面联动要求
-来源: MINERU-1 代码结构分析报告（SHANNON，2026-09-01），逐条对照代码复核后固化。行号以 commit `317428b8` 为基准。
+本页描述当前 4.1 系列的实现边界；历史设计和旧 API 不能作为兼容性承诺。
 
-本清单收录的是"改动前必须知道，否则容易做错"的事项。每条给出代码锚点与正确做法；纯推测、无法操作的观察不收录。
+## 不同入口有不同的默认档位
 
-## 1. 双轨兼容面的联动要求
+Doclib 主动解析 PDF/图片按 Standard → Basic 选择质量档位。Tasks 及 Gradio 按
+Standard → Basic → Flash → Advanced 选择；仅开放 Advanced 时才默认选择它。
+原生文档、已有缓存读取与硬件推荐各有独立规则，见 [档位](tiers.md)。不要复用名称相似但语义不同的选择器。
 
-### 1.1 backend 不再是入参
+## 产品档位与模型后端分开
 
-历史过渡层 `resolve_tier_and_backend(tier, backend)` 与 `mineru-kit parse --backend` 专家参数（含 `pipeline`/`vlm-*` 等别名）已移除：backend 只用于推断 tier，推断后即被丢弃，没有独立作用。`backend_for_tier` 派生链与 `ParserRuntimeOptions.backend` 内部字段也已删除。
+公开解析入口使用 tier；small_backend 与 VLM engine 是独立模型配置。
+不恢复 `--backend`、`model.stack` 或旧 backend 别名。远程 VLM 是 OpenAI 兼容推理服务，
+与接收文档的 V1 Tasks 服务不同；vLLM 只是部署选择之一。
 
-- 新代码只走 `tier`；basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`effort_for_tier()`，`parser/tier.py` 的 `ParserRuntimeOptions(tier, effort)`）。
-- 不要在任何 CLI / SDK / API 入口重新引入 `backend` 入参，也不要恢复 backend 派生函数或内部字段。
+## 历史兼容只在缓存读取边界
 
-### 1.2 共享文档协议与缓存必须同步
+ParseResult 与 HTTP/ZIP 严格验证共享 schema 2.0。旧格式只通过 Doclib 的
+`read_cached_middle_json(path)` 转换。缓存读取、覆盖、命中和 compaction 必须使用同一入口。
+修改几何或素材后同时验证序列化、素材引用和真实导出，不能只比较结构数量。
 
-改外层结构时同步 DocVortex schema/readers、MinerU ParseResult 和 Doclib 缓存。
-当前使用 schema 身份 + 版本 2.0 + metadata，通用接口拒绝旧协议；不能仅按版本号识别。
-Doclib 缓存命中、覆盖、默认档位与压缩均使用专属 read_cached_middle_json，兼容转换旧 3.4.5 和 MinerU 2.0；压缩只合并转换后元数据一致的批次。
-详见 [envelope.md](middle-json/envelope.md)。
+## 错误与取消不能跨层套用
 
-## 2. Alpha 高频迭代，公开 API 未稳定
+公共 Tasks 错误只有 code、message 和可选 param；内部 CLI/Doclib 仍保留 type 分类。
+file-parse 的状态和错误对象另有契约。`retryable/user_action/docs_url` 是待讨论扩展，不能假定响应已经包含。
+HTTP 200 不代表任务解析成功；客户端等待超时不代表取消。底层不可中断计算允许收尾，迟到结果不得覆盖取消终态。
 
-4.x 处于 Alpha prerelease，迭代节奏约为日均 10 个提交，公开 API 未稳定（变更专门记录在 `docs/next/api/changes.md`）。
+## 发布后的接口变更需要迁移说明
 
-- 外部集成应 pin 具体 commit，不要跟浮动的 next HEAD。
-- 内部改动涉及 NEXT v1 API 行为变化时，必须在 `docs/next/api/changes.md` 追加条目。
+4.x 已是正式发布系列。集成依赖应固定经过验证的版本；破坏性变更同步更新双语迁移文档、
+Tasks/SDK 消费者和测试。不能因 HTTP 仍为 `/v1` 就假定不同 MinerU 版本协议兼容。
 
-## 3. 错误协议：设计已定、实现缺位的部分
+## 代码约定
 
-`docs/next/errors.md` 已设计 `user_action` / `retryable` / `docs_url` 扩展字段，但 `mineru/errors.py` 的 `error_response`（`errors.py:208`）目前只输出 OpenAI 兼容的 `{type, code, message, param}`，全仓无 Python 实现点。
-
-- 依赖这些扩展字段的调用方代码不要提前编写。
-- 补齐该缺口是自然切入点：改 `errors.py` 的 `error_response` 与 CLI JSON 输出，并同步 `docs/next/errors.md` 状态。
-
-## 4. 仓库约定速查
-
-两条来自 `AGENTS.md` / `CLAUDE.md` 的硬约定，最容易在自动生成提交时违反：
-
-- mineru 子模块之间只使用 **relative import**（`from .base import X`），不用 `import mineru.xxx` 绝对导入。
-- commit message / PR body 禁用 `fixes|closes|resolves #n`（会在 merge 后自动关闭 issue），用 `Refs #n`。
+新增函数提供中文说明和必要类型注解；MinerU 内部使用相对导入。公开 API import 不触发重模型加载。
+模块导入不读取配置或创建服务。Issue 关联使用 `Refs #n`，不使用自动关闭关键词。

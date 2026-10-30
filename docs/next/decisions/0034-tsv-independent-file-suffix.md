@@ -1,5 +1,7 @@
 # ADR-0034: TSV 独立文件后缀
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted，已实现
 日期: 2026-09-16
 相关文档: 0028-csv-structured-flash-parsing.md, 0022-doclib-file-type-tier-remote-semantics.md, 0024-file-type-tier-normalization.md, ../architecture.md, ../tiers.md

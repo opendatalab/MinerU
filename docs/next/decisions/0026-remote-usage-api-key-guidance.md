@@ -1,5 +1,7 @@
 # ADR-0026: Remote API Usage 与 API Key 引导
 
+> 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
+
 状态: Accepted，已实现
 日期: 2026-07-14
 相关文档: ../api/usage-limits.md, ../cli/mineru-parse.md, 0005-doclib-interface-client-server-contract.md, 0015-cli-output-json-composition.md, 0023-cli-runtime-contract.md

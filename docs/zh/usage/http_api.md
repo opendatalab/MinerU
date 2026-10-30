@@ -46,3 +46,25 @@ ModelJson 仅在解析内部使用，API、SDK、CLI 和 Gradio 均不输出模�
 旧独立上传和 Jobs 接口已移除，客户端与服务端需协调升级，详见 [4.1 迁移说明](../reference/migration_4_1.md)。需要同步单文件返回时使用独立的 [file-parse 包装服务](file_parse.md)。
 
 POST 创建、GET 详情、POST cancel 和本地 PUT 分别返回创建回执、查询详情、逐文件取消结果和上传确认；Tasks 成功响应省略 null，但保留零值和空集合。POST cancel 取消未完成文件，成功文件的产物仍可直接下载。
+
+## 单文件 curl 流程 {#curl-example}
+
+下载 [Bash 示例](../../assets/examples/tasks-curl.sh)，准备 `curl`、`jq` 和一个输入文件；先启动本地 API：
+
+```bash
+mineru-kit api-server --host 127.0.0.1 --port 8000 --tier flash
+```
+
+在另一个终端，从仓库根目录执行：
+
+```bash
+MINERU_API_URL=http://127.0.0.1:8000 \
+  bash docs/assets/examples/tasks-curl.sh report.html report.zip
+```
+
+示例依次 POST JSON 清单、PUT 缺失文件、GET 轮询和下载 `files[0].result_url`。它读取真实文件大小，
+不使用旧 complete 接口，不自动重试创建；回执目录和 task_id 会先打印，轮询耗尽退出 124，任务继续运行。
+成功后写出新 ZIP，已有输出路径会被拒绝。启用认证时设置 `MINERU_API_KEY`。
+
+此例限定同一自部署 API 的上传与 Files 下载，不跟随重定向。URL 输入、缓存 hash、批量恢复或对象存储签名链接使用上文的完整 Python 客户端。
+解析 PDF/图片时选择需要的服务档位及模型；HTML 等原生文档不需要推理模型。

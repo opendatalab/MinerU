@@ -32,7 +32,7 @@ mineru-kit hardware info --json
 - `auto`（或省略启动参数）按实际小模型后端和可用设备推荐上限。ONNX 在 Windows/Linux 按需选型、校准；首次可能准备或下载 OCR rec 模型，不要求开启 `--preload-models`。Torch 路径检查设备可用性，不执行 ONNX 校准。
 - `hardware detect` 使用同一推荐逻辑；`hardware info` 只读报告硬件、运行环境与已有校准记录，不测速、不下载模型、不写配置。
 - `/v1/tiers` 只描述 PDF/图片能力。所有正常可用的兼容服务都支持现有原生文档格式，Office、HTML 等固定使用 Flash，不要求服务在 `/v1/tiers` 中列出 Flash。
-- HTTP 请求省略 `tier` 或传入 `null`，PDF/图片按 **Standard → Basic → Flash** 选择支持的默认值；Advanced 必须显式请求。显式指定不支持的 PDF/图片档位返回 400，不自动改档。纯原生文档忽略合法的请求档位；混合批次分别执行，实际档位见 `files[].parse.tier`。
+- HTTP 请求省略 `tier` 或传入 `null`，PDF/图片按 **Standard → Basic → Flash → Advanced** 选择支持的默认值；仅开放 Advanced 时才自动选择 Advanced。显式指定不支持的 PDF/图片档位返回 400，不自动改档。纯原生文档忽略合法的请求档位；混合批次分别执行，实际档位见 `files[].parse.tier`。
 - Python `create_app(tiers=...)` 保留精确 PDF/图片档位集合。WebUI 和 Doclib 托管服务遵循新的启动上限；Gradio 不再因远端未声明 Flash 而额外启动本地原生解析服务。
 
 设备配置与支持边界见[档位与运行环境](../usage/tiers.md)。服务开放的最高档位和单次请求的默认档位是两个不同设置。

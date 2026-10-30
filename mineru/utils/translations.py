@@ -217,11 +217,13 @@ ZH_MESSAGES: dict[str, str] = {
     "Print the next telemetry request body without sending it.": "打印下一次遥测请求体,但不发送。",
     "Enable telemetry.": "启用遥测。",
     "Disable telemetry and clear pending local aggregates.": "禁用遥测并清除待发送的本地聚合数据。",
-    "Flush pending telemetry now when telemetry is enabled (or unset during prerelease).": (
-        "当遥测已启用(或预发布期未设置)时,立即上报待发送遥测。"
-    ),
+    "Flush pending telemetry now when telemetry is enabled.": "当遥测已启用时,立即上报待发送遥测。",
     "never": "从未",
     "state: {state}": "状态(state): {state}",
+    "source: {source}": "来源(source): {source}",
+    "Telemetry preference saved as enabled; MINERU_TELEMETRY_DISABLED still disables this server.": (
+        "已保存开启偏好；MINERU_TELEMETRY_DISABLED 仍禁用当前服务的遥测。"
+    ),
     "installation_id: {id}": "installation_id: {id}",
     "pending_periods: {n}": "待发送周期数: {n}",
     "pending_metrics: {n}": "待发送指标数: {n}",
@@ -399,37 +401,17 @@ ZH_MESSAGES: dict[str, str] = {
     "An Official API Key is optional and enables registered access.": "官方 API Key 为可选项,配置后可启用注册访问。",
     "Manage or create an API Key:": "管理或创建 API Key:",
     "Set the API Key:": "设置 API Key:",
-    # --------------------------------------------------- 遥测首次运行同意文案
-    "Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.\n"
-    "\n"
-    "Collected:\n"
-    "    command names, MinerU version, OS, architecture, Python version, install channel,\n"
-    "    coarse CPU/GPU categories, success/failure status, error categories, tiers,\n"
-    "    and performance timing buckets.\n"
-    "\n"
-    "NOT collected:\n"
-    "    document contents, extracted text/images, file names, file paths, raw URLs,\n"
-    "    search queries, prompts, snippets, tracebacks, exception messages, hostnames,\n"
-    "    usernames, account IDs, API keys, or exact CPU/GPU models.\n"
-    "\n"
-    "Press Enter or type Y to enable, or type N to disable.\n"
-    "You can change this later with `mineru telemetry enable` or `mineru telemetry disable`.\n"
-    "Preview what would be sent with `mineru telemetry preview`.": (
-        "帮助改进 MinerU:发送匿名且本地聚合的使用与诊断数据。\n"
-        "\n"
-        "收集内容:\n"
-        "    命令名、MinerU 版本、操作系统、架构、Python 版本、安装渠道、\n"
-        "    粗粒度 CPU/GPU 类别、成功/失败状态、错误类别、档位,以及性能耗时分桶。\n"
-        "\n"
-        "不收集的内容:\n"
-        "    文档内容、提取的文本/图片、文件名、文件路径、原始 URL、搜索词、提示词、\n"
-        "    片段、堆栈、异常消息、主机名、用户名、账号 ID、API 密钥,或精确 CPU/GPU 型号。\n"
-        "\n"
-        "按回车或输入 Y 启用,输入 N 禁用。\n"
-        "之后可通过 `mineru telemetry enable` 或 `mineru telemetry disable` 修改。\n"
-        "使用 `mineru telemetry preview` 预览将发送的内容。"
+    # --------------------------------------------------- 遥测一次性默认开启说明
+    "Doclib telemetry is enabled by default: locally aggregated usage, "
+    "coarse environment categories, and performance metrics.\n"
+    "Document contents, file names and paths, search queries, and API keys are not included.\n"
+    "Inspect data with `mineru telemetry preview`; turn it off with `mineru telemetry disable`.\n"
+    "Set MINERU_TELEMETRY_DISABLED=1 before starting Doclib to disable it from the first startup.": (
+        "Doclib 遥测默认开启，收集本地聚合的使用情况、粗粒度环境类别和性能指标。\n"
+        "不包含文档内容、文件名和路径、搜索词或 API 密钥。\n"
+        "使用 `mineru telemetry preview` 检查数据，使用 `mineru telemetry disable` 关闭。\n"
+        "在启动 Doclib 前设置 MINERU_TELEMETRY_DISABLED=1，可从首次启动就禁用遥测。"
     ),
-    "Enable telemetry?": "启用遥测?",
     # ------------------------------------------------------------- kit 根
     "MinerU Kit — batch parsing and service tools": "MinerU Kit — 批量解析与服务工具",
     "Parse files or directories into markdown, middle JSON, or zip outputs.": (

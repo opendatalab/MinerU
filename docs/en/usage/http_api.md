@@ -37,3 +37,27 @@ Creation is not automatically retried. MAX_POLLS/POLL_INTERVAL bound polling; CO
 Tasks and Files JSON use `file_name`; creation accepts `files`. Old `manifest`/`filename` fields and mixed old/new fields are rejected with 400. The standalone upload and Jobs APIs have been removed. Coordinate server, Router and SDK upgrades; see [4.1 migration](../reference/migration_4_1.md). The separate [file-parse wrapper](file_parse.md) provides recoverable synchronous single-file calls.
 
 POST returns a creation receipt, GET returns task details, POST cancel returns every file’s final state and successful result links, and local PUT returns task_id/file_id/status. Tasks success responses omit null fields but preserve zero values and empty collections. POST cancel cancels unfinished files while preserving completed results.
+
+## Single-file curl flow {#curl-example}
+
+Download the [Bash example](../../assets/examples/tasks-curl.sh) and prepare `curl`, `jq`, and an input file. Start a local API:
+
+```bash
+mineru-kit api-server --host 127.0.0.1 --port 8000 --tier flash
+```
+
+In another terminal, run from the repository root:
+
+```bash
+MINERU_API_URL=http://127.0.0.1:8000 \
+  bash docs/assets/examples/tasks-curl.sh report.html report.zip
+```
+
+The script creates a JSON task, PUTs the missing file, polls with GET, and downloads `files[0].result_url`.
+It uses the real file size, needs no complete request, and never retries task creation. It prints the receipt directory and task ID before polling;
+a polling timeout exits 124 while the task continues. Successful output is written to a new ZIP path; existing paths are rejected.
+Set `MINERU_API_KEY` when authentication is enabled.
+
+This example only accepts upload and Files URLs from the same self-hosted API and does not follow redirects.
+Use the full Python client above for URL inputs, hashes, batch recovery, or signed object-storage links.
+PDF/image inference requires the selected tier's models; native HTML does not.
