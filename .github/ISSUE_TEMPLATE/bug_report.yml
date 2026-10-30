@@ -76,11 +76,11 @@ body:
       description: Select your actual version, or the target version if installation failed.
       # BEGIN MINERU_RECENT_RELEASES
       options:
+        - "4.1.3"
         - "4.1.2"
         - "4.1.1"
         - "4.1.0"
         - "4.0.12"
-        - "4.0.11"
         - "Other / development / unknown"
       default: 5
       # END MINERU_RECENT_RELEASES
