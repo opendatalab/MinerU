@@ -1001,9 +1001,18 @@ def test_expired_upload_rejects_before_reading_body(service: tuple[TestClient, F
     assert _job_count(app) == 0
 
 
-def test_completed_child_retention_starts_after_parent_finishes(service: tuple[TestClient, FastAPI]) -> None:
+def test_completed_child_retention_starts_after_parent_finishes(
+    service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """子结果不能在父任务仍等待上传时过期，父任务完成后才开始统一保留期。"""
     client, app = service
+    now = [int(time.time()) + 0.999]
+
+    def wall_time() -> float:
+        """固定墙上时间到整秒边界前，事件循环仍使用真实单调时钟调度。"""
+        return now[0]
+
+    monkeypatch.setattr(time, "time", wall_time)
     app.state.task_store.retention_seconds = 1
     if hasattr(app.state, "registry"):
         app.state.registry.retention_seconds = 1
@@ -1015,7 +1024,7 @@ def test_completed_child_retention_starts_after_parent_finishes(service: tuple[T
     assert client.put(pending_files(task)[0].get("upload").get("url"), content=HTML).status_code == 200
     ready = _file_done(client, task, 0)
     result_url = ready["files"][0].get("result_url")
-    time.sleep(1.05)
+    now[0] += 2
     for worker in _execution_apps(app):
         worker.state.execution_store.collect_expired()
         worker.state.file_store.collect_expired()
@@ -1030,8 +1039,10 @@ def test_completed_child_retention_starts_after_parent_finishes(service: tuple[T
         await record.operation
 
     client.portal.call(finish_retention)
+    assert record.retention_epoch is not None
+    now[0] = record.retention_epoch + 0.002
     assert client.get(result_url).status_code == 200
-    time.sleep(1.05)
+    now[0] = record.retention_epoch + 1
     assert client.get(task_url(client, task)).status_code == 404
     assert client.get(result_url).status_code == 404
 
@@ -1128,9 +1139,7 @@ def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path:
         monkeypatch.setattr(transport, "handle_async_request", reject_release)
         client.portal.call(maintain_task_result_leases, app.state.registry, app.state.worker_pool)
         assert all(not route.lease.held for route in app.state.registry.list("job", include_expired=True))
-        assert all(
-            not route.lease.held for route in app.state.registry.list("file", include_expired=True)
-        )
+        assert all(not route.lease.held for route in app.state.registry.list("file", include_expired=True))
         assert result["files"][0].get("result_url")
 
 

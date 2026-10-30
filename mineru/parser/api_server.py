@@ -8,6 +8,7 @@ import base64
 import hashlib
 from importlib.resources import files as package_resources
 import logging
+import math
 import os
 import pathlib
 import re
@@ -345,7 +346,7 @@ class _FileRecord:
     created_at: int
     purpose: FilePurpose
     sha256sum: str | None = None
-    expires_at: int | None = None
+    expires_at: float | None = None
     job_id: str | None = None
 
 
@@ -398,7 +399,7 @@ class FileStore:
     def pin_cached_blob(self, sha: str) -> pathlib.Path | None:
         """哈希复用检查和取得传输引用保持原子性，过期视图不能被新请求复用。"""
         with self._lock:
-            now = int(time.time())
+            now = time.time()
             if not any(
                 rec.sha256sum == sha and (rec.expires_at is None or rec.expires_at > now) for rec in self._files.values()
             ):
@@ -416,8 +417,8 @@ class FileStore:
             if not self._pins[sha]:
                 self._pins.pop(sha)
 
-    def finalize_outputs(self, job_id: str, finished: int) -> None:
-        """产物从任务清理完成时计时，部分失败和取消产生的产物采用相同期限。"""
+    def finalize_outputs(self, job_id: str, finished: float) -> None:
+        """产物从任务清理完成时计时，保留亚秒精度，避免短保留期被向下取整。"""
         with self._lock:
             for rec in self._files.values():
                 if rec.job_id == job_id:
@@ -432,7 +433,7 @@ class FileStore:
         if not self.retention_seconds:
             return
         with self._lock:
-            now = int(time.time())
+            now = time.time()
             for file_id, rec in tuple(self._files.items()):
                 if rec.expires_at is not None and rec.expires_at <= now:
                     self._files.pop(file_id)
@@ -654,7 +655,7 @@ class FileStore:
     def get_file(self, file_id: str) -> _FileRecord:
         with self._lock:
             rec = self._files.get(file_id)
-            if rec is None or (rec.expires_at is not None and rec.expires_at <= int(time.time())):
+            if rec is None or (rec.expires_at is not None and rec.expires_at <= time.time()):
                 raise_api_error(
                     404,
                     code="file_not_found",
@@ -664,11 +665,12 @@ class FileStore:
 
     @staticmethod
     def _make_file_object(rec: _FileRecord) -> FileObjectModel:
+        """公开时间戳保持整秒并向上取整，内部过期判断使用未取整的期限。"""
         return FileObjectModel(
             id=rec.id,
             bytes=rec.bytes,
             created_at=rec.created_at,
-            expires_at=rec.expires_at,
+            expires_at=math.ceil(rec.expires_at) if rec.expires_at is not None else None,
             file_name=rec.filename,
             purpose=rec.purpose,
             sha256sum=rec.sha256sum,
@@ -870,9 +872,12 @@ class ExecutionStore:
             """回收句柄并读取异常，覆盖任务首次执行前就被取消的路径。"""
             self._tasks.pop(rec.id, None)
             rec.finished_at = execution_timestamp()
+            if not rec.retention_held:
+                if rec.retention_epoch is None:
+                    rec.retention_epoch = time.time()
+                if rec.file_store is not None:
+                    rec.file_store.finalize_outputs(rec.id, rec.retention_epoch)
             if rec.file_store is not None:
-                if not rec.retention_held:
-                    rec.file_store.finalize_outputs(rec.id, int(rec.retention_epoch or time.time()))
                 rec.file_store.release_inputs(rec.input_blobs)
             if not task.cancelled():
                 error = task.exception()
@@ -959,7 +964,7 @@ class ExecutionStore:
         rec.retention_held = False
         rec.retention_epoch = finished
         if rec.file_store is not None:
-            rec.file_store.finalize_outputs(job_id, int(finished))
+            rec.file_store.finalize_outputs(job_id, finished)
 
     def get(self, job_id: str) -> _ExecutionRecord:
         """读取仍在保留期内的执行，未知标识沿用已有错误合同。"""

@@ -109,9 +109,9 @@ def test_saas_storage_all_formats_and_recovery(tmp_path: Path) -> None:
     state = Upstream()
     api, storage = _Server(cloud_bridge(state)), _Server(cloud_bridge(state))
     state.api_url, state.storage_url = api.url + "/api", storage.url
-    api.start()
-    storage.start()
     try:
+        api.start()
+        storage.start()
         with wrapper(tmp_path, state.api_url, "secret") as (client, app):
             app.state.service.client.retry_delay = 0
             state.redirect = True
@@ -195,9 +195,9 @@ def test_tcp_disconnect_keeps_accepted_request(tmp_path: Path) -> None:
     state.upload_delay = 0.2
     api, storage = _Server(cloud_bridge(state)), _Server(cloud_bridge(state))
     state.api_url, state.storage_url = api.url + "/api", storage.url
-    api.start()
-    storage.start()
     try:
+        api.start()
+        storage.start()
         with wrapper(tmp_path, state.api_url, "secret") as (client, app):
             request = httpx.Request(
                 "POST",
