@@ -10,33 +10,70 @@ import os
 from pathlib import Path
 from typing import Any
 
+import httpx
+import pytest
+from fastapi import FastAPI
+
 
 class _Server:
-    """Run a FastAPI app on a pre-picked localhost port in a daemon thread."""
+    """持有已绑定的本地 socket，在独立线程运行真实 FastAPI 服务。"""
 
     def __init__(self, app: Any, host: str = "127.0.0.1") -> None:
+        """从分配端口到 Uvicorn 接管始终保留 socket，消除重复绑定的竞争窗口。"""
         import uvicorn
 
-        with socket.socket() as sock:
-            sock.bind((host, 0))
-            self.port = sock.getsockname()[1]
-        self.host = host
-        self.url = f"http://{host}:{self.port}"
-        self._server = uvicorn.Server(uvicorn.Config(app, host=host, port=self.port, log_level="error"))
-        self._thread = threading.Thread(target=self._server.run, daemon=True)
+        self._socket = socket.socket()
+        try:
+            self._socket.bind((host, 0))
+            self.port = self._socket.getsockname()[1]
+            self.host = host
+            self.url = f"http://{host}:{self.port}"
+            self._server = uvicorn.Server(uvicorn.Config(app, host=host, port=self.port, log_level="error"))
+            self._thread = threading.Thread(target=self._server.run, kwargs={"sockets": [self._socket]}, daemon=True)
+        except BaseException:
+            self._socket.close()
+            raise
 
     def start(self, timeout: float = 20.0) -> None:
-        self._thread.start()
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if self._server.started:
-                return
-            time.sleep(0.05)
-        raise RuntimeError("test server did not start within timeout")
+        """等待监听就绪；启动退出或超时时释放线程和预留 socket。"""
+        try:
+            self._thread.start()
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if self._server.started:
+                    return
+                if not self._thread.is_alive():
+                    raise RuntimeError("test server exited before startup")
+                time.sleep(0.05)
+            raise RuntimeError("test server did not start within timeout")
+        except BaseException:
+            self.stop()
+            raise
 
     def stop(self, timeout: float = 10.0) -> None:
+        """回收已启动的服务，也允许清理尚未启动或已经关闭的实例。"""
         self._server.should_exit = True
-        self._thread.join(timeout=timeout)
+        try:
+            if self._thread.ident is not None:
+                self._thread.join(timeout=timeout)
+                if self._thread.is_alive():
+                    raise RuntimeError("test server did not stop within timeout")
+        finally:
+            self._socket.close()
+
+
+def test_server_reserves_port_before_start() -> None:
+    """服务创建后持续占用端口，并把同一 socket 交给真实 HTTP 服务。"""
+    server = _Server(FastAPI())
+    try:
+        with socket.socket() as contender:
+            with pytest.raises(OSError):
+                contender.bind((server.host, server.port))
+        server.start()
+        with httpx.Client(trust_env=False) as client:
+            assert client.get(f"{server.url}/openapi.json").status_code == 200
+    finally:
+        server.stop()
 
 
 def test_http_example_delegates_to_tasks(tmp_path: Path) -> None:
