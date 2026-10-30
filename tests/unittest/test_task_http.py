@@ -194,9 +194,10 @@ def test_pdf_without_file_id_keeps_metadata_and_cached_results(live_service: _Li
         assert task["files"][0]["file_id"] == pending_files(task)[0]["file_id"]
         assert task["files"][0]["file_id"].startswith("file-")
         link = pending_files(task)[0]
-        for _ in range(2):
+        for attempt in range(2):
             upload = client.put(link.get("upload").get("url"), content=data, headers=link.get("upload")["headers"])
             assert upload.status_code == 200, upload.text
+            assert live_service.counts[urlsplit(link["upload"]["url"]).path] == (attempt + 1) * len(data)
         completed = _wait(client, task)
         assert completed["status"] == "completed", completed
         item = completed["files"][0]

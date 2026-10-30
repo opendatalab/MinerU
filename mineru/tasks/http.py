@@ -247,6 +247,11 @@ def build_task_router(factory: Callable[[Request], TaskBackend]) -> APIRouter:
                 content_length=request.headers.get("content-length"),
                 mime_type=request.headers.get("content-type", "application/octet-stream"),
             )
+            unread_body = skipped and request.headers.get("expect", "").lower() == "100-continue"
+            if skipped and not unread_body:
+                # 普通重传已发送正文；先流式丢弃，再返回响应，避免带未读数据关闭连接触发 TCP reset。
+                async for _ in request.stream():
+                    pass
         except ClientDisconnect:
             invalid_task_request("Upload interrupted; retry this file on the same task", code="upload_interrupted")
         # 大文件转传可超过租约长度；受理完成时续租，保护紧接着发布的结果。
@@ -257,7 +262,7 @@ def build_task_router(factory: Callable[[Request], TaskBackend]) -> APIRouter:
                 file_id=file_id,
                 status=next(state.status for item, state in zip(record.inputs, record.file_states) if item.file_id == file_id),
             ).model_dump(),
-            headers={"Connection": "close"} if skipped and request.scope.get("http_version") == "1.1" else None,
+            headers={"Connection": "close"} if unread_body and request.scope.get("http_version") == "1.1" else None,
         )
 
     @router.post("/tasks/{task_id}/cancel", response_model=CancelTaskResponse)
