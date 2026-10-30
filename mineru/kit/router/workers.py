@@ -15,13 +15,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
+from urllib.parse import urlsplit
 
 import httpx
 from loguru import logger
 
 from ...model.runtime.device import get_device
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, ServerTier, Tier
+from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
 from ...utils.retention import resolve_retention_seconds
 
@@ -31,11 +32,38 @@ DEFAULT_WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 
 
 def normalize_base_url(url: str) -> str:
-    """规范化 upstream base URL 并拒绝空地址。"""
-    normalized = str(url).strip().rstrip("/")
-    if not normalized:
-        raise ValueError("Router upstream URL must not be empty")
-    return normalized
+    """统一校验并规范化 HTTP base URL，保留路径前缀且禁止凭证、查询和片段。"""
+    normalized = url.strip()
+    try:
+        parts = urlsplit(normalized)
+        parsed = httpx.URL(normalized)
+        valid = (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.host)
+            and parts.username is None
+            and parts.password is None
+            and "?" not in normalized
+            and "#" not in normalized
+            and not any(char.isspace() or ord(char) < 32 for char in normalized)
+            and "\\" not in normalized
+        )
+    except (ValueError, httpx.InvalidURL):
+        valid = False
+    if not valid:
+        raise ValueError("Upstream must be an HTTP(S) base URL without credentials, query, or fragment")
+    return str(parsed).rstrip("/")
+
+
+def _read_tier_metadata(payload: Any) -> dict[Tier, dict[str, Any]]:
+    """在发布探测结果前校验全部 tier，拒绝未知 ID 和畸形条目，保留合法附加元数据。"""
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        raise ValueError("Invalid upstream tiers response: expected a data array")
+    metadata: dict[Tier, dict[str, Any]] = {}
+    for item in payload["data"]:
+        if not isinstance(item, dict) or item.get("id") not in TIERS:
+            raise ValueError("Invalid upstream tiers response: unsupported tier ID")
+        metadata[cast(Tier, item["id"])] = dict(item)
+    return metadata
 
 
 def worker_connect_host(bind_host: str) -> str:
@@ -137,10 +165,13 @@ class RouterSettings:
     preload_models: bool = False
     retention_seconds: int | None = None
     worker_refresh_interval_seconds: float = DEFAULT_WORKER_REFRESH_INTERVAL_SECONDS
+    admin_api_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """校验 worker tier、并发数和刷新间隔。"""
         object.__setattr__(self, "retention_seconds", resolve_retention_seconds(self.retention_seconds))
+        object.__setattr__(self, "upstream_urls", tuple(dict.fromkeys(normalize_base_url(url) for url in self.upstream_urls)))
+        object.__setattr__(self, "admin_api_key", (self.admin_api_key or "").strip() or None)
         if self.worker_tier not in SERVER_TIERS:
             raise ValueError(f"Unsupported worker tier: {self.worker_tier}")
         if self.worker_concurrency <= 0:
@@ -166,6 +197,7 @@ class RouterSettings:
             worker_tier=cast(ServerTier, tier),
             worker_concurrency=int(os.getenv("MINERU_ROUTER_WORKER_CONCURRENCY", "1")),
             preload_models=os.getenv("MINERU_ROUTER_PRELOAD_MODELS", "0").lower() in {"1", "true", "yes"},
+            admin_api_key=os.getenv("MINERU_ROUTER_ADMIN_API_KEY"),
         )
 
     def apply_to_env(self) -> None:
@@ -177,6 +209,10 @@ class RouterSettings:
         os.environ["MINERU_ROUTER_WORKER_TIER"] = self.worker_tier
         os.environ["MINERU_ROUTER_WORKER_CONCURRENCY"] = str(self.worker_concurrency)
         os.environ["MINERU_ROUTER_PRELOAD_MODELS"] = "1" if self.preload_models else "0"
+        if self.admin_api_key:
+            os.environ["MINERU_ROUTER_ADMIN_API_KEY"] = self.admin_api_key
+        else:
+            os.environ.pop("MINERU_ROUTER_ADMIN_API_KEY", None)
 
 
 @dataclass
@@ -322,11 +358,32 @@ class WorkerState:
     restart_failures: int = 0
     retry_at: float = 0.0
     refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    state: Literal["active", "draining"] = "active"
+    active_requests: int = 0
 
     @property
     def tiers(self) -> set[Tier]:
         """返回当前 generation 保留的 tier 标识集合。"""
         return set(self.tier_metadata)
+
+    def acquire_request(self) -> WorkerRequest:
+        """在首次网络等待前保护节点，普通请求及流式响应结束后归还引用。"""
+        self.active_requests += 1
+        return WorkerRequest(self)
+
+
+@dataclass
+class WorkerRequest:
+    """持有一个请求期间的节点引用，与执行预占和结果租约分别计数。"""
+
+    worker: WorkerState
+    released: bool = False
+
+    def release(self) -> None:
+        """幂等释放请求引用，取消或响应失败也不能遗留 draining 阻塞。"""
+        if not self.released:
+            self.released = True
+            self.worker.active_requests -= 1
 
 
 @dataclass
@@ -360,6 +417,8 @@ class WorkerPool:
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), transport=transport)
         self._on_local_worker_replaced = on_local_worker_replaced
         self._workers: dict[str, WorkerState] = {}
+        self._remote_urls: dict[str, WorkerState] = {}
+        self._next_remote_id = 1
         self._monitor_task: asyncio.Task[None] | None = None
         self._built = False
         self._selection_cursors: dict[str, str] = {}
@@ -368,12 +427,8 @@ class WorkerPool:
         """在 lifespan 启动阶段解析设备并创建 remote/local worker 状态。"""
         if self._built:
             return
-        for index, url in enumerate(
-            dict.fromkeys(normalize_base_url(item) for item in self.settings.upstream_urls),
-            start=1,
-        ):
-            worker_id = f"remote-{index}"
-            self._workers[worker_id] = WorkerState(worker_id=worker_id, base_url=url, source="remote")
+        for url in self.settings.upstream_urls:
+            self.register_remote(url)
         for index, gpu in enumerate(parse_local_gpus(self.settings.local_gpus), start=1):
             worker_id = f"local-{gpu if gpu is not None else 'cpu'}-{index}"
             local_worker = ManagedLocalWorker(worker_id, self.settings.worker_host, gpu, self.settings)
@@ -394,6 +449,41 @@ class WorkerPool:
     def get(self, worker_id: str) -> WorkerState:
         """按稳定 worker 标识读取状态。"""
         return self._workers[worker_id]
+
+    def register_remote(self, url: str) -> tuple[WorkerState, bool]:
+        """同步登记或恢复远程节点；首次 await 前完成去重，删除后不复用 ID。"""
+        normalized = normalize_base_url(url)
+        existing = self._remote_urls.get(normalized)
+        if existing is not None:
+            existing.state = "active"
+            return existing, False
+        worker_id = f"remote-{self._next_remote_id}"
+        self._next_remote_id += 1
+        worker = WorkerState(worker_id=worker_id, base_url=normalized, source="remote")
+        self._workers[worker_id] = worker
+        self._remote_urls[normalized] = worker
+        return worker, True
+
+    def drain_remote(self, worker_id: str) -> WorkerState:
+        """同步停止远程节点的新预占，保留已有执行和资源访问使用的对象。"""
+        worker = self.get(worker_id)
+        if worker.source != "remote":
+            raise KeyError(worker_id)
+        worker.state = "draining"
+        return worker
+
+    def remove_drained_workers(self, route_count: Callable[[str], int]) -> None:
+        """仅删除无预占、请求和任何路由引用的远程 draining 节点。"""
+        for worker in self.workers:
+            if (
+                worker.source == "remote"
+                and worker.state == "draining"
+                and worker.active_jobs == 0
+                and worker.active_requests == 0
+                and route_count(worker.worker_id) == 0
+            ):
+                del self._workers[worker.worker_id]
+                del self._remote_urls[worker.base_url]
 
     async def start(self) -> None:
         """启动本地 worker、刷新全部能力并开启后台健康检查。"""
@@ -445,8 +535,14 @@ class WorkerPool:
 
     async def refresh(self, worker: WorkerState) -> None:
         """序列化单 worker 的健康刷新，确保同一 generation 只替换一次。"""
-        async with worker.refresh_lock:
-            await self._refresh_worker(worker)
+        if self._workers.get(worker.worker_id) is not worker:
+            return
+        reference = worker.acquire_request()
+        try:
+            async with worker.refresh_lock:
+                await self._refresh_worker(worker)
+        finally:
+            reference.release()
 
     async def _refresh_worker(self, worker: WorkerState) -> None:
         """复用启停超时重建死亡进程，启动失败按 5/10/20/30 秒退避。"""
@@ -493,11 +589,13 @@ class WorkerPool:
             tiers.raise_for_status()
             models.raise_for_status()
             health_payload, tier_payload, model_payload = health.json(), tiers.json(), models.json()
-            worker.features = dict(health_payload.get("features") or {})
-            worker.tier_metadata = {
-                cast(Tier, item["id"]): dict(item) for item in tier_payload.get("data", []) if item.get("id")
-            }
-            worker.models = [dict(item) for item in model_payload.get("data", [])]
+            # 先完整读取并校验，失败时保留上一份合法快照，避免局部更新污染管理响应。
+            tier_metadata = _read_tier_metadata(tier_payload)
+            features = dict(health_payload.get("features") or {})
+            model_metadata = [dict(item) for item in model_payload.get("data", [])]
+            worker.features = features
+            worker.tier_metadata = tier_metadata
+            worker.models = model_metadata
             worker.healthy = health_payload.get("status") == "ok"
             worker.last_error = None if worker.healthy else health.text
         except Exception as exc:
@@ -505,8 +603,8 @@ class WorkerPool:
             worker.last_error = str(exc)
 
     def healthy_workers(self) -> list[WorkerState]:
-        """返回当前健康且具有 base URL 的 worker。"""
-        return [worker for worker in self.workers if worker.healthy and worker.base_url]
+        """仅返回允许新任务接入的健康节点；旧任务仍可通过 get 访问 draining。"""
+        return [worker for worker in self.workers if worker.state == "active" and worker.healthy and worker.base_url]
 
     def available_tiers(self) -> set[Tier]:
         """聚合全部健康 worker 暴露的请求 tier。"""
@@ -588,6 +686,7 @@ __all__ = [
     "ManagedLocalWorker",
     "RouterSettings",
     "WorkerPool",
+    "WorkerRequest",
     "WorkerState",
     "normalize_base_url",
     "parse_local_gpus",

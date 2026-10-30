@@ -7,13 +7,15 @@ import copy
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
+import anyio
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.types import Receive, Scope, Send
 
 from ...tasks.contracts import ErrorResponse
 from .resources import ResourceRegistry
-from .workers import WorkerPool, WorkerState
+from .workers import WorkerPool, WorkerRequest, WorkerState
 
 _HOP_BY_HOP_HEADERS = frozenset(
     {
@@ -91,6 +93,7 @@ async def request_upstream(
     if json_body is not None:
         outgoing_headers["content-type"] = "application/json"
     outgoing_headers.update(headers or {})
+    reference = worker.acquire_request()
     try:
         response = await pool.client.request(
             method,
@@ -111,6 +114,42 @@ async def request_upstream(
         raise RouterProxyError(504, "upstream_timeout", f"Upstream {worker.worker_id} timed out") from exc
     except httpx.HTTPError as exc:
         raise RouterProxyError(502, "upstream_unavailable", f"Upstream {worker.worker_id} is unavailable") from exc
+    finally:
+        reference.release()
+
+
+class _UpstreamStreamingResponse(StreamingResponse):
+    """把节点引用持有到 ASGI 响应结束，响应头发送失败或 body 未启动也能回收。"""
+
+    def __init__(self, upstream: httpx.Response, reference: WorkerRequest) -> None:
+        """接管已打开的 HTTP 流及其节点引用，避免下载过程中注销节点。"""
+        self._upstream = upstream
+        self._reference = reference
+        super().__init__(
+            self._body(),
+            status_code=upstream.status_code,
+            headers=response_headers(upstream.headers),
+            media_type=upstream.headers.get("content-type"),
+        )
+
+    async def _body(self) -> AsyncIterator[bytes]:
+        """兼容已缓冲的测试响应，并直接转发真实 upstream 原始字节流。"""
+        if self._upstream.is_stream_consumed:
+            yield self._upstream.content
+            return
+        async for chunk in self._upstream.aiter_raw():
+            yield chunk
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """无论正常完成、断连或发送异常，都关闭 upstream 并归还节点引用。"""
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                with anyio.CancelScope(shield=True):
+                    await self._upstream.aclose()
+            finally:
+                self._reference.release()
 
 
 async def stream_upstream(
@@ -127,36 +166,29 @@ async def stream_upstream(
         f"{worker.base_url}{path}",
         headers=forwarded_headers(request),
     )
+    reference = worker.acquire_request()
+    upstream: httpx.Response | None = None
+    transferred = False
     try:
         upstream = await pool.client.send(upstream_request, stream=True)
         if upstream.status_code >= 400:
-            try:
-                await upstream.aread()
-                return passthrough_response(upstream)
-            finally:
-                await upstream.aclose()
+            await upstream.aread()
+            return passthrough_response(upstream)
+        response = _UpstreamStreamingResponse(upstream, reference)
+        transferred = True
+        return response
     except httpx.TimeoutException as exc:
         raise RouterProxyError(504, "upstream_timeout", f"Upstream {worker.worker_id} timed out") from exc
     except httpx.HTTPError as exc:
         raise RouterProxyError(502, "upstream_unavailable", f"Upstream {worker.worker_id} is unavailable") from exc
-
-    async def _body() -> AsyncIterator[bytes]:
-        """逐块读取 upstream body，并确保响应最终关闭。"""
-        try:
-            if upstream.is_stream_consumed:
-                yield upstream.content
-                return
-            async for chunk in upstream.aiter_raw():
-                yield chunk
-        finally:
-            await upstream.aclose()
-
-    return StreamingResponse(
-        _body(),
-        status_code=upstream.status_code,
-        headers=response_headers(upstream.headers),
-        media_type=upstream.headers.get("content-type"),
-    )
+    finally:
+        if not transferred:
+            try:
+                if upstream is not None:
+                    with anyio.CancelScope(shield=True):
+                        await upstream.aclose()
+            finally:
+                reference.release()
 
 
 def passthrough_response(upstream: httpx.Response) -> Response:

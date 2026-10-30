@@ -80,8 +80,9 @@ def _retention_lease(request: Request) -> int | None:
 
 
 def _url(request: Request, path: str) -> str:
-    """生成包含反向代理 root_path 的本部署地址，客户端无需自行拼接路径。"""
-    return str(request.base_url).rstrip("/") + path
+    """编码当前挂载的已解码 root_path；资源路径本身已编码，不能再次编码其中的标识。"""
+    root_path = quote(request.scope.get("root_path", "").rstrip("/"), safe="/")
+    return str(request.base_url.replace(path=root_path + path))
 
 
 def _upload_descriptor(record: TaskRecord, index: int, request: Request) -> TaskUploadLink | None:

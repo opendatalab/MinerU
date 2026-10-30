@@ -545,6 +545,14 @@ class ResourceRegistry:
                 self._by_upstream.pop(key, None)
         return removed
 
+    def worker_route_count(self, worker_id: str) -> int:
+        """计算正反索引引用的不同路由，已过期但尚未回收或仍有租约的记录也阻止注销。"""
+        route_ids = {
+            id(route) for routes in self._by_public.values() for route in routes.values() if route.worker_id == worker_id
+        }
+        route_ids.update(id(route) for key, route in self._by_upstream.items() if key[2] == worker_id)
+        return len(route_ids)
+
     def usage(self, owner_scope: str) -> dict[str, int]:
         """按调用方聚合存活与已移除任务的累计用量，到期隐藏不影响统计。"""
         totals = {"jobs_created": 0, "files_processed": 0, **self._retired_usage.get(owner_scope, {})}

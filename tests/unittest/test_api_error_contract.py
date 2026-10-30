@@ -19,6 +19,7 @@ from test_task_tiers import _deployment
 
 from mineru.errors import MineruError
 from mineru.kit.router.proxy import RouterProxyError, passthrough_response, stream_upstream
+from mineru.kit.router.workers import WorkerState
 from mineru.kit.router.tasks import _checked_json
 from mineru.parser import api_server
 from mineru.parser.base import ParseResult
@@ -106,7 +107,7 @@ def test_download_proxy_validates_errors_and_closes_upstream(outcome: str) -> No
         transport = httpx.MockTransport(lambda _: httpx.Response(404, stream=ErrorStream()))
         async with httpx.AsyncClient(transport=transport) as client:
             pool = SimpleNamespace(client=client)
-            worker = SimpleNamespace(base_url="http://worker", worker_id="worker")
+            worker = WorkerState(worker_id="worker", base_url="http://worker", source="remote")
             request = Request({"type": "http", "headers": []})
             if outcome != "valid":
                 with pytest.raises(RouterProxyError) as error:
@@ -125,6 +126,7 @@ def test_download_proxy_validates_errors_and_closes_upstream(outcome: str) -> No
                 assert response.status_code == 404
                 assert json.loads(response.body) == {"error": {"code": "file_not_found", "message": "Expired"}}
             assert closed == [True]
+            assert worker.active_requests == 0
 
     asyncio.run(scenario())
 

@@ -106,6 +106,8 @@ mineru-kit vlm-server --engine auto --port 30000
 
 `mineru-router` remains a command-name alias for `mineru-kit router`. Router exposes only the V1 API and accepts only its documented worker options.
 
+Set `--admin-api-key` or `MINERU_ROUTER_ADMIN_API_KEY` to enable independently authenticated upstream registration, listing, and safe deregistration. Dynamic membership lasts only for the current process; another Router can be registered as an upstream. See [management APIs and cascading](./tasks.md#dynamic-router-upstreams-and-cascading).
+
 ## Environment variables
 
 - `MINERU_HOME`: root for MinerU configuration, cache, and document-library state.

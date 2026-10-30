@@ -97,12 +97,21 @@ def _worker_path(worker: WorkerState, url: str) -> str:
         """按协议、主机及有效端口比较来源，端口不同也属于跨源。"""
         return item.scheme, item.hostname, item.port or (443 if item.scheme == "https" else 80)
 
-    prefix = base.path.rstrip("/")
+    def normalized_path(path: str) -> str:
+        """逐段规范化 UTF-8 与转义大小写，保留标识内部编码斜杠的路径段边界。"""
+        return "/".join(quote(unquote(segment, errors="strict"), safe="") for segment in path.split("/"))
+
     if origin(base) != origin(target) or target.username or target.password or target.query or target.fragment:
         raise_api_error(502, code="invalid_upstream_response", message="Invalid worker resource URL")
-    if prefix and not target.path.startswith(prefix + "/"):
+    # URI 转义大小写和原始 Unicode 不影响同一前缀的身份；只规范化路径，不放宽来源校验。
+    try:
+        prefix = normalized_path(base.path).rstrip("/")
+        target_path = normalized_path(target.path)
+    except UnicodeDecodeError:
         raise_api_error(502, code="invalid_upstream_response", message="Invalid worker resource path")
-    return target.path[len(prefix) :]
+    if prefix and not target_path.startswith(prefix + "/"):
+        raise_api_error(502, code="invalid_upstream_response", message="Invalid worker resource path")
+    return target_path[len(prefix) :]
 
 
 def _lost_execution(route: ExecutionRoute) -> TaskExecution:
