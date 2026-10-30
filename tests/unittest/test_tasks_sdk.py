@@ -9,6 +9,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -466,15 +467,31 @@ def test_tasks_sdk_retries_transient_poll_responses(
         delays.append(delay)
 
     bind_transport(monkeypatch, handle)
+    # 仅替换 SDK 模块持有的引用，避免污染 Uvicorn 等后台服务共享的标准库模块。
+    monkeypatch.setattr(api_client, "time", SimpleNamespace(**vars(api_client.time)))
+    monkeypatch.setattr(api_client, "asyncio", SimpleNamespace(**vars(api_client.asyncio)))
     monkeypatch.setattr(api_client.time, "sleep", delays.append)
     monkeypatch.setattr(api_client.asyncio, "sleep", sleep)
     parser = MinerUApiParser(api_url="https://api.test", tier="flash")
+
+    async def parse_with_background_sleep() -> ParseResult:
+        """同时运行独立后台等待，确保 SDK 的退避记录不会接收其他协程的 sleep。"""
+        background = asyncio.create_task(asyncio.sleep(0.1))
+        try:
+            return await parser.parse_async(source)
+        finally:
+            await background
+
+    def run_parse() -> ParseResult:
+        """异步入口增加后台协程，同步入口继续覆盖原有重试协议。"""
+        return asyncio.run(parse_with_background_sleep()) if asynchronous else parser.parse(source)
+
     if status == 400 or failures > 3:
         with pytest.raises(api_client._V1APIError) as error:
-            parse(parser, source, asynchronous)
+            run_parse()
         assert error.value.code == "temporary"
     else:
-        assert len(parse(parser, source, asynchronous).pages) == 1
+        assert len(run_parse().pages) == 1
     assert counts == {"post": 1, "query": expected_queries}
     assert [delay for delay in delays if delay] == [2] * (expected_queries - 1)
 

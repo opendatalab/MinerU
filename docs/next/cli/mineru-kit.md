@@ -88,10 +88,13 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 当前 `mineru-kit router` 已确定：
 
-- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`。
+- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`、`--admin-api-key`。
 - `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
 - `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
 - 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 是包含较低档位的上限，可选 flash/basic/standard/advanced，默认 standard；`--worker-concurrency` 默认 `1`。
 - Router 提供 V1 health、models、tiers、usage、按 ID 操作 Files，以及 `/v1/tasks` JSON 创建、按 ID 查询/取消、逐文件上传和结果下载；不提供任务或文件列表。
 - Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
 - tasks 与 files 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。
+- `--admin-api-key` 优先于 `MINERU_ROUTER_ADMIN_API_KEY`，未配置时不启用管理接口；管理凭证不下传，解析认证保持原契约。
+- `GET/POST /v1/router/workers` 与 `DELETE /v1/router/workers/{worker_id}` 仅管理本层远程 upstream，包括启动清单；支持接入下层 Router，不管理本地托管 worker。
+- 注销进入 draining，停止新预占，保留已有任务、传输和结果租约；全部引用释放后移除。清单仅当前进程有效，重启恢复启动参数。完整接口与级联示例见 [Router 管理](../api/router.md)。

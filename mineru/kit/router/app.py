@@ -40,6 +40,7 @@ from .resources import (
 )
 from ...utils.retention import RETENTION_SCAN_INTERVAL_SECONDS
 from .workers import RouterSettings, WorkerPool, WorkerState
+from .admin import build_admin_router
 
 
 def _caller_scope(request: Request) -> str:
@@ -203,6 +204,13 @@ def create_app(
         on_local_worker_replaced=_invalidate_replaced_worker,
     )
 
+    def collect_resources_once() -> None:
+        """先按原保留契约回收路由，再移除无执行、传输或结果引用的 draining 节点。"""
+        if resolved_settings.retention_seconds:
+            registry.collect_expired(source_store)
+            source_store.collect_expired()
+        pool.remove_drained_workers(registry.worker_route_count)
+
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         """启动 worker pool，并在应用关闭时释放全部网络和子进程资源。"""
@@ -220,15 +228,13 @@ def create_app(
                 await maintain_task_result_leases(registry, pool)
 
         async def collection_loop() -> None:
-            """每五分钟同步回收过期公共路由与无引用源文件缓存。"""
+            """复用五分钟扫描回收路由和节点；永久保留模式仍可回收无引用节点。"""
             while True:
                 await asyncio.sleep(RETENTION_SCAN_INTERVAL_SECONDS)
-                registry.collect_expired(source_store)
-                source_store.collect_expired()
+                collect_resources_once()
 
         try:
-            if resolved_settings.retention_seconds:
-                collection_task = asyncio.create_task(collection_loop(), name="mineru-router-retention")
+            collection_task = asyncio.create_task(collection_loop(), name="mineru-router-retention")
             await pool.start()
             task_store.start()
             lease_task = asyncio.create_task(task_lease_loop(), name="mineru-router-task-result-leases")
@@ -272,6 +278,7 @@ def create_app(
     application.state.source_store = source_store
     application.state.task_store = task_store
     application.state.worker_pool = pool
+    application.state.collect_resources_once = collect_resources_once
     application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     async def _reconcile_once_for_state() -> None:
@@ -392,6 +399,15 @@ def create_app(
 
     install_task_error_handlers(application)
     application.include_router(build_task_router(task_backend))
+    if resolved_settings.admin_api_key:
+        application.include_router(
+            build_admin_router(
+                pool,
+                registry,
+                api_key=resolved_settings.admin_api_key,
+                collect_resources=collect_resources_once,
+            )
+        )
     return application
 
 

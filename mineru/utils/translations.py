@@ -490,6 +490,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Allow URL sources to use plain HTTP": "允许 URL 来源使用明文 HTTP",
     "Initialize VLM client and local Hybrid models at startup": "启动时初始化 VLM 客户端与本地 Hybrid 模型",
     "Optional fixed API key": "可选的固定 API key",
+    "Bearer key enabling Router upstream management APIs": "用于启用 Router upstream 管理 API 的 Bearer key",
     "Remote VLM URL; empty value selects local VLM": "远程 VLM URL;留空选择本地 VLM",
     "Bearer key for the remote VLM server": "远程 VLM 服务的 Bearer key",
     "Remote VLM model name; empty value enables discovery": "远程 VLM 模型名;留空启用自动发现",

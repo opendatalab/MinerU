@@ -2,6 +2,7 @@
 
 实现：`mineru/parser/api_server.py`、`mineru/kit/router/app.py`。
 这些发现接口不要求 API Key，但仍可能因预加载失败或无健康 worker 返回 503。
+Router 仅聚合健康且管理状态为 active 的节点；draining 节点仍可服务已有任务，但不再贡献对外发现能力。参见 [upstream 管理](router.md)。
 它们描述当前服务，不能推断公网 SaaS 的套餐或部署版本。
 
 ## GET `/v1/health`

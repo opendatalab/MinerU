@@ -13,6 +13,8 @@
 [4.1 迁移说明](https://opendatalab.github.io/MinerU/zh/reference/migration_4_1/)维护；英文版本在正式用户文档中。
 本目录保留能力发现、Files、错误与部署边界说明。
 
+Router 可选启用独立认证的[远程 upstream 管理接口](router.md)，用于运行期注册、安全注销及级联部署；它不属于普通解析 API 的必选接口。
+
 ## 资源模型
 
 | 资源 | 含义 |

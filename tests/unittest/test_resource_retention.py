@@ -129,6 +129,84 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("parent_held", [False, True])
+@pytest.mark.parametrize("retention_seconds", [0, 1])
+def test_output_retention_preserves_subsecond_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, parent_held: bool, retention_seconds: int
+) -> None:
+    """完成回调和父任务释放都保留完整 TTL；下载、缓存与回收共享亚秒边界。"""
+    now = [2_000_000_000.999]
+
+    def wall_time() -> float:
+        """固定完成时间的小数部分，稳定复现向下取整导致的提前过期。"""
+        return now[0]
+
+    monkeypatch.setattr(api_server.time, "time", wall_time)
+
+    async def scenario() -> None:
+        """沿真实执行完成流程检查短保留期及禁用回收策略。"""
+        files = FileStore(tmp_path / "files", retention_seconds=retention_seconds)
+        source, _ = _source(files, tmp_path)
+        jobs = ExecutionStore(retention_seconds=retention_seconds)
+        rec = jobs.create(execution_request(files, {"type": "file_id", "file_id": source}, tier="flash"), files)
+        rec.retention_held = parent_held
+
+        async def work() -> None:
+            """创建真实产物，交给执行回调或父任务启动保留期。"""
+            rec.result_file_id = files.create_file_for_output("out.md", b"result", job_id=rec.id)
+            rec.status = "completed"
+
+        try:
+            jobs.start_task(rec, work)
+            await jobs.wait_for_terminal(rec.id, 2)
+            output = rec.result_file_id
+            assert output is not None
+            if parent_held:
+                now[0] += 2
+                jobs.collect_expired()
+                files.collect_expired()
+                assert jobs.get(rec.id) is rec
+                assert files.read_file_data(output) == b"result"
+                jobs.release_task_result(rec.id, now[0])
+            finished = now[0]
+            metadata = files._make_file_object(files.get_file(output))
+            if not retention_seconds:
+                assert metadata.expires_at is None
+                now[0] += 100
+                jobs.collect_expired()
+                files.collect_expired()
+                assert jobs.get(rec.id) is rec
+                assert files.read_file_data(output) == b"result"
+                return
+
+            assert metadata.expires_at == int(finished) + 2
+            assert isinstance(metadata.model_dump()["expires_at"], int)
+            for elapsed in (0.002, 0.999):
+                now[0] = finished + elapsed
+                assert jobs.get(rec.id) is rec
+                files.collect_expired()
+                assert files.read_file_data(output) == b"result"
+            sha = files.get_file(output).sha256sum
+            assert sha is not None
+            assert files.pin_cached_blob(sha) is not None
+            files.unpin_cached_blob(sha)
+
+            now[0] = finished + retention_seconds
+            with pytest.raises(ApiServerError) as exc:
+                files.get_file(output)
+            assert exc.value.status_code == 404
+            assert files.pin_cached_blob(sha) is None
+            jobs.collect_expired()
+            files.collect_expired()
+            assert rec.id not in jobs._executions
+            assert output not in files._files
+            assert not files._blob_abs(sha).exists()
+        finally:
+            await jobs.shutdown()
+
+    asyncio.run(scenario())
+
+
 def test_cached_preflight_pins_and_last_reference_delete(tmp_path: Path, clock: list[int]) -> None:
     """删除最后文件与哈希复用交错时，预检租约保护路径直到提交或拒绝完成。"""
     store = FileStore(tmp_path / "files", retention_seconds=10)

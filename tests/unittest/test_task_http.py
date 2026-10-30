@@ -194,9 +194,10 @@ def test_pdf_without_file_id_keeps_metadata_and_cached_results(live_service: _Li
         assert task["files"][0]["file_id"] == pending_files(task)[0]["file_id"]
         assert task["files"][0]["file_id"].startswith("file-")
         link = pending_files(task)[0]
-        for _ in range(2):
+        for attempt in range(2):
             upload = client.put(link.get("upload").get("url"), content=data, headers=link.get("upload")["headers"])
             assert upload.status_code == 200, upload.text
+            assert live_service.counts[urlsplit(link["upload"]["url"]).path] == (attempt + 1) * len(data)
         completed = _wait(client, task)
         assert completed["status"] == "completed", completed
         item = completed["files"][0]
@@ -678,7 +679,9 @@ class _CloudState:
                         "tier": batch_effective_parse_tier(record["tier"], item["file_name"]),
                         "duration_ms": 0,
                         "parser_version": "test",
-                    } if status == "completed" else None,
+                    }
+                    if status == "completed"
+                    else None,
                 }
             )
         states = [item["status"] for item in files]
@@ -721,7 +724,8 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
     async def health() -> dict[str, Any]:
         """原生支持是共同契约，不增加格式能力字段。"""
         return {
-            "status": "ok", "version": "test",
+            "status": "ok",
+            "version": "test",
             "features": {"webhook": False, "task_output_formats": ["default"], "sources": ["upload"]},
         }
 
@@ -743,7 +747,8 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         try:
             selected_tier = resolve_task_tier(
                 UploadTaskOptions.model_validate({key: value for key, value in submitted.items() if key != "files"}),
-                [TaskFileInput.model_validate(item) for item in manifest], set(state.pdf_tiers),
+                [TaskFileInput.model_validate(item) for item in manifest],
+                set(state.pdf_tiers),
             )
         except ApiServerError as error:
             return JSONResponse({"error": error.error.model_dump()}, status_code=error.status_code)
@@ -843,13 +848,40 @@ def cloud() -> Iterator[_CloudState]:
     gateway, storage = _cloud_apps(state)
     api_server_instance, storage_server = _Server(gateway), _Server(storage)
     state.gateway_url, state.storage_url = api_server_instance.url, storage_server.url
-    storage_server.start()
-    api_server_instance.start()
     try:
+        storage_server.start()
+        api_server_instance.start()
         yield state
     finally:
         api_server_instance.stop()
         storage_server.stop()
+
+
+def test_cloud_start_failure_stops_started_servers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """网关启动失败时，已经运行的对象存储服务也必须回收。"""
+    servers: list[_Server] = []
+    original_start = _Server.start
+
+    def start(server: _Server, timeout: float = 20.0) -> None:
+        """保留真实 OSS 服务，只在第二个服务启动时注入失败。"""
+        servers.append(server)
+        if len(servers) == 2:
+            raise RuntimeError("gateway startup failed")
+        original_start(server, timeout)
+
+    monkeypatch.setattr(_Server, "start", start)
+    lifecycle = cloud.__wrapped__()
+    try:
+        with pytest.raises(RuntimeError, match="gateway startup failed"):
+            next(lifecycle)
+        assert not any(server._thread.is_alive() for server in servers)
+        for server in servers:
+            with socket.socket() as replacement:
+                replacement.bind((server.host, server.port))
+    finally:
+        lifecycle.close()
+        for server in servers:
+            server.stop()
 
 
 @pytest.mark.parametrize("tier", [None, "basic", "advanced"])
@@ -903,10 +935,13 @@ def test_saas_standard_only_with_native_and_oss(cloud: _CloudState) -> None:
             rejected = client.post("/v1/tasks", json={"files": [{"file_name": "test.pdf", "bytes": 1}], "tier": tier})
             assert rejected.status_code == 400 and rejected.json()["error"]["param"] == "tier"
         assert not cloud.tasks
-        receipt = client.post("/v1/tasks", json={
-            "files": [{"file_name": name, "bytes": 1} for name in ("test.pdf", "test.docx")],
-            "output_formats": ["default"],
-        })
+        receipt = client.post(
+            "/v1/tasks",
+            json={
+                "files": [{"file_name": name, "bytes": 1} for name in ("test.pdf", "test.docx")],
+                "output_formats": ["default"],
+            },
+        )
         assert receipt.status_code == 202, receipt.text
         for item in receipt.json()["files"]:
             upload = item["upload"]

@@ -40,6 +40,12 @@ def router_cmd(
         help=t("Terminal retention seconds (default 86400; 0 disables collection)"),
     ),
     preload_models: bool = typer.Option(False, "--preload-models", help=t("Preload models in managed workers")),
+    admin_api_key: str | None = typer.Option(
+        None,
+        "--admin-api-key",
+        envvar="MINERU_ROUTER_ADMIN_API_KEY",
+        help=t("Bearer key enabling Router upstream management APIs"),
+    ),
 ) -> None:
     """启动只暴露 MinerU V1 API 的独立 Router 服务。"""
     if worker_tier not in SERVER_TIERS:
@@ -61,6 +67,7 @@ def router_cmd(
             worker_concurrency=worker_concurrency,
             preload_models=preload_models,
             retention_seconds=retention_seconds,
+            admin_api_key=admin_api_key,
         )
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc))

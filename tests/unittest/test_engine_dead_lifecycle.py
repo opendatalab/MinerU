@@ -66,6 +66,16 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
             source = tmp_path / f"{name}.pdf"
             source.write_bytes(name.encode())
             jobs.append(submit_task(client, source, tier="flash"))
+
+        async def wait_for_submissions() -> None:
+            """确认两个作业运行、其余作业已提交，再触发排队取消与引擎死亡。"""
+            async with asyncio.timeout(5):
+                while len(entered) < 2 or not all(
+                    file.submitted for record in app.state.task_store._records.values() for file in record.file_states
+                ):
+                    await asyncio.sleep(0.01)
+
+        client.portal.call(wait_for_submissions)
         assert client.post(task_url(client, jobs[-1]) + "/cancel").status_code == 200
         client.portal.call(gate.set)
         for job in jobs:
@@ -111,7 +121,7 @@ def test_router_single_generation_replacement_and_backoff(monkeypatch: pytest.Mo
     async def scenario() -> None:
         """在同一事件循环并发刷新，验证锁和 generation 隔离。"""
         now = [0.0]
-        monkeypatch.setattr(workers.time, "monotonic", lambda: now[0])
+        monkeypatch.setattr(workers, "time", SimpleNamespace(monotonic=lambda: now[0]))
         local = SimpleNamespace(process=SimpleNamespace(poll=lambda: None), base_url="http://old")
         starts: list[int] = []
         stops: list[int] = []
@@ -140,6 +150,7 @@ def test_router_single_generation_replacement_and_backoff(monkeypatch: pytest.Mo
 
         pool = workers.WorkerPool(workers.RouterSettings(local_gpus="none"), transport=httpx.MockTransport(handle))
         state = workers.WorkerState("local", "http://old", "local", local_worker=local, generation=1)
+        pool._workers[state.worker_id] = state
         try:
             await pool.refresh(state)
             assert not state.healthy and state.restart_requested
@@ -153,9 +164,10 @@ def test_router_single_generation_replacement_and_backoff(monkeypatch: pytest.Mo
             now[0] = 15
             await asyncio.gather(*(pool.refresh(state) for _ in range(3)))
             assert len(stops) == 1 and state.healthy and state.generation == 2
-            remote = workers.WorkerState("remote", "http://old", "remote")
+            remote, _ = pool.register_remote("http://old")
             await pool.refresh(remote)
             assert not remote.healthy and not remote.restart_requested
+            assert remote.last_error == "engine_dead"
         finally:
             await pool.client.aclose()
 
