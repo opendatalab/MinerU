@@ -2,7 +2,7 @@
 
 实现：`mineru/kit/router/admin.py`、`workers.py`、`resources.py`。该接口是 Router 的可选部署管理能力，不属于普通 API Server 或 SaaS 必须实现的 Tasks 契约。
 
-公开请求字段、响应和 curl/级联示例维护在[中文 Tasks 文档](../../zh/usage/tasks.md#动态-upstream-管理与级联)与[英文 Tasks 文档](../../en/usage/tasks.md#dynamic-router-upstreams-and-cascading)。
+公开请求字段、响应和 curl/级联示例维护在[中文 Tasks 文档](https://opendatalab.github.io/MinerU/zh/usage/tasks/#upstream)与[英文 Tasks 文档](https://opendatalab.github.io/MinerU/usage/tasks/#dynamic-router-upstreams-and-cascading)。
 
 ## 接口与配置
 
