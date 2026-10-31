@@ -83,14 +83,20 @@ def mask_formula_regions_for_ocr_det(
 
 
 def get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
-    """裁剪四边形，退化框返回 None，透视裁图保留既有的高纵横比转正规则。"""
+    """裁剪四边形，退化框返回 None，越界框使用边缘复制采样而不是 NumPy 切片。"""
     assert len(points) == 4, "shape of points must be 4*2"
     img_crop_width = int(max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])))
     img_crop_height = int(max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])))
     # 在轴对齐快捷路径之前过滤，避免跨整数边界的亚像素框被切成一列或一行像素。
     if img_crop_width < 1 or img_crop_height < 1:
         return None
-    if is_bbox_aligned_rect(points):
+    if (
+        is_bbox_aligned_rect(points)
+        and np.min(points[:, 0]) >= 0
+        and np.max(points[:, 0]) <= img.shape[1]
+        and np.min(points[:, 1]) >= 0
+        and np.max(points[:, 1]) <= img.shape[0]
+    ):
         xmin = int(np.min(points[:, 0]))
         xmax = int(np.max(points[:, 0]))
         ymin = int(np.min(points[:, 1]))
