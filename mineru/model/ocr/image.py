@@ -44,10 +44,14 @@ def check_img(img: bytes | np.ndarray) -> Any:
 
 
 def alpha_to_color(img: np.ndarray, alpha_color: tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
-    """把带透明通道的图像合成到指定纯色背景。"""
+    """把带透明通道的图像合成到 8-bit RGB 背景，16-bit 输入先按完整量程缩放。"""
     if len(img.shape) == 3 and img.shape[2] == 4:
         blue, green, red, alpha_channel = (img[:, :, index] for index in range(4))
-        alpha = alpha_channel / 255
+        if img.dtype == np.uint16:
+            blue, green, red = (channel / 257.0 for channel in (blue, green, red))
+            alpha = alpha_channel / 65535.0
+        else:
+            alpha = alpha_channel / 255
         red = (alpha_color[0] * (1 - alpha) + red * alpha).astype(np.uint8)
         green = (alpha_color[1] * (1 - alpha) + green * alpha).astype(np.uint8)
         blue = (alpha_color[2] * (1 - alpha) + blue * alpha).astype(np.uint8)
