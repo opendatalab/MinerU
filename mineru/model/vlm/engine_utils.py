@@ -222,15 +222,19 @@ def mod_kwargs_by_device_type(kwargs_or_args: dict[str, Any] | list[str], vllm_m
 
 
 def _apply_server_config(args: list[str], config: dict[str, Any]) -> None:
-    """应用 server 模式的配置"""
+    """补充 server 模式默认配置，保留调用者显式提供的正向和反向布尔选项。"""
     for key, value in config.items():
         if key == "compilation_config_dict":
             _add_server_arg_if_missing(args, "compilation-config", json.dumps(value, separators=(",", ":")))
         else:
             # 转换 key 格式: block_size -> block-size
             arg_name = key.replace("_", "-")
-            if arg_name in {"enable-chunked-prefill", "enable-prefix-caching"} and value is False:
-                _add_server_flag_if_missing(args, f"no-{arg_name}")
+            if arg_name in {"enable-chunked-prefill", "enable-prefix-caching"} and isinstance(value, bool):
+                if not (
+                    _check_server_arg_exists(args, arg_name)
+                    or _check_server_arg_exists(args, f"no-{arg_name}")
+                ):
+                    _add_server_flag_if_missing(args, arg_name if value else f"no-{arg_name}")
                 continue
             _add_server_arg_if_missing(args, arg_name, str(value))
 
