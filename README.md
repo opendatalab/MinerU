@@ -71,6 +71,9 @@ PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML/MHT
 
 ## Quick Start
 
+> [!TIP]
+> To choose between `flash`, `basic`, `standard`, and `advanced`, see the [MinerU 4.x Parsing Tiers Guide](https://github.com/opendatalab/MinerU/discussions/5709) for guidance on quality, speed, and resource trade-offs.
+
 ### Try Online
 
 Try MinerU in your browser without installing it locally:

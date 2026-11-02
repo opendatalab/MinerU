@@ -71,6 +71,9 @@ PDF 和图片支持四档解析；Office、OpenDocument、EPUB、OFD、HTML/MHTM
 
 ## 快速开始
 
+> [!TIP]
+> 选择 `flash`、`basic`、`standard`、`advanced` 档位前，建议先阅读 [MinerU 4.x 解析档位使用说明](https://github.com/opendatalab/MinerU/discussions/5707)，了解各档位的质量、速度和资源取舍。
+
 ### 在线使用
 
 无需本地安装，即可在浏览器中体验 MinerU：
