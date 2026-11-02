@@ -98,13 +98,22 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
 
 def _natural_language_spans(content: str) -> list[dict[str, Any]]:
     """把 PDF 自然语言字符串及圆括号公式定界符直接转换为 Span。"""
-    pattern = re.compile(r"\\\((?P<round>.*?)\\\)", re.DOTALL)
+    # 偶数个前导反斜杠属于内容，后面的奇数位反斜杠才可作为模型公式定界符。
+    pattern = re.compile(r"(?<!\\)(?:\\\\)*(?P<delimiter>\\[()])")
     spans: list[dict[str, Any]] = []
     cursor = 0
+    opening: tuple[int, int] | None = None
     for match in pattern.finditer(content):
-        append_text_span(spans, content[cursor : match.start()])
-        append_equation_span(spans, match.group("round"))
+        if match.group("delimiter") == r"\(":
+            if opening is None:
+                opening = (match.start("delimiter"), match.end())
+            continue
+        if opening is None:
+            continue
+        append_text_span(spans, content[cursor : opening[0]])
+        append_equation_span(spans, content[opening[1] : match.start("delimiter")])
         cursor = match.end()
+        opening = None
     append_text_span(spans, content[cursor:])
     return strip_span_dicts(spans)
 

@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from docvortex.document.pdf import PDFRenderSession
     from PIL.Image import Image
     from ....model.vlm.contracts import VlmPredictor
+    from ....model.vlm.text_recognition import TextRecognitionResult
+    from .inline_recognition import InlineRecognitionBatch
 
 import numpy as np
 from docvortex.assets import image_size as _normalize_page_size
@@ -196,6 +198,7 @@ def _process_text_and_formulas(
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
     page_snapshots: PageSnapshotCache | None = None,
     np_images: list[np.ndarray] | None = None,
+    recognized_inline_formulas: list[list[dict[str, Any]]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """在当前窗口内完成 OCR、公式、原生文本及 block 行信息回填。"""
     from .formulas import (
@@ -206,7 +209,7 @@ def _process_text_and_formulas(
         optimize_hybrid_formula_number_blocks,
     )
     from .ocr import _apply_ocr_rec_results, _build_ocr_det_type_and_mfr_enable, _ocr_det
-    from .tables import _apply_medium_table_recognition, _build_table_external_mfr_inputs
+    from .tables import _apply_medium_table_recognition
     from .text.content import _fill_window_block_content_and_lines, _validate_text_formula_window_inputs
 
 
@@ -233,13 +236,15 @@ def _process_text_and_formulas(
     images_formula_list = mfd_res
     interline_enable = effort == "medium"
 
-    # medium 保留未被原生表格消费的公式；high/xhigh 只识别最终表格外的行内公式。
+    # high/xhigh TXT 的 VLM 与局部 MFR 回退已在窗口阶段完成，不能重新识别成功切片。
+    if effort in {"high", "xhigh"} and parse_mode == "txt":
+        if recognized_inline_formulas is None:
+            raise ValueError("High/Xhigh TXT requires window inline recognition results")
+        images_formula_list = recognized_inline_formulas
+
+    # 只有 medium 在此阶段运行完整 MFR；OCR 遮罩始终使用原始 mfd_res。
     if mfr_enable:
-        mfr_inputs = (
-            mfd_res
-            if effort == "medium"
-            else _build_table_external_mfr_inputs(mfd_res, model_list, [image.size for image in images_pil_list])
-        )
+        mfr_inputs = mfd_res
         # 全部被过滤时保持逐页空结果，不能让原始表内公式重新进入正文 sidecar。
         images_formula_list = [[] for _ in mfd_res]
         if any(mfr_inputs):
@@ -329,12 +334,20 @@ class _WindowInputs:
     page_text_geometries: list[PDFPageTextGeometry | None] | None
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
     page_snapshots: PageSnapshotCache | None = None
+    inline_recognition: InlineRecognitionBatch | None = None
+    inline_outputs: list[TextRecognitionResult] | None = None
 
     def close(self) -> None:
         """推理及回填真正退出后关闭图片，仅清除本层拥有的容器。"""
         try:
-            _close_images(self.images_list)
+            try:
+                if self.inline_recognition is not None:
+                    self.inline_recognition.close()
+            finally:
+                _close_images(self.images_list)
         finally:
+            self.inline_outputs = None
+            self.inline_recognition = None
             self.images_list.clear()
             self.images_pil_list.clear()
             self.np_images.clear()
@@ -483,28 +496,17 @@ def _prepare_pdf_window(
         table_items.clear()
 
 
-def _finish_pdf_window(
+def _prepare_window_result(
     state: _WindowInputs,
     window_model_list: list[Any],
     *,
     effort: AnalyzeEffort,
     parse_mode: Literal["txt", "ocr"],
-    hybrid_model: HybridLocalModelContext,
 ) -> list[list[dict[str, Any]]]:
-    """按原有顺序回填推理结果、文本公式与视觉素材。"""
-    from .formulas import optimize_hybrid_formula_number_blocks
-    from .ocr import _apply_seal_ocr
+    """先确定最终版面与原生表格归属，再准备表外行内切片。"""
+    from .inline_recognition import prepare_inline_recognition
     from .tables import _restore_native_high_table_blocks
 
-    images_list = state.images_list
-    window_pages = state.window_pages
-    images_pil_list = state.images_pil_list
-    np_images = state.np_images
-    images_layout_res = state.images_layout_res
-    vl_style_layout_blocks = state.vl_style_layout_blocks
-    page_text_geometries = state.page_text_geometries
-    window = state.window
-    local_model_context = hybrid_model
     if parse_mode == "txt" and effort == "high":
         window_model_list = _restore_native_high_table_blocks(window_model_list, state.accepted_native_tables)
     if effort in {"high", "xhigh"}:
@@ -513,8 +515,44 @@ def _finish_pdf_window(
         _normalize_xhigh_vlm_blocks(window_model_list)
         _apply_layout_title_split(
             window_model_list,
-            images_layout_res,
-            [_normalize_page_size(image) for image in images_pil_list],
+            state.images_layout_res,
+            [_normalize_page_size(image) for image in state.images_pil_list],
+        )
+    if parse_mode == "txt" and effort in {"high", "xhigh"}:
+        state.inline_recognition = prepare_inline_recognition(
+            state.images_layout_res, window_model_list, state.images_pil_list
+        )
+        state.inline_outputs = []
+    return window_model_list
+
+
+def _finish_pdf_window(
+    state: _WindowInputs,
+    window_model_list: list[list[dict[str, Any]]],
+    *,
+    effort: AnalyzeEffort,
+    parse_mode: Literal["txt", "ocr"],
+    hybrid_model: HybridLocalModelContext,
+) -> list[list[dict[str, Any]]]:
+    """在本地模型锁内完成失败片段回退、正文回填与视觉素材。"""
+    from .formulas import optimize_hybrid_formula_number_blocks
+    from .inline_recognition import finish_inline_recognition
+    from .ocr import _apply_seal_ocr
+
+    images_list = state.images_list
+    window_pages = state.window_pages
+    np_images = state.np_images
+    images_layout_res = state.images_layout_res
+    vl_style_layout_blocks = state.vl_style_layout_blocks
+    page_text_geometries = state.page_text_geometries
+    window = state.window
+    local_model_context = hybrid_model
+    inline_options: dict[str, list[list[dict[str, Any]]]] = {}
+    if state.inline_recognition is not None:
+        if state.inline_outputs is None:
+            raise ValueError("Missing window inline recognition outputs")
+        inline_options["recognized_inline_formulas"] = finish_inline_recognition(
+            state.inline_recognition, state.inline_outputs, hybrid_model, np_images, page_offset=window.start
         )
 
     if effort == "flash":
@@ -542,6 +580,7 @@ def _finish_pdf_window(
             page_vector_geometries=state.page_vector_geometries,
             **({"page_snapshots": state.page_snapshots} if state.page_snapshots is not None else {}),
             np_images=np_images,
+            **inline_options,
         )
 
     if effort in {"medium", "high"}:
@@ -612,6 +651,10 @@ def _process_pdf_window(
                 result = vlm_predictor.batch_extract_with_layout(**options)
             else:
                 result = vlm_predictor.batch_two_step_extract(**options)
+        result = _prepare_window_result(state, result, effort=effort, parse_mode=parse_mode)
+        if state.inline_recognition is not None and state.inline_recognition.crops:
+            with stage_timer("pdf.inline_vlm"):
+                state.inline_outputs = vlm_predictor.batch_recognize_text(state.inline_recognition.images)
         with local_model_stage(hybrid_model.device):
             return _finish_pdf_window(state, result, effort=effort, parse_mode=parse_mode, hybrid_model=hybrid_model)
     finally:
@@ -719,6 +762,10 @@ async def aio_process_pdf_windows(
                 result = await vlm_predictor.aio_batch_extract_with_layout(**options)
             else:
                 result = await vlm_predictor.aio_batch_two_step_extract(**options)
+            result = await run_sync(_prepare_window_result, state, result, effort=effort, parse_mode=parse_mode)
+            if state.inline_recognition is not None and state.inline_recognition.crops:
+                with stage_timer("pdf.inline_vlm"):
+                    state.inline_outputs = await vlm_predictor.aio_batch_recognize_text(state.inline_recognition.images)
             model_list.extend(
                 await run_sync(
                     _finish_locked_window,

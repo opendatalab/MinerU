@@ -13,6 +13,7 @@ from ...utils.async_utils import drain_future, run_sync
 from ..runtime import ownership
 from .errors import EngineDeadError, is_fatal_engine_error
 from .handles import RuntimeHandle
+from .text_recognition import TextRecognitionResult, raise_unrecoverable_text_error, validate_text_result
 
 if TYPE_CHECKING:
     from mineru_vl_utils.structs import ContentBlock, ExtractResult
@@ -192,6 +193,40 @@ class AsyncVlmPredictor:
             except BaseException:
                 pass
             raise
+
+    async def _recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """逐请求隔离识别异常，跨文档共享并发额度，取消后排空所有切片。"""
+        async def recognize(image: Image) -> TextRecognitionResult:
+            """单片失败不会取消同批成功请求，程序错误和引擎故障仍向上传播。"""
+            try:
+                output = await self._predictor.aio_content_extract(image, type="text", semaphore=self._semaphore)
+            except Exception as error:
+                raise_unrecoverable_text_error(error)
+                return error
+            return validate_text_result(output)
+
+        tasks = [asyncio.create_task(recognize(image)) for image in images]
+        pending = set(tasks)
+        try:
+            # wait 不会把父任务取消隐式转发给子任务，避免二次 cancel 打断清理。
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    task.result()
+            return [task.result() for task in tasks]
+        except BaseException:
+            for task in pending:
+                task.cancel()
+            await drain_future(asyncio.gather(*tasks, return_exceptions=True))
+            raise
+
+    def batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """同步调用方通过常驻循环复用原生异步切片识别。"""
+        return self._call(lambda: self._recognize_text(images))
+
+    async def aio_batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """异步切片识别沿用运行时取消确认和关闭屏障。"""
+        return await self._acall(lambda: self._recognize_text(images))
 
     async def _extract_with_layout(
         self,

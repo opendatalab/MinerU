@@ -121,8 +121,15 @@ def _build_page_text_formula_spans(
             _AnalyzeSpan(
                 type=ContentType.INLINE_EQUATION,
                 bbox=bbox,
-                content=str(formula.get("latex", "") or "").strip(),
+                content=str(
+                    formula.get("content", "")
+                    if formula.get("content_format") == "text_with_inline_math"
+                    else formula.get("latex", "") or ""
+                ).strip(),
                 score=float(formula.get("score", 0.0) or 0.0),
+                content_format=(
+                    "text_with_inline_math" if formula.get("content_format") == "text_with_inline_math" else "default"
+                ),
             )
         )
 
@@ -400,7 +407,7 @@ def _line_content_parts(line: _AnalyzeLine) -> list[tuple[str, str]]:
             content = str(span.content or "").strip()
         elif span.type == ContentType.INLINE_EQUATION:
             latex = str(span.content or "").strip()
-            content = f"\\({latex}\\)" if latex else ""
+            content = latex if span.content_format == "text_with_inline_math" else (f"\\({latex}\\)" if latex else "")
         else:
             continue
         if content:

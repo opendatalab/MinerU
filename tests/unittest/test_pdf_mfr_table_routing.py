@@ -14,6 +14,7 @@ from PIL import Image
 
 from mineru.backend.analysis.pdf import window
 from mineru.backend.analysis.pdf.formulas import _build_formula_inputs
+from mineru.backend.analysis.pdf.inline_recognition import finish_inline_recognition, prepare_inline_recognition
 from mineru.backend.analysis.pdf.tables import _build_table_external_mfr_inputs
 
 from mineru.backend.analysis.pdf import ocr as stage_ocr
@@ -85,7 +86,7 @@ def test_window_mfr_routing_and_original_ocr_masks(
     blocks = [[{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.9], "content": content}]]
     original = deepcopy(layout)
     mfr = MagicMock(side_effect=lambda inputs, *_args, **_kwargs: deepcopy(inputs))
-    enabled = effort == "medium" or parse_mode == "txt"
+    enabled = effort == "medium"
     context = SimpleNamespace(mfr_model=SimpleNamespace(batch_predict=mfr)) if enabled else SimpleNamespace()
     det = MagicMock(return_value=[[]])
     fill = MagicMock(return_value=blocks)
@@ -107,16 +108,16 @@ def test_window_mfr_routing_and_original_ocr_masks(
             effort,
             context,
             layout,
+            recognized_inline_formulas=[[layout[0][1]]] if effort != "medium" and parse_mode == "txt" else None,
         )
     if enabled:
-        expected = _build_formula_inputs(layout) if effort == "medium" else [[layout[0][1]]]
-        assert mfr.call_args.args[0] == expected
+        assert mfr.call_args.args[0] == _build_formula_inputs(layout)
         assert mfr.call_args.kwargs["interline_enable"] is (effort == "medium")
     else:
         mfr.assert_not_called()
     assert det.call_args.args[3] == _build_formula_inputs(layout)
     assert layout == original
-    expected_inline = [layout[0][:2]] if effort == "medium" or not enabled else [[layout[0][1]]]
+    expected_inline = [layout[0][:2]] if effort == "medium" or parse_mode == "ocr" else [[layout[0][1]]]
     assert fill.call_args.args[3] == expected_inline
 
 
@@ -134,12 +135,15 @@ def test_final_layout_controls_filter_and_empty_results_skip_model_loading(
     layout = [[formula, {"label": "table", "bbox": local_table_bbox}], [_formula([10, 10, 20, 20], "display_formula")]]
     blocks = [[{"type": "table", "bbox": [0.1, 0.1, 0.5, 0.5]}] if final_table else [], []]
     mfr = MagicMock(side_effect=lambda inputs, *_args, **_kwargs: deepcopy(inputs))
-    context = SimpleNamespace() if final_table else SimpleNamespace(mfr_model=SimpleNamespace(batch_predict=mfr))
+    context = SimpleNamespace()
     fill = MagicMock(return_value=blocks)
     det = MagicMock(return_value=[[], []])
     monkeypatch.setattr(stage_ocr, "_ocr_det", det)
     monkeypatch.setattr(stage_text_content, "_fill_window_block_content_and_lines", fill)
     with Image.new("RGB", (100, 100)) as image:
+        batch = prepare_inline_recognition(layout, blocks, [image, image])
+        recognized = finish_inline_recognition(batch, ["α"] * len(batch.crops), context, [], page_offset=0)
+        batch.close()
         window._process_text_and_formulas(
             [{"img_pil": image, "scale": 1.0}] * 2,
             [MagicMock()] * 2,
@@ -148,10 +152,13 @@ def test_final_layout_controls_filter_and_empty_results_skip_model_loading(
             effort,
             context,
             layout,
+            recognized_inline_formulas=recognized,
         )
-    assert fill.call_args.args[3] == ([[], []] if final_table else [[formula], []])
+    assert fill.call_args.args[3] == recognized
+    expected = [[], []] if final_table else [[{**formula, "content": "α", "content_format": "text_with_inline_math"}], []]
+    assert recognized == expected
     assert det.call_args.args[3] == _build_formula_inputs(layout)
-    assert mfr.call_count == (0 if final_table else 1)
+    mfr.assert_not_called()
 
 
 def test_demo1_frozen_mfr_inputs_exclude_only_29_table_formulas() -> None:

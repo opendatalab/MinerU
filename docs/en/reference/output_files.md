@@ -96,7 +96,7 @@ and report `pdf_title_geometry_conflict`; unavailable expansion clearance report
 `pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
 asset, protocol or public-option changes.
 
-MinerU currently requires `docvortex>=0.6.8,<0.7`; the release’s `pyproject.toml` defines its dependency range. DocVortex clears native TXT PDF display equation
+MinerU currently requires `docvortex>=0.6.11,<0.7`; the release’s `pyproject.toml` defines its dependency range. DocVortex clears native TXT PDF display equation
 `content` once when producing model output; MinerU Flash TXT uses that output.
 Flash OCR already leaves display equation content empty. MinerU does not clear
 equation content again. Both Flash paths retain the bbox, orientation, image and
