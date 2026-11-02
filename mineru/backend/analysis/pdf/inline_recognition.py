@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """表外行内切片的 VLM 文本识别准备、定界符校验及局部 MFR 回退。"""
 
 from __future__ import annotations
