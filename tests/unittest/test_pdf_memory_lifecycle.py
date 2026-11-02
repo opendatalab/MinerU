@@ -353,6 +353,7 @@ def test_async_window_keeps_64_page_boundary_and_order(
     # 此处只验证窗口顺序，图片及文档均为替身，不启动真实渲染会话。
     monkeypatch.setattr(window, "get_document_render_session", lambda _document: None)
     monkeypatch.setattr(window, "_prepare_locked_window", prepare)
+    monkeypatch.setattr(window, "_prepare_window_result", lambda state, result, **kwargs: result)
     monkeypatch.setattr(window, "_finish_locked_window", lambda state, result, **kwargs: result)
     result = asyncio.run(
         window.aio_process_pdf_windows(

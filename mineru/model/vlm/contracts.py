@@ -8,10 +8,19 @@ from collections.abc import Sequence
 if TYPE_CHECKING:
     from PIL.Image import Image
     from mineru_vl_utils.structs import ContentBlock, ExtractResult
+    from .text_recognition import TextRecognitionResult
 
 
 class VlmPredictor(Protocol):
     """同步客户端与原生异步代理共同实现的最小文档抽取接口。"""
+
+    def batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """按输入顺序返回切片文本或可局部回退的异常。"""
+        ...
+
+    async def aio_batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """异步切片识别复用文档推理的并发、取消和资源生命周期。"""
+        ...
 
     def batch_extract_with_layout(
         self,

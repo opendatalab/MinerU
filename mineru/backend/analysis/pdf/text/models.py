@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from .....types import BBox
 
@@ -19,6 +19,7 @@ class _AnalyzeSpan:
     score: float = 0.0
     image: Any = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    content_format: Literal["default", "text_with_inline_math"] = "default"
 
 
 @dataclass(slots=True)

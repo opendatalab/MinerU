@@ -117,6 +117,29 @@ def _settings(server: _OpenAIServer, **overrides: Any) -> VlmConfig:
     return VlmConfig.model_validate({"server_url": server.url, "api_key": server.api_key, **overrides})
 
 
+@pytest.mark.parametrize("is_async", [False, True])
+def test_remote_inline_text_uses_default_prompt_and_preserves_failures(
+    openai_server: _OpenAIServer, is_async: bool
+) -> None:
+    """真实 HTTP 适配器用文本提示识别切片，并将请求失败交给宿主按片回退。"""
+    predictor, _ = get_vlm_predictor(_settings(openai_server))
+    with Image.new("RGB", (32, 16), "white") as image:
+        if is_async:
+            result = asyncio.run(predictor.aio_batch_recognize_text([image, image]))
+        else:
+            result = predictor.batch_recognize_text([image, image])
+        assert result == ["Remote VLM text", "Remote VLM text"]
+        bodies = [body for _, _, body in openai_server.requests if body is not None]
+        assert len(bodies) == 2
+        for body in bodies:
+            content = body["messages"][-1]["content"]
+            assert [part["text"] for part in content if part["type"] == "text"] == ["\nText Recognition:"]
+        openai_server.chat_status = 400
+        failures = predictor.batch_recognize_text([image, image])
+        assert len(failures) == 2
+        assert all(isinstance(item, Exception) for item in failures)
+
+
 def test_remote_client_protocol_and_cache(openai_server: _OpenAIServer, monkeypatch: pytest.MonkeyPatch) -> None:
     """真实 HTTP 验证模型发现、显式模型、认证、代理路径、参数及缓存隔离。"""
     from mineru.model.vlm import runtime, selector
@@ -263,6 +286,7 @@ def hybrid_stub(monkeypatch: pytest.MonkeyPatch) -> None:
         page_vector_geometries: object,
         np_images: object,
         page_snapshots: object = None,
+        recognized_inline_formulas: object = None,
     ) -> list[list[dict[str, Any]]]:
         """保留远程正文并模拟 Hybrid 提供的行框，满足 PDF 文本块校验合同。"""
         for page in blocks:

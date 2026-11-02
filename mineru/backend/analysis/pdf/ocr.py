@@ -54,7 +54,7 @@ def _build_ocr_det_type_and_mfr_enable(
     if effort == "medium":
         return PIPELINE_DET_TYPE, True
     if parse_mode == "txt":
-        return VLM_TXT_DET_TYPE, True
+        return VLM_TXT_DET_TYPE, False
     return VLM_OCR_DET_TYPE, False
 
 

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ...utils.async_utils import drain_future, run_sync
 from ..runtime.closing import runtime_close_scope
 from ..runtime.ownership import RuntimeOwner
+from .text_recognition import TextRecognitionResult, recognize_text_batch
 
 if TYPE_CHECKING:
     from mineru_vl_utils import MinerUClient
@@ -90,6 +91,16 @@ class RuntimeHandle:
         finally:
             if lock is not None:
                 lock.release()
+
+    def batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """切片合批及必要的单片补试共享同一次运行时租约与执行锁。"""
+        with self._use() as predictor:
+            return recognize_text_batch(predictor, images)
+
+    async def aio_batch_recognize_text(self, images: list[Image]) -> list[TextRecognitionResult]:
+        """同步引擎在线程内识别切片，取消时等待推理退出再归还图片。"""
+        async with self._async_use() as predictor:
+            return await run_sync(recognize_text_batch, predictor, images)
 
     def batch_extract_with_layout(
         self,

@@ -186,12 +186,14 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         *,
         page_vector_geometries: object,
         np_images: object,
+        recognized_inline_formulas: object = None,
     ) -> list[list[dict[str, object]]]:
         """原样返回窗口结果，并在后处理入口校验精确容器类型。"""
         assert type(window_model_list) is list
         assert all(type(page) is list for page in window_model_list)
         assert all(type(block) is dict for page in window_model_list for block in page)
         if parse_mode == "txt":
+            assert recognized_inline_formulas == [[]]
             assert isinstance(_page_text_geometries, list)
             assert len(_page_text_geometries) == 1
         else:
