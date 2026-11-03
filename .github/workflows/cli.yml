@@ -127,6 +127,17 @@ jobs:
             tests/unittest/test_doclib_instance_dependencies.py \
             tests/unittest/test_doclib_lifespan.py \
             tests/unittest/test_doclib_architecture.py
+      - name: Run Windows and macOS filename boundary tests
+        if: runner.os != 'Linux'
+        run: |
+          uv run --no-project --no-sync python -m pytest -o addopts='' --strict-markers \
+            --junitxml=build/ci/filenames.xml \
+            -k 'path_extension or parse_filename or csv or task_filename' \
+            tests/unittest/test_filetypes.py \
+            tests/unittest/test_kit_commands.py \
+            tests/unittest/test_task_tiers.py \
+            tests/unittest/test_file_parse.py \
+            tests/unittest/test_file_parse_http.py
       - name: Retain test reports
         if: ${{ always() }}
         uses: actions/upload-artifact@v6

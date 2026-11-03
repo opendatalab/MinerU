@@ -35,13 +35,19 @@ Each `files[]` entry:
 
 | Field | Type | Requirement |
 |---|---|---|
-| `file_name` | string | Required logical filename, 1–1024 characters, retaining its extension. Duplicate names are allowed. |
+| `file_name` | string | Required logical basename, 1–1024 characters, retaining its extension without directory components. Duplicate names are allowed. |
 | `bytes` | integer or null | Required positive integer for uploads. Optional for URLs; when supplied, must match the actual size. |
 | `url` | string or null | HTTP(S) download URL; omitted or null means a client upload. |
 | `sha256sum` | string or null | Optional 64-character lowercase hexadecimal SHA-256 for validation and, for uploads, cache preflight. |
 | `page_range` | string or null | Optional per-file PDF range overriding the global range. Non-PDF native documents still parse as a whole. |
 
 Requests must omit `file_id/client_file_id`, including null values. The server allocates public `file_id` values in input order; duplicate names or content still receive different IDs. Use IDs to correlate uploads, queries, cancellation, and downloads. Local/Router result Files IDs match these IDs; Files lookup returns 404 before the result exists. Source-cache IDs remain private.
+
+For both uploads and URL inputs, `file_name` must not contain `/`, backslashes, colons, or Unicode `Cc` control characters, and must not be exactly `.` or `..`. Unicode names, spaces, `.report.csv`, and `report..csv` are allowed. Accepted names are preserved without trimming, percent-decoding, or silently stripping directory components.
+
+Names such as `../report.csv`, `C:\input\report.csv`, and `report.csv:stream` return `400 invalid_request` with `error.param="files.<index>.file_name"`. One invalid name rejects the entire manifest before allocating tasks, file IDs, or upload links; Routers do not forward it downstream.
+
+This tightens acceptance of path-like names: custom clients must extract the basename locally before submission. The official SDK already sends `path.name`. Logical names identify formats and display names, not server filesystem locations; storage continues to use generated identifiers or content hashes. Local CLI paths still support `../` and absolute paths. The multipart [file-parse API](file_parse.md) retains its compatibility behavior of stripping directory components before validating the resulting basename.
 
 ### Tier selection
 

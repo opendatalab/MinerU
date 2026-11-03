@@ -96,11 +96,17 @@ Office、HTML 等已支持的原生文档固定使用 flash，不受请求 tier 
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `file_name` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
+| `file_name` | 是 | 1–1024 个字符的逻辑文件名（basename），保留扩展名，不含目录；不同条目允许同名。 |
 | `url` | 否 | HTTP(S) 文件下载地址，受部署来源策略约束；省略或 `null` 表示客户端上传。 |
 | `bytes` | 条件 | 上传项必填；URL 项可省略或为 `null`。提供时必须是严格正整数。 |
 | `sha256sum` | 否 | 64 位小写十六进制 SHA-256；用于完整性校验，上传项还用于源文件缓存预检。 |
 | `page_range` | 否 | 逐文件 PDF 页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
+
+`file_name` 对上传和 URL 输入使用相同校验：不允许 `/`、反斜杠、冒号、Unicode `Cc` 类控制字符，也不能恰好为 `.` 或 `..`。中文、空格、`.report.csv` 和 `report..csv` 等名称允许使用；服务不裁剪空格、不解码百分号，也不把路径自动截成文件名。
+
+例如 `../report.csv`、`C:\input\report.csv` 和 `report.csv:stream` 均返回 `400 invalid_request`，`error.param` 为 `files.<index>.file_name`。清单中任一名称非法，整个请求在分配任务、文件 ID 和上传链接前失败，Router 不向下游转发。
+
+这是对路径形式名称的接口收紧：自定义客户端应在本地提取 basename 后提交；官方 SDK 已使用 `path.name`。逻辑文件名用于格式识别和展示，不指定服务器的读写路径；服务端继续使用生成的标识或内容哈希存储文件。CLI 的本地输入路径仍支持 `../` 和绝对路径。multipart [file_parse](file_parse.md) 保留先去除目录、再校验文件名的兼容行为。
 
 ### 文件 ID 与输入关联
 

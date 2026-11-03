@@ -22,9 +22,87 @@ from mineru.filetypes import (
     TEXT_EXTENSIONS,
     is_flash_only_parse_extension,
     is_page_range_parse_extension,
+    is_tiered_parse_extension,
+    mime_type_for_extension,
+    normalize_parse_extension,
+    validate_parse_filename,
 )
 from mineru.kit.common import ensure_supported_inputs, expand_input_paths
 from mineru.parser import parse
+
+
+@pytest.mark.parametrize("as_path", [False, True])
+@pytest.mark.parametrize(
+    "template",
+    [
+        "{ext}",
+        ".{ext}",
+        "in/t.{ext}",
+        "../in/t.{ext}",
+        "./in/t.{ext}",
+        ".data/t.{ext}",
+        ".t.{ext}",
+        "/absolute/t.{ext}",
+        r"..\in\t.{ext}",
+    ],
+)
+@pytest.mark.parametrize(
+    "ext,mime,flash",
+    [
+        ("CSV", "text/csv", True),
+        ("DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", True),
+        ("PDF", "application/pdf", False),
+        ("JPG", "image/jpeg", False),
+    ],
+)
+def test_path_extension_controls_format_capabilities(as_path: bool, template: str, ext: str, mime: str, flash: bool) -> None:
+    """相对路径、隐藏名称和裸扩展名共享后缀、档位、分页与 MIME 判定。"""
+    text = template.format(ext=ext)
+    value = Path(text) if as_path else text
+    assert normalize_parse_extension(value) == ext.lower()
+    assert is_flash_only_parse_extension(value) is flash
+    assert is_tiered_parse_extension(value) is (not flash)
+    assert is_page_range_parse_extension(value) is (ext == "PDF")
+    assert mime_type_for_extension(value) == mime
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["report.csv", ".report.csv", "report..csv", "报告 2026.CSV", " report.csv ", "%2e%2e%2freport.csv", "README", "a" * 1024],
+)
+def test_parse_filename_preserves_valid_basename(name: str) -> None:
+    """纯文件名校验保留中文、空格、隐藏名称和百分号，不改写输入或限制扩展名。"""
+    assert validate_parse_filename(name) == name
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        ".",
+        "..",
+        "a" * 1025,
+        "../t.csv",
+        "in/t.csv",
+        "/t.csv",
+        r"..\t.csv",
+        r"C:\in\t.csv",
+        "C:t.csv",
+        r"\\server\share\t.csv",
+        "t.csv:stream",
+    ],
+)
+def test_parse_filename_rejects_paths_and_invalid_lengths(name: str) -> None:
+    """API 文件名独立拒绝两种路径分隔符、盘符、备用数据流和非法长度。"""
+    with pytest.raises(ValueError):
+        validate_parse_filename(name)
+
+
+def test_parse_filename_rejects_all_c0_and_c1_controls() -> None:
+    """覆盖 C0、DEL 和 C1 控制字符，避免仅拦截 NUL 或换行。"""
+    for codepoint in (*range(0x20), *range(0x7F, 0xA0)):
+        with pytest.raises(ValueError):
+            validate_parse_filename(f"report{chr(codepoint)}.csv")
 
 
 def test_office_extensions_includes_legacy_binary_formats() -> None:
