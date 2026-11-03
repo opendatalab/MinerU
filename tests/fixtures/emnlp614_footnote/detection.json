@@ -1,0 +1,91 @@
+{
+  "source": "2022.emnlp-main.614.pdf",
+  "source_sha256": "b10fa41a07177c40a45fd292d7e8147f4905fc41466fa3b61fed25271e2b281b",
+  "source_page": 7,
+  "render_size": [
+    1654,
+    2339
+  ],
+  "scale": 2.7777777777777777,
+  "raw_layout": {
+    "torch": [
+      {
+        "cls_id": 15,
+        "label": "inline_formula",
+        "score": 0.4552,
+        "bbox": [
+          395,
+          2089,
+          806,
+          2122
+        ],
+        "index": 13
+      },
+      {
+        "cls_id": 10,
+        "label": "footnote",
+        "score": 0.9489,
+        "bbox": [
+          188,
+          2087,
+          809,
+          2152
+        ],
+        "index": 19
+      }
+    ],
+    "onnx": [
+      {
+        "cls_id": 15,
+        "label": "inline_formula",
+        "score": 0.459,
+        "bbox": [
+          395,
+          2089,
+          806,
+          2122
+        ],
+        "index": 13
+      },
+      {
+        "cls_id": 10,
+        "label": "footnote",
+        "score": 0.9488,
+        "bbox": [
+          188,
+          2087,
+          809,
+          2152
+        ],
+        "index": 19
+      }
+    ]
+  },
+  "ocr_detection": [
+    [
+      {
+        "label": "ocr_text",
+        "bbox": [
+          228,
+          2088,
+          394,
+          2121
+        ],
+        "score": 1.0,
+        "text": ""
+      },
+      {
+        "label": "ocr_text",
+        "bbox": [
+          193,
+          2120,
+          514,
+          2149
+        ],
+        "score": 1.0,
+        "text": ""
+      }
+    ]
+  ],
+  "vlm_text": "\\(h_0(d_0) = 5, h_1(d_0) = 15, h_0(d_1) = 10\\)"
+}
