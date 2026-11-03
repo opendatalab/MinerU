@@ -147,6 +147,23 @@ class PPDocLayoutV2PostProcessor:
         "number",
         "aside_text",
     }
+    # 仅平铺文本块允许按同类完整包含去重，公式与视觉/列表容器保留各自层级。
+    NESTED_TEXT_LABELS = frozenset(
+        {
+            "text",
+            "vertical_text",
+            "abstract",
+            "doc_title",
+            "paragraph_title",
+            "reference_content",
+            "header",
+            "footer",
+            "footnote",
+            "aside_text",
+            "figure_title",
+            "vision_footnote",
+        }
+    )
 
     # ------------------------------------------------------------------
     # bbox 几何计算
@@ -266,14 +283,21 @@ class PPDocLayoutV2PostProcessor:
     def _is_header_footer_boundary_candidate(cls, box: Dict, anchor_labels: set[str]) -> bool:
         """判断普通块是否可被页眉/页脚/页码边界规则改标。"""
         label = box.get("label")
+        # 未被明确页眉页脚父框覆盖的公式仍保留公式身份，避免仅按页边位置误改标。
+        if cls._is_formula_box(box):
+            return False
         if label in cls.HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS:
             return False
         return label not in anchor_labels
 
     @classmethod
     def _is_footnote_relabel_candidate(cls, box: Dict) -> bool:
-        """排除页眉、页脚、页码、页边注等非正文区域块，保留正文内容块。"""
-        return box.get("label") not in cls.PAGE_REGION_LABELS
+        """保留公式及编号身份，避免脚注内公式被改成独立脚注并抢占原生文本。"""
+        return (
+            box.get("label") not in cls.PAGE_REGION_LABELS
+            and not cls._is_formula_box(box)
+            and not cls._is_formula_number_box(box)
+        )
 
     @staticmethod
     def _is_reference_box(box: Dict) -> bool:
@@ -462,6 +486,37 @@ class PPDocLayoutV2PostProcessor:
         return [boxes[index] for index in kept_indexes]
 
     @classmethod
+    def _filter_nested_text_boxes(cls, boxes: List[Dict]) -> List[Dict]:
+        """过滤改标后同类且完全包含的文本框，保留大框并维持其原始阅读顺序。"""
+        candidates = sorted(
+            (
+                (index, box)
+                for index, box in enumerate(boxes)
+                if box.get("label") in cls.NESTED_TEXT_LABELS
+                and not cls._is_formula_box(box)
+                and not cls._is_formula_number_box(box)
+            ),
+            key=lambda item: (
+                -cls._calculate_bbox_area(item[1]["bbox"]),
+                -float(item[1].get("score", 0.0)),
+                item[0],
+            ),
+        )
+        kept_by_label: dict[str, list[Dict]] = {}
+        dropped_indexes: set[int] = set()
+        for index, box in candidates:
+            parents = kept_by_label.setdefault(box["label"], [])
+            x0, y0, x1, y1 = box["bbox"]
+            if any(
+                parent["bbox"][0] <= x0 and parent["bbox"][1] <= y0 and parent["bbox"][2] >= x1 and parent["bbox"][3] >= y1
+                for parent in parents
+            ):
+                dropped_indexes.add(index)
+            else:
+                parents.append(box)
+        return [box for index, box in enumerate(boxes) if index not in dropped_indexes]
+
+    @classmethod
     def _merge_nested_formula_boxes(
         cls,
         boxes: List[Dict],
@@ -532,6 +587,30 @@ class PPDocLayoutV2PostProcessor:
             cls._set_formula_label(box, target_label)
 
         return boxes
+
+    @classmethod
+    def _filter_formula_boxes_inside_page_marginals(
+        cls,
+        boxes: List[Dict],
+        cover_threshold: float = 0.8,
+    ) -> List[Dict]:
+        """删除被明确页眉页脚父框覆盖的公式框，避免页边小公式生成重叠文本 span。"""
+
+        marginal_labels = {"header", "header_image", "footer", "footer_image"}
+        marginal_parents = [box for box in boxes if box.get("label") in marginal_labels]
+        if not marginal_parents:
+            return boxes
+
+        filtered_boxes = []
+        for box in boxes:
+            if not cls._is_formula_box(box):
+                filtered_boxes.append(box)
+                continue
+            # 仅按公式自身被明确父框覆盖的比例过滤，不使用页面上下坐标带猜测归属。
+            if any(cls._calculate_cover_ratio(box["bbox"], parent["bbox"]) >= cover_threshold for parent in marginal_parents):
+                continue
+            filtered_boxes.append(box)
+        return filtered_boxes
 
     @classmethod
     def _relabel_header_footer_boundary_blocks(
@@ -648,10 +727,15 @@ class PPDocLayoutV2PostProcessor:
         boxes: List[Dict],
         image_size: Optional[Tuple[int, int]] = None,
     ) -> List[Dict]:
+        """统一两种后端的公式保护、边界改标与最终文本框去重。"""
         processed_boxes = [{**box, "bbox": list(box["bbox"])} for box in boxes]
         processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
         processed_boxes = cls._merge_nested_formula_boxes(processed_boxes, overlap_threshold=0.7)
         processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        processed_boxes = cls._filter_formula_boxes_inside_page_marginals(
+            processed_boxes,
+            cover_threshold=0.8,
+        )
         processed_boxes = cls._relabel_header_footer_boundary_blocks(
             processed_boxes,
             image_size=image_size,
@@ -660,6 +744,7 @@ class PPDocLayoutV2PostProcessor:
             processed_boxes,
             cover_threshold=0.8,
         )
+        processed_boxes = cls._filter_nested_text_boxes(processed_boxes)
         return cls._renumber_indices(processed_boxes)
 
     @classmethod
