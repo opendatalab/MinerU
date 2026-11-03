@@ -38,6 +38,10 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 | `wait_timeout` | `3600` | 整数秒，范围 `0–3600`。 |
 | `request_id` | 自动生成 | 1–64 个字母、数字、下划线或短横线。提前指定并保存它，可在连接中断后查询。 |
 
+上传名称沿用 multipart 兼容规则：先将反斜杠视为目录分隔符并去除目录，再校验 basename。例如 `../report.csv` 和 `C:\fakepath\report.csv` 都以 `report.csv` 提交给上游。
+
+得到的文件名必须为 1–1024 个字符，不能恰好为 `.` 或 `..`，不能包含斜杠、反斜杠、冒号或 Unicode `Cc` 类控制字符；中文、空格和 `.report.csv` 等隐藏名称允许使用。不裁剪空格或解码百分号。非法名称在创建上传暂存文件和上游任务前返回 `400 invalid_request`。这与 JSON [Tasks API](tasks.md) 直接拒绝路径形式 `file_name` 的规则不同。
+
 未提供 tier 表单字段时，包装层在上游 Tasks 请求中省略该字段，由上游按 **standard → basic → flash → advanced** 选择默认档位；仅开放 advanced 时自动选择 advanced。
 显式值原样传递，PDF/图片请求的档位不受上游支持时返回错误，不自动升降档。
 所有正常可用服务都支持 Office、HTML 等现有原生格式，固定使用 flash，即使传入上游未开放的合法档位也不改变原生解析路径。

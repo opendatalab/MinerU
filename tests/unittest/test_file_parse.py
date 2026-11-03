@@ -235,6 +235,58 @@ def test_file_parse_forwards_tier_only_when_provided(tmp_path: Path, tier: str |
         assert options["tier"] == tier
 
 
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        ("../t.csv", "t.csv"),
+        ("/input/t.csv", "t.csv"),
+        (r"C:\fakepath\t.csv", "t.csv"),
+        (r"\\server\share\t.csv", "t.csv"),
+        (".t.csv", ".t.csv"),
+        ("报告 2026.CSV", "报告 2026.CSV"),
+        ("%2e%2e%2ft.csv", "%2e%2e%2ft.csv"),
+    ],
+)
+def test_file_parse_filename_retains_basename_compatibility(tmp_path: Path, filename: str, expected: str) -> None:
+    """multipart 继续去除两类目录分隔符，随后原样转发合法文件名。"""
+    upstream = Upstream()
+    app = application(tmp_path, upstream)
+    with TestClient(app) as client:
+        response = client.post("/v1/file_parse", files={"file": (filename, b"name,age\nAlice,30\n", "text/csv")})
+        assert response.status_code == 200, response.text
+        assert upstream.tasks["task_1"]["options"]["files"][0]["file_name"] == expected
+        assert not list(app.state.service.store.sources.iterdir())
+
+
+@pytest.mark.parametrize(
+    "filename", ["../", ".", "..", "a" * 1025, "C:t.csv", "t.csv:stream", "t\x00.csv", "t\x7f.csv", "t\x85.csv"]
+)
+def test_file_parse_filename_rejected_before_staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str) -> None:
+    """basename 非法时，包装层在创建暂存文件或联系上游前返回参数错误。"""
+    upstream = Upstream()
+    app = application(tmp_path, upstream)
+
+    def unexpected_staging(*args: Any, **kwargs: Any) -> tuple[int, str]:
+        """参数校验失败后不允许创建上传暂存文件。"""
+        pytest.fail("invalid filename must be rejected before staging")
+
+    # 原始 multipart 保留控制字符，避免 HTTPX 将文件名中的字符自动转义。
+    body = (
+        f'--boundary\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        "Content-Type: text/csv\r\n\r\nname,age\nAlice,30\n\r\n--boundary--\r\n"
+    ).encode("utf-8")
+    with TestClient(app) as client:
+        monkeypatch.setattr("mineru.kit.file_parse.app.tempfile.mkstemp", unexpected_staging)
+        response = client.post(
+            "/v1/file_parse", content=body, headers={"Content-Type": "multipart/form-data; boundary=boundary"}
+        )
+        assert response.status_code == 400, response.text
+        assert response.json()["error"]["code"] == "invalid_request"
+        assert not app.state.service.records
+        assert not list(app.state.service.store.sources.iterdir())
+    assert not upstream.calls
+
+
 @pytest.mark.parametrize("formats", FORMATS)
 def test_formats_are_returned_unchanged(tmp_path: Path, formats: list[str]) -> None:
     """覆盖全部十五种格式组合及附件字节、文件名、MIME 和临时文件释放。"""

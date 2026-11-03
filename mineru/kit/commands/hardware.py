@@ -29,7 +29,7 @@ def _value(value: Any) -> str:
         return "{" + ", ".join(f"{key}: {_value(item)}" for key, item in value.items()) + "}"
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(_value(item) for item in value) + "]"
-    return "未知" if value is None or value == "" else str(value)
+    return "unknown" if value is None or value == "" else str(value)
 
 
 def render_detection(data: dict[str, Any]) -> str:
@@ -52,14 +52,14 @@ def render_detection(data: dict[str, Any]) -> str:
 
 def _memory(value: int | None) -> str:
     """将已知字节容量转换为三位小数的 GiB，未知值不附加伪造单位。"""
-    return "未知" if value is None else f"{value / 1024**3:.3f} GiB"
+    return "unknown" if value is None else f"{value / 1024**3:.3f} GiB"
 
 
 def _torch_device_summary(data: dict[str, Any]) -> str:
     """仅展示选中的 Torch 设备及其型号、容量，严格匹配设备索引而不猜测其他卡。"""
     device = (data.get("selected_device") or {}).get("device")
     if not device:
-        return "未知"
+        return "unknown"
     kind, _, index_text = device.partition(":")
     try:
         index = int(index_text) if index_text else 0
@@ -73,7 +73,7 @@ def _torch_device_summary(data: dict[str, Any]) -> str:
     if selected.get("total_memory_bytes") is not None:
         details.append(_memory(selected["total_memory_bytes"]))
     label = f"{kind}:{index}"
-    return f"{label}（{'，'.join(details)}）" if details else label
+    return f"{label} ({', '.join(details)})" if details else label
 
 
 def _render_runtime_probe(probe: dict[str, Any]) -> list[str]:
@@ -83,9 +83,9 @@ def _render_runtime_probe(probe: dict[str, Any]) -> list[str]:
         # 原生库存已合并进系统显卡；采集失败由报告末尾的 warnings 保留。
         return []
     if name == "selection" and status == "ok":
-        return [f"  小模型后端：{_value(data.get('small_backend'))}；VLM 引擎：{_value(data.get('vlm_engine'))}"]
+        return [f"  Small model backend: {_value(data.get('small_backend'))}; VLM engine: {_value(data.get('vlm_engine'))}"]
     labels = {
-        "selection": "后端选择",
+        "selection": "Backend selection",
         "torch": "Torch",
         "onnx": "ONNX Runtime",
         "llama-cpp": "llama.cpp",
@@ -93,25 +93,25 @@ def _render_runtime_probe(probe: dict[str, Any]) -> list[str]:
         "lmdeploy": "LMDeploy",
         "mlx-vlm": "MLX-VLM",
     }
-    states = {"ok": "正常", "not_installed": "未安装", "error": "失败", "timeout": "超时"}
-    version = f"{data['version']}，" if data.get("version") else ""
-    lines = [f"  {labels.get(name, name)}：{version}{states.get(status, status)}"]
+    states = {"ok": "ok", "not_installed": "not installed", "error": "error", "timeout": "timeout"}
+    version = f"{data['version']}, " if data.get("version") else ""
+    lines = [f"  {labels.get(name, name)}: {version}{states.get(status, status)}"]
     if probe["error"]:
         lines.append(f"    {probe['error']}")
     if status != "ok":
         return lines
     if name == "torch":
-        lines.append(f"    当前设备：{_torch_device_summary(data)}")
+        lines.append(f"    Current device: {_torch_device_summary(data)}")
         selected = data.get("selected_device") or {}
         if (selected.get("device") or "").split(":", 1)[0] == "cuda":
             if data.get("rocm_build"):
-                lines.append(f"    ROCm 构建版本：{data['rocm_build']}")
+                lines.append(f"    ROCm build: {data['rocm_build']}")
             elif data.get("cuda_build"):
-                lines.append(f"    CUDA 构建版本：{data['cuda_build']}")
+                lines.append(f"    CUDA build: {data['cuda_build']}")
         if selected.get("warning"):
-            lines.append(f"    提示：{selected['warning']}")
+            lines.append(f"    Warning: {selected['warning']}")
         lines.extend(
-            f"    提示：{backend} 探测失败：{details['error']}"
+            f"    Warning: {backend} probe failed: {details['error']}"
             for backend, details in data.get("backends", {}).items()
             if details.get("error")
         )
@@ -123,27 +123,27 @@ def _render_runtime_probe(probe: dict[str, Any]) -> list[str]:
             for provider in data.get("providers", [])
         ]
         if providers:
-            lines.append(f"    可用 Provider：{', '.join(providers)}")
+            lines.append(f"    Available providers: {', '.join(providers)}")
         selected = data.get("selected_device") or {}
         device = selected.get("device")
         adapter = selected.get("adapter") or data.get("selected_adapter") or {}
         if selected.get("reason") in {"calibration_required", "calibration_pending"}:
-            lines.append("    设备选择：待校准")
+            lines.append("    Device selection: pending calibration")
             if adapter.get("name"):
-                lines.append(f"    候选设备：{adapter['name']}")
+                lines.append(f"    Candidate device: {adapter['name']}")
         elif device == "gpu":
             label = f"{selected.get('backend') or data.get('backend')}:gpu"
-            detail = f"（{adapter['name']}）" if adapter.get("name") else ""
-            lines.append(f"    设备选择：{label}{detail}")
+            detail = f" ({adapter['name']})" if adapter.get("name") else ""
+            lines.append(f"    Device selection: {label}{detail}")
         else:
-            lines.append(f"    设备选择：{_value(device)}")
+            lines.append(f"    Device selection: {_value(device)}")
         if data.get("adapter_error"):
-            lines.append(f"    提示：{data['adapter_error']}")
+            lines.append(f"    Warning: {data['adapter_error']}")
     elif name == "llama-cpp" and "devices" in data:
-        lines.append("    可见设备：" if data["devices"] else "    未发现可见 GPU")
+        lines.append("    Visible devices:" if data["devices"] else "    No visible GPU found")
         for device in data["devices"]:
             label = device.get("name") or device.get("backend") or "GPU"
-            detail = f"：{device['description']}" if device.get("description") else ""
+            detail = f": {device['description']}" if device.get("description") else ""
             lines.append(f"      {label}{detail}")
     return lines
 
@@ -153,65 +153,69 @@ def _render_device_selection(data: dict[str, Any]) -> list[str]:
     backend = (data["effective_config"].get("resolved") or {}).get("small_backend")
     probe = next((probe for probe in data["runtimes"] if probe["name"] == backend), None)
     selection = probe["data"].get("selected_device") if probe and probe["status"] == "ok" else None
-    lines = ["设备选择与校准：", f"  小模型后端：{_value(backend)}"]
+    lines = ["Device selection and calibration:", f"  Small model backend: {_value(backend)}"]
     reason = selection.get("reason") if selection else None
     reasons = {
-        "torch_accelerator": "Torch 加速设备可用",
-        "torch_cpu": "未发现可用的 Torch 加速设备，使用 CPU",
-        "torch_device_unavailable": "指定的 Torch 设备不可用，回退 CPU",
-        "torch_device_error": "Torch 设备检查失败，回退 CPU",
-        "configured_cpu": "配置指定使用 CPU",
-        "configured_gpu": "配置指定使用 GPU，跳过自动测速",
-        "discrete_gpu": "已确认的候选独显满足免校准规则",
-        "unsupported_platform": "当前平台不支持 ONNX GPU 路径，使用 CPU",
-        "directml_unavailable": "DirectML provider 不可用，使用 CPU",
-        "no_hardware_gpu": "未发现可用的 ONNX GPU，使用 CPU",
-        "webgpu_architecture_policy": "没有通过 WebGPU 架构与可见性检查的 GPU，使用 CPU",
-        "calibration_required": "候选 GPU 需要 OCR 校准后才能确定最终设备",
-        "calibration_pending": "当前后端尚未配置可用的校准阈值",
-        "selection_unavailable": "设备探测失败，无法确定选择结果",
+        "torch_accelerator": "A Torch accelerator is available",
+        "torch_cpu": "No usable Torch accelerator found; using CPU",
+        "torch_device_unavailable": "The configured Torch device is unavailable; falling back to CPU",
+        "torch_device_error": "Torch device checks failed; falling back to CPU",
+        "configured_cpu": "CPU selected by configuration",
+        "configured_gpu": "GPU selected by configuration; automatic benchmarking skipped",
+        "discrete_gpu": "The confirmed discrete GPU candidate meets the rules for skipping calibration",
+        "unsupported_platform": "ONNX GPU execution is unsupported on this platform; using CPU",
+        "directml_unavailable": "DirectML provider is unavailable; using CPU",
+        "no_hardware_gpu": "No usable ONNX GPU found; using CPU",
+        "webgpu_architecture_policy": "No GPU passed the WebGPU architecture and visibility checks; using CPU",
+        "calibration_required": "The candidate GPU requires OCR calibration before final device selection",
+        "calibration_pending": "No usable calibration threshold is configured for the current backend",
+        "selection_unavailable": "Device probing failed; selection could not be determined",
     }
     if selection:
         device = selection.get("device")
         if reason in {"calibration_required", "calibration_pending"}:
-            device = "待校准"
+            device = "pending calibration"
         elif backend == "onnx" and device == "gpu":
             device = f"{selection['backend']}:gpu"
-        lines.append(f"  选择设备：{_value(device)}")
-        lines.append(f"  选择依据：{reasons.get(reason, _value(reason))} ({_value(reason)})")
+        lines.append(f"  Selected device: {_value(device)}")
+        lines.append(f"  Selection reason: {reasons.get(reason, _value(reason))} ({_value(reason)})")
         if selection.get("warning"):
-            lines.append(f"  设备提示：{selection['warning']}")
+            lines.append(f"  Device warning: {selection['warning']}")
         if backend == "onnx" and selection.get("device") == "gpu":
-            lines.append("  验证范围：只读选型，尚未验证 GPU 推理会话")
+            lines.append("  Validation scope: read-only selection; GPU inference session has not been validated")
     else:
-        lines.append("  选择设备：未知")
-        detail = f"{probe['status']}，{_value(probe['error'])}" if probe else "未取得对应运行时的设备选择结果"
-        lines.append(f"  选择依据：{detail}")
+        lines.append("  Selected device: unknown")
+        detail = f"{probe['status']}, {_value(probe['error'])}" if probe else "No device selection result from this runtime"
+        lines.append(f"  Selection reason: {detail}")
 
     if backend == "torch":
-        lines.append("  校准：不适用（Torch 后端无需 ONNX OCR 校准）")
+        lines.append("  Calibration: not applicable (Torch does not require ONNX OCR calibration)")
     elif reason in {"discrete_gpu", "configured_gpu"}:
-        lines.append("  校准：免校准")
+        lines.append("  Calibration: skipped")
     elif reason in {"calibration_required", "calibration_pending"}:
-        lines.append("  校准：待完成（info 只读检查不会执行测速）")
+        lines.append("  Calibration: pending (info performs read-only checks without benchmarking)")
     elif selection and selection.get("device") == "cpu":
-        lines.append("  校准：未执行（当前选择 CPU）")
+        lines.append("  Calibration: not performed (CPU is currently selected)")
 
     calibration = data["calibration"]
     if calibration["status"] == "present":
-        label = "ONNX 校准记录（不参与当前 Torch 设备选择）" if backend == "torch" else "ONNX 校准记录"
-        lines.append(f"  {label}：")
+        label = (
+            "ONNX calibration record (not used for current Torch device selection)"
+            if backend == "torch"
+            else "ONNX calibration record"
+        )
+        lines.append(f"  {label}:")
         lines.extend(f"    {key}: {_value(value)}" for key, value in calibration.items() if value is not None)
     elif calibration["status"] == "invalid":
         lines.extend(
             [
-                "  校准记录：不可用",
+                "  Calibration record: unavailable",
                 f"    path: {calibration['path']}",
                 f"    error: {_value(calibration['error'])}",
             ]
         )
     elif backend != "torch" and reason not in {"discrete_gpu", "configured_gpu"}:
-        lines.append("  校准记录：无详细记录")
+        lines.append("  Calibration record: no detailed record")
     return lines
 
 
@@ -220,50 +224,52 @@ def _render_info_section(section: HardwareInfoSection, data: dict[str, Any]) -> 
     if section == "environment":
         return "\n".join(
             [
-                f"系统：{data['system']['name']} {data['system']['release']} ({data['system']['architecture']})",
-                f"系统版本：{_value(data['system'].get('os_version'))}",
-                f"发行版：{_value(data['system']['distribution'])}",
-                f"Python：{data['python']['version']}",
-                f"MinerU：{data['mineru']['version']}",
+                f"System: {data['system']['name']} {data['system']['release']} ({data['system']['architecture']})",
+                f"OS version: {_value(data['system'].get('os_version'))}",
+                f"Distribution: {_value(data['system']['distribution'])}",
+                f"Python: {data['python']['version']}",
+                f"MinerU: {data['mineru']['version']}",
             ]
         )
     if section == "cpu_memory":
         cpu, memory = data["cpu"], data["memory"]
         return "\n".join(
             [
-                f"CPU：{_value(cpu['model'])}",
-                f"CPU 核数：物理 {_value(cpu['physical_cores'])}，逻辑 {_value(cpu['logical_cores'])}，"
-                f"进程可用 {_value(cpu['available_cores'])}",
-                f"CPU 频率 (MHz)：基础 {_value(cpu['base_mhz'])}，当前 {_value(cpu['current_mhz'])}，"
-                f"最大 {_value(cpu['max_mhz'])}",
-                f"内存：总量 {_memory(memory['total_bytes'])}，可用 {_memory(memory['available_bytes'])}",
+                f"CPU: {_value(cpu['model'])}",
+                f"CPU cores: physical {_value(cpu['physical_cores'])}, logical {_value(cpu['logical_cores'])}, "
+                f"available to process {_value(cpu['available_cores'])}",
+                f"CPU frequency (MHz): base {_value(cpu['base_mhz'])}, current {_value(cpu['current_mhz'])}, "
+                f"max {_value(cpu['max_mhz'])}",
+                f"Memory: total {_memory(memory['total_bytes'])}, available {_memory(memory['available_bytes'])}",
             ]
         )
     if section == "packages":
-        return "\n".join(["已安装软件：", *(f"  {package['name']} {package['version']}" for package in data["packages"])])
+        return "\n".join(
+            ["Installed packages:", *(f"  {package['name']} {package['version']}" for package in data["packages"])]
+        )
     if section == "gpus":
-        lines = ["系统显卡："]
+        lines = ["System GPUs:"]
         if not data["gpus"]:
-            lines.append("  未发现；如有探测错误，请参见提示")
+            lines.append("  None found; see warnings for any probe errors")
         for gpu in data["gpus"]:
             lines.extend(
                 [
-                    f"  {_value(gpu['name'])} [{gpu['kind']}]，厂商 {_value(gpu['vendor'])}，标识 {_value(gpu['device_id'])}",
-                    f"    来源 {gpu['source']}，驱动 {_value(gpu['driver'])}，总线 {_value(gpu['bus_id'])}",
-                    f"    独立显存 {_memory(gpu['dedicated_memory_bytes'])}，"
-                    f"共享内存 {_memory(gpu['shared_memory_bytes'])}，统一内存 {_value(gpu['unified_memory'])}",
+                    f"  {_value(gpu['name'])} [{gpu['kind']}], vendor {_value(gpu['vendor'])}, ID {_value(gpu['device_id'])}",
+                    f"    Source {gpu['source']}, driver {_value(gpu['driver'])}, bus {_value(gpu['bus_id'])}",
+                    f"    Dedicated memory {_memory(gpu['dedicated_memory_bytes'])}, "
+                    f"shared memory {_memory(gpu['shared_memory_bytes'])}, unified memory {_value(gpu['unified_memory'])}",
                 ]
             )
         return "\n".join(lines)
     if section == "runtimes":
-        lines = ["运行时："] if data.get("runtime_header", True) else []
+        lines = ["Runtimes:"] if data.get("runtime_header", True) else []
         for probe in data["runtimes"]:
             lines.extend(_render_runtime_probe(probe))
         return "\n".join(lines)
-    lines = ["有效配置："]
+    lines = ["Effective configuration:"]
     lines.extend(f"  {key}: {_value(value)}" for key, value in data["effective_config"].items())
     lines.extend(_render_device_selection(data))
-    lines.extend(f"提示：{warning}" for warning in data["warnings"])
+    lines.extend(f"Warning: {warning}" for warning in data["warnings"])
     return "\n".join(lines)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Final
 
@@ -145,13 +146,23 @@ def rtf_header_offset(file_bytes: bytes) -> int | None:
 
 
 def normalize_parse_extension(path_or_ext: str | Path) -> str:
+    """优先提取路径后缀，无后缀时按裸扩展名归一化。"""
     text = str(path_or_ext)
-    if text.startswith("."):
-        return text.lower().lstrip(".")
     suffix = Path(text).suffix
     if suffix:
         return suffix.lower().lstrip(".")
     return text.lower().lstrip(".")
+
+
+def validate_parse_filename(name: str) -> str:
+    """校验 API 使用的纯文件名，原样返回且不访问文件系统或改写名称。"""
+    if not 1 <= len(name) <= 1024 or name in {".", ".."}:
+        raise ValueError("File name must contain 1–1024 characters and must not be '.' or '..'")
+    if any(char in name for char in ("/", "\\", ":")):
+        raise ValueError("File name must be a basename without '/', '\\', or ':'")
+    if any(unicodedata.category(char) == "Cc" for char in name):
+        raise ValueError("File name must not contain control characters")
+    return name
 
 
 def file_type_for_extension(path_or_ext: str | Path) -> str:

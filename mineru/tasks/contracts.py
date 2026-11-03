@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Literal
 
 from docvortex.document.page_range import PAGE_RANGE_DESCRIPTION
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..filetypes import validate_parse_filename
 from ..task_types import TaskFileState, TaskOutputFormat, TaskStatus
 from ..types import Tier
 
@@ -54,11 +55,24 @@ class TaskFileInput(BaseModel):
     """仅声明输入，文件标识由服务端分配，不接受任何客户端 ID。"""
 
     model_config = ConfigDict(extra="forbid")
-    file_name: str = Field(min_length=1, max_length=1024)
+    file_name: str = Field(
+        min_length=1,
+        max_length=1024,
+        description=(
+            "Logical basename, not a path. No '/', backslash, ':', Unicode Cc control characters, or names '.' / '..'. "
+            "Hidden names and spaces are allowed; accepted names are preserved without trimming or URL decoding."
+        ),
+    )
     bytes: int | None = Field(default=None, gt=0, strict=True)
     url: str | None = None
     sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
+
+    @field_validator("file_name")
+    @classmethod
+    def validate_file_name(cls, value: str) -> str:
+        """在接单前统一拒绝路径名称，保留逐文件字段的错误位置。"""
+        return validate_parse_filename(value)
 
     @model_validator(mode="after")
     def validate_source(self) -> TaskFileInput:

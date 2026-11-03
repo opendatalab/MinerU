@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import socket
 import subprocess
 import sys
@@ -82,6 +83,26 @@ def test_api_and_router_all_formats(live_service: _LiveService, tmp_path: Path) 
                 assert response.headers["content-type"] == direct.headers["content-type"]
         assert_clean(app.state.service.store.results)
         assert_clean(app.state.service.store.sources)
+
+
+def test_file_parse_filename_is_metadata_over_tcp(live_service: _LiveService, tmp_path: Path) -> None:
+    """带目录的 multipart 名称经真实 API/Router 解析时，只读取上传字节。"""
+    sentinel = tmp_path / "outside.csv"
+    server_data = b"name,value\nSERVER_SENTINEL,999\n"
+    sentinel.write_bytes(server_data)
+    content = b"name,value\nUPLOADED_BYTES,42\n"
+    with wrapper(tmp_path / "wrapper", live_service.url, "test-key") as (client, app):
+        for index, name in enumerate(("../outside.csv", str(sentinel), r"C:\fakepath\outside.csv")):
+            response = parse_file(client, f"filename_{index}", name, content, ["default"])
+            assert response.status_code == 200, response.text
+            assert 'filename="outside.zip"' in response.headers["content-disposition"]
+            with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                markdown = archive.read("markdown.md")
+                assert b"UPLOADED_BYTES" in markdown and b"SERVER_SENTINEL" not in markdown
+                assert json.loads(archive.read("middle_json.json"))["extensions"]["mineru"]["tier"] == "flash"
+            assert sentinel.read_bytes() == server_data
+        assert_clean(app.state.service.store.sources)
+        assert_clean(app.state.service.store.results)
 
 
 def cloud_bridge(upstream: Upstream) -> FastAPI:
