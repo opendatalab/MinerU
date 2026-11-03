@@ -76,19 +76,19 @@ def test_windows_runtime_summary_preserves_raw_diagnostics(windows_runtimes: dic
     rendered = command._render_info_section("runtimes", windows_runtimes)
     assert rendered == "\n".join(
         [
-            "运行时：",
-            "  小模型后端：torch；VLM 引擎：lmdeploy",
-            "  Torch：2.12.1+cu126，正常",
-            "    当前设备：cuda:0（NVIDIA GeForce RTX 3060 Ti，8.000 GiB）",
-            "    CUDA 构建版本：12.6",
-            "  ONNX Runtime：1.24.4，正常",
-            "    可用 Provider：DirectML, CPU",
-            "    设备选择：dml:gpu（NVIDIA GeForce RTX 3060 Ti）",
-            "  llama.cpp：正常",
-            "    可见设备：",
-            "      Vulkan0：NVIDIA GeForce RTX 3060 Ti",
-            "      Vulkan1：Intel(R) UHD Graphics 770",
-            "  LMDeploy：0.17.0，正常",
+            "Runtimes:",
+            "  Small model backend: torch; VLM engine: lmdeploy",
+            "  Torch: 2.12.1+cu126, ok",
+            "    Current device: cuda:0 (NVIDIA GeForce RTX 3060 Ti, 8.000 GiB)",
+            "    CUDA build: 12.6",
+            "  ONNX Runtime: 1.24.4, ok",
+            "    Available providers: DirectML, CPU",
+            "    Device selection: dml:gpu (NVIDIA GeForce RTX 3060 Ti)",
+            "  llama.cpp: ok",
+            "    Visible devices:",
+            "      Vulkan0: NVIDIA GeForce RTX 3060 Ti",
+            "      Vulkan1: Intel(R) UHD Graphics 770",
+            "  LMDeploy: 0.17.0, ok",
         ]
     )
     assert json.dumps(windows_runtimes) == before
@@ -118,9 +118,9 @@ def test_torch_summary_selects_actual_device_index(backend: str) -> None:
         )
     )
     rendered = "\n".join(command._render_runtime_probe(probe))
-    assert f"当前设备：{backend}:1（selected GPU，16.000 GiB）" in rendered
+    assert f"Current device: {backend}:1 (selected GPU, 16.000 GiB)" in rendered
     assert "other GPU" not in rendered
-    assert ("CUDA 构建版本" in rendered) == (backend == "cuda")
+    assert ("CUDA build" in rendered) == (backend == "cuda")
     assert "ROCm" not in rendered
 
 
@@ -138,7 +138,7 @@ def test_torch_summary_does_not_guess_missing_device(device: str) -> None:
         )
     )
     rendered = "\n".join(command._render_runtime_probe(probe))
-    assert f"当前设备：{device}" in rendered
+    assert f"Current device: {device}" in rendered
     assert "wrong GPU" not in rendered and "8.000 GiB" not in rendered
 
 
@@ -156,7 +156,7 @@ def test_torch_summary_displays_rocm_build_when_applicable() -> None:
         )
     )
     rendered = "\n".join(command._render_runtime_probe(probe))
-    assert "ROCm 构建版本：6.3" in rendered and "CUDA 构建版本" not in rendered
+    assert "ROCm build: 6.3" in rendered and "CUDA build" not in rendered
 
 
 @pytest.mark.parametrize("device, reason", [("cpu", "configured_cpu"), (None, "calibration_required")])
@@ -174,9 +174,9 @@ def test_onnx_summary_distinguishes_candidate_from_selected_gpu(device: str | No
     )
     rendered = "\n".join(command._render_runtime_probe(probe))
     if device == "cpu":
-        assert "设备选择：cpu" in rendered and "candidate GPU" not in rendered
+        assert "Device selection: cpu" in rendered and "candidate GPU" not in rendered
     else:
-        assert "设备选择：待校准" in rendered and "候选设备：candidate GPU" in rendered
+        assert "Device selection: pending calibration" in rendered and "Candidate device: candidate GPU" in rendered
 
 
 @pytest.mark.parametrize("name", ["dxgi", "vulkan"])
@@ -200,5 +200,5 @@ def test_runtime_summary_keeps_actionable_errors() -> None:
         )
     )
     rendered = command._render_info_section("runtimes", {"runtimes": [failed, torch]})
-    assert "ONNX Runtime：失败" in rendered and "driver unavailable" in rendered
-    assert "configured GPU unavailable" in rendered and "cuda 探测失败：driver failure" in rendered
+    assert "ONNX Runtime: error" in rendered and "driver unavailable" in rendered
+    assert "configured GPU unavailable" in rendered and "cuda probe failed: driver failure" in rendered

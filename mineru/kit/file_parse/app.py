@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ...filetypes import validate_parse_filename
 from ...task_types import TASK_OUTPUT_FORMATS
 from ...types import TIERS
 from .models import GatewayError, ParseOptions, Record
@@ -92,7 +93,14 @@ def _request_schema() -> dict[str, Any]:
     properties = ParseOptions.model_json_schema()["properties"]
     properties.update(
         {
-            "file": {"type": "string", "format": "binary"},
+            "file": {
+                "type": "string",
+                "format": "binary",
+                "description": (
+                    "One file. Directory components are stripped from its multipart filename before validating the "
+                    "1–1024 character basename; '.', '..', colons, and Unicode Cc control characters are rejected."
+                ),
+            },
             "request_id": {"type": "string", "pattern": REQUEST_ID.pattern},
             "wait_timeout": {"type": "integer", "minimum": 0, "maximum": 3600, "default": 3600},
         }
@@ -146,8 +154,10 @@ async def _receive_file(request: Request, service: FileParseService) -> tuple[Re
             ):
                 raise GatewayError("invalid_request", "Exactly one file and textual parameters are required", 400)
             filename = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
-            if filename in {"", ".", ".."} or len(filename) > 1024 or any(ord(char) < 32 for char in filename):
-                raise GatewayError("invalid_request", "A valid filename is required", 400)
+            try:
+                validate_parse_filename(filename)
+            except ValueError as exc:
+                raise GatewayError("invalid_request", str(exc), 400) from exc
             request_id = str(form.get("request_id", uuid.uuid4().hex))
             if not REQUEST_ID.fullmatch(request_id):
                 raise GatewayError("invalid_request", "Invalid request_id", 400)

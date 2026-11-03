@@ -42,7 +42,7 @@ JSON 报告保持 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`d
 
 `info` 不调用自动推荐或 OCR 校准，不下载、加载模型权重或写配置。运行时导入和原生 GPU 探测使用独立子进程，最多并发 4 项，并与系统信息采集重叠进行；每项子进程启动后最多等待 15 秒。某项失败时继续报告其他信息，并区分未安装、导入失败和超时。
 
-默认文本先输出系统、Python 和 MinerU 版本，再依次输出 CPU/内存、已安装软件、完成合并的显卡库存、运行时探测、有效配置及设备选择与校准信息。每节完成后立即刷新，重定向到管道时也无需等到整份报告完成。`--json` 仍一次输出完整对象，原有字段和结果顺序保持稳定，`schema_version=1`；ONNX 运行时结果补充 `selected_device`，记录只读选型及原因。
+默认文本使用英文，先输出系统、Python 和 MinerU 版本，再依次输出 CPU/内存、已安装软件、完成合并的显卡库存、运行时探测、有效配置及设备选择与校准信息。每节完成后立即刷新，重定向到管道时也无需等到整份报告完成。`--json` 仍一次输出完整对象，原有字段和结果顺序保持稳定，`schema_version=1`；ONNX 运行时结果补充 `selected_device`，记录只读选型及原因。
 
 - 系统、Python 和 MinerU 版本；JSON 额外保留解释器与实际模块路径。
 - CPU 型号、物理/逻辑/进程可用核数，基础/当前/最大频率（MHz）；内存总量及可用量。文本容量统一按 `1024³` 换算为三位小数的 GiB，JSON 保留原始字节数。
@@ -54,13 +54,13 @@ JSON 报告保持 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`d
 
 运行时文本不直接展开内部 `selection`、`backends` 或适配器字典。Torch 的 CUDA/ROCm 构建版本仅在选中相应设备且版本已知时展示；CPU、MPS 及 NPU/GCU/MUSA/MLU/SDAA 等扩展设备直接显示实际设备名，不列出其他不可用后端，也不套用无关构建字段。这些构建版本来自 Torch 自身，不代表系统驱动或另行安装的工具链版本。
 
-Windows DXGI 和 Linux Vulkan 的原生库存用于补充“系统显卡”，不在运行时文本中重复展开；macOS 使用系统工具采集，不执行 DXGI/Vulkan 这两项库存探测。采集错误仍进入提示，完整后端矩阵、所有适配器及 LUID/PCI/厂商标识等诊断字段继续保留在 `--json` 中。
+Windows DXGI 和 Linux Vulkan 的原生库存用于补充“System GPUs”，不在运行时文本中重复展开；macOS 使用系统工具采集，不执行 DXGI/Vulkan 这两项库存探测。采集错误仍进入提示，完整后端矩阵、所有适配器及 LUID/PCI/厂商标识等诊断字段继续保留在 `--json` 中。
 
-“设备选择与校准”展示当前小模型后端、设备及选择依据。Torch 直接使用运行时的设备检查结果，并说明不适用 ONNX OCR 校准；ONNX 复用实际选型的候选规则，解释显式 CPU/GPU、独显免校准、不可用或待校准的情况。只读检查不会初始化 GPU 推理会话；需要测速时，设备显示“待校准”（JSON `selected_device.device` 为 `null`），不预先声称 CPU 或 GPU 胜出。
+“Device selection and calibration”展示当前小模型后端、设备及选择依据。Torch 直接使用运行时的设备检查结果，并说明不适用 ONNX OCR 校准；ONNX 复用实际选型的候选规则，解释显式 CPU/GPU、独显免校准、不可用或待校准的情况。只读检查不会初始化 GPU 推理会话；需要测速时，设备显示“pending calibration”（JSON `selected_device.device` 为 `null`），不预先声称 CPU 或 GPU 胜出。
 
 存在有效校准记录时展开详细信息；没有详细记录时仅展示设备选择与原因，不列出空的测速字段。损坏或不可读的记录保留路径及错误。当前为 Torch 时，已有 ONNX 记录明确标注为不参与当前选择。JSON 的原始 `calibration` 对象仍保留全部字段。
 
-未知值为 JSON `null`，文本显示“未知”。例如 Apple Silicon 通常不报告可可靠读取的 CPU 主频，统一内存也不作为独立显存。系统或容器限制导致库存不完整时保留错误说明；不从型号名称猜测设备类型或频率。
+未知值为 JSON `null`，文本显示“unknown”。例如 Apple Silicon 通常不报告可可靠读取的 CPU 主频，统一内存也不作为独立显存。系统或容器限制导致库存不完整时保留错误说明；不从型号名称猜测设备类型或频率。
 
 独立显存采集能力和 Windows PCI 身份修复继续保留，其结果不参与自动 tier。Windows 原生查询不依赖 Torch：DXGI 库存通过 `D3DKMTOpenAdapterFromLuid` / `D3DKMTQueryAdapterInfo(KMTQAITYPE_ADAPTERADDRESS)` 补充物理 PCI 位置，内存仍由对应适配器的 DXGI 接口读取。身份匹配优先使用 LUID 和已知 PCI 坐标，不猜测缺失字段；查询失败或多个同等匹配保留未知。读取预算成功不代表模型推理已验证。
 

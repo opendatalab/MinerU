@@ -44,6 +44,10 @@ Omitting tier lets the upstream choose Standard → Basic → Flash → Advanced
 
 `output_formats` is neither a JSON string nor a comma-separated value: use repeated form fields. `include_model_output` is removed and returns 400 when supplied.
 
+Multipart filenames retain the existing compatibility behavior: backslashes are treated as directory separators, and directory components are removed before validation. Both `../report.csv` and `C:\fakepath\report.csv` are submitted upstream as `report.csv`.
+
+The resulting basename must contain 1–1024 characters, must not be exactly `.` or `..`, and must not contain slashes, backslashes, colons, or Unicode `Cc` control characters. Unicode names, spaces, and hidden names such as `.report.csv` are allowed, without trimming or percent-decoding. Invalid names return `400 invalid_request` before creating an upload staging file or an upstream task. The JSON [Tasks API](tasks.md) instead rejects path-like `file_name` values directly.
+
 ## Upload and attachment responses
 
 These are Bash/curl examples; in Windows PowerShell use `curl.exe` and adjust line continuations. The service calculates the size and hash from the actual uploaded file.

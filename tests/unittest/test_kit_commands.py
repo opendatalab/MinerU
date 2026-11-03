@@ -8,7 +8,7 @@ import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import typer
@@ -24,6 +24,7 @@ from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
 from mineru.model.registry import MODEL_COMPLETE_MARKER
+from mineru.types import Tier
 from mineru.version import __version__
 
 runner = CliRunner()
@@ -989,6 +990,87 @@ def test_parse_rejects_removed_backend_option(backend: str, tmp_path: Path) -> N
 
     assert result.exit_code == 2
     assert "No such option: --backend" in " ".join(result.output.split())
+
+
+def _csv_input_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, form: str) -> str:
+    """构造相同 CSV 的多种真实路径，从工作子目录调用 CLI。"""
+    work = tmp_path / "work"
+    (tmp_path / "in").mkdir()
+    (work / ".data").mkdir(parents=True)
+    for path in (tmp_path / "in/t.csv", work / "t.csv", work / ".data/t.csv", work / ".t.csv"):
+        path.write_text("name,age\nAlice,30\n", encoding="utf-8")
+    monkeypatch.chdir(work)
+    return {
+        "relative": "t.csv",
+        "parent": "../in/t.csv",
+        "hidden-directory": ".data/t.csv",
+        "hidden-file": ".t.csv",
+        "absolute": str(work / "t.csv"),
+    }[form]
+
+
+@pytest.mark.parametrize("form", ["relative", "parent", "hidden-directory", "hidden-file", "absolute"])
+@pytest.mark.parametrize("tier", ["basic", "standard", "advanced"])
+def test_parse_rejects_single_csv_quality_tier_before_parsing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, form: str, tier: str
+) -> None:
+    """同一 CSV 不因路径写法而绕过单文件质量档位校验。"""
+    source = _csv_input_path(tmp_path, monkeypatch, form)
+
+    def unexpected_parse(*args: Any, **kwargs: Any) -> ParseResult:
+        """任何到达解析器的调用都说明 CLI 漏掉了前置校验。"""
+        pytest.fail("invalid single-file tier must be rejected before parsing")
+
+    monkeypatch.setattr(parse, "local_parse", unexpected_parse)
+    output = tmp_path / "result.json"
+    result = runner.invoke(app, ["parse", source, "--tier", tier, "-f", "middle_json", "-o", str(output)])
+
+    assert result.exit_code == 1
+    assert f"Tier '{tier}' is only supported for PDF and image files" in " ".join(result.output.split())
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("form", ["relative", "parent", "hidden-directory", "hidden-file", "absolute"])
+@pytest.mark.parametrize("tier", [None, "flash"])
+def test_parse_csv_paths_produce_real_flash_outputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, form: str, tier: str | None
+) -> None:
+    """省略 tier 或显式 Flash 时，各种路径都生成可读的真实 CSV 产物。"""
+    source = _csv_input_path(tmp_path, monkeypatch, form)
+    output = tmp_path / "result.json"
+    arguments = ["parse", source, "-f", "middle_json", "-o", str(output)]
+    if tier is not None:
+        arguments.extend(["--tier", tier])
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["extensions"]["mineru"]["tier"] == "flash"
+    assert "Alice" in json.dumps(payload["pages"])
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_parse_csv_batch_paths_normalize_tier_before_parsing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, directory: bool
+) -> None:
+    """批量和目录输入仍在 CLI 边界将原生文件归一为 Flash。"""
+    _csv_input_path(tmp_path, monkeypatch, "parent")
+    original = parse.local_parse
+    calls: list[Tier] = []
+
+    def record_parse(
+        path: Path, *, tier: Tier, ocr_mode: Literal["auto", "txt", "ocr"], image_analysis: bool, page_range: str
+    ) -> ParseResult:
+        """记录 CLI 实际传入的档位，并保留真实 CSV 解析。"""
+        calls.append(tier)
+        return original(path, tier=tier, ocr_mode=ocr_mode, image_analysis=image_analysis, page_range=page_range)
+
+    monkeypatch.setattr(parse, "local_parse", record_parse)
+    inputs = [".data"] if directory else ["../in/t.csv", ".t.csv"]
+    result = runner.invoke(app, ["parse", *inputs, "--tier", "advanced", "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["flash"] * len(inputs)
 
 
 def test_parse_rejects_single_office_input_with_quality_tier(monkeypatch: Any, tmp_path: Path) -> None:

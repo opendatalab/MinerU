@@ -69,7 +69,7 @@ def test_info_command_output(monkeypatch: pytest.MonkeyPatch, json_mode: bool) -
     if json_mode:
         assert json.loads(result.stdout) == report
     else:
-        assert "test CPU" in result.stdout and "未知" in result.stdout
+        assert "test CPU" in result.stdout and "unknown" in result.stdout
         assert "driver unavailable" in result.stdout
         assert result.stdout.rstrip() == command.render_info(report)
         assert "/env" not in result.stdout and "/source" not in result.stdout
@@ -362,7 +362,7 @@ def test_help_imports_no_heavy_runtime(arguments: list[str]) -> None:
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("amount, expected", [(None, "未知"), (0, "0.000 GiB"), (16 * 1024**3, "16.000 GiB")])
+@pytest.mark.parametrize("amount, expected", [(None, "unknown"), (0, "0.000 GiB"), (16 * 1024**3, "16.000 GiB")])
 def test_info_memory_and_runtime_paths(amount: int | None, expected: str) -> None:
     """系统与嵌套运行时容量使用相同单位，文本隐藏路径且原始 JSON 不受影响。"""
     data = asdict(_report())
@@ -382,13 +382,13 @@ def test_info_memory_and_runtime_paths(amount: int | None, expected: str) -> Non
     ]
     before = json.dumps(data)
     rendered = command.render_info(data)
-    assert f"总量 {expected}" in rendered
-    assert f"共享内存 {expected}" in rendered
+    assert f"total {expected}" in rendered
+    assert f"shared memory {expected}" in rendered
     if amount is None:
-        assert "当前设备：cuda:0\n" in rendered
+        assert "Current device: cuda:0\n" in rendered
     else:
-        assert f"当前设备：cuda:0（{expected}）" in rendered
-    assert "独立显存 未知，" in rendered and "未知 bytes" not in rendered
+        assert f"Current device: cuda:0 ({expected})" in rendered
+    assert "Dedicated memory unknown, " in rendered and "unknown bytes" not in rendered
     assert "module_path" not in rendered and "/runtime" not in rendered and "/nested" not in rendered
     assert "/env" not in rendered and "/source" not in rendered
     assert "/tmp/config.yaml.onnx-calibration.json" not in rendered
@@ -511,7 +511,7 @@ def test_text_sections_flush_before_probe_completion(monkeypatch: pytest.MonkeyP
         """在返回完整报告之前检查分节通知是否已经写入可读内容。"""
         if on_section:
             on_section("environment", asdict(_report()))
-            assert "Python：3.12" in output.getvalue()
+            assert "Python: 3.12" in output.getvalue()
             assert output.flushes == 1
         else:
             assert not output.getvalue()
@@ -528,11 +528,11 @@ def test_text_sections_flush_before_probe_completion(monkeypatch: pytest.MonkeyP
 @pytest.mark.parametrize(
     "backend, device, reason, expected",
     [
-        ("torch", "mps", "torch_accelerator", "Torch 加速设备可用"),
-        ("torch", "cpu", "configured_cpu", "配置指定使用 CPU"),
-        ("onnx", "gpu", "discrete_gpu", "候选独显满足免校准规则"),
-        ("onnx", "gpu", "configured_gpu", "配置指定使用 GPU"),
-        ("onnx", None, "calibration_required", "需要 OCR 校准后才能确定最终设备"),
+        ("torch", "mps", "torch_accelerator", "A Torch accelerator is available"),
+        ("torch", "cpu", "configured_cpu", "CPU selected by configuration"),
+        ("onnx", "gpu", "discrete_gpu", "discrete GPU candidate meets the rules for skipping calibration"),
+        ("onnx", "gpu", "configured_gpu", "GPU selected by configuration"),
+        ("onnx", None, "calibration_required", "requires OCR calibration before final device selection"),
     ],
 )
 def test_info_without_calibration_explains_device(backend: str, device: str | None, reason: str, expected: str) -> None:
@@ -552,14 +552,14 @@ def test_info_without_calibration_explains_device(backend: str, device: str | No
     ]
     before = json.dumps(data)
     rendered = "\n".join(command._render_device_selection(data))
-    assert "设备选择与校准：" in rendered and expected in rendered
-    assert all(key not in rendered for key in ("path:", "cpu_elapsed:", "matches_environment:", "未知"))
+    assert "Device selection and calibration:" in rendered and expected in rendered
+    assert all(key not in rendered for key in ("path:", "cpu_elapsed:", "matches_environment:", "unknown"))
     if backend == "torch":
-        assert f"选择设备：{device}" in rendered and "不适用" in rendered
+        assert f"Selected device: {device}" in rendered and "not applicable" in rendered
     elif device == "gpu":
-        assert "选择设备：dml:gpu" in rendered and "校准：免校准" in rendered
+        assert "Selected device: dml:gpu" in rendered and "Calibration: skipped" in rendered
     else:
-        assert "选择设备：待校准" in rendered and "不会执行测速" in rendered
+        assert "Selected device: pending calibration" in rendered and "without benchmarking" in rendered
     assert json.dumps(data) == before
 
 
@@ -588,8 +588,8 @@ def test_info_calibration_details_are_preserved(backend: str, matches: bool) -> 
     assert "cpu_elapsed: 2.0" in rendered and "gpu_elapsed: 1.0" in rendered
     assert "ratio: 0.5" in rendered and "threshold: 0.8" in rendered
     assert "path: /record.json" in rendered and "model_sha256: test-hash" in rendered
-    assert "error: 未知" not in rendered
-    assert ("不参与当前 Torch 设备选择" in rendered) == (backend == "torch")
+    assert "error: unknown" not in rendered
+    assert ("not used for current Torch device selection" in rendered) == (backend == "torch")
 
 
 def test_info_invalid_record_and_probe_failure_remain_visible() -> None:
@@ -597,8 +597,8 @@ def test_info_invalid_record_and_probe_failure_remain_visible() -> None:
     data = asdict(_report())
     data["calibration"] = asdict(onnx_calibration_cache.CalibrationInfo("/bad.json", "invalid", error="invalid record"))
     rendered = "\n".join(command._render_device_selection(data))
-    assert "选择设备：未知" in rendered and "driver unavailable" in rendered
-    assert "校准记录：不可用" in rendered and "invalid record" in rendered
+    assert "Selected device: unknown" in rendered and "driver unavailable" in rendered
+    assert "Calibration record: unavailable" in rendered and "invalid record" in rendered
     assert "path: /bad.json" in rendered and "cpu_elapsed" not in rendered
 
 
