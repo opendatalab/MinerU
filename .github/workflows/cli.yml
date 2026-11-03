@@ -131,7 +131,7 @@ jobs:
         if: runner.os != 'Linux'
         run: |
           uv run --no-project --no-sync python -m pytest -o addopts='' --strict-markers \
-            --junitxml=build/ci/filenames.xml \
+            --durations=10 --junitxml=build/ci/filenames.xml \
             -k 'path_extension or parse_filename or csv or task_filename' \
             tests/unittest/test_filetypes.py \
             tests/unittest/test_kit_commands.py \

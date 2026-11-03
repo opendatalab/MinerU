@@ -95,19 +95,30 @@ def _request_body(inputs: list[tuple[str, bytes]], options: dict[str, Any]) -> d
     return {"files": [{"file_name": name, "bytes": len(data)} for name, data in inputs], **options}
 
 
-async def _complete(client: httpx.AsyncClient, task: dict[str, Any], inputs: list[tuple[str, bytes]]) -> dict[str, Any]:
+async def _complete(
+    client: httpx.AsyncClient,
+    task: dict[str, Any],
+    inputs: list[tuple[str, bytes]],
+    *,
+    timeout_seconds: float = 20,
+) -> dict[str, Any]:
     """上传真实源文件并等待终态，执行和结果获取均经过公共接口。"""
     for item, (_name, data) in zip(task["files"], inputs):
         response = await client.put(item["upload"]["url"], content=data, headers=item["upload"]["headers"])
         assert response.status_code == 200, response.text
-    async with asyncio.timeout(20):
-        while True:
-            response = await client.get(f"/v1/tasks/{task['task_id']}")
-            assert response.status_code == 200, response.text
-            result = response.json()
-            if result["status"] in TERMINAL_TASK_STATUSES:
-                return result
-            await asyncio.sleep(0.01)
+    result: dict[str, Any] | None = None
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            while True:
+                response = await client.get(f"/v1/tasks/{task['task_id']}")
+                assert response.status_code == 200, response.text
+                result = response.json()
+                if result["status"] in TERMINAL_TASK_STATUSES:
+                    return result
+                # 多层 ASGI 请求共享事件循环，避免高频查询挤占上传和解析任务。
+                await asyncio.sleep(0.05)
+    except TimeoutError:
+        pytest.fail(f"Task did not finish within {timeout_seconds}s; last response: {result!r}")
 
 
 async def _archive(client: httpx.AsyncClient, item: dict[str, Any]) -> dict[str, bytes]:
@@ -369,7 +380,8 @@ def test_native_csv_filename_and_storage_boundary(tmp_path: Path, deployment: st
             assert response.status_code == 202, response.text
             task = response.json()
             assert app.state.task_store._records[task["task_id"]].options.tier == "flash"
-            result = await _complete(client, task, inputs)
+            # 四个文件经过两层 Router、磁盘存储和真实导出；这里验证正确性，不设 20 秒性能门槛。
+            result = await _complete(client, task, inputs, timeout_seconds=60)
             assert result["status"] == "completed", result
             assert [item["file_name"] for item in result["files"]] == [name for name, _data in inputs]
             for item in result["files"]:
