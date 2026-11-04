@@ -127,6 +127,21 @@ def test_concurrent_initialization_uses_one_persisted_token(config_path: Path) -
     assert yaml.safe_load(config_path.read_text())["doclib"]["auth"]["token"] in tokens
 
 
+def test_first_start_creates_private_home_and_persistent_token(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """全新 home 的 0700 目录在 Windows 使用 OWNER RIGHTS，也必须正常生成凭证。"""
+    home = config_path.parent / "new-home"
+    monkeypatch.setenv("MINERU_HOME", str(home))
+    assert not home.exists()
+    first = load_doclib_server_config()
+    path = home / "config.yaml"
+    assert path.is_file()
+    token = first.config.doclib.auth.token.get_secret_value()
+    assert len(token) >= 32
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["doclib"]["auth"]["token"] == token
+    assert load_doclib_server_config().config.doclib.auth.token.get_secret_value() == token
+    assert not list(home.glob(".config.*.tmp"))
+
+
 def test_configuration_reads_do_not_generate_credentials(config_path: Path) -> None:
     """普通 SDK 和配置读取没有生成凭证或配置文件的副作用。"""
     assert load_config().config.doclib.auth.token is None

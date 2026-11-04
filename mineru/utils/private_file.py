@@ -186,6 +186,9 @@ def _protect_windows_file(path: Path, *, create: bool = False) -> int | None:
                 raise ctypes.WinError(ctypes.get_last_error())
             if sid_string(owner.value) not in trusted:
                 raise PermissionError("Credential configuration must have a trusted owner.")
+        # OWNER RIGHTS 代表已验证可信的目录所有者；Python 的 mkdir(mode=0o700) 会使用该 SID。
+        # 仅将它用于目录 ACE 校验，不把它本身当作可信的文件或目录所有者。
+        trusted_writers = trusted | {"S-1-3-4"}
         parent_dacl = dacl_pointer(parent)
         count = ctypes.c_ushort.from_address(parent_dacl + 4).value
         ace = parent_dacl + 8
@@ -196,7 +199,7 @@ def _protect_windows_file(path: Path, *, create: bool = False) -> int | None:
             # 忽略仅继承的 ACE 和拒绝条目；未知的允许条目按不安全处理。
             if not flags & 0x08 and ace_type != 1:
                 mask = ctypes.c_uint32.from_address(ace + 4).value
-                if mask & 0x500D0156 and (ace_type != 0 or sid_string(ace + 8) not in trusted):
+                if mask & 0x500D0156 and (ace_type != 0 or sid_string(ace + 8) not in trusted_writers):
                     raise PermissionError("Credential configuration directory must not be writable by other users.")
             ace += size
         expected = f"D:P(A;;FA;;;{sid_text.value})(A;;FA;;;SY)"
