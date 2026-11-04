@@ -3,6 +3,8 @@
 > 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
 
 状态: Accepted，已实现
+认证与 endpoint 升级说明: “本地 TCP 不实现 token”及旧 endpoint 连接策略已由
+[ADR-0035: Doclib 持久本机凭证](0035-doclib-persistent-token.md) 替代。
 日期: 2026-06-22
 相关文档: ../architecture.md, ../config.md, ../cli/mineru-server.md, ../sdk/doclib-client.md
 

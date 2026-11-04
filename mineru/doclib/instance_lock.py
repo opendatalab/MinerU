@@ -9,7 +9,7 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 
 from ..config import _mineru_home
-from .endpoint import ENDPOINT_VERSION, default_endpoint_path, read_endpoint_file
+from .endpoint import default_endpoint_path, read_endpoint_file
 
 DOCLIB_LOCK_FILENAME = "doclib.lock"
 
@@ -23,7 +23,7 @@ def build_doclib_home_owned_message() -> str:
     """Build the user-facing ownership message from current diagnostics."""
     home = default_doclib_lock_path().parent
     endpoint = read_endpoint_file(default_endpoint_path())
-    pid = endpoint.pid if endpoint is not None and endpoint.version == ENDPOINT_VERSION else None
+    pid = endpoint.pid if endpoint is not None else None
     pid_detail = f" (reported PID {pid})" if pid is not None else ""
     return f"MinerU home [{home}] is currently owned by another doclib server process{pid_detail}."
 

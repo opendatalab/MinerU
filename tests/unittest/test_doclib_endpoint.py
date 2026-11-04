@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import TEST_DOCLIB_TOKEN
+
 import json
 from pathlib import Path
 
@@ -155,7 +157,7 @@ def test_doclib_client_explicit_transport_bypasses_discovery(
     monkeypatch.setattr(client_module, "read_endpoint_file", lambda path: pytest.fail(f"unexpected discovery read: {path}"))
     monkeypatch.setattr(client_module, "_client_for_transport", _record_transport)
 
-    DoclibClient(endpoint_path=tmp_path / "missing.json", **override)
+    DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=tmp_path / "missing.json", **override)
 
     assert transports == [expected_transport]
 
@@ -188,7 +190,7 @@ def test_doclib_client_discovers_uds_then_tcp(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr(client_module.httpx, "HTTPTransport", _Transport)
     monkeypatch.setattr(client_module.httpx, "Client", _Client)
 
-    client = DoclibClient(endpoint_path=endpoint, timeout=5)
+    client = DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint, timeout=5)
     client.close()
 
     assert calls[0]["base_url"] == DOCLIB_UDS_BASE_URL
@@ -219,7 +221,7 @@ def test_doclib_client_does_not_infer_transports_without_valid_endpoint(
 
     monkeypatch.setattr(client_module, "_client_for_transport", _reject_inferred_transport)
 
-    client = DoclibClient(endpoint_path=endpoint)
+    client = DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint)
 
     assert inferred_transports == []
     with pytest.raises(ServerNotRunningError):
@@ -237,7 +239,7 @@ def test_doclib_client_lazily_validates_discovered_server_id(monkeypatch: pytest
     fake_client = _FakeClient("expected-server", pid=456)
     monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
 
-    client = DoclibClient(endpoint_path=endpoint)
+    client = DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint)
 
     assert fake_client.paths == []
     status = client.get_server_status()
@@ -245,47 +247,31 @@ def test_doclib_client_lazily_validates_discovered_server_id(monkeypatch: pytest
     assert fake_client.paths == ["/api/v1/server/status", "/api/v1/server/status"]
 
 
-def test_doclib_client_validates_legacy_endpoint_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [1, 2])
+def test_doclib_client_rejects_unauthenticated_legacy_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, version: int
+) -> None:
+    """旧 endpoint 只保留诊断读取，客户端不得向旧服务发送凭证或匿名请求。"""
     endpoint = tmp_path / "doclib.endpoint.json"
     endpoint.write_text(
         json.dumps(
             {
-                "version": 1,
+                "version": version,
                 "pid": 123,
+                "server_id": "legacy-server",
                 "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}],
             }
         ),
         encoding="utf-8",
     )
-    fake_client = _FakeClient("", pid=123)
-    monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
-
-    status = DoclibClient(endpoint_path=endpoint).get_server_status()
-
-    assert status.pid == 123
-    assert fake_client.paths == ["/api/v1/server/status", "/api/v1/server/status"]
-
-
-def test_doclib_client_rejects_legacy_endpoint_pid_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    endpoint = tmp_path / "doclib.endpoint.json"
-    endpoint.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "pid": 123,
-                "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    fake_client = _FakeClient("", pid=456)
+    fake_client = _FakeClient("legacy-server", pid=123)
     monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
 
     with pytest.raises(MineruError) as exc_info:
-        DoclibClient(endpoint_path=endpoint).get_server_status()
+        DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint).get_server_status()
 
-    assert exc_info.value.code == "server_instance_mismatch"
-    assert fake_client.paths == ["/api/v1/server/status"]
+    assert exc_info.value.code == "doclib_upgrade_required"
+    assert fake_client.paths == []
 
 
 def test_doclib_client_rejects_discovered_server_id_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -299,7 +285,7 @@ def test_doclib_client_rejects_discovered_server_id_mismatch(monkeypatch: pytest
     fake_client = _FakeClient("other-server")
     monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
 
-    client = DoclibClient(endpoint_path=endpoint)
+    client = DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint)
 
     with pytest.raises(MineruError) as exc_info:
         client.get_server_status()
@@ -331,7 +317,7 @@ def test_doclib_client_tries_next_transport_after_server_id_mismatch(monkeypatch
 
     monkeypatch.setattr(client_module, "_client_for_transport", _fake_client_for_transport)
 
-    status = DoclibClient(endpoint_path=endpoint).get_server_status()
+    status = DoclibClient(token=TEST_DOCLIB_TOKEN, endpoint_path=endpoint).get_server_status()
 
     assert status.server_id == "expected-server"
     assert fake_clients[first_url].paths == ["/api/v1/server/status"]

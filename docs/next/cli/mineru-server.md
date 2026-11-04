@@ -26,6 +26,7 @@
 启动时：
 
 1. 获取 `$MINERU_HOME/doclib.lock`，确保当前 home 只有一个 doclib owner。
+   在配置锁内初始化或复用持久的 `doclib.auth.token`，验证凭证文件权限后才继续启动。
 2. 清理 stale endpoint 和 UDS socket。
 3. 写入包含当前 PID、`server_id` 和空 transports 的启动阶段 endpoint。
 4. 绑定 UDS/TCP listener，并用实际 transports 更新 endpoint。
@@ -38,6 +39,11 @@
 默认情况下，UDS 可用时使用 `$MINERU_HOME/doclib.sock`；UDS 不可用时自动启用 TCP loopback fallback。server 启动成功后会写入 `$MINERU_HOME/doclib.endpoint.json`，供 CLI / SDK 发现实际 endpoint。
 
 如需覆盖，可设置 `doclib.uds.*` / `doclib.tcp.*` 或对应环境变量，例如 `MINERU_DOCLIB_UDS_PATH`、`MINERU_DOCLIB_TCP_PORT`。
+
+CLI 自动读取当前配置中的本机 token，状态和停止操作同样需要认证。认证失败保留
+`invalid_doclib_token`，不能误报为服务未运行；旧 endpoint 返回 `doclib_upgrade_required`。
+首次升级到认证版本前先用旧 CLI 停止旧服务；更换 token 时先 stop，再修改配置，最后 start。
+token 不随普通重启变化，详见 [本机认证与二次开发](../sdk/doclib-client.md#本机认证与二次开发)。
 
 关闭时：
 

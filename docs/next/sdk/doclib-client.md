@@ -40,6 +40,7 @@ class DoclibClient:
         endpoint_path: str | Path | None = None,
         socket_path: str | Path | None = None,
         base_url: str | None = None,
+        token: str | None = None,
         timeout: int = 60,
         api_prefix: str = "/api/v1",
     ) -> None: ...
@@ -51,9 +52,11 @@ class DoclibClient:
 - 默认通过 `$MINERU_HOME/doclib.endpoint.json` 发现 doclib endpoint。
 - 默认发现不从启动配置推导 UDS 或 TCP；endpoint 文件不存在或无效时，方法调用抛出 `ServerNotRunningError`。
 - 默认发现会在首次请求前校验 endpoint 与 `/server/status` 的 `server_id`；不匹配的 transport 不会承载业务请求。
-- version 1 endpoint 仅用于升级迁移，通过 endpoint/status PID 对应关系识别旧 server；version 2 的 PID 不参与身份判断。
+- 当前 endpoint 为 version 3；旧 version 1/2 可用于诊断，但 SDK 拒绝连接并返回 `doclib_upgrade_required`，不会降级为匿名请求。
 - `socket_path` 表示显式 UDS endpoint；`base_url` 只表示显式 TCP endpoint，例如 `http://127.0.0.1:15980`。
 - 显式 `socket_path` / `base_url` 代表调用方明确选择的 server，不执行 endpoint `server_id` 校验。
+- 默认发现从当前启动配置读取 `doclib.auth.token`，不使用可能早于首次服务启动的进程缓存；也可显式传入 `token`。
+- 显式 `socket_path` / `base_url` 必须同时提供 `token`，不会自动将默认配置的凭证发送给其他目标。
 - `socket_path` 和 `base_url` 不能同时传入。
 - 无法连接任何候选 endpoint 时，方法调用抛出 `ServerNotRunningError`。
 - client 提供 `close()`，调用方在 finally 中释放；当前不提供上下文管理器。
@@ -66,6 +69,44 @@ from mineru.doclib.client import DoclibClient
 client = DoclibClient()
 status = client.get_server_status()
 ```
+
+## 本机认证与二次开发
+
+首次正常启动服务会生成随机凭证并写入 `$MINERU_HOME/config.yaml` 的 `doclib.auth.token`；
+`MINERU_CONFIG` 可指定其他配置文件。重启和升级复用已有凭证。`MINERU_DOCLIB_AUTH_TOKEN`
+可覆盖文件值，环境注入的凭证不会回写文件。自定义 token 至少包含 32 个 ASCII Bearer 字符。
+
+UDS 与 TCP 的全部 HTTP 接口都要求 `Authorization: Bearer <token>`，包括 status、shutdown、
+读取、扫描、配置、导出和 OpenAPI 文档。缺失或错误凭证返回 HTTP 401、`invalid_doclib_token`，
+不会执行对应业务操作。token 不写入 endpoint、URL、状态或日志；启动配置的 repr/JSON 完全隐藏正文。
+
+直接使用 TCP 的集成程序可在受保护的配置中保存此稳定凭证：
+
+```python
+import os
+
+from mineru.doclib.client import DoclibClient
+
+client = DoclibClient(
+    base_url="http://127.0.0.1:15980",  # 实际端口以 endpoint discovery 为准
+    token=os.environ["DOCLIB_TOKEN"],
+)
+try:
+    status = client.get_server_status()
+finally:
+    client.close()
+```
+
+嵌入式 `create_app(cfg)` / `DoclibServer(..., config=cfg)` 需要宿主显式提供 `cfg.doclib.auth.token`，
+不会为显式配置读取默认文件或生成临时 token。标准进程入口和无参数 `create_app()` 负责持久初始化。
+
+更换凭证的顺序是：使用旧凭证 `mineru server stop`，修改配置或删除 `doclib.auth.token`，再
+`mineru server start`。删除字段后会生成新凭证；其他集成程序需要同步更新。已有 SDK 对象保存构造时的
+凭证，轮换后应重新构造。首次升级到认证版本前，应先用旧版本 CLI 停止旧服务。
+
+凭证授予当前文档库的完整访问权限，共用凭证的程序属于同一个可信范围。配置文件使用 POSIX `0600`
+或 Windows 受保护 DACL，普通其他账户不可读取；父目录也不能允许其他普通账户替换文件。权限设置或
+验证失败时拒绝启动。建议继续使用 loopback，不将本机文档库直接暴露给不可信网络。
 
 ## Parse 方法
 

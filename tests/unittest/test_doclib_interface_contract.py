@@ -1,3 +1,4 @@
+from doclib_test_utils import authenticated_doclib_config
 import asyncio
 import inspect
 from pathlib import Path
@@ -193,7 +194,7 @@ def _iter_effective_routes(app: Any) -> Any:
 def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     cfg = PatchedConfig(doclib={"log": {"dir": str(tmp_path / "logs")}})
 
-    app = create_app(cfg)
+    app = create_app(authenticated_doclib_config(cfg))
     route_names = {getattr(route, "name", "") for route in _iter_effective_routes(app)}
 
     for method_name in AsyncDoclibInterface.__abstractmethods__:

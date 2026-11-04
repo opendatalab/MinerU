@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, authenticated_doclib_config
+
 from mineru.doclib.parse_server_state import ParseServerHealth
 
 from mineru.doclib.services.parse_queue_svc import ParseQueueService
@@ -71,8 +73,12 @@ def test_doclib_instances_share_ingest_only_with_their_own_components(tmp_path: 
         PatchedConfig(doclib={"data_dir": str(tmp_path / name), "sqlite": {"path": str(tmp_path / name / "db.sqlite")}})
         for name in ("first", "second")
     ]
-    with TestClient(doclib_app.create_app(configurations[0])) as first:
-        with TestClient(doclib_app.create_app(configurations[1])) as second:
+    with TestClient(
+        doclib_app.create_app(authenticated_doclib_config(configurations[0])), headers=DOCLIB_AUTH_HEADERS
+    ) as first:
+        with TestClient(
+            doclib_app.create_app(authenticated_doclib_config(configurations[1])), headers=DOCLIB_AUTH_HEADERS
+        ) as second:
             left, right = first.app.state.doclib_state, second.app.state.doclib_state
             for state in (left, right):
                 assert state.ingest_svc is state.parse_queue_svc.ingest_svc

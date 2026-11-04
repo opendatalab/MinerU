@@ -29,6 +29,8 @@ API-backed parser 具有独立的业务错误与传输错误路径；不要只�
 |---|---|
 | `page_range_invalid`、格式或参数错误 | 修正请求，不原样重试 |
 | `invalid_api_key` | 检查目标服务及凭据；不可把推理服务 Key 用于 Tasks |
+| Doclib `invalid_doclib_token` | 检查 `doclib.auth.token` 或显式客户端 token；HTTP 401，无匿名降级 |
+| `doclib_upgrade_required` | 先用旧版本 CLI 停止旧 Doclib，再启动新版本服务 |
 | `quality_tier_unavailable` | 核对目标服务能力及显式档位，不能静默改档 |
 | CLI `parse_wait_timeout` | 解析继续执行；使用同一文档／任务引用查询 |
 | Tasks 创建结果未知 | 不盲目重放；已有 ID 时查询原任务 |

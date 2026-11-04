@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import SecretStr
+
 from mineru.config import Config, LogConfig, ManagedParseServerConfig, get_config
 from mineru.doclib.background.parse_server_health import ParseServerHealthCheck
 from mineru.doclib.core.db import DatabaseManager
@@ -17,6 +19,16 @@ from mineru.doclib.services.ingest_svc import IngestService
 from mineru.doclib.services.parse_execution_svc import ParseExecutionService
 from mineru.doclib.services.parse_queue_svc import ParseQueueService
 from mineru.doclib.telemetry import TelemetryService
+
+TEST_DOCLIB_TOKEN = "doclib-test-token-with-at-least-32-characters"
+DOCLIB_AUTH_HEADERS = {"Authorization": f"Bearer {TEST_DOCLIB_TOKEN}"}
+
+
+def authenticated_doclib_config(config: Config) -> Config:
+    """为显式组装的测试服务提供固定凭证，不读取或修改开发者的配置文件。"""
+    config = config.model_copy(deep=True)
+    config.doclib.auth.token = SecretStr(TEST_DOCLIB_TOKEN)
+    return config
 
 
 @dataclass
@@ -71,7 +83,7 @@ def create_doclib_server(
     return DoclibServer(
         state,
         title=title,
-        config=(get_config() if config is None else config).model_copy(deep=True),
+        config=authenticated_doclib_config(get_config() if config is None else config),
         health=ParseServerHealth() if health is None else health,
     )
 

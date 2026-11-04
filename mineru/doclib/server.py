@@ -14,7 +14,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from ..config import Config
+from ..config import Config, validate_doclib_token
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..model.download import verify_model_repo
@@ -35,6 +35,7 @@ from ..types import (
     Tier,
 )
 from ..version import __version__
+from .auth import DoclibAuthMiddleware
 from .background.parse_server_health import get_managed_parse_server_tier
 from .parse_server_state import ParseServerHealth
 from .base import AsyncDoclibInterface
@@ -161,12 +162,16 @@ class DoclibServer(AsyncDoclibInterface):
         self.config = config
         self.health = health
         self.state = state
+        if config.doclib.auth.token is None:
+            raise ValueError("DoclibServer requires doclib.auth.token; use the standard server startup to generate it.")
+        validate_doclib_token(config.doclib.auth.token.get_secret_value())
         self.app = FastAPI(
             title=title,
             docs_url="/api/docs",
             redoc_url="/api/redoc",
             openapi_url="/api/openapi.json",
         )
+        self.app.add_middleware(DoclibAuthMiddleware, token=config.doclib.auth.token)
         self.app.add_exception_handler(MineruError, _mineru_error_handler)
         self.app.add_exception_handler(Exception, _unexpected_error_handler)
         self.app.include_router(self._build_router())

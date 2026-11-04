@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger as loguru_logger
 
-from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, get_config, get_config_source
+from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, get_config_source, load_doclib_server_config
 from ..errors import MineruError, error_response, http_status_for
 from ..utils.async_utils import drain_future
 from ..utils.logger import configure_global_log_level
@@ -44,7 +44,7 @@ logger = logging.getLogger("mineru.doclib.app")
 
 def create_app(cfg: Config | None = None) -> FastAPI:
     """使用独立启动配置快照创建应用，显式配置不触发进程默认配置加载。"""
-    cfg = (get_config() if cfg is None else cfg).model_copy(deep=True)
+    cfg = (load_doclib_server_config().config if cfg is None else cfg).model_copy(deep=True)
     _setup_logging(cfg.doclib.log, global_level=cfg.log.level)
     state = AppState()
     state.config = cfg
@@ -510,7 +510,7 @@ def main() -> None:
     configure_global_log_level()
     try:
         with doclib_home_lock():
-            cfg = get_config()
+            cfg = load_doclib_server_config().config
             log_source = get_config_source("doclib.log.level" if cfg.doclib.log.level is not None else "log.level")
             _run_server(cfg, log_source=log_source)
     except DoclibLockUnavailable:

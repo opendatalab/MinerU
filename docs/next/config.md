@@ -44,6 +44,14 @@ loaded = load_config()  # 按当前环境独立装载，不替换进程默认配
 依赖 `MINERU_HOME` 的默认路径在每次构造对象时解析。Doclib 的
 `create_app(cfg)` 会保存传入配置的独立副本，并使用其中的全局日志级别补全服务日志设置。
 
+### Doclib 本机凭证
+
+`doclib.auth.token` 是启动配置。标准服务首次启动时在配置锁内生成并写入实际配置文件，后续启动复用；
+`MINERU_DOCLIB_AUTH_TOKEN` 可以覆盖文件值且不回写。普通 `load_config()` / `get_config()` 不生成凭证。
+token 以 `SecretStr` 保存，repr/JSON 完全脱敏；不得放入运行时 `/configs` 或诊断输出。
+显式 `create_app(cfg)` 需要宿主提供 token。轮换前先停止服务，修改或删除该字段后再启动。
+文件权限、SDK 自动读取及直接 TCP 调用见 [Doclib SDK 本机认证](sdk/doclib-client.md#本机认证与二次开发)。
+
 ### 远程 VLM {#remote-vlm}
 
 `model.vlm` 是所有本地解析入口的 VLM 默认配置，适用于 API server、Python

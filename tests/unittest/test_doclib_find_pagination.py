@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from doclib_test_utils import create_doclib_server
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, TEST_DOCLIB_TOKEN, create_doclib_server
 
 from mineru.doclib.services.ingest_svc import FileRefreshResult
 
@@ -175,7 +175,9 @@ def test_find_http_exposes_offset_and_validates_pagination(tmp_path: Path) -> No
         try:
             parameters = server.app.openapi()["paths"]["/api/v1/find"]["get"]["parameters"]
             assert next(item for item in parameters if item["name"] == "offset")["schema"]["default"] == 0
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app), base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=server.app), base_url="http://test", headers=DOCLIB_AUTH_HEADERS
+            ) as client:
                 response = await client.get("/api/v1/find", params={"query": "report", "limit": 2, "offset": 2})
                 assert response.status_code == 200
                 assert response.json()["total"] == 4
@@ -201,7 +203,7 @@ def test_find_sdk_transmits_offset(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr(DoclibClient, "_send_request", send_request)
-    client = DoclibClient(base_url="http://test")
+    client = DoclibClient(base_url="http://test", token=TEST_DOCLIB_TOKEN)
     try:
         assert client.find("report", ext="pdf", limit=10, offset=200).total == 601
         assert calls == [{"query": "report", "ext": "pdf", "limit": 10, "offset": 200}]

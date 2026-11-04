@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import authenticated_doclib_config
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -71,7 +73,7 @@ def test_failed_startup_releases_managed_process_and_discovery(
         """在同一事件循环内检查清理，不依赖测试框架退出时兜底取消。"""
         cfg = _configuration(tmp_path)
         await _enable_managed(cfg)
-        app = doclib_app.create_app(cfg)
+        app = doclib_app.create_app(authenticated_doclib_config(cfg))
         state = app.state.doclib_state
         state.discovery_cleanup = lambda: events.append("discovery")
         with pytest.raises(RuntimeError, match="watch setup failed"):
@@ -131,7 +133,7 @@ def test_shutdown_does_not_restart_managed_process_after_inflight_probe(
         monkeypatch.setattr(probes, "stop_managed_parse_server", stop)
         monkeypatch.setattr(probes.ParseServerHealthCheck, "_probe", probe)
         monkeypatch.setattr(doclib_app, "_create_background_task", schedule)
-        app = doclib_app.create_app(cfg)
+        app = doclib_app.create_app(authenticated_doclib_config(cfg))
         manager = app.router.lifespan_context(app)
         await manager.__aenter__()
         state = app.state.doclib_state
@@ -168,7 +170,7 @@ def test_component_stop_failure_does_not_skip_remaining_resources(tmp_path: Path
 
     async def scenario() -> None:
         """对实际组件实例注入停止错误，观察后续资源仍被处理。"""
-        app = doclib_app.create_app(_configuration(tmp_path))
+        app = doclib_app.create_app(authenticated_doclib_config(_configuration(tmp_path)))
         manager = app.router.lifespan_context(app)
         await manager.__aenter__()
         state = app.state.doclib_state
@@ -208,7 +210,7 @@ def test_teardown_cancellation_waits_for_cleanup(tmp_path: Path, monkeypatch: py
 
     async def scenario() -> None:
         """挂起一个关闭阶段并取消外部等待者，检查数据库最终仍关闭。"""
-        app = doclib_app.create_app(_configuration(tmp_path))
+        app = doclib_app.create_app(authenticated_doclib_config(_configuration(tmp_path)))
         manager = app.router.lifespan_context(app)
         await manager.__aenter__()
         state = app.state.doclib_state
