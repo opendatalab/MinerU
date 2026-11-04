@@ -162,6 +162,10 @@ def _server_running() -> bool:
         c = DoclibClient(timeout=3)
         c.get_server_status()
         return True
+    except MineruError as exc:
+        if exc.code in {"invalid_doclib_token", "doclib_upgrade_required"}:
+            raise
+        return False
     except Exception:
         return False
 

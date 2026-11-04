@@ -3,18 +3,19 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from itertools import permutations
-import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
+import numpy as np
 import pytest
 from PIL import Image
 
 from mineru.backend.analysis.pdf.formulas import _build_formula_inputs
 from mineru.backend.analysis.pdf.layout import _build_vl_style_layout_blocks
-
 from mineru.model.layout.pp_doclayout_v2_base import (
     PP_DOCLAYOUT_V2_LABEL_TO_ID,
     PPDocLayoutV2PostProcessor,
@@ -304,3 +305,179 @@ def test_final_filter_removes_text_duplicates_created_by_relabeling(processor: t
     result = processor._apply_layout_post_process(boxes, image_size=(220, 200))
     assert [(box["label"], box["bbox"]) for box in result] == [("text", [0, 150, 100, 165]), ("footnote", [0, 170, 100, 195])]
     assert [box["index"] for box in result] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("input_order", "expected_order"),
+    [
+        (["parent", "leading", "child", "trailing"], ["leading", "parent", "trailing"]),
+        (["leading", "child", "middle", "parent", "trailing"], ["leading", "parent", "middle", "trailing"]),
+        (
+            ["parent", "leading", "child", "middle", "second_child", "trailing"],
+            ["leading", "parent", "middle", "trailing"],
+        ),
+    ],
+)
+def test_image_absorption_uses_earliest_child_position(
+    processor: type[PPDocLayoutV2PostProcessor], input_order: list[str], expected_order: list[str]
+) -> None:
+    """大图无论位于子图之前或之后，都取最早被吞并子图的位置且不改变其他块顺序。"""
+    boxes = {
+        "parent": _layout_box("image", (0, 0, 100, 100), index=0),
+        "child": _layout_box("image", (10, 10, 40, 40), index=0),
+        "second_child": _layout_box("image", (50, 50, 80, 80), index=0),
+        "leading": _layout_box("text", (200, 0, 240, 20), index=0),
+        "middle": _layout_box("text", (200, 30, 240, 50), index=0),
+        "trailing": _layout_box("text", (200, 60, 240, 80), index=0),
+    }
+    source = [dict(boxes[name], index=index) for index, name in enumerate(input_order, start=1)]
+    original = deepcopy(source)
+
+    result = processor._apply_paddlex_filter_boxes(source, drop_inline_formula=False)
+
+    assert result == [dict(boxes[name], index=index) for index, name in enumerate(expected_order, start=1)]
+    assert source == original
+
+
+def test_image_absorption_propagates_inherited_child_position(processor: type[PPDocLayoutV2PostProcessor]) -> None:
+    """中图先吞小图再被大图吞并时，传递小图位置而非中图原先抢占的位置。"""
+    middle = _layout_box("image", (10, 10, 60, 60), index=1)
+    leading = _layout_box("text", (200, 0, 240, 20), index=2)
+    child = _layout_box("image", (20, 20, 40, 40), index=3)
+    parent = _layout_box("image", (0, 0, 100, 100), index=4)
+    trailing = _layout_box("text", (200, 30, 240, 50), index=5)
+
+    result = processor._apply_paddlex_filter_boxes([middle, leading, child, parent, trailing], drop_inline_formula=False)
+
+    assert result == [dict(leading, index=1), dict(parent, index=2), dict(trailing, index=3)]
+
+
+def test_image_absorption_positions_independent_groups(processor: type[PPDocLayoutV2PostProcessor]) -> None:
+    """多个图组各自继承其子图位置，图组间正文保持原有相对顺序。"""
+    left = _layout_box("image", (0, 0, 100, 100), index=1)
+    right = _layout_box("image", (200, 0, 300, 100), index=2)
+    leading = _layout_box("text", (400, 0, 440, 20), index=3)
+    right_child = _layout_box("image", (210, 10, 240, 40), index=4)
+    between = _layout_box("text", (400, 30, 440, 50), index=5)
+    left_child = _layout_box("image", (10, 10, 40, 40), index=6)
+    trailing = _layout_box("text", (400, 60, 440, 80), index=7)
+
+    result = processor._apply_paddlex_filter_boxes(
+        [left, right, leading, right_child, between, left_child, trailing], drop_inline_formula=False
+    )
+
+    assert result == [dict(box, index=index) for index, box in enumerate([leading, right, between, left, trailing], start=1)]
+
+
+@pytest.mark.parametrize(("child_x", "absorbed"), [(72, False), (71, True)])
+def test_image_position_inheritance_preserves_existing_overlap_rule(
+    processor: type[PPDocLayoutV2PostProcessor], child_x: int, absorbed: bool
+) -> None:
+    """继续使用大于 0.7 的既有重叠判定，既不降低门槛也不额外要求八成或完全包含。"""
+    parent = _layout_box("image", (0, 0, 100, 100), index=1)
+    text = _layout_box("text", (200, 0, 240, 20), index=2)
+    child = _layout_box("image", (child_x, 10, child_x + 40, 50), index=3)
+
+    result = processor._apply_paddlex_filter_boxes([parent, text, child], drop_inline_formula=False)
+
+    expected = [text, parent] if absorbed else [parent, text, child]
+    assert result == [dict(box, index=index) for index, box in enumerate(expected, start=1)]
+
+
+def test_equal_area_image_deduplication_does_not_inherit_position(processor: type[PPDocLayoutV2PostProcessor]) -> None:
+    """等面积图片重复框沿用现有首框选择，不能把去重变成吞并定位。"""
+    parent = _layout_box("image", (0, 0, 100, 100), index=1, score=0.8)
+    text = _layout_box("text", (200, 0, 240, 20), index=2)
+    duplicate = _layout_box("image", (0, 0, 100, 100), index=3, score=0.9)
+
+    result = processor._apply_paddlex_filter_boxes([parent, text, duplicate], drop_inline_formula=False)
+
+    assert result == [parent, text]
+
+
+@pytest.mark.parametrize("label", ["text", "abstract", "table", "chart", "seal", "display_formula"])
+def test_non_image_absorption_keeps_parent_position(processor: type[PPDocLayoutV2PostProcessor], label: str) -> None:
+    """其他类别仍按原规则删除小框并保留大框自身位置，不应用图片位置继承。"""
+    parent = _layout_box(label, (0, 0, 100, 100), index=1)
+    text = _layout_box("text", (200, 0, 240, 20), index=2)
+    child = _layout_box(label, (10, 10, 40, 40), index=3)
+
+    result = processor._apply_paddlex_filter_boxes([parent, text, child], drop_inline_formula=False)
+
+    assert result == [parent, text]
+
+
+@pytest.mark.parametrize("backend", ["onnx", pytest.param("torch", marks=pytest.mark.torch)])
+@pytest.mark.parametrize("use_filter", [False, True])
+def test_layout_batch_respects_image_absorption_filter_switch(
+    monkeypatch: pytest.MonkeyPatch, backend: str, use_filter: bool
+) -> None:
+    """通过真实批量入口验证关闭过滤时不吞并也不重定位，启用时才继承子图位置。"""
+    raw = [
+        _layout_box("image", (0, 40, 100, 100), index=1),
+        _layout_box("text", (0, 0, 100, 20), index=2),
+        _layout_box("image", (10, 50, 30, 70), index=3),
+    ]
+    if backend == "torch":
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("transformers", minversion="5.10.1")
+        from mineru.model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+
+        model = object.__new__(PPDocLayoutV2LayoutModel)
+        model.device = "cpu"
+        model.model = Mock()
+        pixels = torch.zeros((3, 16, 16))
+        monkeypatch.setattr(model, "_post_process_object_detection", Mock(return_value=[{}]))
+    else:
+        pytest.importorskip("onnxruntime")
+        from mineru.model.layout.pp_doclayout_v2_onnx import PPDocLayoutV2LayoutModelONNX
+
+        model = object.__new__(PPDocLayoutV2LayoutModelONNX)
+        pixels = np.zeros((3, 16, 16), dtype=np.float32)
+        monkeypatch.setattr(model, "_run_session", Mock(return_value=[{}]))
+    model.use_paddlex_filter_boxes = True
+    monkeypatch.setattr(model, "_preprocess_single_image", Mock(return_value=(pixels, (200, 200))))
+    monkeypatch.setattr(model, "_parse_prediction", Mock(return_value=deepcopy(raw)))
+
+    with Image.new("RGB", (200, 200)) as image:
+        result = model.batch_predict([image], use_paddlex_filter_boxes=use_filter)[0]
+
+    expected = [dict(raw[1], index=1), dict(raw[0], index=2)] if use_filter else raw
+    assert result == expected
+
+
+@pytest.mark.parametrize("detection_backend", ["torch", "onnx"])
+def test_demo2_image_absorption_restores_order_and_common_block_inputs(
+    processor: type[PPDocLayoutV2PostProcessor], detection_backend: str
+) -> None:
+    """复放 demo2 第四页真实框，整图移到正文后且其余 28 块及共用布局输入保持稳定。"""
+    fixture = json.loads((Path(__file__).parents[1] / "fixtures/pp_doclayoutv2/demo2_page4.json").read_text())
+    page = fixture["backends"][detection_backend]
+    raw = [
+        _layout_box(label, tuple(bbox), index=index, score=score)
+        for index, (label, score, bbox) in enumerate(page["raw_rows"], start=1)
+    ]
+    original = deepcopy(raw)
+
+    processed = processor._apply_layout_post_process(
+        processor._apply_paddlex_filter_boxes(raw, drop_inline_formula=False), image_size=tuple(fixture["image_size"])
+    )
+
+    expected = [
+        dict(raw[source_index - 1], index=index) for index, source_index in enumerate(page["expected_source_indices"], start=1)
+    ]
+    threshold_only = [
+        dict(raw[source_index - 1], index=index)
+        for index, source_index in enumerate(page["threshold_only_source_indices"], start=1)
+    ]
+    assert raw == original
+    assert processed == expected
+    assert len(processed) == 30
+    assert processed[2:] == threshold_only[2:]
+    assert [box["label"] for box in processed[:2]] == ["text", "image"]
+    assert sum(box["label"] == "image" for box in processed) == 1
+    assert sum(box["label"] == "chart" and box["bbox"][1] < 1000 for box in processed) == 3
+    with Image.new("RGB", tuple(reversed(fixture["image_size"]))) as image:
+        blocks = _build_vl_style_layout_blocks([processed], [image])[0]
+    assert [block["type"] for block in blocks[:2]] == [BlockType.TEXT, BlockType.IMAGE]
+    assert blocks[1]["bbox"] == [0.082, 0.127, 0.478, 0.612]

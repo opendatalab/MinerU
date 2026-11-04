@@ -1,3 +1,4 @@
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, authenticated_doclib_config
 import asyncio
 import logging
 import subprocess
@@ -121,7 +122,7 @@ def test_config_set_rejects_invalid_known_config_values(key: str, value: str, mo
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.put(f"/api/v1/configs/{key}", json={"value": value})
         config_response = client.get(f"/api/v1/configs/{key}")
 
@@ -151,7 +152,7 @@ def test_config_set_managed_tier_rejects_missing_models(
     monkeypatch.setattr(model_download.get_config().model.vlm, "server_url", "")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": tier})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
@@ -177,7 +178,7 @@ def test_config_set_managed_advanced_accepts_ready_standard_models(monkeypatch: 
     monkeypatch.setattr(model_download.get_config().model.vlm, "server_url", "")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "advanced"})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
@@ -203,7 +204,7 @@ def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
     monkeypatch.setattr(model_download.get_config().model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.put("/api/v1/configs/parse_server.local.mode", json={"value": "managed"})
         config_response = client.get("/api/v1/configs/parse_server.local.mode")
 
@@ -327,9 +328,9 @@ def test_explicit_app_configuration_is_copied_without_loading_defaults(tmp_path:
         """显式配置路径不得再次装载进程默认配置。"""
         pytest.fail("explicit app configuration must not load defaults")
 
-    monkeypatch.setattr(doclib_app, "get_config", reject_default_configuration)
+    monkeypatch.setattr(doclib_app, "load_doclib_server_config", reject_default_configuration)
     try:
-        app = doclib_app.create_app(cfg)
+        app = doclib_app.create_app(authenticated_doclib_config(cfg))
         snapshot = app.state.doclib_state.config
         assert snapshot is not cfg
         assert logging.getLogger("mineru").level == logging.DEBUG
@@ -480,7 +481,7 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
@@ -522,11 +523,11 @@ def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypat
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
 
-    app = doclib_app.create_app(cfg)
+    app = doclib_app.create_app(authenticated_doclib_config(cfg))
 
     assert app.router.on_startup == []
     assert app.router.on_shutdown == []
-    with TestClient(app) as client:
+    with TestClient(app, headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
@@ -599,7 +600,7 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
@@ -653,7 +654,7 @@ def test_managed_parse_server_startup_ignores_invalid_tier_override(monkeypatch,
         }
     )
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
         status_response = client.get("/api/v1/server/status")
 
@@ -718,7 +719,7 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         state = client.app.state.doclib_state
         assert not hasattr(state, "parse_server_proc")
         assert client.get("/api/v1/server/status").status_code == 200
@@ -753,7 +754,7 @@ def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
@@ -779,7 +780,7 @@ def test_telemetry_observation_route_uses_context_headers(monkeypatch, tmp_path)
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
 
-    with TestClient(doclib_app.create_app(cfg)) as client:
+    with TestClient(doclib_app.create_app(authenticated_doclib_config(cfg)), headers=DOCLIB_AUTH_HEADERS) as client:
         response = client.post(
             "/api/v1/observations",
             headers={"X-MinerU-Telemetry-Source": "cli", "X-MinerU-Telemetry-Caller": "agent"},

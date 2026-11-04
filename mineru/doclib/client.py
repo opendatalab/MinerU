@@ -10,12 +10,14 @@ import httpx
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
+from ..config import load_config, validate_doclib_token
 from ..errors import MineruError, ServerNotRunningError
 from ..parser.page_range import normalize_page_range_input
 from ..types import Tier
 from .base import DoclibInterface
 from .endpoint import (
     DOCLIB_UDS_BASE_URL,
+    ENDPOINT_VERSION,
     EndpointInfo,
     EndpointTransport,
     default_endpoint_path,
@@ -99,11 +101,19 @@ class DoclibClient(DoclibInterface):
         endpoint_path: str | Path | None = None,
         socket_path: str | Path | None = None,
         base_url: str | None = None,
+        token: str | None = None,
         timeout: int = 60,
         api_prefix: str = "/api/v1",
     ) -> None:
+        """默认发现读取本机最新凭证，显式地址要求显式 token，避免向其他服务泄露凭证。"""
         if socket_path is not None and base_url is not None:
             raise ValueError("socket_path and base_url cannot both be provided.")
+        if token is None and (socket_path is not None or base_url is not None):
+            raise ValueError("An explicit token is required with socket_path or base_url.")
+        if token is None:
+            configured = load_config().config.doclib.auth.token
+            token = configured.get_secret_value() if configured is not None else None
+        self._token = validate_doclib_token(token) if token is not None else None
         self._clients, self._expected_endpoint = _build_clients(
             endpoint_path=endpoint_path,
             socket_path=socket_path,
@@ -435,19 +445,30 @@ class DoclibClient(DoclibInterface):
     ) -> httpx.Response:
         if not self._clients:
             raise ServerNotRunningError()
+        if self._expected_endpoint is not None and self._expected_endpoint.version != ENDPOINT_VERSION:
+            raise MineruError(
+                "doclib_upgrade_required",
+                "This Doclib server predates token authentication. Stop it with the previous CLI and start the updated server.",
+            )
+        if self._token is None:
+            raise MineruError(
+                "invalid_doclib_token",
+                "Doclib token is missing. Start the updated server to generate doclib.auth.token, "
+                "or provide an explicit token.",
+            )
         clients = self._ordered_clients()
         instance_mismatch: _ServerInstanceMismatch | None = None
         for client in clients:
             try:
                 self._validate_server_instance(client)
                 if method == "GET":
-                    resp = client.get(path, params=params, headers=self._telemetry_headers())
+                    resp = client.get(path, params=params, headers=self._request_headers())
                 elif method == "POST":
-                    resp = client.post(path, params=params, json=json_data or {}, headers=self._telemetry_headers())
+                    resp = client.post(path, params=params, json=json_data or {}, headers=self._request_headers())
                 elif method == "PUT":
-                    resp = client.put(path, params=params, json=json_data or {}, headers=self._telemetry_headers())
+                    resp = client.put(path, params=params, json=json_data or {}, headers=self._request_headers())
                 elif method == "DELETE":
-                    resp = client.delete(path, params=params, headers=self._telemetry_headers())
+                    resp = client.delete(path, params=params, headers=self._request_headers())
                 else:
                     raise MineruError("internal_error", f"Unsupported client method: {method}")
             except httpx.ConnectError:
@@ -475,7 +496,7 @@ class DoclibClient(DoclibInterface):
         resp = client.get(
             f"{self._api_prefix}/server/status",
             params={},
-            headers=self._telemetry_headers(),
+            headers=self._request_headers(),
         )
         data = _decode_response(resp)
         if expected_endpoint.server_id is not None:
@@ -499,6 +520,10 @@ class DoclibClient(DoclibInterface):
             "X-MinerU-Telemetry-Source": ctx.source,
             "X-MinerU-Telemetry-Caller": ctx.caller,
         }
+
+    def _request_headers(self) -> dict[str, str]:
+        """状态探测和业务请求统一携带认证头，不将凭证放入 URL 或遥测字段。"""
+        return {**self._telemetry_headers(), "Authorization": f"Bearer {self._token}"}
 
     def _calling_route_method(self) -> Callable[..., Any]:
         import inspect

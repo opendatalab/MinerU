@@ -67,6 +67,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "watch_not_found": "invalid_request_error",
     # authentication_error
     "invalid_api_key": "authentication_error",
+    "invalid_doclib_token": "authentication_error",
     # permission_error
     "feature_requires_api_key": "permission_error",
     "list_requires_api_key": "permission_error",
@@ -100,6 +101,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "service_unavailable": "api_error",
     "server_not_running": "api_error",
     "server_instance_mismatch": "api_error",
+    "doclib_upgrade_required": "api_error",
     "server_busy": "api_error",
     "remote_timeout": "api_error",
     "remote_unreachable": "api_error",

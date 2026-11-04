@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from doclib_test_utils import authenticated_doclib_config
+
 import os
 import subprocess
 import sys
@@ -80,7 +82,7 @@ def test_doclib_main_exits_before_startup_when_home_lock_is_held(monkeypatch: py
             "uds": {"path": str(socket_path)},
         }
     )
-    monkeypatch.setattr(doclib_app, "get_config", lambda: cfg)
+    monkeypatch.setattr(doclib_app, "load_doclib_server_config", lambda: cfg)
     monkeypatch.setattr(instance_lock, "default_endpoint_path", lambda: str(endpoint_path))
 
     with instance_lock.doclib_home_lock():
@@ -128,4 +130,4 @@ def test_run_server_writes_owner_endpoint_before_binding_transport(monkeypatch: 
     monkeypatch.setattr(doclib_app, "_bind_tcp_socket", _fail_bind)
 
     with pytest.raises(RuntimeError, match="bind failed"):
-        doclib_app._run_server(cfg)
+        doclib_app._run_server(authenticated_doclib_config(cfg))

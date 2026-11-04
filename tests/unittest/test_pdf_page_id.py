@@ -296,7 +296,7 @@ def test_doclib_client_validates_requests_before_transport(monkeypatch: pytest.M
     from mineru.doclib.client import DoclibClient
     from mineru.doclib.types import DocContentExportRequest, ParseRequest, ParsingRuleRequest
 
-    client = DoclibClient(base_url="http://example.test")
+    client = DoclibClient(base_url="http://example.test", token="doclib-test-token-with-at-least-32-characters")
     transport = Mock()
     monkeypatch.setattr(client, "_request_model", transport)
     actions = (

@@ -20,6 +20,16 @@ mineru server status
 mineru server stop
 ```
 
+Doclib 首次启动自动生成本机 token，保存到实际 `config.yaml` 的 `doclib.auth.token`；
+重启和升级保持不变，CLI 自动读取并携带。`MINERU_DOCLIB_AUTH_TOKEN` 可覆盖文件值。
+UDS/TCP 的全部 HTTP 接口（包括状态、导出和 shutdown）都要求 Bearer token。
+直接集成时使用 `DoclibClient(base_url=..., token=...)` 或 `Authorization: Bearer <token>`；
+实际地址以 `doclib.endpoint.json` 为准。多个程序共用 token 就共享该文档库的完整权限。
+
+首次升级到带认证的版本前，请先用旧 CLI 停止服务。轮换 token 时先停止服务，再修改或删除
+`doclib.auth.token`，最后启动；集成程序同步更新凭证。配置文件需限制其他普通账户访问，
+POSIX 使用 `0600`、Windows 使用受保护 DACL，权限无法落实时服务拒绝启动。
+
 各命令的权威参数以 `mineru <command> --help` 为准。
 
 ## 解析、阅读、导出与等待

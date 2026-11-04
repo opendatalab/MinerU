@@ -33,7 +33,7 @@ class EndpointInfo:
 
 
 DOCLIB_UDS_BASE_URL = "http://mineru"
-ENDPOINT_VERSION = 2
+ENDPOINT_VERSION = 3
 LEGACY_ENDPOINT_VERSION = 1
 
 
@@ -96,7 +96,7 @@ def read_endpoint_file(path: str | os.PathLike[str]) -> EndpointInfo | None:
         if parsed_pid is None:
             return None
         parsed_server_id = None
-    elif version == ENDPOINT_VERSION:
+    elif version in (2, ENDPOINT_VERSION):
         if not isinstance(server_id, str) or not server_id:
             return None
         parsed_server_id = server_id

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from doclib_test_utils import create_doclib_server
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, TEST_DOCLIB_TOKEN, create_doclib_server
 
 import asyncio
 import json
@@ -357,7 +357,9 @@ def test_range_http_continuation_round_trip(tmp_path: Path) -> None:
         """经真实 ASGI 路由执行两页非连续选择的字符续读。"""
         db, server = await _cached_library(tmp_path, page_count=4)
         try:
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app), base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=server.app), base_url="http://test", headers=DOCLIB_AUTH_HEADERS
+            ) as client:
                 params: dict[str, Any] = {"locator": f"{_DOC_REF}/page:1,3", "limit": 4, "no_marker": True}
                 chunks: list[str] = []
                 for _ in range(10):
@@ -392,7 +394,7 @@ def test_read_sdk_transmits_range_after(monkeypatch: pytest.MonkeyPatch) -> None
         return httpx.Response(200, request=httpx.Request(method, f"http://test{path}"), json=response.model_dump(mode="json"))
 
     monkeypatch.setattr(DoclibClient, "_send_request", send_request)
-    client = DoclibClient(base_url="http://test")
+    client = DoclibClient(base_url="http://test", token=TEST_DOCLIB_TOKEN)
     try:
         client.read_content(locator, after=after)
         assert captured[0]["locator"] == locator

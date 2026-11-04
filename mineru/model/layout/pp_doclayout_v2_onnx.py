@@ -52,7 +52,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         intra_op_num_threads: int = 0,
         config_path: str | None = None,
     ) -> None:
-        """加载 CPU 检测图及官方预处理配置，仅将行内公式分类阈值提高到 0.45。"""
+        """加载 CPU 检测图及官方预处理配置，输出筛选独立使用共享准入阈值。"""
         self.device = "cpu"
         self.use_paddlex_filter_boxes = use_paddlex_filter_boxes
         self.model_path = str(weight)
@@ -102,24 +102,14 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
 
     @staticmethod
     def _filter_by_class_thresholds(sample: np.ndarray) -> np.ndarray:
-        """按最高分类分数确定候选有效性，再应用仅提高行内公式门槛的分类阈值。"""
+        """按每行标签的准入阈值独立筛选，保留模型原始坐标及排序键。"""
         if len(sample) == 0:
             return sample
 
         labels = sample[:, 0].astype(np.int64)
         scores = sample[:, 1]
         thresholds = np.asarray(DEFAULT_CLASS_THRESHOLDS, dtype=scores.dtype)[labels]
-        # 同一检测候选的多标签行共享原始坐标和阅读顺序键，须在逐页范围内分组。
-        _, query_ids = np.unique(sample[:, 2:8], axis=0, return_inverse=True)
-        # 与 argmax 的同分规则一致：最高分相同时，较小类别编号作为候选主类别。
-        primary_order = np.lexsort((labels, -scores, query_ids))
-        sorted_query_ids = query_ids[primary_order]
-        first_in_query = np.concatenate(([True], sorted_query_ids[1:] != sorted_query_ids[:-1]))
-        primary_indices = primary_order[first_in_query]
-        valid_queries = np.empty(len(primary_indices), dtype=bool)
-        valid_queries[query_ids[primary_indices]] = scores[primary_indices] >= thresholds[primary_indices]
-        keep = valid_queries[query_ids] & (scores >= thresholds)
-        return sample[keep]
+        return sample[scores >= thresholds]
 
     def _run_session(self, pixel_values: np.ndarray, target_sizes: Sequence[Tuple[int, int]]) -> List[Dict[str, np.ndarray]]:
         """跑一次 ONNX 推理，解析输出为内部 prediction dict。

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, authenticated_doclib_config
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -79,13 +81,13 @@ def test_two_apps_keep_rendering_and_health_separate(tmp_path: Path, monkeypatch
         cfg.render.latex_delimiters.display.right = f"RIGHT-{label}"
         configs.append(cfg)
     monkeypatch.setattr(configuration, "get_config", forbidden_default)
-    monkeypatch.setattr(doclib_app, "get_config", forbidden_default)
+    monkeypatch.setattr(doclib_app, "load_doclib_server_config", forbidden_default)
     monkeypatch.setattr(probes, "get_config", forbidden_default)
-    first_app, second_app = [doclib_app.create_app(cfg) for cfg in configs]
+    first_app, second_app = [doclib_app.create_app(authenticated_doclib_config(cfg)) for cfg in configs]
     configs[0].render.latex_delimiters.display.left = "changed outside application"
     sha = "a" * 64
-    with TestClient(second_app) as second:
-        with TestClient(first_app) as first:
+    with TestClient(second_app, headers=DOCLIB_AUTH_HEADERS) as second:
+        with TestClient(first_app, headers=DOCLIB_AUTH_HEADERS) as first:
             clients = (("A", first), ("B", second))
             for label, client in clients:
                 state = client.app.state.doclib_state

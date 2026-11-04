@@ -20,6 +20,18 @@ mineru server status
 mineru server stop
 ```
 
+On first startup, Doclib generates a local token and saves it as `doclib.auth.token` in the active
+`config.yaml`. Restarts and upgrades reuse it; the CLI reads and sends it automatically.
+`MINERU_DOCLIB_AUTH_TOKEN` can override the file value. All UDS/TCP HTTP endpoints, including status,
+export and shutdown, require a Bearer token. Integrations use `DoclibClient(base_url=..., token=...)`
+or `Authorization: Bearer <token>`; discover the actual address from `doclib.endpoint.json`.
+Programs sharing a token share full access to that document library.
+
+Before upgrading from a version without authentication, stop the service using the previous CLI.
+To rotate a token, stop the service, edit or remove `doclib.auth.token`, then start it and update
+integrations. The configuration file is restricted with POSIX `0600` permissions or a protected
+Windows DACL; startup fails if these protections cannot be enforced.
+
 Run `mineru <command> --help` for the authoritative options of each command.
 
 ## Parsing, reading, exporting, and waiting

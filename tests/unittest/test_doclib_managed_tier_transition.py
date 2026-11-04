@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from doclib_test_utils import create_doclib_server
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, create_doclib_server
 from doclib_test_utils import create_health_check
 from mineru.doclib.parse_server_state import ParseServerHealth, ProbeResult, ProbeState
 
@@ -98,7 +98,9 @@ def test_config_api_invalidates_old_tier_before_return(tmp_path: Path, monkeypat
         """经 HTTP API 保存配置，然后检查真实状态投影和路由行为。"""
         cfg, server, parse_svc, health, checker = await _services(tmp_path, monkeypatch)
         old_remote = health.remote
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app), base_url="http://doclib") as client:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=server.app), base_url="http://doclib", headers=DOCLIB_AUTH_HEADERS
+        ) as client:
             url = "/api/v1/configs/parse_server.local.managed_tier"
             response = await client.put(url, json={"value": "standard"}) if operation == "set" else await client.delete(url)
         assert response.status_code == 200

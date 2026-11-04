@@ -7,6 +7,7 @@ import copy
 import logging
 import os
 import re
+import secrets
 import socket
 import tempfile
 import threading
@@ -17,8 +18,9 @@ from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 from filelock import FileLock
-from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic_core import to_jsonable_python
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+
+from .utils.private_file import create_private_tempfile, protect_private_file
 
 _logger = logging.getLogger(__name__)
 
@@ -247,7 +249,7 @@ def _load_effective_config() -> LoadedConfig:
     base_config = Config(**raw_config)
     overrides, env_paths = _collect_env_overrides()
     if overrides:
-        base_config = Config(**_deep_merge(to_jsonable_python(base_config), overrides))
+        base_config = Config(**_deep_merge(base_config.model_dump(), overrides))
         for path in env_paths:
             sources[path] = "env"
     return LoadedConfig(
@@ -315,15 +317,56 @@ def update_config_file(patch: dict[str, Any], *, only_if_onnx_auto: bool = False
                 return False
 
         updated = _deep_merge(current, patch)
-        fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=config_dir or None)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                yaml.safe_dump(updated, file, allow_unicode=True, sort_keys=False)
-            os.replace(tmp_path, config_file)
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        _write_config_file(config_file, updated)
         return True
+
+
+def _write_config_file(config_file: str, config: dict[str, Any]) -> None:
+    """在写入配置正文之前限制临时文件权限，原子替换后保留同样的私密权限。"""
+    directory = os.path.dirname(config_file) or "."
+    doclib = config.get("doclib")
+    auth = doclib.get("auth") if isinstance(doclib, dict) else None
+    if isinstance(auth, dict) and auth.get("token") is not None:
+        fd, tmp_path = create_private_tempfile(directory)
+    else:
+        fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            yaml.safe_dump(config, file, allow_unicode=True, sort_keys=False)
+        os.replace(tmp_path, config_file)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+def load_doclib_server_config() -> LoadedConfig:
+    """启动时在配置锁内生成或复用本机凭证；普通配置读取不生成文件或凭证。"""
+    loaded = load_config()
+    config_file = loaded.config_file
+    os.makedirs(os.path.dirname(os.path.abspath(config_file)), mode=0o700, exist_ok=True)
+    with FileLock(f"{config_file}.lock"):
+        loaded = load_config()
+        if os.path.isfile(config_file):
+            protect_private_file(config_file)
+        if loaded.config.doclib.auth.token is not None:
+            validate_doclib_token(loaded.config.doclib.auth.token.get_secret_value())
+            return loaded
+        if os.path.isfile(config_file):
+            with open(config_file, encoding="utf-8") as file:
+                current = yaml.safe_load(file) or {}
+        else:
+            current = {}
+        token = secrets.token_urlsafe(32)
+        updated = _deep_merge(current, {"doclib": {"auth": {"token": token}}})
+        _write_config_file(config_file, updated)
+        return load_config()
+
+
+def validate_doclib_token(token: str) -> str:
+    """校验本机凭证的长度和 HTTP Bearer 可用字符，错误消息不包含凭证。"""
+    if not re.fullmatch(r"[A-Za-z0-9._~+/=-]{32,}", token):
+        raise ValueError("Doclib token must contain at least 32 ASCII Bearer-token characters.")
+    return token
 
 
 def read_onnx_device_from_file() -> OnnxDevice:
@@ -553,6 +596,12 @@ class ModelConfig(BaseModel):
         return value
 
 
+class DoclibAuthConfig(BaseModel):
+    """保存跨服务重启稳定的本机凭证，默认序列化和 repr 都隐藏正文。"""
+
+    token: SecretStr | None = Field(default=None, repr=False)
+
+
 class DoclibConfig(BaseModel):
     """Doclib startup configuration.
 
@@ -561,6 +610,7 @@ class DoclibConfig(BaseModel):
     service.
     """
 
+    auth: DoclibAuthConfig = Field(default_factory=DoclibAuthConfig)
     uds: UDSConfig = Field(default_factory=UDSConfig)
     tcp: TCPConfig = Field(default_factory=TCPConfig)
     log: LogConfig = Field(default_factory=LogConfig)
@@ -611,11 +661,14 @@ _config_load_lock = threading.Lock()
 
 def PatchedConfig(**kwargs: Any) -> Config:
     """在进程默认配置的独立副本上应用局部覆盖并重新校验。"""
-    merged = _deep_merge(to_jsonable_python(get_config()), kwargs)
+    merged = _deep_merge(get_config().model_dump(), kwargs)
     return Config(**merged)
 
 
 __all__ = [
+    "DoclibAuthConfig",
+    "load_doclib_server_config",
+    "validate_doclib_token",
     "OnnxDevice",
     "read_onnx_device_from_file",
     "AutoBool",
