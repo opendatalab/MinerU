@@ -19,7 +19,8 @@ TCP loopback 仅限制连接来源机器。读取正文、导出到指定路径�
 - 全部 Doclib HTTP 接口使用 Bearer 认证，UDS/TCP 一致；状态、shutdown、OpenAPI 不例外。
   在业务路由执行前拒绝缺失、重复或错误的 Authorization，不提供匿名降级。
 - 配置正文写入前限制临时文件权限，再原子替换。POSIX 使用 `0600`，Windows 使用仅授权当前账户
-  与 SYSTEM 的受保护 DACL，并读回验证；父目录不能让其他普通账户替换文件。无法落实权限时失败。
+  与 SYSTEM 的受保护 DACL；macOS 同时清除扩展 ACL，并在创建时禁止继承 ACL。设置后读回验证，
+  父目录的权限位及平台 ACL 不能让其他普通账户替换文件。无法落实权限时失败。
 - CLI/SDK 默认发现重新读取当前配置中的 token；显式地址必须同时提供显式 token。
   endpoint 升为 version 3，不存 token；`server_id` 继续每次启动变化。旧 version 1/2 仅保留诊断读取，
   SDK 返回 `doclib_upgrade_required`，升级前须先用旧 CLI 停止旧服务。

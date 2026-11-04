@@ -1,10 +1,11 @@
-"""为本机凭证配置提供 POSIX 权限和 Windows DACL 保护。"""
+"""为本机凭证配置提供 POSIX 权限、macOS ACL 和 Windows DACL 保护。"""
 
 from __future__ import annotations
 
 import os
 import secrets
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -17,6 +18,11 @@ def protect_private_file(path: str | Path) -> None:
         raise PermissionError("Credential configuration must be a regular file without links.")
     if os.name == "nt":
         _protect_windows_file(path)
+        return
+    if sys.platform == "darwin":
+        from ._private_file_macos import protect_macos_file
+
+        protect_macos_file(path)
         return
     if info.st_uid != os.getuid():
         raise PermissionError("Credential configuration must be owned by the current user.")
@@ -32,7 +38,7 @@ def protect_private_file(path: str | Path) -> None:
 
 def create_private_tempfile(directory: str) -> tuple[int, str]:
     """从创建时就限制凭证临时文件权限，防止先打开的其他账户句柄读取后写入的正文。"""
-    if os.name != "nt":
+    if os.name != "nt" and sys.platform != "darwin":
         fd, path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=directory)
         try:
             protect_private_file(path)
@@ -44,7 +50,12 @@ def create_private_tempfile(directory: str) -> tuple[int, str]:
     for _ in range(10):
         path = Path(directory).absolute() / f".config.{secrets.token_hex(12)}.tmp"
         try:
-            fd = _protect_windows_file(path, create=True)
+            if sys.platform == "darwin":
+                from ._private_file_macos import protect_macos_file
+
+                fd = protect_macos_file(path, create=True)
+            else:
+                fd = _protect_windows_file(path, create=True)
         except FileExistsError:
             continue
         assert fd is not None
