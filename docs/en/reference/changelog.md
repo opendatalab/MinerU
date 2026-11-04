@@ -2,6 +2,12 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.1.7
+
+- **Local document library authentication:** Doclib requires a persistent bearer token. The SDK reads local credentials automatically, while direct HTTP integrations must send the token. Credential files use private POSIX permissions or native macOS/Windows ACL protection.
+- **Layout detection:** Restore per-class output thresholds consistently across ONNX and Torch, and position absorbed image regions according to their geometry in the reading order.
+- **Native document parsing:** Require DocVortex 0.6.13.
+
 ## 4.1.2
 
 - **Hardware diagnostics and output:** `mineru-kit hardware info` runs isolated runtime probes concurrently and flushes text sections in a fixed order as they become available. Capacity formatting and device summaries are clearer, while JSON retains full diagnostics and adds the read-only ONNX device candidate and selection reason.
