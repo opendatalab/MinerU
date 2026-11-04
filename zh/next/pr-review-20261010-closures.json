@@ -1,0 +1,162 @@
+{
+  "5490": {
+    "reason": "当前 DocVortex 已按字形来源保护连字展开，旧字符去重实现已移除。",
+    "comment_id": 6084772277,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5490#issuecomment-6084772277",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5490",
+    "verified_at": "2026-10-09T17:01:37.703464+00:00"
+  },
+  "5424": {
+    "reason": "对应渲染测试已迁到 DocVortex，其测试依赖已经包含 Markdown。",
+    "comment_id": 6084774355,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5424#issuecomment-6084774355",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5424",
+    "verified_at": "2026-10-09T17:01:37.741095+00:00"
+  },
+  "5420": {
+    "reason": "当前基础依赖已移除 OpenCV，不再需要替换为 headless 包。",
+    "comment_id": 6084776289,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5420#issuecomment-6084776289",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5420",
+    "verified_at": "2026-10-09T17:01:37.809655+00:00"
+  },
+  "5402": {
+    "reason": "输出文档已按新协议重写，原错误图片引用已经不存在。",
+    "comment_id": 6084778495,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5402#issuecomment-6084778495",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5402",
+    "verified_at": "2026-10-09T17:01:37.784107+00:00"
+  },
+  "5382": {
+    "reason": "当前支持的 MLX 版本已升级，不继续维护旧版解码器运行时补丁。",
+    "comment_id": 6084780522,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5382#issuecomment-6084780522",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5382",
+    "verified_at": "2026-10-09T17:01:37.755555+00:00"
+  },
+  "5364": {
+    "reason": "当前共享 Markdown renderer 已处理普通文本中的 HTML 标签转义。",
+    "comment_id": 6084782471,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5364#issuecomment-6084782471",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5364",
+    "verified_at": "2026-10-09T17:01:40.306935+00:00"
+  },
+  "5354": {
+    "reason": "当前运行时已有窗口及文档结束时的显式堆回收能力。",
+    "comment_id": 6084784530,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5354#issuecomment-6084784530",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5354",
+    "verified_at": "2026-10-09T17:01:40.553673+00:00"
+  },
+  "5335": {
+    "reason": "当前实现已经覆盖文档结束后的可选堆回收，此实现重复。",
+    "comment_id": 6084786434,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5335#issuecomment-6084786434",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5335",
+    "verified_at": "2026-10-09T17:01:40.506057+00:00"
+  },
+  "5261": {
+    "reason": "当前 V1 API 已提供具体响应模型，旧 API 实现已移除。",
+    "comment_id": 6084788503,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5261#issuecomment-6084788503",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5261",
+    "verified_at": "2026-10-09T17:01:40.600825+00:00"
+  },
+  "5240": {
+    "reason": "被修改的旧多桶 S3 reader/writer 已移除，不适用于当前版本。",
+    "comment_id": 6084790442,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5240#issuecomment-6084790442",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5240",
+    "verified_at": "2026-10-09T17:01:40.473537+00:00"
+  },
+  "5208": {
+    "reason": "旧模型路径配置写回流程已移除，当前模型 registry 不经过该函数。",
+    "comment_id": 6084792343,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5208#issuecomment-6084792343",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5208",
+    "verified_at": "2026-10-09T17:01:43.053240+00:00"
+  },
+  "5184": {
+    "reason": "当前相关安装示例已经加引号或改写。",
+    "comment_id": 6084794422,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5184#issuecomment-6084794422",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5184",
+    "verified_at": "2026-10-09T17:01:43.332651+00:00"
+  },
+  "5119": {
+    "reason": "当前没有 albumentations 调用，HF 依赖已包含 hf_xet extra。",
+    "comment_id": 6084796404,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5119#issuecomment-6084796404",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5119",
+    "verified_at": "2026-10-09T17:01:43.093813+00:00"
+  },
+  "5107": {
+    "reason": "当前使用明确的 concurrency 配置，macOS 已能按配置运行。",
+    "comment_id": 6084798343,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5107#issuecomment-6084798343",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5107",
+    "verified_at": "2026-10-09T17:01:43.275471+00:00"
+  },
+  "5136": {
+    "reason": "当前已有公开 parser/kit 接口，此旧 SDK 实现不兼容并重复现有能力。",
+    "comment_id": 6084800349,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5136#issuecomment-6084800349",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5136",
+    "verified_at": "2026-10-09T17:01:43.374276+00:00"
+  },
+  "5441": {
+    "reason": "当前对应 Advanced 的 VLM 布局；暂不在 MinerU 添加去重，后续需要时应由 mineru-vl-utils 处理。",
+    "comment_id": 6084802167,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5441#issuecomment-6084802167",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5441",
+    "verified_at": "2026-10-09T17:01:45.654118+00:00"
+  },
+  "5412": {
+    "reason": "当前不计划支持 Word 自定义编号模板，以控制列表模型及渲染复杂度。",
+    "comment_id": 6084804045,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5412#issuecomment-6084804045",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5412",
+    "verified_at": "2026-10-09T17:01:45.669151+00:00"
+  },
+  "5270": {
+    "reason": "当前不恢复 Word 编号模板及计数，标题编号维持既有语义规则。",
+    "comment_id": 6084805942,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5270#issuecomment-6084805942",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5270",
+    "verified_at": "2026-10-09T17:01:45.917604+00:00"
+  },
+  "5369": {
+    "reason": "DOCX 按流式语义文档处理，维持分节分页，不增加手动分页符或排版属性驱动的分页。",
+    "comment_id": 6084807744,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5369#issuecomment-6084807744",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5369",
+    "verified_at": "2026-10-09T17:01:45.974763+00:00"
+  },
+  "5607": {
+    "reason": "问题已在维护分支 dev 通过负载调度和上传轮转解决（提交 e61475184757d3fe02aa1dd74b935493ce721f92），此替代实现关闭。此处指维护分支实现，不代表上游发布版已经包含。",
+    "comment_id": 6084809761,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5607#issuecomment-6084809761",
+    "state": "closed",
+    "url": "https://github.com/opendatalab/MinerU/pull/5607",
+    "verified_at": "2026-10-09T17:01:46.158840+00:00"
+  }
+}

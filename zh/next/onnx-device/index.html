@@ -1,0 +1,2885 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/onnx-device/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../next/onnx-device/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ONNX 设备选择、DirectML 与 WebGPU - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#onnx-directml-webgpu" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ONNX 设备选择、DirectML 与 WebGPU
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../next/onnx-device/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://www.modelscope.cn/studios/OpenDataLab/MinerU" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在线演示
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tasks 异步接口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/file_parse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    单文件同步解析
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第三方集成
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4_1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    开发参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://www.modelscope.cn/studios/OpenDataLab/MinerU" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tasks 异步接口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/file_parse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    单文件同步解析
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第三方集成
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4_1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    开发参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://www.modelscope.cn/studios/OpenDataLab/MinerU" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        共享 GPU 分类与选型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux-intel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux Intel 架构策略
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        混合显卡的物理设备约束
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llama-auto-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        llama.cpp 自动模式与手动覆盖
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模型预设
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        六图测速和阈值
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="六图测速和阈值">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ocr-rec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR rec 精简输出
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        测量协议
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布前校准
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        安装
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="onnx-directml-webgpu">ONNX 设备选择、DirectML 与 WebGPU</h1>
+<p><code>model.onnx_device</code> 控制 ONNX 小模型栈的 CPU / Windows DirectML / Linux WebGPU 选择：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">model</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">small_backend</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">onnx</span>
+<span class="w">  </span><span class="nt">onnx_device</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
+</code></pre></div>
+<p>环境变量 <code>MINERU_MODEL_ONNX_DEVICE</code> 高于文件配置。<code>small_backend=auto</code> 仍按原有规则选择
+Torch 或 ONNX；此选项不强制切换模型栈，也不改变 Torch 的设备。小模型使用 ONNX 时，
+llama.cpp 自动模式复用这里的 CPU/GPU 结论。</p>
+<h3 id="gpu">共享 GPU 分类与选型</h3>
+<p>OCR 和硬件诊断共用 <code>discrete / integrated / virtual / unknown</code> 分类；auto tier 直接复用 OCR 设备选择的最终结果。
+Windows 的分类依据为 D3D12 UMA，Linux 为 Vulkan 原生设备类型，macOS 复用现有系统显示设备信息。
+统一内存属性单独保存，不将 Apple Silicon 的集显分类解释为低性能设备。</p>
+<p>ONNX 先应用显式配置、设备可见性及兼容限制，再按“确认独显 → 确认集显 → 虚拟 GPU → 类型未知”排序；
+同类设备保留 Windows 高性能排序或 Vulkan 原生顺序。自动 tier 不再查询显存容量。
+身份匹配优先使用 LUID、PCI 地址，再使用双方唯一的厂商/设备型号；名称只用于原生库存的唯一关联。
+重复库存或原生查询失败时保留未知类型，不据此授予独显免校准资格。</p>
+<p>llama.cpp 的 CPU/GPU 自动决策直接复用小模型后端，具体显卡交给原生引擎。
+MinerU 不在启动推荐或模型构造时枚举 ggml、匹配 ONNX/llama 显卡、绑定 Vulkan 编号或重映射设备名。
+<code>hardware info</code> 仍可显式运行隔离的 llama 诊断；Windows 诊断读取有效 Vulkan LUID 与 DXGI 关联，
+但诊断库存不参与推荐或推理决策。</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>Windows DML</th>
+<th>Linux WebGPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cpu</code></td>
+<td>全部使用 CPU，不枚举显卡、不测速</td>
+<td>全部使用 CPU，不加载插件、不探测 GPU</td>
+</tr>
+<tr>
+<td><code>gpu</code></td>
+<td>首次使用时发现 GPU，独显优先，不测速</td>
+<td>通过 Intel 架构检查后使用 GPU，不测速；旧 Intel 回退 CPU</td>
+</tr>
+<tr>
+<td><code>auto</code></td>
+<td>独显直接使用；集显或类型未知执行 rec 测速</td>
+<td>通过架构检查且唯一确认的独显直接使用；集显或类型未知执行自适应 rec 测速</td>
+</tr>
+</tbody>
+</table>
+<p>Windows 使用 DXGI 高性能顺序、D3D12 UMA 属性和 LUID 匹配；适配器编号不写入配置。
+已保存的 <code>gpu</code> 使用 Windows 高性能排序及无设备创建的 D3D12 能力检查，避免逐张创建设备查询 UMA；
+<code>auto</code> 才需要 UMA 分类。旧系统缺少高性能排序接口时仍执行分类以保证独显优先。
+<code>gpu</code> 模式下移除显卡会在本次使用 CPU，仍保留配置中的 <code>gpu</code>。
+其他操作系统、驱动探测错误、运行时缺少所需 EP 或 GPU 会话初始化失败时，日志会说明 CPU 回退原因。</p>
+<p>Linux 使用原生 <code>onnxruntime-ep-webgpu</code>，通过 Dawn/Vulkan 执行。
+插件在每个进程首次需要 GPU 时注册；只保留可哈希、可序列化的设备描述，原生 EP 句柄在创建会话时重新获取。
+WebGPU 0.4 的 ORT 设备枚举项用于注册 EP，并不绑定 Dawn 的物理显卡。通常仍使用
+<code>powerPreference=high-performance</code>；参数固定为 <code>preferredLayout=NHWC</code>、<code>enableGraphCapture=0</code>、
+<code>dawnBackendType=Vulkan</code>，其他计算参数沿用运行时默认值。
+独显/集显分类读取 Vulkan 的 <code>VkPhysicalDeviceProperties.deviceType</code>，不依据厂商名称、显存大小或 ORT 元数据猜测。
+只有 ORT 描述与 Vulkan 可见设备唯一匹配、类型为 <code>DISCRETE_GPU</code> 且会话采用物理设备约束时，才跳过自动校准。
+同型号多卡、重复 EP 描述或无法确认类型时保留校准；虚拟 GPU 不视为独显。</p>
+<h3 id="linux-intel">Linux Intel 架构策略</h3>
+<p>按 <code>mineru.model.runtime.intel_gpu</code> 的显式 PCI ID 家族表分类（<code>device_id &amp; 0xff00</code>），
+不解析商品名称、不按 ID 大小或 CPU 发布时间猜测架构。映射依据为
+<a href="https://github.com/google/dawn/blob/main/src/dawn/gpu_info.json">Dawn GPU 表</a>，以下范围只对 vendor <code>0x8086</code> 的 GPU 生效：</p>
+<table>
+<thead>
+<tr>
+<th>PCI ID 家族前缀</th>
+<th>架构 / 策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01、04、0a、0c、0d、0f、16、22、19、31、3e、5a、59、87、9b、8a、45、4e、98</td>
+<td>旧架构，CPU</td>
+</tr>
+<tr>
+<td>46、4c、49、9a、a7</td>
+<td>Xe-LP，CPU（包含 DG1 独显）</td>
+</tr>
+<tr>
+<td>4f、56</td>
+<td>Xe-HPG，允许 GPU；按 Vulkan 类型决定是否校准</td>
+</tr>
+<tr>
+<td>7d、b6</td>
+<td>Xe-LPG 系，允许 GPU；按 Vulkan 类型决定是否校准</td>
+</tr>
+<tr>
+<td>64、e2</td>
+<td>Xe2-LPG / Xe2-HPG，允许 GPU；按 Vulkan 类型决定是否校准</td>
+</tr>
+<tr>
+<td>b0、fd</td>
+<td>Xe3-LPG / Xe3-LPG XS，允许 GPU；按 Vulkan 类型决定是否校准</td>
+</tr>
+<tr>
+<td>未识别的 Intel PCI ID 家族</td>
+<td>保守使用 CPU，补充显式映射后才启用</td>
+</tr>
+</tbody>
+</table>
+<p>例如 <code>8086:4680</code>、<code>8086:a780</code>、<code>8086:9a49</code> 直接走 CPU；<code>8086:7d51</code>、<code>8086:7d55</code>、
+<code>8086:56a0</code>、<code>8086:64a0</code>、<code>8086:e20b</code>、<code>8086:b080</code> 进入 GPU 选型，其中确认的独显免校准。
+AMD/NVIDIA 不参与 Intel 分类；Windows DML 的设备规则和 metacommands 保持原样。
+这是 MinerU 的产品支持策略，不是宣称旧 Intel 硬件不支持 WebGPU。</p>
+<p>检查发生在下载校准模型、创建推理会话和校准之前，覆盖 auto、显式 gpu 以及已经保存的 gpu。
+架构回退记录 <code>webgpu_architecture_policy</code>，不改写用户原来的 auto/gpu 配置；低层会话工厂也拒绝旧 Intel 描述符。
+显式 cpu 仍然不发现 GPU、不加载插件。</p>
+<h3 id="_1">混合显卡的物理设备约束</h3>
+<p>Linux GPU 选型查询 Vulkan 实际可见设备，尊重用户的 ICD/驱动筛选；全部架构受支持的机器同样执行此查询。
+该查询仅创建实例、枚举属性，不创建 logical device、不编译 shader、不进行 GPU 推理。
+从实际可见且架构允许的设备中优先选择独显，避免“发现一张 UHD 就禁用整个 WebGPU”。
+例如 UHD 770＋3060 Ti 仍选择独显；若用户通过 <code>VK_DRIVER_FILES</code> 仅开放 Intel ICD，则直接走 CPU，
+不会把 ORT 中仍然存在的 NVIDIA 枚举项误当成可用物理独显。</p>
+<p>确认的独显及多卡场景在每次 WebGPU 会话创建期间临时设置 Vulkan 厂商/设备 ID 过滤，并在创建 Dawn 前重新枚举，
+确认只剩目标设备才继续。优先使用 Vulkan-Loader 1.4.326 起支持的 <code>VK_LOADER_VENDOR_ID_FILTER</code> /
+<code>VK_LOADER_DEVICE_ID_FILTER</code>；旧 loader 尝试 Mesa device-select 的 <code>vendor:device!</code>，同样必须验证结果。
+若两种约束都不可用或被忽略，则记录原因、回退 CPU，不保存独显 GPU 偏好，也不进行可能落到其他卡的模型推理。
+此时需升级 Vulkan loader 或安装/启用 Mesa device-select；不依赖 <code>vulkaninfo</code> 命令或新增 Python 包。</p>
+<p>过滤值随设备描述传入校准子进程；临时环境变量在成功和异常退出时均恢复。
+MinerU 的 WebGPU 运行时锁覆盖过滤与会话初始化，后续每次会话创建仍重设约束，以覆盖原生 context 的释放/重建。
+同进程初始化后不能切换物理设备约束，需新进程；不会把 provider 的 <code>deviceId</code> 误用为物理选卡参数。
+这些环境变量是进程级的，宿主若另有独立 Vulkan 消费者，应避免在同一进程同时初始化它们。
+宿主也不应在 MinerU 之前自行初始化同一插件的默认 Dawn context；已有外部 WebGPU 会话时需使用新进程，
+本策略无法重新绑定外部提前创建的原生 context。
+单张集显保持默认物理选择。若原生类型查询失败且 ORT 库存中的架构均受支持，则保留默认候选并继续校准，
+不会据此授予独显免校准资格；存在受限 Intel 架构时，查询失败直接回退 CPU。</p>
+<p>本机双卡及仅 Intel ICD 的验证见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-intel-architecture-policy-validation.md">Intel 架构过滤报告</a>。</p>
+<p>通常在首次实际使用 ONNX 模型时选型。API/WebUI 使用自动 tier 且有效小模型后端为 ONNX 时，会在所有 CPU 核数下提前同步调用相同的设备选择流程，不依赖 <code>--preload-models</code>。选中 GPU 就开放全部四档；选中 CPU 时，可用逻辑核至少 12 开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。推荐不查询显存、不增加独立测速，也不额外要求历史校准证据。<code>onnx_device=gpu</code> 无论来自用户偏好还是自动选型写入，均不强制测速。显式启动档位和 Python 精确集合跳过推荐。有效小模型后端为 Torch 时采用已验证的加速设备结论，不调用 ONNX 或修改其配置/证据。llama.cpp 自动模式也复用相同的小模型设备选择入口。</p>
+<p><code>mineru-kit hardware detect</code> 与 API 自动启动共享推荐逻辑；<code>hardware info</code> 只读报告环境与校准记录，不测速。界面启动本身、导入 SDK、查询配置和模型列表不会运行测速；界面托管的 API 服务仍遵循其启动参数。
+自动决策成功后原子更新有效配置文件中的 <code>model.onnx_device</code>，保留其余键；进程间通过文件锁协调。
+校准证据显式保存设备、运行时与线程指纹；分类来源等诊断字段不进入指纹，原有有效记录可继续复用。
+实际设备或物理绑定改变后，诊断报告会显示旧记录不再匹配；这不会覆盖配置中的设备偏好，也不会单独限制已选 GPU 的档位。
+Windows/Linux 免校准独显都只在首次真实 GPU 会话成功后保存 <code>gpu</code>；仅运行硬件推荐时仍保留 <code>auto</code>，
+不下载校准权重、不生成性能校准记录。初始化错误或静默回退 CPU 不保存 GPU 偏好。
+环境变量覆盖不写入文件；只读配置保留本进程选择。测速失败不保存为 CPU 性能优胜，同进程不重复尝试。设备偏好和自动 tier 均不设置显存容量门槛。
+Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或输出不一致时保留 <code>auto</code>。
+通过环境变量强制 <code>auto</code> 时，每个新进程重新选择，并使用选择锁避免同时测速。
+显式或已保存的 <code>cpu</code> 不会因后来接入独显而改变。</p>
+<p>要重新测量，将配置改回 <code>auto</code> 并重启应用。修改程序阈值也不主动覆盖已保存的选择。</p>
+<h2 id="llama-auto-mode">llama.cpp 自动模式与手动覆盖</h2>
+<p>Windows/Linux 的 Engine 和 <code>llama-server</code> 复用同一 CPU/GPU 决策：</p>
+<ul>
+<li>小模型为 ONNX：使用 <code>resolve_onnx_device()</code> 的结果和进程缓存。兼容独显免测速；集显或类型未知按既有 OCR 校准决定。</li>
+<li>小模型为 Torch：使用已核验的 Torch 加速器可用性，不调用 ONNX、不下载 OCR 校准模型。</li>
+<li>CPU：模型、视觉投影均使用 CPU，server 同时关闭额外算子卸载。</li>
+<li>GPU：允许原生运行时按默认规则选择显卡；不要求它与 ONNX 使用同一物理卡，不新增 VLM 测速。</li>
+<li>macOS：保持原生 Metal/CPU 路径。</li>
+</ul>
+<p>显式 <code>MINERU_LLAMA_CPP_BACKEND</code>、GPU 层数、server 设备或投影设备参数优先于自动模式。
+原生设备名称与用户提供的可见设备环境变量保持原样；“主模型 CPU、投影 GPU”等显式组合继续支持。
+原生引擎负责实际显卡选择及参数合法性；其自动 GPU 不可用回退保持原样，显式后端不可用及推理错误直接报告，不另行重试。
+<code>llama.cpp device policy</code> 日志说明共享决策来源；原生 Engine 的 <code>verbosity=LOG_LEVEL_INFO</code> 可查看实际设备。</p>
+<p>仅自动 ONNX 路径在 Linux 选择 WebGPU、已选适配器为 Intel legacy/Xe-LP/Xe-LPG 架构时，
+MinerU 才在初始化期间补充 <code>GGML_VK_SERIALIZE_SUBMISSIONS=1</code>。依据来自 ONNX 已有适配器信息，
+不再探测 llama 的实际显卡。用户已设置的值（包括 <code>0</code>）优先；Torch 和手动选卡路径需自行设置该兼容变量。
+临时环境设置使用互斥锁并在成功或异常后恢复；不生成 <code>GGML_VK_VISIBLE_DEVICES</code>。
+离线 server 仍禁止为自动选型下载校准模型，缺少本地权重时沿用现有 ONNX CPU 回退。</p>
+<p>档位推荐只消费小模型后端的 GPU/CPU 结论和进程可用逻辑核数，不受 llama 专用后端参数或诊断失败影响。
+GPU 开放全部四档；CPU 至少 12 核开放到 Standard，至少 4 核开放到 Basic，否则只开放 Flash。存在 Standard 时请求默认仍为 Standard。</p>
+<h2 id="_2">模型预设</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Windows DML</th>
+<th>Linux WebGPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>layout / OCR rec / MFR / UNet</td>
+<td>GPU</td>
+<td>GPU</td>
+</tr>
+<tr>
+<td>普通 OCR det</td>
+<td>CPU</td>
+<td>GPU</td>
+</tr>
+<tr>
+<td>印章检测 / 表格分类 / SLANet Plus</td>
+<td>CPU</td>
+<td>CPU</td>
+</tr>
+</tbody>
+</table>
+<p>普通文字检测和印章检测在模型入口通过 <code>ocr_det</code> / <code>seal_det</code> 明确区分。
+UNet 与其他模型共享 <code>model.onnx_device</code> 的进程内选择，不单独测速；ONNX 栈的 UNet 不受旧 <code>MINERU_TABLE_DEVICE</code> 覆盖。
+Torch 栈中的表格仍使用其原有 CPU/CUDA 策略。旧实验引擎和实验开关已经移除。</p>
+<table>
+<thead>
+<tr>
+<th>厂商</th>
+<th>layout</th>
+<th>MFR</th>
+<th>rec</th>
+<th>UNet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Intel</td>
+<td>关</td>
+<td>开</td>
+<td>关</td>
+<td>关</td>
+</tr>
+<tr>
+<td>AMD</td>
+<td>开</td>
+<td>开</td>
+<td>开</td>
+<td>开</td>
+</tr>
+<tr>
+<td>NVIDIA</td>
+<td>开</td>
+<td>开</td>
+<td>关</td>
+<td>关</td>
+</tr>
+<tr>
+<td>其他</td>
+<td>ORT 默认</td>
+<td>ORT 默认</td>
+<td>ORT 默认</td>
+<td>ORT 默认</td>
+</tr>
+</tbody>
+</table>
+<p>厂商表中的开关只适用于 DML 的 metacommands，关闭对应 <code>disable_metacommands=true</code>；WebGPU 不使用这些预设。
+Intel layout 优先首轮响应；NVIDIA layout 采用后续补测结论。
+MFR 只有实际批量为 8 时使用 DML/WebGPU，1–7 张使用惰性创建、复用的 CPU 会话，不补齐。
+自定义批量小于 8 时全部使用 CPU；依据实际 EP 判断是否分流，GPU 初始化已回退 CPU 时不创建多余尾批会话。
+每个 DML 会话的 <code>run</code> 都串行化，不依赖宿主是否打开全局推理锁。
+WebGPU 的所有会话创建和 <code>run</code> 共用进程内锁，因为多个会话共享 Dawn 状态；CPU 会话不使用此锁。
+参见 <a href="https://github.com/microsoft/onnxruntime/issues/32561">上游并发问题</a>。
+GPU 会话必须实际启用目标 EP，关闭 Python 层整会话静默回退；不支持的图中算子仍可由 ORT 分配给 CPU。
+WebGPU 初始化失败时使用未绑定插件的新 SessionOptions 创建 CPU 会话，并保留线程、内存及 profiling 设置。</p>
+<h2 id="_3">六图测速和阈值</h2>
+<h3 id="ocr-rec">OCR rec 精简输出</h3>
+<p>CPU、DML 和 WebGPU 的 ONNX rec 共用 <code>ctc-ids-scores-v1</code> 派生图。保留原始 Softmax，在图末端增加
+ArgMax / ReduceMax，只返回 <code>[batch,time]</code> 的 int64 字符 ID 与 float32 最大置信度。
+CTC 去重、blank 删除、置信度平均和输入顺序还原继续由识别器处理；Torch 路径保持现有实现。
+对于 <code>[6,3,48,320]</code> 输入，原始 <code>[6,40,18710]</code> 概率输出约 17.13 MiB，精简输出仅 2.81 KiB。</p>
+<p>原始下载权重不被修改。首次使用时惰性加载 <code>onnx</code>，在 <code>model.base_dir/.derived/ocr-rec/</code> 中按
+源文件 SHA256 和输出格式版本生成派生模型；文件锁、校验值和原子替换保护并发创建与缓存复用，
+损坏的缓存会重建。当前转换支持内嵌权重的 float32、三维概率输出、固定字符数和 opset ≥ 11 的 rec 图。
+正常会话和 CPU 回退都使用同一输出契约；精简模型不是 ORT 特定 EP 的预编译文件。</p>
+<p>自动选型也使用该派生图，图转换发生在 15 秒 worker 预算之外。报告记录源模型、派生模型 SHA256
+及 <code>output_format</code>，阈值工具拒绝混合完整概率输出和精简输出的报告。已有保存的 cpu/gpu 不会被覆盖；
+需要重新测速时设置 <code>auto</code>。历史完整概率输出测速保留作为优化前对照，不据此重新推导精简图阈值。
+本机阶段耗时、输出一致性和 EP 验证见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-compact-rec-validation.md">精简 rec 生产验证</a>。</p>
+<h3 id="_4">测量协议</h3>
+<p>图片和 manifest 位于包内 <code>resources/onnx_calibration</code>，包含原始中英数字句子、来源和 SHA256。
+重新生成工具 <code>scripts.make_onnx_calibration_samples</code> 需要显式提供字体；部署时直接读取固定 PNG，
+不需要系统字体。输入复用生产 rec 的 BGR、动态宽度和归一化逻辑；CPU/GPU 使用同一份 batch6。</p>
+<p>CPU/GPU 先各预热 1 次、计时 3 次，顺序为 CPU→GPU；默认线程为 4/1，生产显式线程配置同时应用于测速。
+初步比值为 GPU 三次中位数 / CPU 三次中位数。以下任一条件触发追加：</p>
+<ul>
+<li>比值与当前后端阈值的绝对距离 ≤ 0.1（阈值 0.8 时为 0.7–0.9，含边界）；</li>
+<li>任一后端的 <code>(max-min)/median &gt; 0.15</code>；</li>
+<li>观测范围 <code>[min(gpu)/max(cpu), max(gpu)/min(cpu)]</code> 包含阈值。该范围不是统计置信区间。</li>
+</ul>
+<p>追加时复用原来的两个会话，继续按 CPU→GPU 串行各运行 6 次，使每端总计 10 次：
+前 3 次重新归为预热，后 7 次取中位数。已有第 4 次调用保留，不重新建会话或丢弃整个短测。
+校准工具的 GPU-first 对照对两个阶段都使用相反顺序；生产始终 CPU-first。</p>
+<p>长测使用包含端点的四分位距 / 中位数衡量波动，并比较前3、后3个正式样本的中位数变化 / 整段中位数。
+两者均须 ≤ 0.15。一个孤立慢采样不会自动否决中位数，但持续漂移或大幅波动会令 <code>decision_valid=false</code>：
+当次使用 CPU、保留 auto，不保存为 CPU 性能胜出。稳定长测最终仍按中位数比值 ≤ 0.8 选择 GPU；
+有限采样不保证阈值附近的机器在不同运行中总选同一设备。</p>
+<p>worker 报告 schema v5，<code>measurement</code> 保存完整自适应规则；<code>sampling</code> 保存实际采用的 1＋3 / 3＋7、
+追加原因与最初采样；<code>decision_threshold</code> 保存本次使用的阈值。<code>cpu_elapsed</code> / <code>gpu_elapsed</code> 为最终中位数，
+每端同时保留全部实际预热、计时、波动与漂移指标。每一次推理均检查输出及重复解码，两个后端解码必须一致。
+阈值推导拒绝混合不同测量策略或决策阈值；同一自适应策略内的短测/长测可共同记录，持续不稳定的结果不能用于推导。</p>
+<p>本机实测及 NHWC 缩小复现见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-adaptive-calibration-uhd770-validation.md">自适应校准与 UHD 770 诊断</a>。
+此前固定 3＋7 与整本测试见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-i7-12700-nhwc-no-prepack-validation.md">轮次和预打包报告</a>。
+UHD 770 关闭预打包仍存在内容错误及挂起，生产 WebGPU 布局和预打包参数未因本次校准改动而调整。
+阈值在 <code>mineru.model.runtime.onnx_device</code> 中集中维护。
+阈值按后端独立维护：<code>dml=0.8</code>、<code>webgpu=0.8</code>，即 GPU 推理耗时至少比 CPU 低 20%。
+Linux 8060S 六图预检比值为 0.420、0.502、0.523，解码一致；目前没有跨硬件证据支持另设 WebGPU 数值。
+原三机校准推导值为 0.69639683662382，保留为历史参考；已有 24 次记录按 0.8 判断仍得到相同选择。
+详细数据见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-selection-validation.md">DML 三机校准报告</a> 和 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-webgpu-validation.md">Linux WebGPU 生产验证</a>。</p>
+<p>下载和设备发现不计入 worker 预算。独立隐藏子进程的总超时为 15 秒，包含解释器启动、加载及推理；
+1–2 秒只是小样本推理目标。结果记录 backend、模型/输入校验值、ORT/EP 版本、参数、provider、初始化、预热和正式计时。
+CPU/GPU 解码 token 必须一致，整会话回退 CPU 或计时无效都视为失败。</p>
+<h3 id="_5">发布前校准</h3>
+<p>在 Ultra 5 / Arc 130T、i7-12700 / UHD 770、MAX395 / 8060S 上使用相同代码、权重、样本和 ORT：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">-m</span> <span class="n">scripts</span><span class="p">.</span><span class="n">benchmark_onnx_selection</span> <span class="n">devices</span>
+<span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">-m</span> <span class="n">scripts</span><span class="p">.</span><span class="n">benchmark_onnx_selection</span> <span class="n">run</span> <span class="p">-</span><span class="n">-label</span> <span class="n">ultra5</span> <span class="p">-</span><span class="n">-luid</span> <span class="p">&lt;</span><span class="n">集显LUID</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-output</span> <span class="n">output</span><span class="p">/</span><span class="n">calibration-ultra5</span>
+</code></pre></div>
+<p>另外两台使用 <code>--label i7</code> 和 <code>--label max395</code>。i7 必须在基准工具中明确选择 UHD 770，
+应用的正常独显优先规则仍会选择 RTX 3060 Ti。输出目录必须不存在。</p>
+<p>每台运行五个新进程，交替 CPU/GPU 先后顺序。汇总命令只接受完整且协议一致的三份报告：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">-m</span> <span class="n">scripts</span><span class="p">.</span><span class="n">benchmark_onnx_selection</span> <span class="n">derive</span> <span class="p">&lt;</span><span class="n">ultra5报告</span><span class="p">&gt;</span> <span class="p">&lt;</span><span class="n">i7报告</span><span class="p">&gt;</span> <span class="p">&lt;</span><span class="n">max395报告</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-output</span> <span class="n">output</span><span class="p">/</span><span class="n">threshold</span><span class="p">.</span><span class="n">json</span>
+</code></pre></div>
+<p>取 Ultra 5 / MAX395 所有比值的最大值为 L，取 i7 最小比值与 1.0 的较小值为 U。
+只有 L &lt; U 才给出中点 <code>(L + U) / 2</code> 作为统计建议；当前发布值按用户要求采用 0.8，
+不自动用统计建议覆盖正式常量。随后各平台以 <code>run --threshold &lt;待验证值&gt;</code> 和新目录运行三个
+独立验证进程，要求 Ultra 5、MAX395 全部选 GPU，i7 全部选 CPU。没有有效区间或验证失败时不发布阈值。
+阈值为 <code>None</code> 表示三机校准尚未完成；此时自动集显路径使用 CPU、保留 <code>auto</code>，显式 GPU 及独显仍可使用。</p>
+<p>Linux 使用同一个工具（从项目根目录运行）：</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>scripts.benchmark_onnx_selection<span class="w"> </span>devices
+.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>scripts.benchmark_onnx_selection<span class="w"> </span>run<span class="w"> </span>--label<span class="w"> </span>linux-8060s<span class="w"> </span>--expect<span class="w"> </span>gpu<span class="w"> </span>--output<span class="w"> </span>output/webgpu-calibration
+.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>scripts.benchmark_onnx_selection<span class="w"> </span>run<span class="w"> </span>--label<span class="w"> </span>linux-8060s<span class="w"> </span>--threshold<span class="w"> </span><span class="m">0</span>.8<span class="w"> </span>--expect<span class="w"> </span>gpu<span class="w"> </span>--output<span class="w"> </span>output/webgpu-validation
+</code></pre></div>
+<p>第一条 run 启动 5 个新进程、交替 CPU/GPU 顺序；第二条启动 3 个独立验证进程。
+Linux 标签可自定义，独立验证必须显式提供 <code>--expect cpu|gpu</code>；<code>--luid</code> 仅用于 DML。
+WebGPU 推导新阈值需要至少三台不同标签机器的完整五进程报告，同时有 CPU/GPU 优胜组，
+各组通过 <code>--expect</code> 按独立性能证据标记。不能混合 DML/WebGPU、EP 版本或 WebGPU 参数来推导阈值。
+报告 schema v2 增加 backend/EP 字段；推导工具仍接受历史 v1 DML 报告。
+WebGPU 阈值为 <code>None</code> 时，需要校准的 auto 路径保留 <code>auto</code> 并临时使用 CPU；显式 <code>gpu</code> 和确认的独显不受此限制。</p>
+<h2 id="_6">安装</h2>
+<p>Windows x64 的直接依赖为 <code>onnxruntime-directml&gt;=1.23,&lt;2</code>，其他平台使用 <code>onnxruntime&gt;=1.24.4,&lt;2</code>，
+不按 Python 版本拆分条件。DirectML 包本身包含 CPU provider。</p>
+<p>项目要求 Python &gt;=3.11。Linux x86_64 同时安装 <code>onnxruntime-ep-webgpu&gt;=0.4.0,&lt;1</code>；
+这是与 ORT 并存的插件，不替换 <code>onnxruntime</code>。Linux ARM64、macOS 和 Windows 不安装此插件。
+Linux 还需系统提供 <code>libvulkan.so.1</code> 和可用的 GPU Vulkan 驱动。使用 uv 管理环境：</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span>.venv/bin/python<span class="w"> </span>-e<span class="w"> </span>.
+.venv/bin/uv<span class="w"> </span>pip<span class="w"> </span>check<span class="w"> </span>--python<span class="w"> </span>.venv/bin/python
+</code></pre></div>
+<p>插件注册前，<code>ort.get_available_providers()</code> 不一定列出 WebGPU；用上面的 <code>devices</code> 命令检查插件发现能力。</p>
+<p>已有环境从 CPU 包迁移时，先卸载 <code>onnxruntime</code>，再安装 DirectML，避免两个发行包覆盖同一模块。
+安装后用 <code>import onnxruntime; print(onnxruntime.__version__, onnxruntime.get_available_providers())</code> 检查实际能力。</p>
+<p>文件识别使用 <code>mineru-magika&gt;=1.0.3,&lt;1.1.0</code>，Python 导入名仍为 <code>magika</code>，由 DocVortex 声明依赖。
+迁移已有环境时须先卸载旧 <code>magika</code>，再安装新发行包，避免两个包覆盖同一模块。</p>
+<p>2026-10-18 已使用 DocVortex 提交 <code>545570c4bffa2a668b7db03b5d3117e7a13faf8c</code> 完成
+Windows x64 的完整依赖安装、发行包身份、真实分类、rec 与文档解析验收。
+该提交的版本号仍为 <code>0.5.16</code>，当前 PyPI 同版本仍是旧依赖；因此验收使用固定提交构建的 wheel。
+在兼容版本发布到 PyPI 并更新最低版本前，源码安装应显式指定该提交：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">uv</span><span class="p">.</span><span class="n">exe</span> <span class="n">pip</span> <span class="n">install</span> <span class="p">-</span><span class="n">-python</span> <span class="p">.</span><span class="n">venv</span><span class="p">/</span><span class="n">Scripts</span><span class="p">/</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">-e</span> <span class="p">.</span> <span class="s2">"docvortex @ git+https://github.com/myhloli/DocVortex.git@545570c4bffa2a668b7db03b5d3117e7a13faf8c"</span>
+<span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">uv</span><span class="p">.</span><span class="n">exe</span> <span class="n">pip</span> <span class="n">check</span> <span class="p">-</span><span class="n">-python</span> <span class="p">.</span><span class="n">venv</span><span class="p">/</span><span class="n">Scripts</span><span class="p">/</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span>
+</code></pre></div>
+<p>不能把两个 ORT 发行包或两个 Magika 发行包同时存在视为有效安装。
+版本、校验值、平台矩阵与实测结果见 <a href="https://github.com/opendatalab/MinerU/blob/master/docs/archive/performance/onnx-dependency-validation.md">依赖验收报告</a>。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2026 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

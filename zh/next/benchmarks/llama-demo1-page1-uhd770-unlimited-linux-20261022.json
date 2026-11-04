@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-22",
+  "input": "demo/pdfs/demo1.pdf",
+  "page_range": "1",
+  "tier": "advanced",
+  "ocr_mode": "ocr",
+  "cpu": "Intel Core i7-12700",
+  "gpu": "Intel UHD Graphics770,8086:4680,0000:00:02.0",
+  "wall_timeout_seconds": null,
+  "parent_timeout_wrapper": false,
+  "process_signalled_by_agent": false,
+  "process_exit_code": 0,
+  "end_reason": "Native generation length limit; invalid layout parsed as empty page; parse() returned normally.",
+  "result": {
+    "llama_device": "vulkan",
+    "tier": "advanced",
+    "ocr_mode": "ocr",
+    "page_range": "1",
+    "explicit_warmup": false,
+    "pid": 80646,
+    "timeout_seconds": null,
+    "small_models": "onnx-cpu",
+    "cpu_threads": "llama default auto",
+    "n_parallel": "llama default4",
+    "n_ctx_seq": "llama default0",
+    "preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+    "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+    "packages": {
+      "mineru": "4.0.12",
+      "mineru-llama-cpp": "0.1.3",
+      "mineru-vl-utils": "2.0.7"
+    },
+    "parse_wall_s": 261.4018486009991,
+    "pages": 1,
+    "blocks": 0,
+    "markdown_chars": 0,
+    "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "title_present": false,
+    "completed": true
+  },
+  "model_inference_s": 259.186243,
+  "output_valid": false,
+  "output_check": {
+    "pages": 1,
+    "blocks": 0,
+    "markdown_bytes": 0,
+    "title_present": false
+  },
+  "warnings": {
+    "native_length_limit": true,
+    "invalid_layout": true,
+    "logged_layout_characters": 27192,
+    "logged_layout_distinct_characters": [
+      "!"
+    ],
+    "logged_layout_prefix": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  },
+  "model_context": {
+    "gguf_context_length": 8192,
+    "requested_n_ctx_seq": 0,
+    "note": "Native engine default reads training context from GGUF; no custom token cap was added. Generated token count was not captured."
+  },
+  "measurement": "One fresh-process real MinerU advanced OCR parse, no explicit warm-up. parse_wall_s includes model initialization and parsing, excludes writing result files.",
+  "settings": {
+    "small_models": "ONNX CPU",
+    "engine": "llama-cpp",
+    "backend": "vulkan",
+    "n_parallel": 4,
+    "threads": "default auto",
+    "max_concurrency": 100,
+    "ld_preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+    "vk_driver_files": "/usr/share/vulkan/icd.d/intel_icd.json",
+    "ggml_vk_visible_devices": "0",
+    "llm_title_leveling": false,
+    "llm_cross_page_table_merge": false
+  },
+  "prior_cpu_reference": {
+    "source": "docs/next/benchmarks/llama-demo1-page1-linux-20261022.json",
+    "parse_wall_s": 71.38070512299964,
+    "blocks": 19,
+    "rerun_this_attempt": false
+  },
+  "valid_gpu_cpu_ratio": null,
+  "kernel_worker_log": "2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:62c!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:630!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:62e!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:632!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:63a!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:638!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:636!\n2026-10-22T01:27:21+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[80646]:634!\n",
+  "observations": [
+    {
+      "wall_clock": 1792603775.77456,
+      "pid": 80646,
+      "running": true,
+      "devices": [
+        {
+          "path": "/dev/dri/renderD128",
+          "drm-driver": "i915",
+          "drm-client-id": "1768",
+          "drm-pdev": "0000:00:02.0",
+          "drm-resident-system0": "0",
+          "drm-engine-render": "0 ns"
+        },
+        {
+          "path": "/dev/dri/renderD128",
+          "drm-driver": "i915",
+          "drm-client-id": "1769",
+          "drm-pdev": "0000:00:02.0",
+          "drm-resident-system0": "2155296 KiB",
+          "drm-engine-render": "152621015134 ns"
+        }
+      ],
+      "elapsed_s": 159.75,
+      "log_bytes": 2118
+    },
+    {
+      "wall_clock": 1792603812.3123422,
+      "pid": 80646,
+      "running": true,
+      "devices": [
+        {
+          "path": "/dev/dri/renderD128",
+          "drm-driver": "i915",
+          "drm-client-id": "1768",
+          "drm-pdev": "0000:00:02.0",
+          "drm-resident-system0": "0",
+          "drm-engine-render": "0 ns"
+        },
+        {
+          "path": "/dev/dri/renderD128",
+          "drm-driver": "i915",
+          "drm-client-id": "1769",
+          "drm-pdev": "0000:00:02.0",
+          "drm-resident-system0": "2155296 KiB",
+          "drm-engine-render": "188019947213 ns"
+        }
+      ],
+      "elapsed_s": 196.29000000000087,
+      "log_bytes": 2118
+    },
+    {
+      "wall_clock": 1792603877.9849296,
+      "pid": 80646,
+      "running": false,
+      "devices": [],
+      "log_bytes": 30681
+    }
+  ],
+  "evidence_directory": "demo/output/llama-demo1-page1-uhd770-unlimited-20261022",
+  "evidence_sha256": {
+    "observations.jsonl": "8d3904146161757dc5dece72b763e4bc103c1b6ebc12abfa00286c7a6880b564",
+    "kernel-before.log": "260d6acb12ced0a931b5ef409febd74906047ddcd9c6077d77dd077949840150",
+    "vulkan.log": "bae73e404c8534d78f1d7d2111974e7c4be668131bcaa3a68cc2b0d573af4fb2",
+    "worker.py": "e70febca4b051d2281fb3870d8070e75daacd74eec28b64b6dd3c5ef7046e432",
+    "kernel-worker.log": "d221ed070ee6893231d7462dda8a0259c3786173a55a98b02077360499d004ec",
+    "observe.py": "218b75e9b7971c53e6e1be74170d8a9d19873e0899431d127db9f7346c146838",
+    "advanced/vulkan/middle.json": "099ec6fe28a198fe1819a995710cc7bbd760781583f2351b53bc9b7ad93c9e22",
+    "advanced/vulkan/document.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "advanced/vulkan/started.json": "d1f42e15934bc700b7197c245f3afd3b8e6ea45f668e62bcf20f6b7c2e762d39",
+    "advanced/vulkan/result.json": "26433f2aaf50c4ba35e2f27638800caf11bfa60c2ca7e61256c4b8bb627b79a1"
+  },
+  "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "production_code_modified": false
+}
