@@ -1,4 +1,4 @@
-"""验证模型分类阈值与阅读顺序有效候选在两种推理后端保持一致。"""
+"""验证两种推理后端按相同输出门槛独立筛选标签，并保留模型排序。"""
 
 from __future__ import annotations
 
@@ -64,8 +64,14 @@ def _predict(backend: str, probabilities: np.ndarray) -> dict[str, Any]:
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
 @pytest.mark.parametrize("cls_id", range(len(PP_DOCLAYOUT_V2_LABELS)), ids=PP_DOCLAYOUT_V2_LABELS)
 def test_class_threshold_boundaries(backend: str, cls_id: int) -> None:
-    """逐类验证低于阈值拒绝，等于阈值和高于阈值均可保留。"""
-    threshold = DEFAULT_CLASS_THRESHOLDS[cls_id]
+    """逐类验证约定的输出门槛：摘要 0.5、五类正文标题公式 0.4、其余 0.45。"""
+    label = PP_DOCLAYOUT_V2_LABELS[cls_id]
+    if label == "abstract":
+        threshold = 0.5
+    elif label in {"text", "vertical_text", "doc_title", "paragraph_title", "display_formula"}:
+        threshold = 0.4
+    else:
+        threshold = 0.45
     probabilities = np.full((3, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
     probabilities[:, cls_id] = [threshold - 0.001, threshold, threshold + 0.001]
 
@@ -91,8 +97,8 @@ def test_inline_formula_uses_045_without_changing_other_class_thresholds(backend
 
 
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
-def test_invalid_primary_class_cannot_be_reintroduced_by_secondary_label(backend: str) -> None:
-    """摘要主类别未达标时，即使次高正文类别达标也不能重新进入输出。"""
+def test_secondary_label_is_kept_when_primary_class_is_below_its_threshold(backend: str) -> None:
+    """摘要主类别未达标不再否决候选，达到正文门槛的次高标签仍可输出。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
     probabilities[0, 17] = 0.9
     probabilities[1, 0] = 0.49
@@ -100,7 +106,7 @@ def test_invalid_primary_class_cannot_be_reintroduced_by_secondary_label(backend
 
     result = _predict(backend, probabilities)
 
-    assert result["labels"].tolist() == [17]
+    assert result["labels"].tolist() == [17, 22]
 
 
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
@@ -115,17 +121,19 @@ def test_summary_page_scores_restore_title_and_four_paragraphs(backend: str) -> 
 
     result = _predict(backend, probabilities)
 
-    assert result["labels"].tolist() == [17, 22, 22, 22, 22, 8, 8]
+    assert result["labels"][:5].tolist() == [17, 22, 22, 22, 22]
+    # 页脚图片现在达到 0.45 输出门槛，后续几何去重仍会保留更高分的页脚文本。
+    assert sorted(result["labels"][5:].tolist()) == [8, 8, 9]
     np.testing.assert_allclose(result["scores"][1], 0.4426, rtol=0, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
-def test_valid_primary_keeps_only_secondary_labels_above_their_own_threshold(backend: str) -> None:
-    """有效候选保留达到自身阈值的次高正文标签，拒绝未达标的页眉标签。"""
+def test_secondary_labels_use_their_own_output_thresholds(backend: str) -> None:
+    """各标签分别筛选，保留达到 0.4 的正文并拒绝低于 0.45 的页眉。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
     probabilities[0, 0] = 0.6
     probabilities[0, 22] = 0.44
-    probabilities[0, 12] = 0.49
+    probabilities[0, 12] = 0.449
 
     result = _predict(backend, probabilities)
 
@@ -133,30 +141,30 @@ def test_valid_primary_keeps_only_secondary_labels_above_their_own_threshold(bac
 
 
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])
-@pytest.mark.parametrize(("first_cls", "second_cls", "expected"), [(0, 22, []), (6, 8, [6])])
-def test_primary_class_ties_use_the_smallest_class_id(
-    backend: str, first_cls: int, second_cls: int, expected: list[int]
-) -> None:
-    """最高分同分时按较小类别编号判断有效性，与模型 argmax 规则一致。"""
+@pytest.mark.parametrize(("first_cls", "second_cls", "expected"), [(0, 22, [22]), (6, 8, [6, 8]), (0, 12, [12])])
+def test_tied_labels_are_filtered_independently(backend: str, first_cls: int, second_cls: int, expected: list[int]) -> None:
+    """同分标签分别按自身门槛准入，不再由较小类别编号决定整个候选的有效性。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
     probabilities[0, first_cls] = probabilities[0, second_cls] = 0.45
 
     result = _predict(backend, probabilities)
 
-    assert result["labels"].tolist() == expected
+    assert sorted(result["labels"].tolist()) == expected
 
 
 @pytest.mark.torch
-def test_torch_uses_loaded_model_thresholds() -> None:
-    """Torch 按已加载模型配置筛选，不以共享默认常量覆盖模型自带阈值。"""
-    probabilities = np.full((1, 1, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
+def test_torch_output_thresholds_are_independent_of_loaded_model_configuration() -> None:
+    """模型内部门槛不覆盖输出策略，正文仍按 0.4、图片仍按 0.45 筛选。"""
+    probabilities = np.full((1, 2, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
     probabilities[0, 0, 22] = 0.6
+    probabilities[0, 1, 14] = 0.449
     thresholds = list(DEFAULT_CLASS_THRESHOLDS)
     thresholds[22] = 0.7
+    thresholds[14] = 0.1
 
     result = _torch_predictions(probabilities, class_thresholds=thresholds)[0]
 
-    assert result["labels"].tolist() == []
+    assert result["labels"].tolist() == [22]
 
 
 @pytest.mark.torch
@@ -171,8 +179,8 @@ def test_torch_empty_and_all_rejected_candidates(query_count: int) -> None:
     assert all(result["labels"].numel() == 0 and result["boxes"].shape == (0, 4) for result in results)
 
 
-def test_onnx_groups_candidates_with_coordinates_and_both_order_keys() -> None:
-    """坐标相同而排序键不同或排序键相同而坐标不同的候选必须独立判断。"""
+def test_onnx_filters_labels_independently_of_shared_coordinates_and_order_keys() -> None:
+    """坐标及排序键相同也逐行筛选，不再因同组摘要未达标而删除正文标签。"""
     rows = np.asarray(
         [
             [0, 0.49, 1, 2, 3, 4, 0, 0],
@@ -185,21 +193,44 @@ def test_onnx_groups_candidates_with_coordinates_and_both_order_keys() -> None:
 
     result = _onnx_predictions(rows, [4])[0]
 
-    assert result["labels"].tolist() == [22, 22]
-    np.testing.assert_array_equal(result["boxes"], [[1, 2, 3, 4], [10, 2, 30, 4]])
+    assert result["labels"].tolist() == [22, 22, 22]
+    np.testing.assert_array_equal(result["boxes"], [[1, 2, 3, 4], [1, 2, 3, 4], [10, 2, 30, 4]])
 
 
-def test_onnx_candidate_validity_is_isolated_by_page() -> None:
-    """相同框和排序键跨页出现时独立筛选，同时保留零框页和全过滤页。"""
+def test_onnx_threshold_filtering_is_isolated_by_page() -> None:
+    """逐页独立筛选标签，同时保留零框页和全部候选未达标的页面。"""
     rows = np.asarray(
-        [[0, 0.49, 1, 2, 3, 4, 0, 0], [22, 0.44, 1, 2, 3, 4, 0, 0], [22, 0.44, 1, 2, 3, 4, 0, 0]],
+        [
+            [0, 0.49, 1, 2, 3, 4, 0, 0],
+            [22, 0.44, 1, 2, 3, 4, 0, 0],
+            [22, 0.44, 1, 2, 3, 4, 0, 0],
+            [0, 0.49, 1, 2, 3, 4, 0, 0],
+        ],
         dtype=np.float32,
     )
 
-    results = _onnx_predictions(rows, [2, 0, 1])
+    results = _onnx_predictions(rows, [2, 0, 1, 1])
 
-    assert [result["labels"].tolist() for result in results] == [[], [], [22]]
-    assert all(result["boxes"].shape == (0, 4) for result in results[:2])
+    assert [result["labels"].tolist() for result in results] == [[22], [], [22], []]
+    assert all(results[index]["boxes"].shape == (0, 4) for index in [1, 3])
+
+
+def test_onnx_retains_model_reading_order_after_threshold_filtering() -> None:
+    """筛选后沿用模型双排序键，不按置信度或类别重新排列被保留的框。"""
+    rows = np.asarray(
+        [
+            [14, 0.47, 10, 0, 20, 10, 9, 0],
+            [22, 0.44, 20, 0, 30, 10, 3, 0],
+            [0, 0.49, 30, 0, 40, 10, 2, 0],
+            [21, 0.45, 40, 0, 50, 10, 7, 0],
+        ],
+        dtype=np.float32,
+    )
+
+    result = _onnx_predictions(rows, [4])[0]
+
+    assert result["labels"].tolist() == [22, 21, 14]
+    np.testing.assert_array_equal(result["boxes"][:, 0], [20, 40, 10])
 
 
 @pytest.mark.parametrize("backend", [pytest.param("torch", marks=pytest.mark.torch), "onnx"])

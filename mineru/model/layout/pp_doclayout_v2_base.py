@@ -52,33 +52,34 @@ PP_DOCLAYOUT_V2_LABELS = [
 
 PP_DOCLAYOUT_V2_LABEL_TO_ID = {label: index for index, label in enumerate(PP_DOCLAYOUT_V2_LABELS)}
 
-# 模型分类阈值，仅将行内公式提高到 0.45，减少低置信度公式误检。
+# MinerU 输出准入阈值：默认 0.45，摘要使用 0.5，正文、标题和行间公式使用 0.4。
+# 该表独立于模型内部阅读顺序模块的分类配置。
 DEFAULT_CLASS_THRESHOLDS = [
     0.5,  # 0  abstract
-    0.5,  # 1  algorithm
-    0.5,  # 2  aside_text
-    0.5,  # 3  chart
-    0.5,  # 4  content
+    0.45,  # 1  algorithm
+    0.45,  # 2  aside_text
+    0.45,  # 3  chart
+    0.45,  # 4  content
     0.4,  # 5  display_formula
     0.4,  # 6  doc_title
-    0.5,  # 7  figure_title
-    0.5,  # 8  footer
-    0.5,  # 9  footer_image
-    0.5,  # 10 footnote
-    0.5,  # 11 formula_number
-    0.5,  # 12 header
-    0.5,  # 13 header_image
-    0.5,  # 14 image
+    0.45,  # 7  figure_title
+    0.45,  # 8  footer
+    0.45,  # 9  footer_image
+    0.45,  # 10 footnote
+    0.45,  # 11 formula_number
+    0.45,  # 12 header
+    0.45,  # 13 header_image
+    0.45,  # 14 image
     0.45,  # 15 inline_formula
-    0.5,  # 16 number
+    0.45,  # 16 number
     0.4,  # 17 paragraph_title
-    0.5,  # 18 reference
-    0.5,  # 19 reference_content
+    0.45,  # 18 reference
+    0.45,  # 19 reference_content
     0.45,  # 20 seal
-    0.5,  # 21 table
+    0.45,  # 21 table
     0.4,  # 22 text
     0.4,  # 23 vertical_text
-    0.5,  # 24 vision_footnote
+    0.45,  # 24 vision_footnote
 ]
 
 # Reading-order head class remap used by the original upstream model.
@@ -753,8 +754,10 @@ class PPDocLayoutV2PostProcessor:
         boxes: List[Dict],
         drop_inline_formula: bool = True,
     ) -> List[Dict]:
+        """沿用既有过滤判定，仅让吞并子图的 image 大框继承最早子图位置。"""
         filtered_boxes = [dict(box) for box in boxes if not cls._is_reference_box(box)]
         dropped_indexes = set()
+        image_positions: dict[int, int] = {}
 
         for i in range(len(filtered_boxes)):
             if i in dropped_indexes:
@@ -797,11 +800,21 @@ class PPDocLayoutV2PostProcessor:
                         if "table" not in labels or labels <= {"table", "image", "seal", "chart"}:
                             continue
                     if box_area_i >= box_area_j:
-                        dropped_indexes.add(j)
+                        keep_index, drop_index = i, j
                     else:
-                        dropped_indexes.add(i)
+                        keep_index, drop_index = j, i
+                    dropped_indexes.add(drop_index)
+                    if labels == {"image"} and box_area_i != box_area_j:
+                        # 不计大图原位置；子图此前吞并过其他图时，继续传递其已继承的位置。
+                        child_position = image_positions.get(drop_index, drop_index)
+                        image_positions[keep_index] = min(image_positions.get(keep_index, child_position), child_position)
 
-        kept_boxes = [box for index, box in enumerate(filtered_boxes) if index not in dropped_indexes]
+        # 判定全部完成后才重排，避免位置调整改变后续配对、吞并及保留框选择。
+        kept_indexes = sorted(
+            (index for index in range(len(filtered_boxes)) if index not in dropped_indexes),
+            key=lambda index: image_positions.get(index, index),
+        )
+        kept_boxes = [filtered_boxes[index] for index in kept_indexes]
         return cls._renumber_indices(kept_boxes)
 
     # ------------------------------------------------------------------

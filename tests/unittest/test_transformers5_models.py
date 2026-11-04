@@ -62,6 +62,8 @@ def test_layout_loader_adapts_position_embeddings_for_mps_and_xpu(monkeypatch: p
     config = SimpleNamespace(class_thresholds=list(layout.DEFAULT_CLASS_THRESHOLDS))
     config.class_thresholds[15] = 0.4
     config.class_thresholds[22] = 0.7
+    config.class_thresholds[14] = 0.5
+    config.class_thresholds[3] = 0.5
     expected_thresholds = list(config.class_thresholds)
     expected_thresholds[15] = 0.45
     load = Mock(return_value=model)
