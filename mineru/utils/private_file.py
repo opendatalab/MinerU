@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """为本机凭证配置提供 POSIX 权限、macOS ACL 和 Windows DACL 保护。"""
 
 from __future__ import annotations

@@ -70,7 +70,7 @@ client = DoclibClient()
 status = client.get_server_status()
 ```
 
-## 本机认证与二次开发
+## 本机认证与二次开发 {#local-authentication}
 
 首次正常启动服务会生成随机凭证并写入 `$MINERU_HOME/config.yaml` 的 `doclib.auth.token`；
 `MINERU_CONFIG` 可指定其他配置文件。重启和升级复用已有凭证。`MINERU_DOCLIB_AUTH_TOKEN`

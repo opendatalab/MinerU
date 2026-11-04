@@ -43,7 +43,7 @@
 CLI 自动读取当前配置中的本机 token，状态和停止操作同样需要认证。认证失败保留
 `invalid_doclib_token`，不能误报为服务未运行；旧 endpoint 返回 `doclib_upgrade_required`。
 首次升级到认证版本前先用旧 CLI 停止旧服务；更换 token 时先 stop，再修改配置，最后 start。
-token 不随普通重启变化，详见 [本机认证与二次开发](../sdk/doclib-client.md#本机认证与二次开发)。
+token 不随普通重启变化，详见 [本机认证与二次开发](../sdk/doclib-client.md#local-authentication)。
 
 关闭时：
 

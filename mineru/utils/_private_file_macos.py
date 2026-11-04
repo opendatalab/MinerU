@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """使用 macOS 原生 ACL 接口保护凭证，避免仅检查 BSD 权限位遗漏额外授权。"""
 
 from __future__ import annotations
