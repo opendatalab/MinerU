@@ -223,9 +223,9 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
                 predictions = self._run_session(pixels, sizes)
                 for prediction, image_size in zip(predictions, sizes):
                     layout_res = self._parse_prediction(prediction, image_size)
-                    if use_filter:
-                        layout_res = self._apply_paddlex_filter_boxes(layout_res, drop_inline_formula=False)
-                    results.append(self._apply_layout_post_process(layout_res, image_size=image_size))
+                    results.append(
+                        self._apply_layout_post_process(layout_res, image_size=image_size, use_paddlex_filter_boxes=use_filter)
+                    )
                 pbar.update(len(prepared))
         return results
 

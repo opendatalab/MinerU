@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+from statistics import median
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -364,7 +365,7 @@ class PPDocLayoutV2PostProcessor:
         boxes: List[Dict],
         cover_threshold: float = 0.8,
     ) -> List[Dict]:
-        """过滤落在图、表、印章等视觉主体内部的 figure_title。
+        """过滤落在最终图、表、印章等视觉主体内部的标题和视觉脚注。
 
         这类块通常是图内的 (a)/(b) 标号，不应作为外部 caption 参与后续视觉分组。
         """
@@ -374,7 +375,7 @@ class PPDocLayoutV2PostProcessor:
 
         filtered_boxes = []
         for box in boxes:
-            if box.get("label") != "figure_title":
+            if box.get("label") not in {"figure_title", "vision_footnote"}:
                 filtered_boxes.append(box)
                 continue
 
@@ -463,28 +464,108 @@ class PPDocLayoutV2PostProcessor:
         boxes: List[Dict],
         iou_threshold: float = 0.9,
     ) -> List[Dict]:
+        """按置信度选择重复检测，以冻结坐标判断直接重复并保留所有成员的几何。"""
         if len(boxes) <= 1:
             return boxes
 
         sorted_candidates = sorted(
             enumerate(boxes),
-            key=lambda item: (-float(item[1].get("score", 0.0)), item[0]),
+            key=lambda item: (
+                -float(item[1].get("score", 0.0)),
+                -cls._calculate_bbox_area(item[1]["bbox"]),
+                item[1]["index"],
+                item[0],
+            ),
         )
         suppressed_indexes = set()
-        kept_indexes = []
+        kept_boxes = []
 
         for candidate_pos, (current_index, current_box) in enumerate(sorted_candidates):
             if current_index in suppressed_indexes:
                 continue
-            kept_indexes.append(current_index)
+            kept_box = {**current_box, "bbox": list(current_box["bbox"])}
             for other_index, other_box in sorted_candidates[candidate_pos + 1 :]:
                 if other_index in suppressed_indexes:
                     continue
+                if cls._is_protected_formula_pair(current_box, other_box):
+                    continue
+                # 始终比较原始 current_box，不能让扩大后的并集继续吞并下一段检测。
                 if cls._calculate_iou(current_box["bbox"], other_box["bbox"]) > iou_threshold:
                     suppressed_indexes.add(other_index)
+                    kept_box["bbox"] = cls._union_bbox(kept_box["bbox"], other_box["bbox"])
+            kept_boxes.append((current_index, kept_box))
 
-        kept_indexes.sort()
-        return [boxes[index] for index in kept_indexes]
+        return [box for _, box in sorted(kept_boxes, key=lambda item: (item[1]["index"], item[0]))]
+
+    @classmethod
+    def _is_protected_formula_pair(cls, left: Dict, right: Dict) -> bool:
+        """保护公式与非公式父块、公式编号与其他块，避免通用去重抢先删除语义成员。"""
+        if cls._is_formula_number_box(left) != cls._is_formula_number_box(right):
+            return True
+        return cls._is_formula_box(left) != cls._is_formula_box(right)
+
+    @classmethod
+    def _can_merge_layout_pair(cls, left: Dict, right: Dict) -> bool:
+        """保留既有视觉跨类别共存规则，公式与父块独立保留，公式之间允许合并。"""
+        if cls._is_protected_formula_pair(left, right):
+            return False
+        labels = {left["label"], right["label"]}
+        if labels & cls.VISUAL_BODY_LABELS and len(labels) > 1:
+            return "table" in labels and not labels <= cls.VISUAL_BODY_LABELS
+        return True
+
+    @classmethod
+    def _merge_overlapping_boxes(
+        cls,
+        boxes: List[Dict],
+        *,
+        merge_non_formulas: bool,
+        overlap_threshold: float = 0.7,
+        area_limit: float = 1.5,
+    ) -> tuple[List[Dict], dict[int, list[int]]]:
+        """以冻结的大框为锚执行有界合并，返回独立存储的子图原始序号。"""
+        areas = [cls._calculate_bbox_area(box["bbox"]) for box in boxes]
+        anchor_order = sorted(
+            range(len(boxes)),
+            key=lambda index: (-areas[index], -float(boxes[index].get("score", 0.0)), boxes[index]["index"], index),
+        )
+        candidate_order = sorted(
+            range(len(boxes)),
+            key=lambda index: (-float(boxes[index].get("score", 0.0)), -areas[index], boxes[index]["index"], index),
+        )
+        consumed = set()
+        kept_boxes = []
+        image_children: dict[int, list[int]] = {}
+        for anchor_index in anchor_order:
+            if anchor_index in consumed:
+                continue
+            anchor = boxes[anchor_index]
+            kept_box = {**anchor, "bbox": list(anchor["bbox"])}
+            consumed.add(anchor_index)
+            child_orders = []
+            for candidate_index in candidate_order:
+                if candidate_index in consumed:
+                    continue
+                candidate = boxes[candidate_index]
+                if not merge_non_formulas and not (cls._is_formula_box(anchor) and cls._is_formula_box(candidate)):
+                    continue
+                if not cls._can_merge_layout_pair(anchor, candidate):
+                    continue
+                if cls._calculate_overlap_ratio(anchor["bbox"], candidate["bbox"]) <= overlap_threshold:
+                    continue
+                union_bbox = cls._union_bbox(kept_box["bbox"], candidate["bbox"])
+                if cls._calculate_bbox_area(union_bbox) > areas[anchor_index] * area_limit:
+                    continue
+                # 类型和置信度始终属于大框；并集不回流到锚点判断或面积上限。
+                kept_box["bbox"] = union_bbox
+                consumed.add(candidate_index)
+                if anchor["label"] == candidate["label"] == "image" and areas[candidate_index] < areas[anchor_index]:
+                    child_orders.append(candidate["index"])
+            if child_orders:
+                image_children[id(kept_box)] = child_orders
+            kept_boxes.append((anchor_index, kept_box))
+        ordered_boxes = [box for _, box in sorted(kept_boxes, key=lambda item: (item[1]["index"], item[0]))]
+        return ordered_boxes, image_children
 
     @classmethod
     def _filter_nested_text_boxes(cls, boxes: List[Dict]) -> List[Dict]:
@@ -516,54 +597,6 @@ class PPDocLayoutV2PostProcessor:
             else:
                 parents.append(box)
         return [box for index, box in enumerate(boxes) if index not in dropped_indexes]
-
-    @classmethod
-    def _merge_nested_formula_boxes(
-        cls,
-        boxes: List[Dict],
-        overlap_threshold: float = 0.7,
-    ) -> List[Dict]:
-        if len(boxes) <= 1:
-            return boxes
-
-        changed = True
-        while changed:
-            changed = False
-            formula_indexes = [index for index, box in enumerate(boxes) if cls._is_formula_box(box)]
-            for formula_pos, left_index in enumerate(formula_indexes):
-                for right_index in formula_indexes[formula_pos + 1 :]:
-                    left_box = boxes[left_index]
-                    right_box = boxes[right_index]
-                    if cls._calculate_overlap_ratio(left_box["bbox"], right_box["bbox"]) < overlap_threshold:
-                        continue
-
-                    left_area = cls._calculate_bbox_area(left_box["bbox"])
-                    right_area = cls._calculate_bbox_area(right_box["bbox"])
-                    if left_area > right_area:
-                        keep_index, drop_index = left_index, right_index
-                    elif right_area > left_area:
-                        keep_index, drop_index = right_index, left_index
-                    else:
-                        left_score = float(left_box.get("score", 0.0))
-                        right_score = float(right_box.get("score", 0.0))
-                        keep_index, drop_index = (
-                            (left_index, right_index) if left_score >= right_score else (right_index, left_index)
-                        )
-
-                    keep_box = boxes[keep_index]
-                    drop_box = boxes[drop_index]
-                    keep_box["bbox"] = cls._union_bbox(keep_box["bbox"], drop_box["bbox"])
-                    keep_box["score"] = round(
-                        max(float(keep_box.get("score", 0.0)), float(drop_box.get("score", 0.0))),
-                        4,
-                    )
-                    del boxes[drop_index]
-                    changed = True
-                    break
-                if changed:
-                    break
-
-        return boxes
 
     @classmethod
     def _relabel_formula_boxes(
@@ -727,95 +760,49 @@ class PPDocLayoutV2PostProcessor:
         cls,
         boxes: List[Dict],
         image_size: Optional[Tuple[int, int]] = None,
+        *,
+        use_paddlex_filter_boxes: bool = True,
     ) -> List[Dict]:
-        """统一两种后端的公式保护、边界改标与最终文本框去重。"""
+        """统一执行公式保护、分数去重、有界合并、边界清理和子图中位数排序。"""
         processed_boxes = [{**box, "bbox": list(box["bbox"])} for box in boxes]
-        processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
-        processed_boxes = cls._merge_nested_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        original_inline_ids = {id(box) for box in processed_boxes if cls._is_inline_formula_box(box)}
+        # 在任何通用抑制之前修正公式身份；最终再依据实际存活的父块复核。
         processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
-        processed_boxes = cls._filter_formula_boxes_inside_page_marginals(
+        if use_paddlex_filter_boxes:
+            processed_boxes = [
+                box
+                for box in processed_boxes
+                if not cls._is_reference_box(box)
+                and (
+                    id(box) in original_inline_ids
+                    or cls._is_inline_formula_box(box)
+                    or (box["bbox"][2] - box["bbox"][0] >= 6 and box["bbox"][3] - box["bbox"][1] >= 6)
+                )
+            ]
+        processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
+        processed_boxes, image_children = cls._merge_overlapping_boxes(
             processed_boxes,
-            cover_threshold=0.8,
+            merge_non_formulas=use_paddlex_filter_boxes,
         )
         processed_boxes = cls._relabel_header_footer_boundary_blocks(
             processed_boxes,
             image_size=image_size,
         )
+        processed_boxes = cls._filter_nested_text_boxes(processed_boxes)
         processed_boxes = cls._filter_internal_visual_caption_boxes(
             processed_boxes,
             cover_threshold=0.8,
         )
-        processed_boxes = cls._filter_nested_text_boxes(processed_boxes)
-        return cls._renumber_indices(processed_boxes)
-
-    @classmethod
-    def _apply_paddlex_filter_boxes(
-        cls,
-        boxes: List[Dict],
-        drop_inline_formula: bool = True,
-    ) -> List[Dict]:
-        """沿用既有过滤判定，仅让吞并子图的 image 大框继承最早子图位置。"""
-        filtered_boxes = [dict(box) for box in boxes if not cls._is_reference_box(box)]
-        dropped_indexes = set()
-        image_positions: dict[int, int] = {}
-
-        for i in range(len(filtered_boxes)):
-            if i in dropped_indexes:
-                continue
-            x1, y1, x2, y2 = filtered_boxes[i]["bbox"]
-            width = float(x2) - float(x1)
-            height = float(y2) - float(y1)
-            if (width < 6.0 or height < 6.0) and (drop_inline_formula or not cls._is_inline_formula_box(filtered_boxes[i])):
-                dropped_indexes.add(i)
-                continue
-
-            for j in range(i + 1, len(filtered_boxes)):
-                if i in dropped_indexes or j in dropped_indexes:
-                    continue
-
-                if not drop_inline_formula and (
-                    cls._is_inline_formula_box(filtered_boxes[i]) or cls._is_inline_formula_box(filtered_boxes[j])
-                ):
-                    continue
-
-                overlap_ratio = cls._calculate_overlap_ratio(
-                    filtered_boxes[i]["bbox"],
-                    filtered_boxes[j]["bbox"],
-                )
-                if drop_inline_formula and (
-                    cls._is_inline_formula_box(filtered_boxes[i]) or cls._is_inline_formula_box(filtered_boxes[j])
-                ):
-                    if overlap_ratio > 0.5:
-                        if cls._is_inline_formula_box(filtered_boxes[i]):
-                            dropped_indexes.add(i)
-                        if cls._is_inline_formula_box(filtered_boxes[j]):
-                            dropped_indexes.add(j)
-                        continue
-
-                if overlap_ratio > 0.7:
-                    box_area_i = cls._calculate_bbox_area(filtered_boxes[i]["bbox"])
-                    box_area_j = cls._calculate_bbox_area(filtered_boxes[j]["bbox"])
-                    labels = {filtered_boxes[i]["label"], filtered_boxes[j]["label"]}
-                    if labels & {"image", "table", "seal", "chart"} and len(labels) > 1:
-                        if "table" not in labels or labels <= {"table", "image", "seal", "chart"}:
-                            continue
-                    if box_area_i >= box_area_j:
-                        keep_index, drop_index = i, j
-                    else:
-                        keep_index, drop_index = j, i
-                    dropped_indexes.add(drop_index)
-                    if labels == {"image"} and box_area_i != box_area_j:
-                        # 不计大图原位置；子图此前吞并过其他图时，继续传递其已继承的位置。
-                        child_position = image_positions.get(drop_index, drop_index)
-                        image_positions[keep_index] = min(image_positions.get(keep_index, child_position), child_position)
-
-        # 判定全部完成后才重排，避免位置调整改变后续配对、吞并及保留框选择。
-        kept_indexes = sorted(
-            (index for index in range(len(filtered_boxes)) if index not in dropped_indexes),
-            key=lambda index: image_positions.get(index, index),
+        processed_boxes = cls._filter_formula_boxes_inside_page_marginals(processed_boxes, cover_threshold=0.8)
+        processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        # 只调整最终仍为 image 的主体，不把临时来源信息写入公开检测字典。
+        processed_boxes.sort(
+            key=lambda box: (
+                median(image_children[id(box)]) if box["label"] == "image" and id(box) in image_children else box["index"],
+                box["index"],
+            )
         )
-        kept_boxes = [filtered_boxes[index] for index in kept_indexes]
-        return cls._renumber_indices(kept_boxes)
+        return cls._renumber_indices(processed_boxes)
 
     # ------------------------------------------------------------------
     # 可视化

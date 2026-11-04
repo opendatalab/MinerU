@@ -189,7 +189,7 @@ def test_layout_batch_keeps_independent_pages(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(model, "_run_session", infer)
     monkeypatch.setattr(model, "_parse_prediction", lambda prediction, size: [prediction])
-    monkeypatch.setattr(model, "_apply_layout_post_process", lambda result, image_size: result)
+    monkeypatch.setattr(model, "_apply_layout_post_process", lambda result, image_size, use_paddlex_filter_boxes: result)
     assert model.batch_predict([np.full((3, 8, 8), i) for i in (1, 2, 3)], batch_size=2) == [
         [{"page": 1}],
         [{"page": 2}],

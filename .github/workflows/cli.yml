@@ -12,7 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: cli-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # 独立命名空间避开旧组中无法取消的异常运行，仍按 PR/分支取消旧任务。
+  group: mineru-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) }}
 
 env:

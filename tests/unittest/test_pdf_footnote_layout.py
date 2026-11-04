@@ -30,11 +30,14 @@ FIXTURE = Path(__file__).parents[1] / "fixtures/emnlp614_footnote"
     ("effort", "is_async", "fallback"),
     [("medium", False, False), ("high", False, False), ("high", True, False), ("high", False, True), ("high", True, True)],
 )
+@pytest.mark.parametrize("formula_label", ["inline_formula", "display_formula"])
 def test_real_footnote_survives_recognition_and_native_fill(
-    monkeypatch: pytest.MonkeyPatch, effort: str, is_async: bool, fallback: bool
+    monkeypatch: pytest.MonkeyPatch, effort: str, is_async: bool, fallback: bool, formula_label: str
 ) -> None:
     """冻结推理边界但执行真实回填，确保完整脚注、公式和两行内容均只出现一次。"""
     fixture = json.loads((FIXTURE / "detection.json").read_text())
+    # 同一真实切片也覆盖被误标为行间公式的输入，修正后仍必须完整走识别和原生回填。
+    fixture["raw_layout"]["torch"][0].update(label=formula_label, cls_id=15 if formula_label == "inline_formula" else 5)
     source = (FIXTURE / "page7.pdf").read_bytes()
     formula_bbox = fixture["raw_layout"]["torch"][0]["bbox"]
     latex = "h_0(d_0) = 5, h_1(d_0) = 15, h_0(d_1) = 10"
@@ -46,7 +49,7 @@ def test_real_footnote_survives_recognition_and_native_fill(
         image = document.render_page(0, scale=fixture["scale"]).pil_image
         assert list(image.size) == fixture["render_size"]
         layout = PPDocLayoutV2PostProcessor._apply_layout_post_process(
-            PPDocLayoutV2PostProcessor._apply_paddlex_filter_boxes(fixture["raw_layout"]["torch"], drop_inline_formula=False),
+            fixture["raw_layout"]["torch"],
             image_size=image.size[::-1],
         )
         blocks = _build_vl_style_layout_blocks([layout], [image])
