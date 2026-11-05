@@ -260,10 +260,12 @@ const appContext = vm.createContext({
         },
     },
     stubTimer: () => ({ sync() {}, showPreparing() {} }),
+    stubAdvanced: () => ({ sync() {} }),
 });
 vm.runInContext(resource("gradio_app.js")
     .replace("__MINERU_I18N__", "stubI18n")
-    .replace("__MINERU_STATUS_TIMER__", "stubTimer"), appContext)();
+    .replace("__MINERU_STATUS_TIMER__", "stubTimer")
+    .replace("__MINERU_ADVANCED_OPTIONS__", "stubAdvanced"), appContext)();
 while (frames.length) frames.shift()();
 const beforeRefresh = localizations;
 observer([externalMutation]);

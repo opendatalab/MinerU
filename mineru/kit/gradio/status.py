@@ -58,6 +58,7 @@ class StatusPanelState:
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     phase_id: int = 0
     sequence: int = 0
+    warning_keys: tuple[str, ...] = ()
 
     def append(self, message: str | ParseStatusUpdate, *, at: float | None = None) -> bool:
         """阶段通知维持本地计时；服务端耗时只更新完成数值，不重启同阶段动画。"""
@@ -131,13 +132,16 @@ class StatusPanelState:
         else:
             title = _localized_text("status_latest")
             latest_html = localized_message(latest)
+        warnings_html = "".join(
+            f'<div class="mineru-enhancement-warning" role="status">{_localized_text(key)}</div>' for key in self.warning_keys
+        )
         return (
             '<div class="status-steps-panel">'
             f'<div class="status-panel-title">{title}</div>'
             f'<div class="status-steps-list">{"".join(items)}</div>'
             f'<div class="status-latest" data-mineru-run-id="{self.run_id}" '
             f'data-mineru-phase-id="{self.phase_id}" data-mineru-status-seq="{self.sequence}"'
-            f"{timer_attributes}>{latest_html}</div></div>"
+            f"{timer_attributes}>{latest_html}</div>{warnings_html}</div>"
         )
 
 

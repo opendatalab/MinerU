@@ -13,6 +13,7 @@ from docvortex.content.table import expand_header_count_by_rowspan as _expand_he
 
 from ....types import PageInfo, TableBlock, TableBodyBlock
 from ..llm_client import LLMAidedClient
+from ..llm_report import LLMFeatureReport
 
 CellMergeFlag = Literal[0, 1]
 
@@ -141,31 +142,39 @@ def _expand_cell_merge(
     return expanded
 
 
-async def apply_llm_cross_page_cell_merge(pages: list[PageInfo], client: LLMAidedClient) -> None:
-    """并发分析已确认的跨页续表，并按候选原始顺序写入 cell_merge。"""
+async def apply_llm_cross_page_cell_merge(
+    pages: list[PageInfo], client: LLMAidedClient, *, report: LLMFeatureReport | None = None
+) -> None:
+    """并发分析已确认的跨页续表，每个候选校验成功即写入 cell_merge。"""
     candidates = [
         candidate
         for previous_table, current_table in _find_continued_table_pairs(pages)
         if (candidate := _prepare_cell_merge_candidate(previous_table, current_table)) is not None
     ]
+    report = report if report is not None else LLMFeatureReport()
+    report.total = len(candidates)
     if not candidates:
         return
 
-    candidate_flags = await asyncio.gather(
-        *(
-            client.request_validated_json(
+    async def enhance_candidate(candidate: _CellMergeCandidate) -> None:
+        """独立提交边界单元格结果，保证其他候选超时不会丢失本次成功。"""
+        try:
+            segment_flags = await client.request_validated_json(
                 operation="cross_page_table_cell_merge",
                 prompt=candidate.prompt,
-                validator=lambda value, count=candidate.expected_segment_count: _validate_cell_merge(value, count),
+                validator=lambda value: _validate_cell_merge(value, candidate.expected_segment_count),
                 temperature=0.1,
             )
-            for candidate in candidates
-        )
-    )
-    for candidate, segment_flags in zip(candidates, candidate_flags):
-        if segment_flags is None:
-            continue
-        candidate.current_table.cell_merge = _expand_cell_merge(candidate, segment_flags)
+            if segment_flags is None:
+                report.failed += 1
+                return
+            candidate.current_table.cell_merge = _expand_cell_merge(candidate, segment_flags)
+            report.succeeded += 1
+        except Exception:
+            # 仅降级当前候选，任务取消仍传播到共享编排入口。
+            report.failed += 1
+
+    await asyncio.gather(*(enhance_candidate(candidate) for candidate in candidates))
 
 
 __all__ = ["apply_llm_cross_page_cell_merge"]

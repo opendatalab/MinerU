@@ -31,7 +31,11 @@
         state.terminal = false;
         state.applied = false;
         window.__mineruStatusPanel?.showPreparing();
-        return [JSON.stringify({ run_id: state.runId, revision: state.revision }), timer(true)];
+        // 在点击时固定本次增强选项，排队期间的勾选变化只影响下一次提交。
+        return [JSON.stringify({
+            run_id: state.runId, revision: state.revision,
+            title_leveling: args[0], cross_page_table_cell_merge: args[1],
+        }), timer(true)];
     }
     if (action === "cancel") {
         stopPreviewLog();

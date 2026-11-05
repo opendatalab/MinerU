@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from ...config import LLMAidedConfig
 from ...filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     HTML_EXTENSIONS,
@@ -353,6 +354,7 @@ def build_gradio_app(
     enable_api: bool = True,
     max_pages: int | None = None,
     document_io: GradioDocumentIO | None = None,
+    llm_aided_config: LLMAidedConfig | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
     import gradio as gr
@@ -379,6 +381,7 @@ def build_gradio_app(
             "__MINERU_STATUS_TIMER__",
             _resource_text("gradio_status_timer.js"),
         )
+        .replace("__MINERU_ADVANCED_OPTIONS__", _resource_text("gradio_advanced_options.js"))
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversions = SessionConversions()
@@ -389,6 +392,7 @@ def build_gradio_app(
         max_pages=max_pages,
         slot=conversions.slot,
         document_io=document_io,
+        llm_aided_config=llm_aided_config,
     )
 
     with gr.Blocks() as demo:
@@ -470,6 +474,8 @@ def build_gradio_app(
                             elem_classes=["mineru-page-handle-b"],
                         )
                 page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
+                if llm_aided_config is not None:
+                    gr.Button(i18n("mineru.advanced_options"), size="sm", elem_classes=["mineru-advanced-open"])
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button(
                         i18n("mineru.convert"),
@@ -566,6 +572,27 @@ def build_gradio_app(
                                 elem_classes=[f"mineru-kit-download-{format_name}"],
                             )
                 download_notice = gr.HTML(value="", elem_classes=["mineru-kit-download-notice"])
+
+        llm_inputs = []
+        if llm_aided_config is not None:
+            llm_available = bool(llm_aided_config.api_key.strip())
+            with gr.Column(elem_id="mineru-advanced-popover", elem_classes=["mineru-advanced-popover"], min_width=0):
+                gr.HTML(f'<h3 id="mineru-llm-enhancement-heading">{localized_text("llm_enhancement")}</h3>')
+                title_leveling = gr.Checkbox(
+                    value=llm_aided_config.features.title_leveling,
+                    label=i18n("mineru.title_leveling"),
+                    interactive=llm_available,
+                    elem_classes=["mineru-title-leveling"],
+                )
+                cross_page_table_cell_merge = gr.Checkbox(
+                    value=llm_aided_config.features.cross_page_table_cell_merge,
+                    label=i18n("mineru.cell_merge"),
+                    interactive=llm_available,
+                    elem_classes=["mineru-cell-merge"],
+                )
+                if not llm_available:
+                    gr.HTML(localized_text("llm_unavailable"), elem_classes=["mineru-enhancement-warning"])
+                llm_inputs = [title_leveling, cross_page_table_cell_merge]
 
         artifact_state = gr.State(value=None)
         active_run_id = gr.Textbox(value="", visible=False)
@@ -748,6 +775,24 @@ def build_gradio_app(
 
         # 显式注册幂等加载事件，初始化前端状态和自定义文案。
         demo.load(fn=None, js=app_js, **private_event_kwargs)
+        if llm_aided_config is not None:
+            input_file.change(
+                fn=None,
+                inputs=input_file,
+                outputs=[],
+                js=(
+                    "(file) => { window.__mineruAdvancedOptions?.setFile(file, "
+                    f"{json.dumps(sorted(PDF_EXTENSIONS | IMAGE_EXTENSIONS))}); }}"
+                ),
+                **private_event_kwargs,
+            )
+            clear_button.click(
+                fn=None,
+                inputs=[],
+                outputs=[],
+                js="() => { window.__mineruAdvancedOptions?.setFile(null, []); }",
+                **private_event_kwargs,
+            )
         preview_outputs = [
             pdf_preview,
             image_preview,
@@ -809,15 +854,19 @@ def build_gradio_app(
             raw_page_range: str,
             force_ocr: bool = False,
             request: object | None = None,
+            title_leveling: bool | None = None,
+            cross_page_table_cell_merge: bool | None = None,
         ) -> tuple[object, ...]:
-            """保留公开转换 API 的四个输入和原生组件输出，普通响应一次返回结果。"""
+            """保留原四个输入顺序，尾部可选增强参数默认采用应用配置。"""
             session = getattr(request, "session_hash", None) or uuid.uuid4().hex
             run = conversions.start(session, uuid.uuid4().hex)
             assert run is not None
             try:
                 outcome = await conversion_service.execute(
                     run,
-                    ConversionInput(file_path, tier_position, raw_page_range, force_ocr),
+                    ConversionInput(
+                        file_path, tier_position, raw_page_range, force_ocr, title_leveling, cross_page_table_cell_merge
+                    ),
                     public_base_url=_gradio_public_base_url(request),
                 )
                 return conversion_updates(outcome, status_html=run.state.render(), download_formats=_DOWNLOAD_FORMATS)
@@ -847,7 +896,7 @@ def build_gradio_app(
         # 公开 API 仍由 Gradio 原生组件序列化，浏览器通过私有回执校验后才应用结果。
         convert_event = api_conversion_button.click(
             fn=convert_handler,
-            inputs=[input_file, tier, page_range, force_ocr],
+            inputs=[input_file, tier, page_range, force_ocr, *llm_inputs],
             outputs=convert_outputs,
             **event_kwargs,
         )
@@ -904,6 +953,10 @@ def build_gradio_app(
                 revision = identity["revision"]
                 if type(revision) is not int or revision <= 0:
                     return ""
+                title_enabled = identity.get("title_leveling")
+                cells_enabled = identity.get("cross_page_table_cell_merge")
+                if any(value is not None and type(value) is not bool for value in (title_enabled, cells_enabled)):
+                    return ""
             except (ValueError, TypeError, KeyError, AttributeError):
                 return ""
             session = getattr(request, "session_hash", "") or ""
@@ -913,7 +966,7 @@ def build_gradio_app(
             public_base_url = _gradio_public_base_url(request)
             outcome = await conversion_service.execute(
                 run,
-                ConversionInput(file_path, tier_position, raw_page_range, force_ocr),
+                ConversionInput(file_path, tier_position, raw_page_range, force_ocr, title_enabled, cells_enabled),
                 public_base_url=public_base_url,
             )
             if conversions.current(session, run_id) is not run:
@@ -933,11 +986,11 @@ def build_gradio_app(
         # 前端先建立任务身份并重置界面，再串联后端提交。
         begin_conversion = convert_button.click(
             fn=None,
-            inputs=[],
+            inputs=llm_inputs,
             outputs=[*begin_conversion_outputs, conversion_ticket, status_poll, html_output, json_output],
             js=(
-                f"() => {{ ({pdf_preview_js('begin')})(); "
-                f"const ticket = ({conversion_js('begin')})(); "
+                f"(...options) => {{ ({pdf_preview_js('begin')})(); "
+                f"const ticket = ({conversion_js('begin')})(...options); "
                 f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, "
                 f"...({download_js('reset')})(), ...ticket, '', '']; }}"
             ),
@@ -1126,6 +1179,7 @@ def launch_gradio(
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
+    llm_aided_config: LLMAidedConfig | None = None,
 ) -> None:
     """连接外部服务或托管一个本地服务，原生文档始终由同一服务解析。"""
     configure_standard_streams()
@@ -1156,6 +1210,7 @@ def launch_gradio(
             enable_example=enable_example,
             enable_api=enable_api,
             max_pages=max_pages,
+            llm_aided_config=llm_aided_config,
         )
         _launch_gradio_app(
             demo,
