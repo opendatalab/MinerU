@@ -100,7 +100,7 @@ LLM 辅助标题分级和跨页表格单元格续接读取 `$MINERU_HOME/config.
 llm_aided:
   api_key: ${MINERU_LLM_API_KEY:-}
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.5-plus
+  model: qwen3.8-flash
   enable_thinking: false
   max_concurrency: 16
   features:

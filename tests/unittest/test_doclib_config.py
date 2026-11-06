@@ -175,7 +175,7 @@ def test_llm_aided_config_defaults_to_disabled() -> None:
 
     assert llm_config.api_key == ""
     assert llm_config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    assert llm_config.model == "qwen3.5-plus"
+    assert llm_config.model == "qwen3.8-flash"
     assert llm_config.enable_thinking is None
     assert llm_config.max_concurrency == 16
     assert llm_config.features.title_leveling is False

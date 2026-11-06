@@ -11,6 +11,7 @@ from ...config import LLMAidedConfig
 from ...types import MiddleJson
 
 from .llm_client import LLMAidedClient
+from .llm_report import LLMAidedReport
 from .table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
 from .title_leveling import apply_llm_title_leveling
 
@@ -18,11 +19,13 @@ from .title_leveling import apply_llm_title_leveling
 def _resolve_enabled_features(
     config: LLMAidedConfig,
     middle_json: MiddleJson,
+    *,
+    allow_partial_title_leveling: bool = False,
 ) -> tuple[bool, bool]:
     """根据整本输入约束解析本次实际启用的标题与表格功能。"""
-    title_enabled = config.features.title_leveling and middle_json.is_full_document
+    title_enabled = config.features.title_leveling and (middle_json.is_full_document or allow_partial_title_leveling)
     table_enabled = config.features.cross_page_table_cell_merge
-    if config.features.title_leveling and not middle_json.is_full_document:
+    if config.features.title_leveling and not title_enabled:
         logger.info("Skipping LLM title leveling because the input is not a full document")
     return title_enabled, table_enabled
 
@@ -34,15 +37,18 @@ async def _apply_llm_aided_postprocess(
     title_enabled: bool,
     table_enabled: bool,
     client: LLMAidedClient | None,
+    report: LLMAidedReport,
 ) -> None:
     """使用同一异步客户端并发执行当前实际启用的 LLM 后处理。"""
     resolved_client = client or LLMAidedClient(config)
     try:
         tasks = []
         if title_enabled:
-            tasks.append(apply_llm_title_leveling(middle_json.pages, resolved_client))
+            tasks.append(apply_llm_title_leveling(middle_json.pages, resolved_client, report=report.title_leveling))
         if table_enabled:
-            tasks.append(apply_llm_cross_page_cell_merge(middle_json.pages, resolved_client))
+            tasks.append(
+                apply_llm_cross_page_cell_merge(middle_json.pages, resolved_client, report=report.cross_page_table_cell_merge)
+            )
         running = [asyncio.create_task(task) for task in tasks]
         combined = asyncio.gather(*running)
         try:
@@ -74,9 +80,13 @@ def apply_llm_aided_postprocess(
     config: LLMAidedConfig,
     *,
     client: LLMAidedClient | None = None,
+    allow_partial_title_leveling: bool = False,
+    report: LLMAidedReport | None = None,
 ) -> None:
     """按配置和整本输入约束同步桥接异步 LLM 后处理。"""
-    title_enabled, table_enabled = _resolve_enabled_features(config, middle_json)
+    title_enabled, table_enabled = _resolve_enabled_features(
+        config, middle_json, allow_partial_title_leveling=allow_partial_title_leveling
+    )
     if not title_enabled and not table_enabled:
         return
 
@@ -87,6 +97,7 @@ def apply_llm_aided_postprocess(
             title_enabled=title_enabled,
             table_enabled=table_enabled,
             client=client,
+            report=report if report is not None else LLMAidedReport(),
         )
     )
 
@@ -96,9 +107,13 @@ async def aio_apply_llm_aided_postprocess(
     config: LLMAidedConfig,
     *,
     client: LLMAidedClient | None = None,
+    allow_partial_title_leveling: bool = False,
+    report: LLMAidedReport | None = None,
 ) -> None:
     """异步入口复用功能选择与增强协程，不再创建临时事件循环。"""
-    title_enabled, table_enabled = _resolve_enabled_features(config, middle_json)
+    title_enabled, table_enabled = _resolve_enabled_features(
+        config, middle_json, allow_partial_title_leveling=allow_partial_title_leveling
+    )
     if title_enabled or table_enabled:
         await _apply_llm_aided_postprocess(
             middle_json,
@@ -106,6 +121,7 @@ async def aio_apply_llm_aided_postprocess(
             title_enabled=title_enabled,
             table_enabled=table_enabled,
             client=client,
+            report=report if report is not None else LLMAidedReport(),
         )
 
 

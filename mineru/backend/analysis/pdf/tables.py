@@ -41,7 +41,6 @@ from .model_inputs import (
     _normalize_medium_content,
     _sidecar_bbox_to_page_bbox,
 )
-from .text.native import _is_supported_rotation
 
 if TYPE_CHECKING:
     from ....model.runtime.hybrid import HybridLocalModelContext
@@ -429,8 +428,10 @@ def _apply_table_rotate_labels(
 def _detect_table_angle_from_pdf_lines(
     pdf_lines: list[dict[str, Any]],
     table_bbox: BBox,
+    *,
+    page_rotation: int,
 ) -> int | None:
-    """统计表格框内标准方向文本行，满足强众数门槛时返回表格角度。"""
+    """将原生文本角度转换到页面视觉坐标系，满足强众数门槛时返回表格角度。"""
     angle_counts: Counter[int] = Counter()
     for pdf_line in pdf_lines:
         try:
@@ -458,11 +459,13 @@ def _detect_table_angle_from_pdf_lines(
             <= TABLE_TEXT_LINE_OVERLAP_THRESHOLD
         ):
             continue
-        if not _is_supported_rotation(rotation):
+        # 行框已应用页面 /Rotate，但 rotation 仍是原始文本角度；两者相加才是视觉方向。
+        visual_angle = (math.degrees(rotation) + page_rotation) % 360
+        if not math.isfinite(visual_angle):
             continue
 
-        angle = int(round(math.degrees(rotation))) % 360
-        if angle in TABLE_TEXT_ORIENTATION_ANGLES:
+        angle = int(round(visual_angle)) % 360
+        if angle in TABLE_TEXT_ORIENTATION_ANGLES and abs((visual_angle - angle + 180) % 360 - 180) < 0.1:
             angle_counts[angle] += 1
 
     valid_line_count = sum(angle_counts.values())
@@ -498,6 +501,7 @@ def _resolve_txt_table_orientations(
 
         try:
             pdf_page = pdf_pages[page_idx]
+            page_rotation = pdf_page.rotation
             render_scale = float(images_list[page_idx].get("scale", 0) or 0)
             table_bbox = _sidecar_bbox_to_page_bbox(
                 table_item["layout_item"].get("bbox"),
@@ -546,7 +550,7 @@ def _resolve_txt_table_orientations(
             fallback_table_items.append(table_item)
             continue
 
-        table_angle = _detect_table_angle_from_pdf_lines(pdf_lines, table_bbox)
+        table_angle = _detect_table_angle_from_pdf_lines(pdf_lines, table_bbox, page_rotation=page_rotation)
         if table_angle is None:
             fallback_table_items.append(table_item)
             continue

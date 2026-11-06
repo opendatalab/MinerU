@@ -11,6 +11,7 @@ from ...types import DocTitleBlock, PageInfo, ParagraphTitleBlock
 from docvortex.content.inline import inline_plain_text
 
 from .llm_client import LLMAidedClient
+from .llm_report import LLMFeatureReport
 
 ParagraphTitleGroup = list[ParagraphTitleBlock]
 
@@ -41,7 +42,8 @@ def _plain_title_text(block: ParagraphTitleBlock) -> str:
 def _build_title_prompt(group: ParagraphTitleGroup) -> str:
     """只使用组内序号和段落标题纯文本构造分级提示。"""
     titles = {str(index): _plain_title_text(block) for index, block in enumerate(group)}
-    return f"""输入内容是同一文档分组内按阅读顺序排列的全部章节和段落标题。
+    return f"""输入内容是当前解析范围内同一文档分组按阅读顺序排列的章节和段落标题。
+当前解析范围可能只是原文片段；只根据提供的标题建立局部层级，不推断或补充未提供的标题。
 文章标题不在输入中，已经由系统固定为 1 级；段落标题只能使用 2 到 6 级。
 
 分级规则：
@@ -88,28 +90,36 @@ def _validate_title_levels(value: Any, expected_count: int) -> dict[int, int] | 
     return levels
 
 
-async def apply_llm_title_leveling(pages: list[PageInfo], client: LLMAidedClient) -> None:
-    """并发优化各文档标题分组，单组失败时保留该组原始层级。"""
+async def apply_llm_title_leveling(
+    pages: list[PageInfo], client: LLMAidedClient, *, report: LLMFeatureReport | None = None
+) -> None:
+    """各标题分组校验成功即写回，取消慢请求时保留其他组的成功结果。"""
     groups = _collect_paragraph_title_groups(pages)
+    report = report if report is not None else LLMFeatureReport()
+    report.total = len(groups)
     if not groups:
         return
 
-    group_levels = await asyncio.gather(
-        *(
-            client.request_validated_json(
+    async def enhance_group(group: ParagraphTitleGroup) -> None:
+        """独立请求并提交一个标题分组，不等待其他分组完成。"""
+        try:
+            levels = await client.request_validated_json(
                 operation="title_leveling",
                 prompt=_build_title_prompt(group),
-                validator=lambda value, count=len(group): _validate_title_levels(value, count),
+                validator=lambda value: _validate_title_levels(value, len(group)),
                 temperature=0.7,
             )
-            for group in groups
-        )
-    )
-    for group, levels in zip(groups, group_levels):
-        if levels is None:
-            continue
-        for index, block in enumerate(group):
-            block.level = max(2, levels[index])
+            if levels is None:
+                report.failed += 1
+                return
+            for index, block in enumerate(group):
+                block.level = max(2, levels[index])
+            report.succeeded += 1
+        except Exception:
+            # 候选失败不影响其他分组，取消异常仍向上传播。
+            report.failed += 1
+
+    await asyncio.gather(*(enhance_group(group) for group in groups))
 
 
 __all__ = ["apply_llm_title_leveling"]
