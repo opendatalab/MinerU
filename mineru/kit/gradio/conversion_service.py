@@ -13,7 +13,6 @@ from typing import Literal, Protocol
 from loguru import logger
 
 from ...errors import MineruError
-from ...config import LLMAidedConfig
 from ...filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     HTML_EXTENSIONS,
@@ -39,7 +38,6 @@ from .conversion import (
     run_sync_output,
 )
 from .document_io import GradioDocumentIO, LocalGradioDocumentIO
-from .llm_enhancement import enhance_outputs
 from .page_range import validate_max_pages
 from .status import (
     STATUS_COMPLETED,
@@ -87,7 +85,6 @@ class ConversionService:
         max_pages: int | None,
         slot: asyncio.Semaphore,
         document_io: GradioDocumentIO | None = None,
-        llm_aided_config: LLMAidedConfig | None = None,
     ) -> None:
         """显式接收解析能力、产物目录、页数限制和共享执行槽。"""
         validate_max_pages(max_pages)
@@ -97,7 +94,6 @@ class ConversionService:
         self.max_pages = max_pages
         self.slot = slot
         self.document_io = document_io if document_io is not None else LocalGradioDocumentIO()
-        self.llm_aided_config = llm_aided_config.model_copy(deep=True) if llm_aided_config is not None else None
 
     async def execute(
         self,
@@ -186,13 +182,6 @@ class ConversionService:
             await asyncio.sleep(0)
             run.publish(STATUS_PROCESSING_OUTPUT)
             output_started = time.monotonic()
-            if self.llm_aided_config is not None and validated.suffix in PDF_EXTENSIONS | IMAGE_EXTENSIONS:
-                run.state.warning_keys = await enhance_outputs(
-                    result.middle_json,
-                    self.llm_aided_config,
-                    title_leveling=inputs.title_leveling,
-                    cross_page_table_cell_merge=inputs.cross_page_table_cell_merge,
-                )
             artifacts = await run_sync_output(
                 self.document_io.persist_parse_result,
                 result,

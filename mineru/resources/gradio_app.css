@@ -46,33 +46,6 @@ body.dark .gradio-container {
     top: 12px;
     align-self: flex-start;
 }
-/* 高级选项保留原生表单值，只按当前源文件切换按钮与浮窗显隐。 */
-.mineru-advanced-open { display: none !important; }
-.mineru-advanced-open[data-available="true"] { display: block !important; width: 100% !important; }
-.mineru-advanced-open button { width: 100%; }
-.mineru-advanced-popover {
-    position: fixed !important;
-    z-index: 1000 !important;
-    width: min(300px, calc(100vw - 24px));
-    max-width: calc(100vw - 24px) !important;
-    max-height: calc(100vh - 24px);
-    overflow: auto !important;
-    padding: 16px !important;
-    gap: 10px !important;
-    border: 1px solid var(--mineru-panel-border) !important;
-    border-radius: 12px !important;
-    background: var(--block-background-fill, #fff) !important;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, .22);
-    visibility: hidden !important;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 140ms ease;
-}
-.mineru-advanced-popover[data-open="true"] { visibility: visible !important; opacity: 1; pointer-events: auto; }
-.mineru-advanced-popover h3 { margin: 0 !important; font-size: 16px; }
-.mineru-advanced-popover .block { border: 0 !important; padding: 0 !important; }
-.mineru-enhancement-warning { font-size: 12px; line-height: 1.5; color: var(--body-text-color-subdued); margin-top: 6px; }
-body.dark .mineru-advanced-popover { background: #24252a !important; }
 /* 有示例时控制列拉伸到与预览面板等高，由示例块吸收底部空白。 */
 .mineru-control-column:has(#mineru-kit-examples) {
     align-self: stretch !important;

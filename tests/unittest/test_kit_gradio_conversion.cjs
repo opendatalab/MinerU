@@ -63,13 +63,6 @@ assert.equal(corrected[0], detailedFailure);
 assert.equal(corrected[15].active, false);
 assert.ok(skipped(invoke('status', status(failedRun.run_id, 4, true))));
 console.log('150 lifecycle iterations passed');
-// 每次提交独立固定增强选择，后续提交不能改写旧票据中的值。
-const optionsTicket = JSON.parse(invoke('begin', false, true)[0]);
-const nextOptions = JSON.parse(invoke('begin', true, false)[0]);
-assert.equal(optionsTicket.title_leveling, false);
-assert.equal(optionsTicket.cross_page_table_cell_merge, true);
-assert.equal(nextOptions.title_leveling, true);
-assert.equal(nextOptions.cross_page_table_cell_merge, false);
 // 非安全上下文（纯 HTTP 局域网访问）没有 randomUUID，降级路径仍须产出服务端 uuid.UUID 可接受的票据。
 const warns = [];
 const insecureInvoke = vm.runInNewContext(`(${script})`, {

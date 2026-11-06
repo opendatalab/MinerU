@@ -26,8 +26,6 @@ class ConversionInput:
     tier_position: int | float
     page_range: str
     force_ocr: bool = False
-    title_leveling: bool | None = None
-    cross_page_table_cell_merge: bool | None = None
 
 
 @dataclass(frozen=True)

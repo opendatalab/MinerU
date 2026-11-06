@@ -1,5 +1,5 @@
 () => {
-    const APP_SCRIPT_VERSION = "v7-llm-advanced-options";
+    const APP_SCRIPT_VERSION = "v6-local-status-clock";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         return;
     }
@@ -21,7 +21,6 @@
     const i18n = window.__mineruI18n = __MINERU_I18N__;
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
     window.__mineruStatusPanel = statusTimer;
-    const advancedOptions = window.__mineruAdvancedOptions = (__MINERU_ADVANCED_OPTIONS__)();
     // HTML 回调和前端事件使用同一份词典与首选语言规则。
     const localizeMineruCustomText = () => i18n.localize();
 
@@ -78,7 +77,6 @@
         localizeMineruCustomText();
         applyOfficePreviewNoticePreference();
         refreshPageRangeTrack();
-        advancedOptions.sync();
     };
 
     const findUploadFileInput = () => {
