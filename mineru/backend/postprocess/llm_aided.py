@@ -22,8 +22,10 @@ def _resolve_enabled_features(
     *,
     allow_partial_title_leveling: bool = False,
 ) -> tuple[bool, bool]:
-    """根据整本输入约束解析本次实际启用的标题与表格功能。"""
-    title_enabled = config.features.title_leveling and (middle_json.is_full_document or allow_partial_title_leveling)
+    """按整本标记、启动配置和显式放行参数确定标题与表格功能。"""
+    title_enabled = config.features.title_leveling and (
+        middle_json.is_full_document or config.allow_partial_title_leveling or allow_partial_title_leveling
+    )
     table_enabled = config.features.cross_page_table_cell_merge
     if config.features.title_leveling and not title_enabled:
         logger.info("Skipping LLM title leveling because the input is not a full document")

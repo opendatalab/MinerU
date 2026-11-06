@@ -486,6 +486,7 @@ class LLMAidedConfig(BaseModel):
     model: str = "qwen3.8-flash"
     enable_thinking: bool | None = None
     max_concurrency: int = Field(default=16, ge=1)
+    allow_partial_title_leveling: bool = False
     features: LLMAidedFeaturesConfig = Field(default_factory=LLMAidedFeaturesConfig)
 
     @field_validator("max_concurrency", mode="before")

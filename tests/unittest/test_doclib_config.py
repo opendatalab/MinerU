@@ -178,6 +178,7 @@ def test_llm_aided_config_defaults_to_disabled() -> None:
     assert llm_config.model == "qwen3.8-flash"
     assert llm_config.enable_thinking is None
     assert llm_config.max_concurrency == 16
+    assert llm_config.allow_partial_title_leveling is False
     assert llm_config.features.title_leveling is False
     assert llm_config.features.cross_page_table_cell_merge is False
 
@@ -193,6 +194,7 @@ llm_aided:
   model: test-model
   enable_thinking: false
   max_concurrency: 24
+  allow_partial_title_leveling: true
   features:
     title_leveling: true
     cross_page_table_cell_merge: true
@@ -207,6 +209,7 @@ llm_aided:
     assert cfg.llm_aided.model == "test-model"
     assert cfg.llm_aided.enable_thinking is False
     assert cfg.llm_aided.max_concurrency == 24
+    assert cfg.llm_aided.allow_partial_title_leveling is True
     assert cfg.llm_aided.features.title_leveling is True
     assert cfg.llm_aided.features.cross_page_table_cell_merge is True
 
@@ -218,6 +221,7 @@ def test_llm_aided_config_supports_environment_overrides(monkeypatch: pytest.Mon
     monkeypatch.setenv(f"{prefix}LLM_AIDED_MODEL", "env-model")
     monkeypatch.setenv(f"{prefix}LLM_AIDED_ENABLE_THINKING", "false")
     monkeypatch.setenv(f"{prefix}LLM_AIDED_MAX_CONCURRENCY", "32")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_ALLOW_PARTIAL_TITLE_LEVELING", "true")
     monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_TITLE_LEVELING", "true")
     monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE", "true")
 
@@ -228,6 +232,7 @@ def test_llm_aided_config_supports_environment_overrides(monkeypatch: pytest.Mon
     assert cfg.llm_aided.model == "env-model"
     assert cfg.llm_aided.enable_thinking is False
     assert cfg.llm_aided.max_concurrency == 32
+    assert cfg.llm_aided.allow_partial_title_leveling is True
     assert cfg.llm_aided.features.title_leveling is True
     assert cfg.llm_aided.features.cross_page_table_cell_merge is True
 
