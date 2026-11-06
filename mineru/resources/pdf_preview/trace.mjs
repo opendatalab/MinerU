@@ -15,8 +15,10 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     toggle.setAttribute("aria-pressed", "true");
     toggle.hidden = true;
     document.getElementById("toolbar").append(toggle);
-    // 以当前父窗口的同源地址发送状态，来源页号始终采用原文索引。
-    const send = (message) => parent.postMessage({ ...message, channel: "mineru-trace", documentId }, location.origin);
+    // 普通调用语句保留当前调用帧，避免 WebKit 在严格模式尾调用中把消息来源归到父窗口。
+    const send = (message) => {
+        parent.postMessage({ ...message, channel: "mineru-trace", documentId }, location.origin);
+    };
     // 清除已挂载区域，同时保留 PDF.js 自己管理的画布及批注。
     const clearLayers = () => {
         for (const layer of layers) layer.remove();
