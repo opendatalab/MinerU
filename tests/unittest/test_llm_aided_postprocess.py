@@ -501,7 +501,7 @@ def test_cell_merge_expands_rendered_colspan_segment_to_visual_columns() -> None
 
 @pytest.mark.parametrize("model_flags,expected", [([0, 0, 0], [0, 0, 0]), ([0, 1, 0], [1, 1, 1])])
 def test_blank_merge_rule_requires_a_model_continuation(model_flags: list[int], expected: list[int]) -> None:
-    """模型至少确认一列后才补空白延续，补后超过半数且仅剩双空格时补齐。"""
+    """模型至少确认一列后才补空白延续，其余零标记均为双空格时补齐。"""
     original_flags = list(model_flags)
     pages = _cross_page_table_pages(
         previous_html="<table><tr><td>Group</td><td>sentence</td><td></td></tr></table>",
@@ -554,12 +554,23 @@ def test_blank_merge_rule_recognizes_nonempty_image_source() -> None:
     assert pages[1].blocks[0].cell_merge == [1, 1]
 
 
-@pytest.mark.parametrize("flags,expected", [([1, 1, 0, 0], [1, 1, 0, 0]), ([1, 1, 1, 0], [1, 1, 1, 1])])
-def test_both_blank_merge_requires_strict_majority(flags: list[int], expected: list[int]) -> None:
-    """已合并数必须严格超过半数，恰好一半的结果保留双空格边界。"""
+@pytest.mark.parametrize("flags", [[1, 1, 0, 0], [1, 1, 1, 0]])
+def test_both_blank_merge_accepts_half_or_more_confirmed_cells(flags: list[int]) -> None:
+    """其余零标记全部为双空格时，恰好一半和超过半数的续接均可补齐。"""
     pages = _cross_page_table_pages(
         previous_html="<table><tr><td>A</td><td>B</td><td></td><td></td></tr></table>",
         current_html="<table><tr><td>C</td><td>D</td><td></td><td></td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([flags])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1, 1, 1]
+
+
+@pytest.mark.parametrize("flags,expected", [([0, 0, 0, 0], [0, 0, 0, 0]), ([1, 0, 0, 0], [1, 1, 1, 1])])
+def test_both_blank_merge_accepts_one_confirmed_cell(flags: list[int], expected: list[int]) -> None:
+    """一列文字确认续接时补齐另外三列双空格，全零响应保持原结果。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>Continued</td><td></td><td></td><td></td></tr></table>",
+        current_html="<table><tr><td>text</td><td></td><td></td><td></td></tr></table>",
     )
     asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([flags])))  # type: ignore[arg-type]
     assert pages[1].blocks[0].cell_merge == expected
@@ -567,7 +578,7 @@ def test_both_blank_merge_requires_strict_majority(flags: list[int], expected: l
 
 @pytest.mark.parametrize("separate", ["New item", '<img src="image.png"/>', '<eq data-latex="x"></eq>'])
 def test_both_blank_merge_stops_when_an_independent_cell_remains(separate: str) -> None:
-    """多数已合并时，只要零标记中还有非空或媒体单元格，就保留其余双空格边界。"""
+    """已有合并时，只要零标记中还有非空或媒体单元格，就保留其余双空格边界。"""
     pages = _cross_page_table_pages(
         previous_html="<table><tr><td>A</td><td>B</td><td>C</td><td></td><td></td></tr></table>",
         current_html=f"<table><tr><td>D</td><td>E</td><td>F</td><td>{separate}</td><td></td></tr></table>",
@@ -577,14 +588,14 @@ def test_both_blank_merge_stops_when_an_independent_cell_remains(separate: str) 
     assert pages[1].blocks[0].cell_merge == flags
 
 
-def test_both_blank_merge_counts_rendered_cells_before_colspan_expansion() -> None:
-    """一个跨多列单元格只计一次，防止展开后的视觉列数虚增合并比例。"""
+def test_both_blank_merge_expands_colspan_after_completing_segments() -> None:
+    """跨列单元格确认续接后补齐剩余双空格，并正确展开所有视觉列。"""
     pages = _cross_page_table_pages(
         previous_html="<table><tr><td colspan='4'>A</td><td></td><td></td></tr></table>",
         current_html="<table><tr><td colspan='4'>B</td><td></td><td></td></tr></table>",
     )
     asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[1, 0, 0]])))  # type: ignore[arg-type]
-    assert pages[1].blocks[0].cell_merge == [1, 1, 1, 1, 0, 0]
+    assert pages[1].blocks[0].cell_merge == [1, 1, 1, 1, 1, 1]
 
 
 @pytest.mark.parametrize("response", [[], [1], [1, 2], [True, False], "[1, 0]"])

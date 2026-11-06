@@ -160,14 +160,14 @@ def _validate_cell_merge(value: object, expected_count: int) -> list[CellMergeFl
 
 
 def _complete_blank_cell_merges(candidate: _CellMergeCandidate, segment_flags: list[CellMergeFlag]) -> list[CellMergeFlag]:
-    """先补非空到空白的续接，再在多数已合并且仅剩双空格时补齐整行。"""
+    """先补非空到空白的续接，再在已有合并且仅剩双空格时补齐整行。"""
     completed = list(segment_flags)
     if any(segment_flags):
         for index in candidate.blank_continuation_segments:
             completed[index] = 1
     unmerged = [index for index, flag in enumerate(completed) if flag == 0]
-    # 按渲染单元格计数，避免 colspan 扩展放大多数比例；有独立内容的零标记阻止补齐。
-    if sum(completed) * 2 > len(completed) and all(index in candidate.both_blank_segments for index in unmerged):
+    # 任一已确认续接即可触发双空格补齐；有独立内容的零标记仍阻止补齐。
+    if any(completed) and all(index in candidate.both_blank_segments for index in unmerged):
         for index in unmerged:
             completed[index] = 1
     return completed
