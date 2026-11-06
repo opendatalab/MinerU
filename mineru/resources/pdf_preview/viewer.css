@@ -44,3 +44,21 @@ button:focus-visible, input:focus-visible, #viewer-container:focus-visible { out
     button:hover:enabled { background: #374151; }
     #toolbar { border-color: #4b5563; }
 }
+/* 溯源区域跟随页面 CSS 尺寸，边框显隐和选中状态独立。 */
+.mineru-trace-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mineru-trace-layer > button { position: absolute; pointer-events: auto; min-width: 0; height: auto; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; cursor: pointer; }
+.mineru-trace-layer.show-all > button { border-color: #e88b5666; }
+.mineru-trace-layer > button:hover, .mineru-trace-layer > button:focus-visible { border-color: #ea580c; background: #fb923c18; }
+.mineru-trace-layer > button.selected { border: 2px solid #ea580c; background: #fb923c30; }
+#trace-toggle { font-size: 11px; padding: 0 5px; }
+@media (max-width: 480px) {
+    body:has(#trace-toggle:not([hidden])) { --toolbar-height: 80px; }
+    #toolbar { flex-wrap: wrap; align-content: center; }
+    #trace-toggle { grid-column: 1 / -1; }
+    #toolbar:has(#trace-toggle:not([hidden])) { height: var(--toolbar-height); }
+}
+
+@media (max-width: 360px) {
+    body:has(#trace-toggle:not([hidden])) { --toolbar-height: 112px; }
+    #trace-toggle { grid-area: 3 / 1 / 4 / 6; }
+}

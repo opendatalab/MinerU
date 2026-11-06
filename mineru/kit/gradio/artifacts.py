@@ -289,7 +289,12 @@ def persist_parse_result(
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
     with _output_stage("html_preview", artifacts):
-        value = _render_html(artifacts, public_base_url=public_base_url)
+        trace = artifacts.origin_pdf_path is not None
+        if trace:
+            value = _render_html(artifacts, public_base_url=public_base_url, include_source_map=True)
+            value = _add_trace_preview(value, artifacts, public_base_url=public_base_url)
+        else:
+            value = _render_html(artifacts, public_base_url=public_base_url)
         # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
         value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
         value = _prepare_preview_links(value)
@@ -298,6 +303,43 @@ def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str
             'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
             f'srcdoc="{html.escape(value, quote=True)}"></iframe>'
         )
+
+
+def _add_trace_preview(document: str, artifacts: RunArtifacts, *, public_base_url: str) -> str:
+    """向隔离结果页注入自有溯源脚本，配置只包含产物身份和页映射。"""
+    from .i18n import MESSAGES
+
+    base = urlsplit(public_base_url)
+    config = (
+        json.dumps(
+            {
+                "documentId": artifacts.root.name,
+                "pageIndices": list(artifacts.page_indices),
+                "parentOrigin": f"{base.scheme}://{base.netloc}",
+                "pageLabels": MESSAGES["trace_source"],
+            },
+            ensure_ascii=True,
+        )
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+    script = (Path(__file__).resolve().parents[2] / "resources" / "gradio_trace_html.js").read_text(encoding="utf-8")
+    styles = """<style>
+[data-docvortex-trace-id] { cursor: pointer; scroll-margin: 24px; }
+[data-docvortex-trace-id]:hover { outline: 1px solid #fb923c66; outline-offset: 3px; }
+[data-mineru-selected] { outline: 2px solid #ea580c !important; outline-offset: 3px; background: #fb923c12; }
+.mineru-trace-pages { position: fixed; right: 8px; z-index: 100;
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 75%; padding: 5px; background: Canvas;
+    border: 1px solid #fb923c; border-radius: 6px; }
+.mineru-trace-pages[hidden] { display: none; }
+.mineru-trace-pages button { cursor: pointer; color: CanvasText; background: Canvas;
+    border: 1px solid #aaa; border-radius: 4px; padding: 3px 6px; }
+.mineru-trace-pages button[aria-pressed=true] { border-color: #ea580c; background: #fb923c30; }
+</style>"""
+    document = document.replace("</head>", styles + "</head>", 1)
+    return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
 
 
 def _prepare_preview_links(document: str) -> str:
@@ -315,7 +357,7 @@ def _prepare_preview_links(document: str) -> str:
     return str(soup)
 
 
-def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
+def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_source_map: bool = False) -> str:
     """把已物化语义树渲染为使用当前 Gradio 静态图片地址的独立 HTML。"""
     if urlsplit(public_base_url).scheme not in {"http", "https"} or not urlsplit(public_base_url).netloc:
         raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
@@ -330,6 +372,7 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
                 standalone=True,
                 document_title=artifacts.stem,
                 asset_base_url=asset_base_url,
+                include_source_map=include_source_map,
             ),
         ),
     )

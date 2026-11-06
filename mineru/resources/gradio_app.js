@@ -1,5 +1,5 @@
 () => {
-    const APP_SCRIPT_VERSION = "v6-local-status-clock";
+    const APP_SCRIPT_VERSION = "v7-bidirectional-trace";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         return;
     }
@@ -19,6 +19,7 @@
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     };
     const i18n = window.__mineruI18n = __MINERU_I18N__;
+    (__MINERU_TRACE__)();
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
     window.__mineruStatusPanel = statusTimer;
     // HTML 回调和前端事件使用同一份词典与首选语言规则。

@@ -219,7 +219,7 @@ def _prepare_preview(suffix: str, artifacts: RunArtifacts) -> PreviewPlan:
     """仅描述结果预览数据，保留已有 Office、OFD、EPUB 和网页源预览。"""
     if suffix in OFFICE_EXTENSIONS | HTML_EXTENSIONS | MHTML_EXTENSIONS | {"ofd", "epub"}:
         return PreviewPlan(preserve_source=True)
-    preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
+    preview_path = artifacts.origin_pdf_path or artifacts.layout_pdf_path
     return PreviewPlan(
         preserve_source=False,
         pdf_path=preview_path,
