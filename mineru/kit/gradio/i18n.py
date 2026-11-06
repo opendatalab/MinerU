@@ -64,6 +64,8 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "pdf_zoom_in": ("Zoom in", "放大"),
     "trace_regions": ("Layout annotations", "版式标注"),
     "trace_source": ("Source page", "来源页"),
+    "trace_merged": ("Merged", "合并"),
+    "trace_merged_description": ("Merged from {count} source blocks", "由 {count} 个原始内容块合并"),
     "pdf_fit_width": ("Fit width", "适应宽度"),
     "pdf_invalid": ("This PDF is damaged or invalid.", "PDF 已损坏或格式无效。"),
     "pdf_password": ("This PDF requires a password and cannot be previewed.", "此 PDF 需要密码，暂时无法预览。"),

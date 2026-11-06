@@ -7,7 +7,9 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     let layoutBySource = new Map();
     let layoutByBox = new Map();
     let traceableSources = new Set();
+    let mergedEntries = new Map();
     let pageIndices = [];
+    let pageNumbers = new Map();
     let selectedId = "";
     let selectedSourceKey = "";
     let hoveredBox = null;
@@ -16,6 +18,15 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     let showAll = true;
     const abort = new AbortController();
     const options = { signal: abort.signal };
+    let connectionFrame = 0;
+    // SVG 独立覆盖滚动视口，跨页线段可穿过页面边界，且不会随 PDF 缩放改变笔画粗细。
+    const svgNode = (name, attributes = {}) => {
+        const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+        for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+        return node;
+    };
+    const connections = svgNode("svg", { class: "mineru-merge-layer", "aria-hidden": "true" });
+    document.body.append(connections);
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.id = "trace-toggle";
@@ -38,6 +49,91 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
         const color = region?.color || [0.35, 0.4, 0.45];
         return `rgb(${color.map(value => Math.round(value * 255)).join(" ")})`;
     };
+    // 同框父子按现有命中顺序优先取最具体的合并节点，单来源块暂时隐藏已选中的连接。
+    const activeMerge = () => {
+        const inspected = [hoveredBox, focusedBox].find(box => box?.isConnected);
+        if (inspected) return inspected.traceIds.map(id => mergedEntries.get(id)).find(Boolean);
+        return mergedEntries.get(selectedId);
+    };
+    // 读取真实页框而非缓存的命中元素，页面画布被回收后仍能使用已加载的页面尺寸。
+    const sourceRect = (source, host) => {
+        const pageNumber = pageNumbers.get(source.page_idx);
+        const page = pageNumber === undefined ? null : viewer.getPageView(pageNumber - 1);
+        const bbox = source.bbox;
+        if (!page?.pdfPage || !page.div.isConnected || bbox[2] <= bbox[0] || bbox[3] <= bbox[1]) return null;
+        const rect = page.div.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            left: rect.left - host.left + bbox[0] * rect.width,
+            top: rect.top - host.top + bbox[1] * rect.height,
+            right: rect.left - host.left + bbox[2] * rect.width,
+            bottom: rect.top - host.top + bbox[3] * rect.height
+        };
+    };
+    // 每段固定使用前块右下角与后块左上角，来源次序直接来自 renderer 的实际合并结果。
+    const drawConnections = () => {
+        connectionFrame = 0;
+        connections.replaceChildren();
+        const entry = activeMerge();
+        connections.dataset.traceId = entry?.id || "";
+        if (!entry) return;
+        const bounds = container.getBoundingClientRect();
+        const host = { left: bounds.left + container.clientLeft, top: bounds.top + container.clientTop };
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        Object.assign(connections.style, {
+            left: `${host.left}px`, top: `${host.top}px`, width: `${width}px`, height: `${height}px`
+        });
+        const rects = entry.sources.map(source => sourceRect(source, host));
+        for (let index = 1; index < rects.length; index++) {
+            const previous = rects[index - 1];
+            const current = rects[index];
+            if (!previous || !current) continue;
+            const x1 = previous.right;
+            const y1 = previous.bottom;
+            const x2 = current.left;
+            const y2 = current.top;
+            // 整段在视口外时省略 DOM，跨越视口的线段由 SVG 边界自然裁剪。
+            if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > width ||
+                Math.max(y1, y2) < 0 || Math.min(y1, y2) > height) continue;
+            const group = svgNode("g");
+            group.dataset.fromSource = sourceKey(entry.sources[index - 1]);
+            group.dataset.toSource = sourceKey(entry.sources[index]);
+            group.style.setProperty("--trace-color", themeColor(layoutRegion(entry.sources[index - 1])));
+            group.append(
+                svgNode("line", { x1, y1, x2, y2 }),
+                svgNode("circle", { cx: x1, cy: y1, r: 2.5 }),
+                svgNode("circle", { cx: x2, cy: y2, r: 2.5 })
+            );
+            connections.append(group);
+            const x = (x1 + x2) / 2;
+            const y = (y1 + y2) / 2;
+            const label = svgNode("text", { x, y, "text-anchor": "middle", "dominant-baseline": "central" });
+            label.textContent = messages.trace_merged;
+            group.append(label);
+            const labelWidth = label.getComputedTextLength() + 8;
+            // 短线保留端点和无障碍说明，标签只在能完整容纳的中点显示。
+            if (Math.hypot(x2 - x1, y2 - y1) < labelWidth + 12 ||
+                x - labelWidth / 2 < 0 || x + labelWidth / 2 > width || y < 9 || y > height - 9) {
+                label.remove();
+                continue;
+            }
+            group.insertBefore(svgNode("rect", {
+                x: x - labelWidth / 2, y: y - 9, width: labelWidth, height: 18, rx: 3
+            }), label);
+        }
+    };
+    // 一帧内的悬停、滚动、缩放和 PDF.js 重绘共用一次几何测量。
+    const scheduleConnections = () => {
+        if (!connectionFrame) connectionFrame = requestAnimationFrame(drawConnections);
+    };
+    // 失效立即清空旧文档的连接，并撤销尚未执行的绘制。
+    const clearConnections = () => {
+        cancelAnimationFrame(connectionFrame);
+        connectionFrame = 0;
+        connections.replaceChildren();
+        connections.dataset.traceId = "";
+    };
     // 两种浮层统一使用显示方向下的归一化坐标。
     const placeRegion = (node, bbox) => {
         node.style.left = `${bbox[0] * 100}%`;
@@ -52,7 +148,18 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
         layoutBySource = new Map();
         layoutByBox = new Map();
         traceableSources = new Set();
+        mergedEntries = new Map();
+        pageNumbers = new Map(pageIndices.map((pageIdx, index) => [pageIdx, index + 1]));
         for (const entry of entries) {
+            const seen = new Set();
+            // 按首次出现的位置保留物理区域，父子共框及重复来源只参与一次连接。
+            const sources = entry.sources.filter(source => {
+                const key = JSON.stringify([source.page_idx, source.bbox]);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            if (sources.length > 1) mergedEntries.set(entry.id, { ...entry, sources });
             for (const source of entry.sources) {
                 if (!sourcesByPage.has(source.page_idx)) sourcesByPage.set(source.page_idx, []);
                 sourcesByPage.get(source.page_idx).push({ entry, bbox: source.bbox, source });
@@ -102,6 +209,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
             layout.remove();
         }
         layers.clear();
+        clearConnections();
     };
     // 重绘时从文档状态恢复选中样式，避免依赖已销毁的 DOM 引用。
     const updateSelection = () => {
@@ -133,6 +241,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
             }
             if (labelsChanged) positionLabels(layer);
         }
+        scheduleConnections();
     };
     // 可跳转块和辅助块共用悬停、键盘检查入口，已销毁元素的状态自动失效。
     const inspectOnFocus = (node) => {
@@ -263,6 +372,8 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
             const description = [messages.trace_source, pageIdx + 1, labelsBySource.get(sourceKey(source))]
                 .filter(Boolean).join(" · ");
             box.setAttribute("aria-label", description);
+            const merged = ids.map(id => mergedEntries.get(id)).find(Boolean);
+            if (merged) box.setAttribute("aria-description", messages.trace_merged_description.replace("{count}", merged.sources.length));
             placeRegion(box, bbox);
             box.addEventListener("click", () => send({ type: "select", id: entry.id, pageIdx, sourceKey: sourceKey(source) }));
             inspectOnFocus(box);
@@ -322,10 +433,12 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                     region.color.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)
                 ) : [];
                 indexRegions(layoutRegions);
+                clearLayers();
                 hoveredBox = null;
                 focusedBox = null;
                 toggle.hidden = !layoutRegions.length && !entries.length;
                 for (const page of viewer.getCachedPageViews()) mount(page.id);
+                scheduleConnections();
             } else if (data.type === "select" && entries.some((entry) => entry.id === data.id)) {
                 pending = null;
                 selectedId = data.id;
@@ -361,12 +474,20 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
         if (!event.error) mount(event.pageNumber);
     };
     eventBus.on("pagerendered", onRendered);
+    const connectionEvents = ["updateviewarea", "scalechanging", "pagesloaded"];
+    for (const name of connectionEvents) eventBus.on(name, scheduleConnections);
+    container.addEventListener("scroll", scheduleConnections, { ...options, passive: true });
+    const connectionObserver = new ResizeObserver(scheduleConnections);
+    connectionObserver.observe(container);
     send({ type: "ready" });
     return () => {
         // 查看器卸载时释放本次文档拥有的监听器和浮层。
         abort.abort();
         eventBus.off("pagerendered", onRendered);
+        for (const name of connectionEvents) eventBus.off(name, scheduleConnections);
+        connectionObserver.disconnect();
         clearLayers();
+        connections.remove();
         toggle.remove();
     };
 }

@@ -77,6 +77,13 @@ button:focus-visible, input:focus-visible, #viewer-container:focus-visible { out
     padding: 1px 3px; border: 1px solid var(--trace-strong); border-radius: 2px;
     background: #fff; font-size: 11px; line-height: 13px; text-shadow: none;
 }
+/* 合并关系使用固定 CSS 像素覆盖可见视口，装饰层不接收点击或键盘焦点。 */
+.mineru-merge-layer { position: fixed; z-index: 6; overflow: hidden; pointer-events: none; }
+.mineru-merge-layer > g { --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
+.mineru-merge-layer line { stroke: var(--trace-strong); stroke-width: 1.5px; stroke-dasharray: 6 4; }
+.mineru-merge-layer circle { fill: var(--trace-strong); }
+.mineru-merge-layer rect { fill: #fff; stroke: var(--trace-strong); stroke-width: 1px; }
+.mineru-merge-layer text { fill: var(--trace-strong); font: 11px system-ui, sans-serif; }
 #trace-toggle { font-size: 11px; padding: 0 5px; }
 @media (max-width: 480px) {
     body:has(#trace-toggle:not([hidden])) { --toolbar-height: 80px; }

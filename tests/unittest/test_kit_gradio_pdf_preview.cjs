@@ -30,6 +30,8 @@ assert.equal(pdfUrl.search, "");
 assert.equal(pdfUrl.hash, "");
 assert.ok(initial.value.includes('sandbox="allow-scripts allow-same-origin"'));
 assert.equal(JSON.parse(parameters.get("messages")).pdf_page, "中文 pdf_page");
+assert.equal(JSON.parse(parameters.get("messages")).trace_merged, "中文 trace_merged");
+assert.equal(JSON.parse(parameters.get("messages")).trace_merged_description, "中文 trace_merged_description");
 // Gradio 的事件 FileData 可能缺少挂载前缀，静态入口的基址必须用于结果 PDF。
 const relative = { ...first, url: first.url.replace("/prefix", "") };
 const relativeParams = new URLSearchParams(iframe(invoke("source", relative, first, viewer)).hash.slice(1));

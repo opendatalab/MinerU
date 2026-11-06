@@ -148,6 +148,59 @@ checkHtmlNavigation("52px", -100, 52, "https://mineru.test:8443", "https://miner
 console.log("HTML source-page controls respect the outline toolbar and viewport");
 
 // 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。
+// 只实现浮层使用的 DOM 接口，所有布局输入由测试显式给定。
+class TraceNode {
+    // 为每个节点保留事件、属性、子节点及可观测的 CSS 状态。
+    constructor(tag = "div") {
+        this.tagName = tag;
+        this.children = [];
+        this.dataset = {};
+        this.style = makeStyle();
+        this.attributes = {};
+        this.handlers = {};
+        this.isConnected = true;
+        this.clientWidth = 500;
+        this.clientHeight = 600;
+        this.offsetWidth = 30;
+        this.offsetHeight = 14;
+        this.classes = new Set();
+        this.classList = {
+            // 模拟显式开关，供选中和悬停断言检查。
+            toggle: (name, enabled) => enabled ? this.classes.add(name) : this.classes.delete(name)
+        };
+    }
+    // 属性统一保存为字符串，与浏览器元素行为一致。
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+    // 记录实际事件处理器，测试通过相同入口驱动交互。
+    addEventListener(name, handler) { this.handlers[name] = handler; }
+    // 挂载节点时维护父子关系，支持重绘后的失效检测。
+    append(...nodes) {
+        for (const node of nodes) { node.parentElement = this; this.children.push(node); }
+    }
+    // 清空子节点时同步断开旧节点。
+    replaceChildren() {
+        for (const child of [...this.children]) child.remove();
+    }
+    // 删除时递归失效所有后代，模拟 PDF.js 页面回收。
+    remove() {
+        this.isConnected = false;
+        this.replaceChildren();
+        if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(node => node !== this);
+    }
+    // 标签底板插到文字前，便于验证真实绘制顺序。
+    insertBefore(node, before) {
+        node.parentElement = this;
+        this.children.splice(this.children.indexOf(before), 0, node);
+    }
+    // 字宽仅用于确定短线阈值，浏览器验收另行检查实际字体几何。
+    getComputedTextLength() { return this.textContent.length * 6; }
+    // 页面查询仅支持生产溯源入口实际使用的画布和命中层。
+    querySelector(selector) {
+        return selector === "canvas" ? {} : this.children.find(node => node.className === selector.slice(1));
+    }
+    // 测试按页设置稳定几何，滚动和缩放直接更新该输入。
+    getBoundingClientRect() { return this.rect; }
+}
 const pdfHandlers = {};
 const pdfParent = { postMessage() {} };
 const scrolls = [];
@@ -156,14 +209,18 @@ const pdfBox = { traceIds: [entry.id], getBoundingClientRect: () => boxRect };
 const container = {
     scrollTop: 300, scrollLeft: 200, clientWidth: 500, clientHeight: 600,
     getBoundingClientRect: () => ({ left: 100, top: 40 }),
-    scrollTo: options => scrolls.push(options)
+    scrollTo: options => scrolls.push(options), addEventListener() {}
 };
 const pdfContext = {
     parent: pdfParent, location, AbortController, container,
     document: {
         createElement: () => ({ setAttribute() {}, addEventListener() {} }),
+        createElementNS: (_namespace, name) => new TraceNode(name),
+        body: new TraceNode(),
         getElementById: () => ({ append() {} })
     },
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+    ResizeObserver: class { observe() {} },
     window: { addEventListener: (name, callback) => { pdfHandlers[name] = callback; } },
     viewer: {
         getPageView: () => ({ div: { querySelector: () => ({ children: [pdfBox] }) } }),
@@ -190,3 +247,148 @@ boxRect = { left: 950, top: 800, width: 700, height: 80 };
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).left, 1034);
 console.log("PDF source navigation handles horizontal zoom overflow");
+
+// 用同一入口挂载完整页面，覆盖跨栏后跨页的三段链及真实焦点优先级。
+const mergeHandlers = {};
+const mergeEvents = {};
+const animationFrames = new Map();
+let nextFrame = 0;
+let resizeCallback;
+const mergeBody = new TraceNode("body");
+const mergeToolbar = new TraceNode();
+const mergeContainer = new TraceNode();
+Object.assign(mergeContainer, { clientLeft: 0, clientTop: 0, rect: { left: 100, top: 40 } });
+const pageViews = [0, 1].map(index => {
+    const div = new TraceNode();
+    div.rect = { left: 100, top: 40 + index * 602, width: 500, height: 600 };
+    return { id: index + 1, div, pdfPage: {} };
+});
+const mergeContext = {
+    parent: pdfParent, location, AbortController,
+    document: {
+        createElement: name => new TraceNode(name),
+        createElementNS: (_namespace, name) => new TraceNode(name),
+        getElementById: () => mergeToolbar, body: mergeBody
+    },
+    window: { addEventListener: (name, handler) => { mergeHandlers[name] = handler; } },
+    requestAnimationFrame: callback => { animationFrames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame: id => animationFrames.delete(id),
+    ResizeObserver: class {
+        // 保存生产观察器回调，用于验证尺寸更新和释放。
+        constructor(callback) { resizeCallback = callback; }
+        // 测试直接控制观察对象的几何。
+        observe() {}
+        // 释放后清除可调用入口。
+        disconnect() { resizeCallback = null; }
+    },
+    container: mergeContainer,
+    viewer: {
+        getPageView: index => pageViews[index], getCachedPageViews: () => pageViews,
+        scrollPageIntoView() {}
+    },
+    eventBus: {
+        on: (name, callback) => { mergeEvents[name] = callback; },
+        off: name => { delete mergeEvents[name]; }
+    },
+    messages: { trace_merged: "合并", trace_merged_description: "由 {count} 个原始内容块合并" }
+};
+vm.runInNewContext(`${pdfScript.replace("export function", "function")}
+globalThis.disposeTrace = installTrace({ viewer, eventBus, container, documentId: "one", messages });`, mergeContext);
+// 消息经过生产身份校验，避免测试绕过初始化和选择流程。
+const emitMerge = data => mergeHandlers.message({ source: pdfParent, origin: location.origin, data: {
+    channel: "mineru-trace", documentId: "one", ...data
+} });
+// 一次刷新执行已排队的回调，并验证更新确实按帧合并。
+const flushConnections = () => {
+    assert.ok(animationFrames.size <= 1);
+    const callbacks = [...animationFrames.values()];
+    animationFrames.clear();
+    for (const callback of callbacks) callback();
+};
+const chain = {
+    id: "chain", depth: 1, sources: [
+        { page_idx: 2, block_index: 4, child_path: [0], bbox: [0.1, 0.4, 0.48, 0.8] },
+        { page_idx: 2, block_index: 7, child_path: [0], bbox: [0.52, 0.1, 0.9, 0.8] },
+        { page_idx: 5, block_index: 1, child_path: [0], bbox: [0.1, 0.1, 0.48, 0.3] }
+    ]
+};
+const single = { id: "single", depth: 0, sources: [{
+    page_idx: 2, block_index: 9, child_path: [], bbox: [0.1, 0.85, 0.4, 0.95]
+}] };
+const parentChain = { id: "parent", depth: 0, sources: chain.sources.map(source => ({ ...source, child_path: [] })) };
+const layoutRegionsForChain = chain.sources.map(source => ({ ...source, type: "text", index: 1, color: [0.6, 0.05, 0.3] }));
+const mergeInit = { type: "init", entries: [parentChain, chain, single], pageIndices: [2, 5], layoutRegions: layoutRegionsForChain };
+emitMerge(mergeInit);
+flushConnections();
+const overlay = mergeBody.children[0];
+assert.equal(overlay.children.length, 0);
+// 两个父子来源占据同框时只挂载一个命中区域，优先采用最深的合并节点。
+const firstHit = pageViews[0].div.querySelector(".mineru-trace-layer");
+const chainBox = firstHit.children.find(node => node.dataset.traceId === "chain");
+const singleBox = firstHit.children.find(node => node.dataset.traceId === "single");
+assert.equal(chainBox.attributes["aria-description"], "由 3 个原始内容块合并");
+chainBox.handlers.pointerenter();
+flushConnections();
+assert.equal(overlay.dataset.traceId, "chain");
+assert.equal(overlay.children.length, 2);
+assert.deepEqual(overlay.children[0].children[0].attributes, { x1: "240", y1: "480", x2: "260", y2: "60" });
+assert.deepEqual(overlay.children[1].children[0].attributes, { x1: "450", y1: "480", x2: "50", y2: "662" });
+assert.equal(overlay.children[0].style["--trace-color"], "rgb(153 13 77)");
+assert.equal(overlay.children[0].children.at(-1).textContent, "合并");
+emitMerge({ type: "select", id: "chain", pageIdx: 2, scroll: false });
+singleBox.handlers.pointerenter();
+flushConnections();
+assert.equal(overlay.children.length, 0);
+singleBox.handlers.pointerleave();
+flushConnections();
+assert.equal(overlay.children.length, 2);
+singleBox.handlers.focus();
+flushConnections();
+assert.equal(overlay.children.length, 0);
+singleBox.handlers.blur();
+mergeToolbar.children[0].handlers.click();
+flushConnections();
+assert.equal(overlay.children.length, 2);
+// 端点由实时页框计算，滚动、缩放和尺寸变化共用同一个动画帧。
+pageViews[0].div.rect = { left: 80, top: -60, width: 600, height: 720 };
+mergeContainer.handlers.scroll();
+mergeEvents.scalechanging();
+resizeCallback();
+flushConnections();
+assert.deepEqual(overlay.children[0].children[0].attributes, { x1: "268", y1: "476", x2: "292", y2: "-28" });
+pageViews[1].pdfPage = null;
+mergeEvents.updateviewarea();
+flushConnections();
+assert.equal(overlay.children.length, 1);
+pageViews[1].pdfPage = {};
+mergeEvents.pagerendered({ pageNumber: 2 });
+flushConnections();
+assert.equal(overlay.children.length, 2);
+// 重复来源不会多画线，几何无效的中间片段阻断两侧线段。
+const duplicateChain = { ...chain, sources: [chain.sources[0], chain.sources[0], ...chain.sources.slice(1)] };
+emitMerge({ ...mergeInit, entries: [duplicateChain] });
+flushConnections();
+assert.equal(overlay.children.length, 2);
+const invalidChain = { ...chain, sources: [chain.sources[0], { ...chain.sources[1], bbox: [0.5, 0.1, 0.5, 0.8] }, chain.sources[2]] };
+emitMerge({ ...mergeInit, entries: [invalidChain] });
+flushConnections();
+assert.equal(overlay.children.length, 0);
+const shortChain = { ...chain, sources: [chain.sources[0], { ...chain.sources[1], bbox: [0.49, 0.81, 0.9, 0.9] }] };
+emitMerge({ ...mergeInit, entries: [shortChain] });
+flushConnections();
+assert.equal(overlay.children.length, 1);
+assert.deepEqual(overlay.children[0].children.map(node => node.tagName), ["line", "circle", "circle"]);
+// 单来源与失败的合并目标都不产生连线，清理时撤销旧帧并解绑观察器。
+emitMerge({ ...mergeInit, entries: [single] });
+emitMerge({ type: "select", id: "single", pageIdx: 2 });
+flushConnections();
+assert.equal(overlay.children.length, 0);
+mergeContainer.handlers.scroll();
+emitMerge({ type: "clear" });
+assert.equal(animationFrames.size, 0);
+assert.equal(overlay.dataset.traceId, "");
+mergeContext.disposeTrace();
+assert.equal(overlay.isConnected, false);
+assert.equal(resizeCallback, null);
+assert.deepEqual(Object.keys(mergeEvents), []);
+console.log("Merge chains preserve source order, corner geometry, interaction priority and lifecycle");

@@ -70,7 +70,8 @@
     try {
         const messages = Object.fromEntries([
             "preview", "pdf_loading", "pdf_previous", "pdf_next", "pdf_page", "pdf_zoom_out", "pdf_zoom_in",
-            "trace_regions", "trace_source", "pdf_fit_width", "pdf_invalid", "pdf_password", "pdf_load_failed",
+            "trace_regions", "trace_source", "trace_merged", "trace_merged_description",
+            "pdf_fit_width", "pdf_invalid", "pdf_password", "pdf_load_failed",
         ].map((name) => [name, text(name)]));
         const viewerUrl = fileUrl(viewer);
         const params = new URLSearchParams({ file: fileUrl(file, viewerUrl), messages: JSON.stringify(messages) });
