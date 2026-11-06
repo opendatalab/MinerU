@@ -56,3 +56,92 @@ emit(pdf, { type: "select", id: entry.id }, location.origin);
 assert.equal(delivered.length, switched);
 window.__mineruTrace.reset();
 console.log("Trace identity, handshake and bidirectional routing passed");
+
+// 执行完整正文脚本，验证滚动后的跨页按钮避开目录工具栏并受视口边界限制。
+const checkHtmlNavigation = (offset, blockTop, expectedTop) => {
+    const htmlHandlers = {};
+    const navigation = {
+        style: {}, offsetHeight: 30,
+        setAttribute() {}, replaceChildren() {}, append() {}
+    };
+    const selected = {
+        dataset: {
+            docvortexTraceId: entry.id,
+            docvortexSources: JSON.stringify(entry.sources.map(source => ({ ...source, child_path: [] })))
+        },
+        setAttribute() {}, removeAttribute() {},
+        getBoundingClientRect: () => ({ top: blockTop })
+    };
+    const htmlParent = { postMessage() {} };
+    const context = {
+        parent: htmlParent, navigator: { language: "en" }, innerHeight: 600,
+        document: {
+            querySelectorAll: () => [selected],
+            createElement: tag => tag === "nav" ? navigation : { setAttribute() {}, addEventListener() {} },
+            body: { append() {} }, addEventListener() {}
+        },
+        window: { addEventListener: (name, callback) => { htmlHandlers[name] = callback; } },
+        getComputedStyle: () => ({ getPropertyValue: () => offset }),
+        // 此用例仅驱动滚动事件，尺寸观察器保留生产注册入口。
+        ResizeObserver: class { observe() {} }
+    };
+    const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
+    vm.runInNewContext(`(${source})(${JSON.stringify({
+        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: location.origin, pageIndices: [2, 5]
+    })})`, context);
+    htmlHandlers.message({ source: htmlParent, origin: location.origin, data: {
+        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
+    } });
+    htmlHandlers.scroll();
+    assert.equal(navigation.hidden, false);
+    assert.equal(navigation.style.top, `${expectedTop}px`);
+};
+checkHtmlNavigation("52px", -100, 52);
+checkHtmlNavigation("", -100, 8);
+checkHtmlNavigation("52px", 250, 250);
+checkHtmlNavigation("52px", 700, 562);
+console.log("HTML source-page controls respect the outline toolbar and viewport");
+
+// 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。
+const pdfHandlers = {};
+const pdfParent = { postMessage() {} };
+const scrolls = [];
+let boxRect = { left: 950, top: 800, width: 100, height: 80 };
+const pdfBox = { traceIds: [entry.id], getBoundingClientRect: () => boxRect };
+const container = {
+    scrollTop: 300, scrollLeft: 200, clientWidth: 500, clientHeight: 600,
+    getBoundingClientRect: () => ({ left: 100, top: 40 }),
+    scrollTo: options => scrolls.push(options)
+};
+const pdfContext = {
+    parent: pdfParent, location, AbortController, container,
+    document: {
+        createElement: () => ({ setAttribute() {}, addEventListener() {} }),
+        getElementById: () => ({ append() {} })
+    },
+    window: { addEventListener: (name, callback) => { pdfHandlers[name] = callback; } },
+    viewer: {
+        getPageView: () => ({ div: { querySelector: () => ({ children: [pdfBox] }) } }),
+        getCachedPageViews: () => [], scrollPageIntoView() {}
+    },
+    eventBus: { on() {}, off() {} }
+};
+const pdfScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/trace.mjs"), "utf8");
+vm.runInNewContext(`${pdfScript.replace("export function", "function")}
+installTrace({ viewer, eventBus, container, documentId: "one", messages: {} });`, pdfContext);
+// 模拟已验证的父页面消息，复用生产 init/select 的完整分发路径。
+const emitPdf = data => pdfHandlers.message({ source: pdfParent, origin: location.origin, data: {
+    channel: "mineru-trace", documentId: "one", ...data
+} });
+emitPdf({ type: "init", entries: [entry], pageIndices: [2, 5] });
+emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
+assert.equal(scrolls.at(-1).top, 800);
+assert.equal(scrolls.at(-1).left, 850);
+// 已经横向滚动后再定位左侧及超宽区域，均把区域起始部分带回可见范围。
+boxRect = { left: -50, top: 800, width: 100, height: 80 };
+emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
+assert.ok(scrolls.at(-1).left <= 0);
+boxRect = { left: 950, top: 800, width: 700, height: 80 };
+emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
+assert.equal(scrolls.at(-1).left, 1034);
+console.log("PDF source navigation handles horizontal zoom overflow");

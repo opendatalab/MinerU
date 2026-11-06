@@ -41,7 +41,13 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
         if (!box) return;
         const rect = box.getBoundingClientRect();
         const host = container.getBoundingClientRect();
+        // 放大后同时沿横纵方向对齐，超宽区域保留左侧起始部分可见。
         container.scrollTo({
+            left:
+                container.scrollLeft +
+                rect.left -
+                host.left -
+                Math.max(16, (container.clientWidth - Math.min(rect.width, container.clientWidth - 32)) / 2),
             top:
                 container.scrollTop +
                 rect.top -

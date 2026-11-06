@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import socket
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -159,30 +160,47 @@ def test_pin_ip_preserve_host_sni_and_signed_url(
     assert extracted.data == HTML
 
 
+@pytest.mark.parametrize("failure", ["refused", "timeout"])
 def test_dns_rebinding_and_connection_fallback(
-    dns: tuple[list[str], list[str]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    dns: tuple[list[str], list[str]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str
 ) -> None:
-    """首个地址失败后仅使用首次校验过的候选地址，DNS 变更不会重新进入连接。"""
+    """首个地址拒绝或耗尽分配时间后仍能回退，且仅使用首次校验过的候选地址。"""
     addresses, dns_calls = dns
     addresses[:] = ["2606:4700:4700::1111", "93.184.216.34", "93.184.216.34"]
     connections: list[httpx.Request] = []
+    started_at = 100.0
+    timeout = 60
+    now = started_at
+
+    def monotonic() -> float:
+        """提供可控时钟，确定性模拟连接耗尽预算而无需实际等待。"""
+        return now
+
+    monkeypatch.setattr(url_source, "time", SimpleNamespace(monotonic=monotonic))
 
     async def respond(self: httpx.AsyncHTTPTransport, request: httpx.Request) -> httpx.Response:
         """首个 IPv6 连接失败时把后续 DNS 应答改成回环地址。"""
+        nonlocal now
         connections.append(request)
         if len(connections) == 1:
             addresses[:] = ["127.0.0.1"]
+            if failure == "timeout":
+                now += request.extensions["timeout"]["connect"]
+                raise httpx.ConnectTimeout("simulated black-holed IPv6")
             raise httpx.ConnectError("simulated unreachable IPv6")
         return httpx.Response(200, content=HTML)
 
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", respond)
     extracted = asyncio.run(
-        api_server._extract_bytes(api_server._UrlSource(url="https://source.example/a.html"), api_server.FileStore(tmp_path))
+        api_server._extract_bytes(
+            api_server._UrlSource(url="https://source.example/a.html"), api_server.FileStore(tmp_path), url_timeout=timeout
+        )
     )
     assert extracted.data == HTML
     assert dns_calls == ["source.example"]
     assert [request.url.host for request in connections] == ["2606:4700:4700::1111", "93.184.216.34"]
-    assert connections[1].extensions["timeout"]["connect"] <= connections[0].extensions["timeout"]["connect"]
+    assert 0 < connections[0].extensions["timeout"]["connect"] <= timeout / 2
+    assert 0 < connections[1].extensions["timeout"]["connect"] <= started_at + timeout - now
 
 
 def test_redirect_target_is_never_requested(

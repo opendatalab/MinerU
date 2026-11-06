@@ -28,7 +28,8 @@
     const positionNavigation = () => {
         if (!selected) return;
         const rect = selected.getBoundingClientRect();
-        navigation.style.top = `${Math.max(8, Math.min(innerHeight - navigation.offsetHeight - 8, rect.top))}px`;
+        const offset = parseFloat(getComputedStyle(document.body).getPropertyValue("--mineru-preview-offset")) || 8;
+        navigation.style.top = `${Math.max(offset, Math.min(innerHeight - navigation.offsetHeight - 8, rect.top))}px`;
     };
     // 仅调整结果 iframe 自身滚动，避免带动整个 Gradio 页面。
     const align = () => {

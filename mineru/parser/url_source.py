@@ -78,6 +78,8 @@ class UrlSourceTransport(httpx.AsyncHTTPTransport):
             remaining = deadline - time.monotonic() if deadline is not None else None
             if remaining is not None and remaining <= 0:
                 raise httpx.ConnectTimeout("URL source connection timed out", request=request)
+            # 按剩余候选地址均分连接预算，首个地址超时后仍有时间回退。
+            attempt_timeout = remaining / (len(addresses) - index) if remaining is not None else None
             pinned = httpx.Request(
                 method=request.method,
                 url=request.url.copy_with(host=address),
@@ -86,7 +88,7 @@ class UrlSourceTransport(httpx.AsyncHTTPTransport):
                 extensions={
                     **request.extensions,
                     "sni_hostname": request.url.raw_host.decode("ascii"),
-                    "timeout": {**timeouts, "connect": remaining},
+                    "timeout": {**timeouts, "connect": attempt_timeout},
                 },
             )
             try:
