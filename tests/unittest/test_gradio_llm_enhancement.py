@@ -134,7 +134,7 @@ def test_independent_switches_change_real_semantics(sdk: _SDK, title: bool, cell
     assert middle.pages[2].blocks[1].level == (3 if title else 2)
     assert middle.pages[1].blocks[0].cell_merge == ([1, 0] if cells else None)
     if cells:
-        assert _merged_row_texts(middle) == [["H1", "H2"], ["AB", "X"], ["", "Y"]]
+        assert _merged_row_texts(middle) == [["H1", "H2"], ["A B", "X"], ["Y"]]
     assert len(sdk.requests) == int(title) + int(cells)
     assert sdk.closed is (title or cells)
 
