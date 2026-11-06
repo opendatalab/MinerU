@@ -9,6 +9,23 @@
     let selectedPage = null;
     let alignOnResize = false;
     let resizeFrame = 0;
+    // 使用完整物理身份索引原始布局，避免合并正文丢失各来源的类型色。
+    const sourceKey = (source) => JSON.stringify([source.page_idx, source.block_index, source.child_path]);
+    // 视觉父块通过同一顶层块的主体区域取得主题色。
+    const boxKey = (source) => JSON.stringify([source.page_idx, source.block_index, source.bbox]);
+    const regionsBySource = new Map();
+    const regionsByBox = new Map();
+    for (const region of config.layoutRegions || []) {
+        regionsBySource.set(sourceKey(region), region);
+        const previous = regionsByBox.get(boxKey(region));
+        if (!previous || region.child_path.length > previous.child_path.length) regionsByBox.set(boxKey(region), region);
+    }
+    // 合并目标切换来源时同步正文与来源页控件的颜色，颜色只写入自有 CSS 变量。
+    const setTheme = (node, source) => {
+        const region = regionsBySource.get(sourceKey(source)) || regionsByBox.get(boxKey(source));
+        const color = region?.color || [0.35, 0.4, 0.45];
+        node.style.setProperty("--trace-color", `rgb(${color.map(value => Math.round(value * 255)).join(" ")})`);
+    };
     // 来源只从 renderer 创建的属性读取，不从正文字符串推断。
     for (const node of document.querySelectorAll("[data-docvortex-trace-id]")) {
         const id = node.dataset.docvortexTraceId;
@@ -16,6 +33,7 @@
         if (!sources.length) continue;
         nodes.set(id, node);
         entries.push({ id, sources, depth: sources[0].child_path.length });
+        setTheme(node, sources[0]);
         node.tabIndex = 0;
     }
     const navigation = document.createElement("nav");
@@ -44,7 +62,7 @@
         positionNavigation();
     };
     // 一个目标对应多个原文页时，用去重后的原文页号切换来源。
-    const select = (id, pageIdx, scroll) => {
+    const select = (id, pageIdx, scroll, selectedSourceKey) => {
         if (scroll) window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: "trace" }));
         selected?.removeAttribute("data-mineru-selected");
         selected = nodes.get(id);
@@ -53,6 +71,10 @@
         selected.setAttribute("data-mineru-selected", "true");
         navigation.replaceChildren();
         const entry = entries.find((item) => item.id === id);
+        const source = entry.sources.find(item => sourceKey(item) === selectedSourceKey)
+            || entry.sources.find(item => item.page_idx === pageIdx) || entry.sources[0];
+        setTheme(selected, source);
+        setTheme(navigation, source);
         const pages = [...new Set(entry.sources.map((source) => source.page_idx))].sort((a, b) => a - b);
         for (const page of pages) {
             const button = document.createElement("button");
@@ -95,7 +117,7 @@
             pageLabel = data.pageLabel;
             navigation.setAttribute("aria-label", pageLabel);
         }
-        if (data.type === "select") select(data.id, data.pageIdx, data.scroll);
+        if (data.type === "select") select(data.id, data.pageIdx, data.scroll, data.sourceKey);
     });
     // 用户主动滚动后停止异步布局校正；新的定位请求重新启用。
     for (const name of ["wheel", "touchstart", "pointerdown", "keydown"]) {
@@ -123,5 +145,5 @@
         },
         { once: true }
     );
-    send({ type: "ready", entries, pageIndices: config.pageIndices });
+    send({ type: "ready", entries, pageIndices: config.pageIndices, layoutRegions: config.layoutRegions });
 }

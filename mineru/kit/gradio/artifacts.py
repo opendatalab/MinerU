@@ -12,7 +12,7 @@ import zipfile
 from copy import deepcopy
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Literal, cast
@@ -290,10 +290,8 @@ def persist_parse_result(
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
     with _output_stage("html_preview", artifacts):
-        trace = artifacts.origin_pdf_path is not None
-        if trace:
+        if artifacts.origin_pdf_path is not None:
             value = _render_html(artifacts, public_base_url=public_base_url, include_source_map=True)
-            value = _add_trace_preview(value, artifacts, public_base_url=public_base_url)
         else:
             value = _render_html(artifacts, public_base_url=public_base_url)
         # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
@@ -306,8 +304,10 @@ def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str
         )
 
 
-def _add_trace_preview(document: str, artifacts: RunArtifacts, *, public_base_url: str) -> str:
-    """向隔离结果页注入自有溯源脚本，配置只包含产物身份和页映射。"""
+def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: MiddleJson, public_base_url: str) -> str:
+    """向隔离结果页注入溯源配置，并由公共接口提供合并前的原始布局。"""
+    from docvortex.visualization import collect_layout_regions
+
     from .i18n import MESSAGES
 
     base = urlsplit(public_base_url)
@@ -318,6 +318,7 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, public_base_ur
                 "pageIndices": list(artifacts.page_indices),
                 "parentOrigin": f"{base.scheme}://{base.netloc}",
                 "pageLabels": MESSAGES["trace_source"],
+                "layoutRegions": [asdict(region) for region in collect_layout_regions(middle_json.pages)],
             },
             ensure_ascii=True,
         )
@@ -327,17 +328,24 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, public_base_ur
     )
     script = (Path(__file__).resolve().parents[2] / "resources" / "gradio_trace_html.js").read_text(encoding="utf-8")
     styles = """<style>
+[data-docvortex-trace-id], .mineru-trace-pages {
+    --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
 [data-docvortex-trace-id] { cursor: pointer; scroll-margin: 24px; }
-[data-docvortex-trace-id]:hover { outline: 1px solid #fb923c66; outline-offset: 3px; }
-[data-mineru-selected] { outline: 2px solid #ea580c !important; outline-offset: 3px; background: #fb923c12; }
+[data-docvortex-trace-id]:hover:not(:has([data-docvortex-trace-id]:hover)),
+[data-docvortex-trace-id]:focus-visible {
+    outline: 1px solid var(--trace-strong); outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 5%, transparent); }
+[data-mineru-selected] { outline: 2px solid var(--trace-strong) !important; outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent) !important; }
 .mineru-trace-pages { position: fixed; right: 8px; z-index: 100;
     display: flex; flex-wrap: wrap; gap: 4px;
     max-width: 75%; padding: 5px; background: Canvas;
-    border: 1px solid #fb923c; border-radius: 6px; }
+    border: 1px solid var(--trace-strong); border-radius: 6px; }
 .mineru-trace-pages[hidden] { display: none; }
 .mineru-trace-pages button { cursor: pointer; color: CanvasText; background: Canvas;
     border: 1px solid #aaa; border-radius: 4px; padding: 3px 6px; }
-.mineru-trace-pages button[aria-pressed=true] { border-color: #ea580c; background: #fb923c30; }
+.mineru-trace-pages button[aria-pressed=true] { border-color: var(--trace-strong);
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent); }
 </style>"""
     document = document.replace("</head>", styles + "</head>", 1)
     return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
@@ -404,7 +412,7 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_sourc
         raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
     asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(artifacts.root.as_posix(), safe='/:')}"
-    return cast(
+    document = cast(
         str,
         render(
             result.middle_json,
@@ -417,6 +425,9 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_sourc
             ),
         ),
     )
+    if include_source_map:
+        return _add_trace_preview(document, artifacts, middle_json=result.middle_json, public_base_url=public_base_url)
+    return document
 
 
 def _build_text_download(artifacts: RunArtifacts, format_name: Literal["markdown", "json"]) -> Path:

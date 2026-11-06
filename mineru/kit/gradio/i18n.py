@@ -62,7 +62,7 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "pdf_page": ("Page", "页码"),
     "pdf_zoom_out": ("Zoom out", "缩小"),
     "pdf_zoom_in": ("Zoom in", "放大"),
-    "trace_regions": ("Show regions", "显示区域框"),
+    "trace_regions": ("Layout annotations", "版式标注"),
     "trace_source": ("Source page", "来源页"),
     "pdf_fit_width": ("Fit width", "适应宽度"),
     "pdf_invalid": ("This PDF is damaged or invalid.", "PDF 已损坏或格式无效。"),

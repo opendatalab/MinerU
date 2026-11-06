@@ -1,6 +1,7 @@
 """溯源预览的真实产物、公共门面和前端协议回归。"""
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 
@@ -26,8 +27,15 @@ def test_pdf_trace_preview_and_public_render(tmp_path: Path) -> None:
     assert document.select_one("[data-docvortex-trace-id]")
     assert artifacts.root.name in document.get_text() or artifacts.root.name in str(document)
     assert "pageIndices" in str(document)
+    script = next(script.string for script in document.select("script") if script.string and '"layoutRegions"' in script.string)
+    config = json.loads(script.rsplit(")(", 1)[1].removesuffix(");"))
+    assert config["layoutRegions"]
+    assert config["layoutRegions"][0]["type"] == str(middle.pages[0].blocks[0].type)
+    assert config["layoutRegions"][0]["index"] == middle.pages[0].blocks[0].index
+    assert config["layoutRegions"][0]["child_path"] == []
     download = render_download(artifacts.as_state(), "html", public_base_url="http://testserver")
     assert "data-docvortex-sources" not in Path(download).read_text()
+    assert "layoutRegions" not in Path(download).read_text()
 
 
 def test_trace_frontend_coordination() -> None:

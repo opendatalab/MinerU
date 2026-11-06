@@ -25,14 +25,17 @@ const emit = (source, data, origin = "null") =>
 const entry = {
     id: "p2-b1",
     sources: [
-        { page_idx: 2, bbox: [0.1, 0.1, 0.8, 0.2] },
-        { page_idx: 5, bbox: [0.1, 0.1, 0.8, 0.2] }
+        { page_idx: 2, block_index: 1, child_path: [], bbox: [0.1, 0.1, 0.8, 0.2] },
+        { page_idx: 5, block_index: 2, child_path: [], bbox: [0.1, 0.1, 0.8, 0.2] },
+        { page_idx: 5, block_index: 7, child_path: [], bbox: [0.1, 0.4, 0.8, 0.6] }
     ],
     depth: 0
 };
 window.__mineruTrace.activate("one");
 emit(pdf, { type: "ready" }, location.origin);
-emit(html, { type: "ready", entries: [entry], pageIndices: [2, 5] });
+const layoutRegions = [{ page_idx: 5, block_index: 2, child_path: [], type: "text", index: 2, bbox: [0.1, 0.1, 0.8, 0.2], color: [0.6, 0.05, 0.3] }];
+emit(html, { type: "ready", entries: [entry], pageIndices: [2, 5], layoutRegions });
+assert.equal(delivered.at(-1).message.layoutRegions, layoutRegions);
 emit(html, { type: "select", id: entry.id });
 assert.equal(delivered.at(-1).message.pageIdx, 2);
 assert.equal(delivered.at(-1).message.scroll, true);
@@ -40,10 +43,17 @@ emit(pdf, { type: "select", id: entry.id, pageIdx: 5 }, location.origin);
 assert.equal(delivered.at(-2).message.pageIdx, 5);
 assert.equal(delivered.at(-2).message.scroll, true);
 assert.equal(delivered.at(-1).message.scroll, false);
+// 同页合并后点击第二个来源框时，父窗口透传其实际块号和规范化页号。
+const samePageKey = JSON.stringify([5, 7, []]);
+emit(pdf, { type: "select", id: entry.id, pageIdx: 2, sourceKey: samePageKey }, location.origin);
+assert.equal(delivered.at(-2).message.sourceKey, samePageKey);
+assert.equal(delivered.at(-2).message.pageIdx, 5);
+assert.equal(delivered.at(-1).message.sourceKey, samePageKey);
 // 同一结果重复激活仍保留映射，可供重挂载的 PDF 查看器恢复。
 window.__mineruTrace.activate("one");
 emit(pdf, { type: "ready" }, location.origin);
 assert.equal(delivered.at(-1).message.entries.length, 1);
+assert.equal(delivered.at(-1).message.layoutRegions, layoutRegions);
 const count = delivered.length;
 emit(frame("foreign"), { type: "select", id: entry.id });
 emit(pdf, { type: "select", id: entry.id }, "https://foreign.test");
@@ -54,8 +64,16 @@ const switched = delivered.length;
 emit(html, { type: "ready", entries: [entry], pageIndices: [2, 5] });
 emit(pdf, { type: "select", id: entry.id }, location.origin);
 assert.equal(delivered.length, switched);
+emit(pdf, { type: "ready", documentId: "two" }, location.origin);
+assert.equal(delivered.at(-1).message.layoutRegions.length, 0);
 window.__mineruTrace.reset();
 console.log("Trace identity, handshake and bidirectional routing passed");
+
+// 提供可观测的 CSS 变量写入，验证主题色从真实脚本传到正文及来源控件。
+const makeStyle = () => ({
+    // 保存生产代码设置的自有样式属性。
+    setProperty(name, value) { this[name] = value; }
+});
 
 // 执行完整正文脚本，验证滚动后的跨页按钮避开目录工具栏并受视口边界限制。
 const checkHtmlNavigation = (
@@ -64,10 +82,11 @@ const checkHtmlNavigation = (
     const htmlHandlers = {};
     const targetOrigins = [];
     const navigation = {
-        style: {}, offsetHeight: 30,
+        style: makeStyle(), offsetHeight: 30,
         setAttribute() {}, replaceChildren() {}, append() {}
     };
     const selected = {
+        style: makeStyle(),
         dataset: {
             docvortexTraceId: entry.id,
             docvortexSources: JSON.stringify(entry.sources.map(source => ({ ...source, child_path: [] })))
@@ -91,7 +110,12 @@ const checkHtmlNavigation = (
     };
     const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
     vm.runInNewContext(`(${source})(${JSON.stringify({
-        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, pageIndices: [2, 5]
+        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, pageIndices: [2, 5],
+        layoutRegions: [
+            { ...entry.sources[0], child_path: [0], color: [0.2, 0.4, 0.9] },
+            { ...entry.sources[1], color: [0.6, 0.05, 0.3] },
+            { ...entry.sources[2], color: [0, 0.6, 0.1] }
+        ]
     })})`, context);
     assert.deepEqual(targetOrigins, [eventOrigin]);
     // 同一父窗口传来的不同来源消息仍须拒绝，避免规范化放宽来源边界。
@@ -105,6 +129,14 @@ const checkHtmlNavigation = (
     htmlHandlers.scroll();
     assert.equal(navigation.hidden, false);
     assert.equal(navigation.style.top, `${expectedTop}px`);
+    assert.equal(selected.style["--trace-color"], "rgb(51 102 230)");
+    assert.equal(navigation.style["--trace-color"], selected.style["--trace-color"]);
+    htmlHandlers.message({ source: htmlParent, origin: eventOrigin, data: {
+        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id,
+        pageIdx: 5, sourceKey: samePageKey, scroll: false
+    } });
+    assert.equal(selected.style["--trace-color"], "rgb(0 153 26)");
+    assert.equal(navigation.style["--trace-color"], selected.style["--trace-color"]);
 };
 checkHtmlNavigation("52px", -100, 52);
 checkHtmlNavigation("", -100, 8);
