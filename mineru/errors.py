@@ -30,6 +30,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "file_encrypted": "invalid_request_error",
     "file_corrupted": "invalid_request_error",
     "file_too_large": "invalid_request_error",
+    "resource_limit": "invalid_request_error",
     "file_not_found": "invalid_request_error",
     "file_permission_denied": "invalid_request_error",
     "file_hash_mismatch": "invalid_request_error",

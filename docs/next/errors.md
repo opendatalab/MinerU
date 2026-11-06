@@ -28,6 +28,7 @@ API-backed parser 具有独立的业务错误与传输错误路径；不要只�
 | 场景 | 处理 |
 |---|---|
 | `page_range_invalid`、格式或参数错误 | 修正请求，不原样重试 |
+| `resource_limit` | 文档解压或结构展开超过安全预算；缩减输入后重试。属性读取和正文解析均会终止，Tasks 保留逐文件错误码 |
 | `invalid_api_key` | 检查目标服务及凭据；不可把推理服务 Key 用于 Tasks |
 | Doclib `invalid_doclib_token` | 检查 `doclib.auth.token` 或显式客户端 token；HTTP 401，无匿名降级 |
 | `doclib_upgrade_required` | 先用旧版本 CLI 停止旧 Doclib，再启动新版本服务 |
