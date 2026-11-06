@@ -119,7 +119,7 @@ PDF 的 LLM 辅助后处理同样读取启动前 `config.yaml`：
 llm_aided:
   api_key: ${MINERU_LLM_API_KEY:-}
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.5-plus
+  model: qwen3.8-flash
   enable_thinking: false
   max_concurrency: 16
   features:

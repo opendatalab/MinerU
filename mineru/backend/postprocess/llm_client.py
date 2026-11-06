@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import uuid
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -58,10 +59,28 @@ class LLMAidedClient:
         if self._config.enable_thinking is not None:
             request_params["extra_body"] = {"enable_thinking": self._config.enable_thinking}
 
+        # 同一候选的重试复用请求标识，便于关联并发执行的完整请求和原始返回。
+        request_id = uuid.uuid4().hex
         for attempt in range(1, _MAX_LLM_RETRIES + 1):
             try:
                 async with self._semaphore:
+                    logger.debug(
+                        "LLM {} request id={} attempt={}/{} params={}",
+                        operation,
+                        request_id,
+                        attempt,
+                        _MAX_LLM_RETRIES,
+                        request_params,
+                    )
                     completion = await self._client.chat.completions.create(**request_params)
+                logger.debug(
+                    "LLM {} response id={} attempt={}/{} completion={}",
+                    operation,
+                    request_id,
+                    attempt,
+                    _MAX_LLM_RETRIES,
+                    completion,
+                )
                 content = self._extract_message_content(completion)
                 parsed = json_repair.loads(content)
                 validated = validator(parsed)
