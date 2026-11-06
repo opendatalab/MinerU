@@ -46,13 +46,16 @@ def _shared_pages(
     return _cross_page_table_pages(previous_html=previous, current_html=current + "</table>")
 
 
-def test_shared_blank_merge_joins_group_without_consuming_new_details() -> None:
-    """模型确认共享文本后补齐同范围空白格，真实渲染跨五行并保留五个独立明细。"""
+def test_shared_blank_merge_respects_available_row_metadata() -> None:
+    """有跨度信息时连接共享空白格，已发布旧包走降级路径，两者都保留独立明细。"""
     pages = _shared_pages()
     original_html = [page.blocks[0].content[0].content for page in pages]
+    rows = BeautifulSoup(original_html[0], "html.parser").find_all("tr")
+    segment = build_row_rendered_cell_segments(rows, -1)[0]
+    has_row_ranges = getattr(segment, "start_row", None) is not None and getattr(segment, "end_row", None) is not None
     client = _QueuedValidatedClient([[0, 0, 1, 0]])
     asyncio.run(llm_cell_merge.apply_llm_cross_page_cell_merge(pages, client))  # type: ignore[arg-type]
-    assert pages[1].blocks[0].cell_merge == [1, 0, 1, 1]
+    assert pages[1].blocks[0].cell_merge == [1, 0, 1, int(has_row_ranges)]
     assert len(client.prompts) == 1
     assert "<table>" not in client.prompts[0]
     soup = BeautifulSoup(render_html(_middle_json(pages)), "html.parser")
@@ -60,8 +63,9 @@ def test_shared_blank_merge_joins_group_without_consuming_new_details() -> None:
     rows = soup.find_all("tr")
     assert len(rows) == 5
     cells = rows[0].find_all("td", recursive=False)
-    assert [cells[index]["rowspan"] for index in (0, 2, 3)] == ["5", "5", "5"]
-    assert [row.find_all("td", recursive=False)[-1].get_text() for row in rows[1:]] == [
+    assert [cells[index]["rowspan"] for index in (0, 2, 3)] == ["5", "5", "5" if has_row_ranges else "2"]
+    assert [cell.get_text() for cell in soup.find_all("td") if "detail" in cell.get_text()] == [
+        "Old detail 1",
         "Old detail 2",
         "New detail 1",
         "New detail 2",
