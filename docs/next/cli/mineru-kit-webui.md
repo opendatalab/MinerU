@@ -140,7 +140,7 @@ Gradio 转换事件在原有输出末尾追加 Structured Content JSON 文本，
 
 每次选择格式后，按钮会显示“准备中”，文件就绪后自动开始下载，无需再次点击。再次下载时，HTML 根据当前访问地址重新生成，其他格式复用已有文件；生成失败时显示错误并允许重试。清除、更换文件或重新解析会使旧下载请求失效。
 
-每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf`、`layout.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
+每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
 
 ## 界面语言
 
@@ -156,7 +156,7 @@ Office 转换开始、失败及成功后都保留已挂载的源预览。“忽�
 
 转换开始、排队、解析和整理输出期间保留当前预览及浏览位置；PDF 和图片成功生成结果后刷新预览。转换失败也保留当前预览；点击清除会恢复空预览，更换文件会显示新文件的源预览或对应格式提示。
 
-PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用 schema 2.0 顶层 block/bbox 生成语义 overlay。无法生成 overlay 时仍保留 origin PDF 预览。
+PDF 和图片会生成与解析范围一致的 `origin.pdf`，由 PDF.js 展示。浏览器根据布局区域和来源映射，用 JavaScript 绘制标框、标签与双向溯源交互浮层。
 
 `mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
 

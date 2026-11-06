@@ -20,6 +20,7 @@ def test_pdf_trace_preview_and_public_render(tmp_path: Path) -> None:
     middle = _middle_json(with_image=False)
     artifacts = persist_parse_result(ParseResult(middle_json=middle), source, output_root=tmp_path, page_range="")
     assert _prepare_preview("pdf", artifacts).pdf_path == artifacts.origin_pdf_path
+    assert not (artifacts.root / "layout.pdf").exists()
     preview = render_html_preview(artifacts, public_base_url="http://testserver")
     frame = BeautifulSoup(preview, "html.parser").iframe
     assert "allow-same-origin" not in frame["sandbox"]

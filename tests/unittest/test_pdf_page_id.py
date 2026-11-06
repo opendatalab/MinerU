@@ -237,7 +237,7 @@ def _numbered_pdf(path: Path, page_count: int = 5) -> None:
 
 
 def test_real_pdf_selection_preserves_original_indices_and_artifact_order(tmp_path: Path) -> None:
-    """实测非连续选页与末页组合，同时核对解析页号、原始 PDF 和 layout PDF。"""
+    """实测非连续选页与末页组合，同时核对解析页号和原文预览 PDF。"""
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
     parser = MinerUParser(tier="flash")
@@ -248,10 +248,10 @@ def test_real_pdf_selection_preserves_original_indices_and_artifact_order(tmp_pa
     assert "Source page 2" not in result.markdown()
     artifacts = persist_parse_result(result, source, output_root=tmp_path / "review", page_range="r1,3,1,3")
     assert artifacts.page_indices == (0, 2, 4)
-    assert artifacts.origin_pdf_path is not None and artifacts.layout_pdf_path is not None
+    assert artifacts.origin_pdf_path is not None
     reader = PdfReader(str(artifacts.origin_pdf_path))
     assert [page.extract_text().strip() for page in reader.pages] == ["Source page 1", "Source page 3", "Source page 5"]
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 3
+    assert not (artifacts.root / "layout.pdf").exists()
     prepared = parser._prepare_input(source, "r1")
     assert prepared.retained_page_indices == [4]
     assert PdfReader(io.BytesIO(prepared.file_bytes)).pages[0].extract_text().strip() == "Source page 5"

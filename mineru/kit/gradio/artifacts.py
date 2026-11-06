@@ -69,7 +69,6 @@ class RunArtifacts:
     downloads_dir: Path
     file_suffix: str
     origin_pdf_path: Path | None = None
-    layout_pdf_path: Path | None = None
     page_indices: tuple[int, ...] = ()
     generated_downloads: dict[str, Path] = field(default_factory=dict)
 
@@ -85,7 +84,6 @@ class RunArtifacts:
             "downloads_dir": str(self.downloads_dir),
             "file_suffix": self.file_suffix,
             "origin_pdf_path": str(self.origin_pdf_path) if self.origin_pdf_path else "",
-            "layout_pdf_path": str(self.layout_pdf_path) if self.layout_pdf_path else "",
             "page_indices": list(self.page_indices),
             "generated_downloads": {key: str(value) for key, value in self.generated_downloads.items()},
         }
@@ -135,10 +133,9 @@ class RunArtifacts:
         ]
         for path in core_paths:
             _ensure_path_inside(root, path)
-        optional_paths = [_optional_path(state.get(key)) for key in ("origin_pdf_path", "layout_pdf_path")]
-        for path in optional_paths:
-            if path is not None:
-                _ensure_path_inside(root, path)
+        origin_pdf_path = _optional_path(state.get("origin_pdf_path"))
+        if origin_pdf_path is not None:
+            _ensure_path_inside(root, origin_pdf_path)
         return cls(
             root=root,
             stem=stem,
@@ -148,8 +145,7 @@ class RunArtifacts:
             structured_content_path=Path(cast(str, state["structured_content_path"])).resolve(),
             downloads_dir=Path(cast(str, state["downloads_dir"])).resolve(),
             file_suffix=cast(str, state["file_suffix"]),
-            origin_pdf_path=optional_paths[0],
-            layout_pdf_path=optional_paths[1],
+            origin_pdf_path=origin_pdf_path,
             page_indices=page_indices,
             generated_downloads=generated_downloads,
         )
@@ -266,23 +262,6 @@ def persist_parse_result(
             )
     finally:
         _close_image_context(image_context)
-
-    if origin_pdf is not None:
-        from .preview import draw_layout_overlay
-
-        layout_path = artifacts.root / "layout.pdf"
-        try:
-            with _output_stage("layout_pdf", artifacts):
-                draw_layout_overlay(
-                    result.middle_json,
-                    origin_pdf,
-                    layout_path,
-                    page_indices=artifacts.page_indices,
-                )
-        except Exception as exc:
-            logger.warning("Skipping Gradio layout overlay for {}: {}", artifacts.stem, exc)
-        else:
-            artifacts.layout_pdf_path = layout_path
 
     return artifacts
 
