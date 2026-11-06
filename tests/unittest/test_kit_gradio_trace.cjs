@@ -58,8 +58,11 @@ window.__mineruTrace.reset();
 console.log("Trace identity, handshake and bidirectional routing passed");
 
 // 执行完整正文脚本，验证滚动后的跨页按钮避开目录工具栏并受视口边界限制。
-const checkHtmlNavigation = (offset, blockTop, expectedTop) => {
+const checkHtmlNavigation = (
+    offset, blockTop, expectedTop, configuredOrigin = location.origin, eventOrigin = location.origin
+) => {
     const htmlHandlers = {};
+    const targetOrigins = [];
     const navigation = {
         style: {}, offsetHeight: 30,
         setAttribute() {}, replaceChildren() {}, append() {}
@@ -72,9 +75,10 @@ const checkHtmlNavigation = (offset, blockTop, expectedTop) => {
         setAttribute() {}, removeAttribute() {},
         getBoundingClientRect: () => ({ top: blockTop })
     };
-    const htmlParent = { postMessage() {} };
+    // 记录实际发送目标，验证 ready 与后续消息使用同一规范化来源。
+    const htmlParent = { postMessage: (_message, origin) => targetOrigins.push(origin) };
     const context = {
-        parent: htmlParent, navigator: { language: "en" }, innerHeight: 600,
+        parent: htmlParent, navigator: { language: "en" }, innerHeight: 600, URL,
         document: {
             querySelectorAll: () => [selected],
             createElement: tag => tag === "nav" ? navigation : { setAttribute() {}, addEventListener() {} },
@@ -87,9 +91,15 @@ const checkHtmlNavigation = (offset, blockTop, expectedTop) => {
     };
     const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
     vm.runInNewContext(`(${source})(${JSON.stringify({
-        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: location.origin, pageIndices: [2, 5]
+        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, pageIndices: [2, 5]
     })})`, context);
-    htmlHandlers.message({ source: htmlParent, origin: location.origin, data: {
+    assert.deepEqual(targetOrigins, [eventOrigin]);
+    // 同一父窗口传来的不同来源消息仍须拒绝，避免规范化放宽来源边界。
+    htmlHandlers.message({ source: htmlParent, origin: "https://foreign.test", data: {
+        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
+    } });
+    assert.equal(navigation.hidden, true);
+    htmlHandlers.message({ source: htmlParent, origin: eventOrigin, data: {
         channel: "mineru-trace", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
     } });
     htmlHandlers.scroll();
@@ -100,6 +110,9 @@ checkHtmlNavigation("52px", -100, 52);
 checkHtmlNavigation("", -100, 8);
 checkHtmlNavigation("52px", 250, 250);
 checkHtmlNavigation("52px", 700, 562);
+checkHtmlNavigation("52px", -100, 52, "https://mineru.test:443", "https://mineru.test");
+checkHtmlNavigation("52px", -100, 52, "HTTP://MINERU.TEST:80", "http://mineru.test");
+checkHtmlNavigation("52px", -100, 52, "https://mineru.test:8443", "https://mineru.test:8443");
 console.log("HTML source-page controls respect the outline toolbar and viewport");
 
 // 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。

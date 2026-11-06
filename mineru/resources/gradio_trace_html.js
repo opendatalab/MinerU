@@ -1,5 +1,7 @@
 // 此脚本运行于隔离的结果 iframe，全部内容定位在本窗口完成。
 (config) => {
+    // 与 MessageEvent.origin 使用同一 URL 规范化规则，统一默认端口和域名大小写。
+    const parentOrigin = new URL(config.parentOrigin).origin;
     let pageLabel = config.pageLabels[navigator.language.startsWith("zh") ? 1 : 0];
     const nodes = new Map();
     const entries = [];
@@ -23,7 +25,7 @@
     document.body.append(navigation);
     // 所有事件带产物身份，父窗口仍需核对实际发送窗口。
     const send = (message) =>
-        parent.postMessage({ ...message, channel: "mineru-trace", documentId: config.documentId }, config.parentOrigin);
+        parent.postMessage({ ...message, channel: "mineru-trace", documentId: config.documentId }, parentOrigin);
     // 页码条贴近选中内容并限制在当前 iframe 的可见范围内。
     const positionNavigation = () => {
         if (!selected) return;
@@ -84,7 +86,7 @@
         const data = event.data;
         if (
             event.source !== parent ||
-            event.origin !== config.parentOrigin ||
+            event.origin !== parentOrigin ||
             data?.channel !== "mineru-trace" ||
             data.documentId !== config.documentId
         )
