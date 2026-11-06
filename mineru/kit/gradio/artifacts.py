@@ -319,6 +319,8 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: M
 .mineru-trace-pages { position: fixed; right: 8px; z-index: 100;
     display: flex; flex-wrap: wrap; gap: 4px;
     max-width: 75%; padding: 5px; background: Canvas;
+    box-sizing: border-box; max-height: calc(100vh - var(--mineru-preview-offset, 8px) - 8px);
+    overflow-y: auto; overscroll-behavior: contain;
     border: 1px solid var(--trace-strong); border-radius: 6px; }
 .mineru-trace-pages[hidden] { display: none; }
 .mineru-trace-pages button { cursor: pointer; color: CanvasText; background: Canvas;

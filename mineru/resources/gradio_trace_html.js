@@ -130,6 +130,8 @@
         );
     }
     window.addEventListener("scroll", positionNavigation, { passive: true });
+    // 预览区缩小时重新约束控件位置，即使用户操作已停用正文自动对齐。
+    window.addEventListener("resize", positionNavigation);
     // 目录接管正文导航时，结束旧来源块的自动对齐。
     window.addEventListener("mineru-preview-navigate", () => { alignOnResize = false; });
     const observer = new ResizeObserver(() => {

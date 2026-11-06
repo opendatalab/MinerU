@@ -137,6 +137,10 @@ const checkHtmlNavigation = (
     } });
     assert.equal(selected.style["--trace-color"], "rgb(0 153 26)");
     assert.equal(navigation.style["--trace-color"], selected.style["--trace-color"]);
+    // 用户选择后已停用正文自动对齐，缩小视口仍须把来源控件移回可见范围。
+    context.innerHeight = 200;
+    htmlHandlers.resize();
+    assert.equal(navigation.style.top, `${Math.min(expectedTop, 162)}px`);
 };
 checkHtmlNavigation("52px", -100, 52);
 checkHtmlNavigation("", -100, 8);

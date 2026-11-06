@@ -28,6 +28,10 @@ def test_pdf_trace_preview_and_public_render(tmp_path: Path) -> None:
     assert document.select_one("[data-docvortex-trace-id]")
     assert artifacts.root.name in document.get_text() or artifacts.root.name in str(document)
     assert "pageIndices" in str(document)
+    trace_style = next(style.string for style in document.select("style") if ".mineru-trace-pages {" in (style.string or ""))
+    assert "max-height: calc(100vh - var(--mineru-preview-offset, 8px) - 8px)" in trace_style
+    assert "overflow-y: auto" in trace_style
+    assert "box-sizing: border-box" in trace_style
     script = next(script.string for script in document.select("script") if script.string and '"layoutRegions"' in script.string)
     config = json.loads(script.rsplit(")(", 1)[1].removesuffix(");"))
     assert config["layoutRegions"]
