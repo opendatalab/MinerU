@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """仅记录本次增强执行情况，不扩展文档协议。"""
 
 from dataclasses import dataclass, field
