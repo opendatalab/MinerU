@@ -9,6 +9,7 @@ import shutil
 import time
 import uuid
 import zipfile
+from copy import deepcopy
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -297,7 +298,7 @@ def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str
             value = _render_html(artifacts, public_base_url=public_base_url)
         # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
         value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
-        value = _prepare_preview_links(value)
+        value = _prepare_preview_links(value, include_outline=True)
         return (
             '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
             'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
@@ -342,8 +343,8 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, public_base_ur
     return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
 
 
-def _prepare_preview_links(document: str) -> str:
-    """仅为预览中的网页外链指定新标签页，保留内部锚点及邮件、电话等链接行为。"""
+def _prepare_preview_links(document: str, *, include_outline: bool = False) -> str:
+    """为预览中的网页外链指定新标签页，并按需复用当前 DOM 准备目录。"""
     soup = BeautifulSoup(document, "html.parser")
     for link in soup.find_all("a", href=True):
         try:
@@ -354,7 +355,47 @@ def _prepare_preview_links(document: str) -> str:
             continue
         link["target"] = "_blank"
         link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+    if include_outline:
+        _add_outline_preview(soup)
     return str(soup)
+
+
+def _add_outline_preview(soup: BeautifulSoup) -> None:
+    """复用预览 DOM 准备唯一标题锚点和纯文本标签，并注入当前 iframe 的目录资源。"""
+    from .i18n import MESSAGES
+
+    if soup.head is None or soup.body is None:
+        return
+    used_ids = {str(node["id"]) for node in soup.find_all(id=True)}
+    count = 0
+    for heading in soup.select("article.docvortex-document .docvortex-heading"):
+        if heading.name not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            continue
+        label_node = deepcopy(heading)
+        for formula in label_node.select("[data-docvortex-latex]"):
+            formula.replace_with(str(formula["data-docvortex-latex"]))
+        label = " ".join(label_node.get_text().split())
+        if not label:
+            continue
+        count += 1
+        if not heading.get("id"):
+            identifier = f"mineru-outline-{count}"
+            while identifier in used_ids:
+                identifier += "-toc"
+            heading["id"] = identifier
+            used_ids.add(identifier)
+        heading["data-mineru-outline-label"] = label
+    if not count:
+        return
+    resources = Path(__file__).resolve().parents[2] / "resources"
+    style = soup.new_tag("style", attrs={"data-mineru-outline": ""})
+    style.string = (resources / "gradio_outline.css").read_text(encoding="utf-8")
+    soup.head.append(style)
+    labels = {key: MESSAGES[f"outline_{key}"] for key in ("title", "expand", "collapse")}
+    config = json.dumps(labels, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    script = soup.new_tag("script", attrs={"data-mineru-outline": ""})
+    script.string = f"({(resources / 'gradio_outline.js').read_text(encoding='utf-8')})({config});"
+    soup.body.append(script)
 
 
 def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_source_map: bool = False) -> str:

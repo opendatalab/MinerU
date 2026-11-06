@@ -34,13 +34,15 @@
     const align = () => {
         if (!selected || !alignOnResize) return;
         const rect = selected.getBoundingClientRect();
+        const offset = parseFloat(getComputedStyle(document.body).getPropertyValue("--mineru-preview-offset")) || 24;
         window.scrollTo({
-            top: scrollY + rect.top - Math.max(24, (innerHeight - Math.min(rect.height, innerHeight - 48)) / 2)
+            top: scrollY + rect.top - Math.max(offset, (innerHeight - Math.min(rect.height, innerHeight - 48)) / 2)
         });
         positionNavigation();
     };
     // 一个目标对应多个原文页时，用去重后的原文页号切换来源。
     const select = (id, pageIdx, scroll) => {
+        if (scroll) window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: "trace" }));
         selected?.removeAttribute("data-mineru-selected");
         selected = nodes.get(id);
         if (!selected) return;
@@ -103,6 +105,8 @@
         );
     }
     window.addEventListener("scroll", positionNavigation, { passive: true });
+    // 目录接管正文导航时，结束旧来源块的自动对齐。
+    window.addEventListener("mineru-preview-navigate", () => { alignOnResize = false; });
     const observer = new ResizeObserver(() => {
         cancelAnimationFrame(resizeFrame);
         resizeFrame = requestAnimationFrame(align);
