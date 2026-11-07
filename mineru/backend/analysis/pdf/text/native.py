@@ -33,6 +33,8 @@ POST_OCR_FALLBACK_SCORE_KEY = "_post_ocr_fallback_score"
 POST_OCR_REASON_KEY = "_post_ocr_reason"
 POST_OCR_REASON_PRIVATE_USE_TEXT = "private_use_text"
 SPACING_DIACRITIC_MIN_OVERLAP_RATIO = 0.5
+_SPAN_FILL_BASELINE_TOLERANCE_DEGREES = 0.1
+_SPAN_FILL_BASELINE_MIN_ADVANCE = 0.001
 _SPACING_DIACRITIC_TO_COMBINING = {
     "`": "\u0300",
     "^": "\u0302",
@@ -124,6 +126,7 @@ def txt_spans_extract(
         page_all_chars = _get_chars_for_span_fill(
             page_chars,
             line_provider=get_page_lines if type(page_chars) is list else None,
+            origins=origins,
         )
 
     # 计算所有span的高度的中位数
@@ -241,10 +244,80 @@ def _is_visible_standard_rotation_char(char: Char) -> bool:
     return x1 > x0 and y1 > y0 and _is_supported_rotation(float(char.get("rotation", 0)))
 
 
+def _has_standard_span_fill_baseline(chars: list[Char], origins: dict[int, tuple[float, float]]) -> bool:
+    """用同对象内至少三个真实原点验证标准基线，不仅依赖可能由字形角度回退的 writing_angle。"""
+    axis = None
+    previous_origin = None
+    advances = 0
+    for char in chars:
+        text = str(char.get("char", ""))
+        if text.isspace() or char.get("is_generated") is True:
+            continue
+        if _coerce_finite_bbox(char.get("bbox")) is None:
+            return False
+        try:
+            writing_angle = float(char["writing_angle"])
+            char_idx = _char_geometry_key(char)
+            raw_origin = origins.get(char_idx, char.get("origin")) if char_idx is not None else char.get("origin")
+            x, y = raw_origin
+            origin = (float(x), float(y))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
+        if not all(math.isfinite(value) for value in (writing_angle, *origin)):
+            return False
+        if axis is None:
+            axis = round((writing_angle % math.tau) / (math.pi / 2)) * (math.pi / 2)
+        if _rotation_distance_degrees(writing_angle, axis) >= _SPAN_FILL_BASELINE_TOLERANCE_DEGREES:
+            return False
+        if previous_origin is not None:
+            dx, dy = origin[0] - previous_origin[0], origin[1] - previous_origin[1]
+            if not math.isfinite(dx) or not math.isfinite(dy):
+                return False
+            if math.hypot(dx, dy) <= _SPAN_FILL_BASELINE_MIN_ADVANCE:
+                continue
+            if _rotation_distance_degrees(math.atan2(dy, dx), axis) >= _SPAN_FILL_BASELINE_TOLERANCE_DEGREES:
+                return False
+            advances += 1
+        previous_origin = origin
+    # 同向推进禁止折返；至少两次有效推进才能证明三个不同原点的基线。
+    return advances >= 2
+
+
+def _get_standard_baseline_fill_keys(chars: list[Char], origins: dict[int, tuple[float, float]]) -> set[tuple[str, Any]]:
+    """按连续文本对象补回已证标准基线的仿斜体，既不跨对象借证也不修改共享字符。"""
+    fill_keys: set[tuple[str, Any]] = set()
+    start = 0
+    while start < len(chars):
+        object_id = chars[start].get("text_object_id")
+        if object_id is None or any(value in str(chars[start].get("char", "")) for value in CONTROL_LINE_BREAK_CHARS):
+            start += 1
+            continue
+        end = start + 1
+        while (
+            end < len(chars)
+            and chars[end].get("text_object_id") == object_id
+            and not any(value in str(chars[end].get("char", "")) for value in CONTROL_LINE_BREAK_CHARS)
+        ):
+            end += 1
+        members = [char for char in chars[start:end] if char.get("char") and char.get("text_is_visible") is not False]
+        if any(not _is_supported_rotation(float(char.get("rotation", 0))) for char in members) and (
+            _has_standard_span_fill_baseline(members, origins)
+        ):
+            for char in members:
+                rotation = float(char.get("rotation", 0))
+                if min(_rotation_distance_degrees(rotation, angle) for angle in (0, math.pi / 2, math.pi, 3 * math.pi / 2)) <= (
+                    SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES
+                ):
+                    fill_keys.add(_get_char_fill_key(char))
+        start = end
+    return fill_keys
+
+
 def _get_chars_for_span_fill(
     page_chars: list[Char] | dict[str, list[Char]],
     *,
     line_provider: Callable[[], list[dict[str, Any]]] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
 ) -> list[Char]:
     """选择允许参与 span 回填的字符，保留正文内仿斜体并过滤整行斜向水印。"""
     if isinstance(page_chars, dict):
@@ -277,6 +350,8 @@ def _get_chars_for_span_fill(
             ):
                 fill_char_keys.add(_get_char_fill_key(char))
 
+    # 旧水印/局部仿斜体筛选保持原样，只追加具有独立基线证据的字符。
+    fill_char_keys.update(_get_standard_baseline_fill_keys(all_chars, origins if origins is not None else {}))
     return [char for char in all_chars if _get_char_fill_key(char) in fill_char_keys]
 
 
