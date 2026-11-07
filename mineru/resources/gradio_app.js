@@ -1,24 +1,16 @@
-() => {
-    const APP_SCRIPT_VERSION = "v7-bidirectional-trace";
+(viewerEntry) => {
+    const preview = __MINERU_PDF_PREVIEW__;
+    const APP_SCRIPT_VERSION = "v8-persistent-source";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
+        preview("setup", viewerEntry);
         return;
     }
     window.__mineruGradioAppInstalled = APP_SCRIPT_VERSION;
 
     const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
-    const CLIPBOARD_MIME_EXTENSIONS = {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/webp": "webp",
-        "image/gif": "gif",
-        "image/bmp": "bmp",
-        "image/tiff": "tiff",
-        "application/pdf": "pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    };
     const i18n = window.__mineruI18n = __MINERU_I18N__;
+    preview("setup", viewerEntry);
+    window.__mineruUpload?.localize();
     (__MINERU_TRACE__)();
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
     window.__mineruStatusPanel = statusTimer;
@@ -78,135 +70,6 @@
         localizeMineruCustomText();
         applyOfficePreviewNoticePreference();
         refreshPageRangeTrack();
-    };
-
-    const findUploadFileInput = () => {
-        const uploadRoot = document.querySelector(".mineru-upload-file");
-        if (!uploadRoot) {
-            return null;
-        }
-        return uploadRoot.querySelector('input[type="file"]');
-    };
-
-    // 读取上传控件 accept 规则，后续粘贴文件仍复用 gr.File 的支持格式边界。
-    const getUploadAcceptedTypes = (uploadInput) => {
-        const accept = uploadInput?.getAttribute("accept") || "";
-        return accept.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-    };
-
-    // 判断剪贴板文件是否匹配 gr.File 当前支持的扩展名或 MIME 类型。
-    const fileMatchesAcceptedType = (file, acceptedTypes) => {
-        if (!acceptedTypes.length) {
-            return true;
-        }
-        const name = (file.name || "").toLowerCase();
-        const type = (file.type || "").toLowerCase();
-        return acceptedTypes.some((accepted) => {
-            if (accepted.startsWith(".")) {
-                return name.endsWith(accepted);
-            }
-            if (accepted.endsWith("/*")) {
-                return type.startsWith(accepted.slice(0, -1));
-            }
-            return type === accepted;
-        });
-    };
-
-    // 为截图等无文件名剪贴板图片补一个扩展名，确保后端按普通图片文件解析。
-    const buildClipboardFileName = (file) => {
-        const type = (file.type || "").toLowerCase();
-        const extension = CLIPBOARD_MIME_EXTENSIONS[type];
-        if (!extension) {
-            return "";
-        }
-        const timestamp = new Date().toISOString()
-            .replace(/[-:]/g, "")
-            .replace(/[.].+/, "")
-            .replace("T", "-");
-        const prefix = type.startsWith("image/") ? "clipboard-image" : "clipboard-file";
-        return `${prefix}-${timestamp}.${extension}`;
-    };
-
-    // 保留浏览器暴露的原始文件；仅在文件名缺少扩展名时复制一份并补齐名称。
-    const normalizeClipboardFile = (file) => {
-        if (/[.][^.]+$/.test(file.name || "")) {
-            return file;
-        }
-        const fileName = buildClipboardFileName(file);
-        if (!fileName || typeof File === "undefined") {
-            return file;
-        }
-        return new File([file], fileName, {
-            type: file.type,
-            lastModified: file.lastModified || Date.now(),
-        });
-    };
-
-    // 同时兼容剪贴板 files 与 items，两种入口在不同浏览器里暴露情况不一致。
-    const collectClipboardFiles = (clipboardData) => {
-        const files = Array.from(clipboardData.files || []);
-        if (files.length) {
-            return files;
-        }
-        return Array.from(clipboardData.items || [])
-            .filter((item) => item.kind === "file")
-            .map((item) => item.getAsFile())
-            .filter(Boolean);
-    };
-
-    // 构造只包含目标文件的 FileList；部分浏览器不允许构造 DataTransfer，需要降级处理。
-    const createUploadFileList = (file) => {
-        try {
-            const transfer = new DataTransfer();
-            transfer.items.add(file);
-            return transfer.files;
-        } catch (error) {
-            return null;
-        }
-    };
-
-    // 把文件列表赋值给 gr.File 的原生 input，并触发 Gradio 监听的变更事件。
-    const assignClipboardFileToUpload = (uploadInput, uploadFiles) => {
-        if (!uploadFiles) {
-            return false;
-        }
-        try {
-            uploadInput.files = uploadFiles;
-        } catch (error) {
-            return false;
-        }
-        uploadInput.dispatchEvent(new Event("input", { bubbles: true }));
-        uploadInput.dispatchEvent(new Event("change", { bubbles: true }));
-        return true;
-    };
-
-    // 将剪贴板文件注入现有 gr.File input，避免为图片、PDF、Office 维护第二套上传链路。
-    const uploadClipboardFile = (event) => {
-        const clipboardData = event.clipboardData;
-        const uploadInput = findUploadFileInput();
-        if (!clipboardData || !uploadInput) {
-            return false;
-        }
-
-        const acceptedTypes = getUploadAcceptedTypes(uploadInput);
-        const rawClipboardFiles = clipboardData.files || null;
-        const clipboardFiles = collectClipboardFiles(clipboardData)
-            .map((rawFile) => ({ rawFile, uploadFile: normalizeClipboardFile(rawFile) }))
-            .filter(({ uploadFile }) => fileMatchesAcceptedType(uploadFile, acceptedTypes));
-        if (!clipboardFiles.length) {
-            return false;
-        }
-
-        const { rawFile, uploadFile } = clipboardFiles[0];
-        const uploadFiles = createUploadFileList(uploadFile)
-            || (
-                rawClipboardFiles?.length === 1
-                && rawClipboardFiles[0] === rawFile
-                && rawFile === uploadFile
-                    ? rawClipboardFiles
-                    : null
-            );
-        return assignClipboardFileToUpload(uploadInput, uploadFiles);
     };
 
     refreshMineruCustomHtml();
@@ -269,11 +132,6 @@
         }
     });
 
-    document.addEventListener("paste", (event) => {
-        if (uploadClipboardFile(event)) {
-            event.preventDefault();
-        }
-    });
 
     // 拖动时下一帧读取 Gradio 已同步的值；键盘输入也走同一条路径。
     document.addEventListener("input", (event) => {

@@ -40,7 +40,7 @@ def test_pdf_preview_transport_and_success_events(tmp_path: Path) -> None:
     assert not any(type(block).__module__.startswith("gradio_pdf") for block in demo.blocks.values())
     viewer = next(block for block in demo.blocks.values() if "mineru-kit-pdf-preview" in (block.elem_classes or []))
     assert isinstance(viewer, gr.HTML) and viewer.visible is True
-    assert ':not(:has(.mineru-pdf-frame, [role="alert"]))' in demo._mineru_kit_css
+    assert ':not(:has(.mineru-pdf-frame, [role="alert"], [role="status"]))' in demo._mineru_kit_css
     for event in (source, conversion):
         previews = [item for item in demo.config["dependencies"] if item.get("trigger_after") == event._id]
         assert len(previews) == 1

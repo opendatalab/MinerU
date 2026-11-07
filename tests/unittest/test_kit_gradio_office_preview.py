@@ -32,7 +32,7 @@ def test_office_upload_builds_preview_without_parsing(tmp_path: Path, suffix: st
         enable_example=False,
     )
     callback = next(fn for fn in demo.fns.values() if fn.name == "update_file_preview")
-    assert len(callback.inputs) == 1
+    assert len(callback.inputs) == 2
     request = SimpleNamespace(headers={"host": "example.test:7860"})
     updates = callback.fn(str(tmp_path / f"document.{suffix}"), request)
     assert updates[0]["visible"] is False and updates[1]["visible"] is False
@@ -140,6 +140,6 @@ def test_office_conversion_never_replaces_uploaded_preview(
     preview = next(fn.fn for fn in demo.fns.values() if fn.name == "update_file_preview")
     assert "next.pptx" in preview("next.pptx")[2]["value"]
     assert preview("next.pdf")[2]["visible"] is False
-    assert preview("next.png")[1]["value"] == "next.png"
+    assert preview("next.png")[1]["value"] is None
     assert preview("next.epub")[2]["visible"] is False
     assert preview(None)[2]["value"] == ""

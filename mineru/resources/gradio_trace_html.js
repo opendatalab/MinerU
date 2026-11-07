@@ -44,6 +44,8 @@
     // 所有事件带产物身份，父窗口仍需核对实际发送窗口。
     const send = (message) =>
         parent.postMessage({ ...message, channel: "mineru-trace", documentId: config.documentId }, parentOrigin);
+    // 初次加载和父窗口主动握手共用结果快照，覆盖两侧就绪先后顺序。
+    const announceReady = () => send({ type: "ready", entries, initialPageIdx: config.initialPageIdx, layoutRegions: config.layoutRegions });
     // 页码条贴近选中内容并限制在当前 iframe 的可见范围内。
     const positionNavigation = () => {
         if (!selected) return;
@@ -113,6 +115,10 @@
             data.documentId !== config.documentId
         )
             return;
+        if (data.type === "request-ready") {
+            announceReady();
+            return;
+        }
         if (data.type === "labels") {
             pageLabel = data.pageLabel;
             navigation.setAttribute("aria-label", pageLabel);
@@ -147,5 +153,5 @@
         },
         { once: true }
     );
-    send({ type: "ready", entries, pageIndices: config.pageIndices, layoutRegions: config.layoutRegions });
+    announceReady();
 }

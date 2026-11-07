@@ -7,6 +7,7 @@ import json
 import threading
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import get_args, get_type_hints
 from unittest.mock import MagicMock
 
@@ -199,8 +200,8 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
         page_image.close()
 
 
-def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
-    """验证像素框会裁到页面范围，无效框会跳过载荷写入且不影响其他块。"""
+def test_visual_block_crop_clips_page_boundary_and_reports_invalid_bbox() -> None:
+    """有效任务正常裁图，已选素材的无效框必须在生产边界报告。"""
     page_image = Image.new("L", (100, 80), 128)
     clipped_block = {
         "type": BlockType.CHART,
@@ -213,10 +214,8 @@ def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
         "angle": 0,
     }
 
-    visuals._attach_visual_block_images(
-        [[clipped_block, invalid_block]],
-        [{"img_pil": page_image}],
-    )
+    with pytest.raises(ValueError, match="PDF visual asset generation failed"):
+        visuals._attach_visual_block_images([[clipped_block, invalid_block]], [{"img_pil": page_image}])
 
     crop_image = _decode_jpeg_data_uri(clipped_block["image_base64"])
     try:
@@ -1215,7 +1214,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", image_loader)
     monkeypatch.setattr(window, "_attach_visual_block_images", visual_image_attacher)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", model_list_normalizer)
-    monkeypatch.setattr(office.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(office, "time", SimpleNamespace(perf_counter=fake_perf_counter))
 
     middle_json, model_json = analyze.doc_analyze(
         b"office-bytes",
@@ -1479,7 +1478,7 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(hybrid_runtime, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(pipeline, "get_vlm_predictor", fake_vlm_get_model)
-    monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(pipeline, "time", SimpleNamespace(perf_counter=fake_perf_counter))
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", fake_normalize_model_list)
     monkeypatch.setattr(pipeline, "clean_memory", fake_clean_memory)
 
@@ -1751,12 +1750,23 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         original_attach_visual_block_images(*args, **kwargs)  # type: ignore[arg-type]
 
     def fake_render_crops(
-        pdf_bytes, prepared_pages, start_page_id, end_page_id, timeout=None, threads=None, *, session=None
-    ):
+        pdf_bytes: bytes,
+        prepared_pages: list[list[tuple[int, dict[str, object]]]],
+        start_page_id: int,
+        end_page_id: int,
+        timeout: float | None = None,
+        threads: int | None = None,
+        *,
+        session: object | None = None,
+    ) -> list[list[tuple[int, object]]]:
         """在当前裁图进程边界提供固定页图，保留真实编码、窗口顺序与释放断言。"""
         page_images = fake_load_images_for_window(
-            pdf_bytes, start_page_id=start_page_id, end_page_id=end_page_id,
-            image_type="pil_img", timeout=timeout, threads=threads,
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+            image_type="pil_img",
+            timeout=timeout,
+            threads=threads,
         )
         try:
             tracked_attach_visual_block_images(prepared_pages, page_images, start_page_id)
@@ -1786,7 +1796,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     monkeypatch.setattr("docvortex.document.pdf.images._load_visual_crops_from_pdf_bytes_range", fake_render_crops)
     monkeypatch.setattr(visuals, "_attach_prepared_visual_block_images", tracked_attach_visual_block_images)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", tracked_normalize_model_list)
-    monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(pipeline, "time", SimpleNamespace(perf_counter=fake_perf_counter))
     monkeypatch.setattr(flash_model, "PdfModel", MagicMock(return_value=fake_pdf_model))
 
     middle_json, model_json = analyze.doc_analyze(

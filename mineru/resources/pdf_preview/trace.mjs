@@ -1,5 +1,7 @@
 // PDF.js 的溯源层只依赖宿主查看器及公开页视图，状态按文档隔离。
-export function installTrace({ viewer, eventBus, container, documentId, messages }) {
+export function installTrace({ viewer, eventBus, container, sourceId, messages }) {
+    let documentId = "";
+    let initialized = false;
     const layers = new Map();
     let entries = [];
     let sourcesByPage = new Map();
@@ -8,8 +10,6 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     let layoutByBox = new Map();
     let traceableSources = new Set();
     let mergedEntries = new Map();
-    let pageIndices = [];
-    let pageNumbers = new Map();
     let selectedId = "";
     let selectedSourceKey = "";
     let hoveredBox = null;
@@ -36,7 +36,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     document.getElementById("toolbar").append(toggle);
     // 普通调用语句保留当前调用帧，避免 WebKit 在严格模式尾调用中把消息来源归到父窗口。
     const send = (message) => {
-        parent.postMessage({ ...message, channel: "mineru-trace", documentId }, location.origin);
+        parent.postMessage({ ...message, channel: "mineru-trace", documentId, sourceId }, location.origin);
     };
     // 物理身份包含原始页、顶层块号和完整子路径，跨页合并后仍能精确关联。
     const sourceKey = (source) => JSON.stringify([source.page_idx, source.block_index, source.child_path]);
@@ -57,8 +57,8 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     };
     // 读取真实页框而非缓存的命中元素，页面画布被回收后仍能使用已加载的页面尺寸。
     const sourceRect = (source, host) => {
-        const pageNumber = pageNumbers.get(source.page_idx);
-        const page = pageNumber === undefined ? null : viewer.getPageView(pageNumber - 1);
+        const pageNumber = source.page_idx + 1;
+        const page = viewer.getPageView(pageNumber - 1);
         const bbox = source.bbox;
         if (!page?.pdfPage || !page.div.isConnected || bbox[2] <= bbox[0] || bbox[3] <= bbox[1]) return null;
         const rect = page.div.getBoundingClientRect();
@@ -149,7 +149,6 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
         layoutByBox = new Map();
         traceableSources = new Set();
         mergedEntries = new Map();
-        pageNumbers = new Map(pageIndices.map((pageIdx, index) => [pageIdx, index + 1]));
         for (const entry of entries) {
             const seen = new Set();
             // 按首次出现的位置保留物理区域，父子共框及重复来源只参与一次连接。
@@ -269,7 +268,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
     // 跳页后的页面可能尚未获得真实尺寸，等待对应页完成渲染再定位。
     const finishNavigation = () => {
         if (!pending) return;
-        const pageNumber = pageIndices.indexOf(pending.pageIdx) + 1;
+        const pageNumber = pending.pageIdx + 1;
         const page = viewer.getPageView(pageNumber - 1);
         const layer = page?.div.querySelector(".mineru-trace-layer");
         const boxes = [...(layer?.children || [])].filter(item => item.traceIds.includes(pending.id));
@@ -304,7 +303,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
             old.hit.remove();
             old.layout.remove();
         }
-        const pageIdx = pageIndices[pageNumber - 1];
+        const pageIdx = pageNumber - 1;
         const candidates = [...(sourcesByPage.get(pageIdx) || [])];
         candidates.sort((a, b) => b.entry.depth - a.entry.depth);
         const unique = new Map();
@@ -395,10 +394,15 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                 event.source !== parent ||
                 event.origin !== location.origin ||
                 data?.channel !== "mineru-trace" ||
-                data.documentId !== documentId
+                data.sourceId !== sourceId
             )
                 return;
-            if (data.type === "clear") {
+            if (data.type === "bind") {
+                if (documentId === data.documentId) return;
+                documentId = data.documentId;
+                initialized = false;
+            } else if (data.documentId !== documentId) return;
+            if (data.type === "clear" || data.type === "bind") {
                 entries = [];
                 selectedId = "";
                 selectedSourceKey = "";
@@ -409,7 +413,7 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                 clearLayers();
                 toggle.hidden = true;
             } else if (data.type === "init") {
-                if (!Array.isArray(data.entries) || !Array.isArray(data.pageIndices)) return;
+                if (!documentId || !Array.isArray(data.entries)) return;
                 entries = data.entries.filter(
                     (entry) =>
                         typeof entry.id === "string" &&
@@ -422,7 +426,6 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                                 source.bbox.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)
                         )
                 );
-                pageIndices = data.pageIndices;
                 const layoutRegions = Array.isArray(data.layoutRegions) ? data.layoutRegions.filter((region) =>
                     Number.isInteger(region.page_idx) && Number.isInteger(region.block_index) &&
                     Array.isArray(region.child_path) && region.child_path.every((value) => Number.isInteger(value) && value >= 0) &&
@@ -439,6 +442,13 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                 toggle.hidden = !layoutRegions.length && !entries.length;
                 for (const page of viewer.getCachedPageViews()) mount(page.id);
                 scheduleConnections();
+                if (!initialized) {
+                    initialized = true;
+                    const pageNumber = data.initialPageIdx + 1;
+                    if (Number.isInteger(data.initialPageIdx) && pageNumber >= 1 && pageNumber <= viewer.pagesCount) {
+                        viewer.scrollPageIntoView({ pageNumber });
+                    }
+                }
             } else if (data.type === "select" && entries.some((entry) => entry.id === data.id)) {
                 pending = null;
                 selectedId = data.id;
@@ -450,8 +460,8 @@ export function installTrace({ viewer, eventBus, container, documentId, messages
                 focusedBox = null;
                 updateSelection();
                 if (data.scroll) {
-                    const pageNumber = pageIndices.indexOf(data.pageIdx) + 1;
-                    if (pageNumber < 1) return;
+                    const pageNumber = data.pageIdx + 1;
+                    if (pageNumber < 1 || pageNumber > viewer.pagesCount) return;
                     pending = data;
                     viewer.scrollPageIntoView({ pageNumber });
                     finishNavigation();

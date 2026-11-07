@@ -124,7 +124,7 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     )
     assert reset_dependency["backend_fn"] is False
     assert "Preparing request..." in reset_dependency["js"]
-    upload = next(block for block in app.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
+    upload = next(fn for fn in app.fns.values() if fn.name == "convert_handler").inputs[0]
     reset_on_upload = next(
         dep
         for dep in app.config["dependencies"]

@@ -77,3 +77,11 @@ assert.equal(insecureRun.run_id[12], '4');
 assert.match(insecureRun.run_id[16], /^[89ab]$/);
 assert.equal(warns.length, 1);
 console.log('insecure-context fallback passed');
+
+// 同一文件的重复 change 不应取消任务；换选择身份必须立即失效。
+window.__mineruPdfPreview = { sourceId: "source-one", source: "/source.pdf" };
+const activeSourceTicket = JSON.parse(invoke("begin")[0]);
+assert.equal(activeSourceTicket.source_id, "source-one");
+assert.ok(invoke("cancel_source", {path:"/source.pdf"}).every(value => value.__type__ === "update"));
+window.__mineruPdfPreview.sourceId = "source-two";
+assert.equal(invoke("cancel_source", {path:"/source.pdf"})[0], "");

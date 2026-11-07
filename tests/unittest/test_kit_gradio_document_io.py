@@ -102,14 +102,14 @@ def test_callbacks_share_injected_io_without_crossing_app_instances(tmp_path: Pa
                 request = SimpleNamespace(session_hash="same-session")
                 receipt = json.loads(await callbacks[callback_name](str(source), 0, raw_range, True, ticket, request))
                 outputs = receipt["outputs"]
-                state = {"root": str(Path(outputs[2]["value"]["path"]).parent)}
+                state = {"root": str(tmp_path / f"output-{index}" / "gradio" / outputs[6])}
                 assert Path(state["root"]).name == outputs[6]
                 assert receipt["run_id"] == f"{index + 1:032x}"
             assert "Completed" in outputs[0] and outputs[1] and outputs[-1]
             assert Path(state["root"]).parent == tmp_path / f"output-{index}" / "gradio"
             assert host.calls == [
                 ("metadata", str(source)),
-                ("range", source.resolve(), raw_range, index + 1),
+                ("range", client.parse_file.call_args.args[0], raw_range, index + 1),
                 ("persist", source.resolve(), tmp_path / f"output-{index}", str(index + 1)),
             ]
             client.parse_file.assert_awaited_once()

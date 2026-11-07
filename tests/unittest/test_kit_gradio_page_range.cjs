@@ -29,7 +29,7 @@ function createUi(limit = 20, availableTiers = tiers) {
             const result = reduce(
                 availableTiers, flashOnlyExtensions, limit, state.file, state.position,
                 JSON.stringify(state.metadata), JSON.stringify(state.previous), state.a, state.b,
-                JSON.stringify(state.tierSelection)
+                JSON.stringify(state.tierSelection), (typeof state.file === "string" ? state.file : state.file?.path) || ""
             );
             if ("value" in result[0]) state.a = result[0].value;
             if ("value" in result[1]) state.b = result[1].value;

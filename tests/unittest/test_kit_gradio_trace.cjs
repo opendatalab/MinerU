@@ -21,7 +21,7 @@ const script = fs.readFileSync(path.join(__dirname, "../../mineru/resources/grad
 vm.runInNewContext(`(${script})()`, { window, document, location });
 // 统一构造来源消息，允许测试替换发送者与文档身份。
 const emit = (source, data, origin = "null") =>
-    handlers.message({ source: source.contentWindow, origin, data: { channel: "mineru-trace", documentId: "one", ...data } });
+    handlers.message({ source: source.contentWindow, origin, data: { channel: "mineru-trace", sourceId: "source-one", documentId: "one", ...data } });
 const entry = {
     id: "p2-b1",
     sources: [
@@ -31,10 +31,14 @@ const entry = {
     ],
     depth: 0
 };
-window.__mineruTrace.activate("one");
+// 正文先加载时首次 ready 会被丢弃，激活必须主动请求同一产物的快照。
+emit(html, { type: "ready", entries: [entry], initialPageIdx: 2 });
+window.__mineruTrace.activate("one", "source-one");
+assert.equal(delivered.at(-1).name, "html");
+assert.equal(delivered.at(-1).message.type, "request-ready");
 emit(pdf, { type: "ready" }, location.origin);
 const layoutRegions = [{ page_idx: 5, block_index: 2, child_path: [], type: "text", index: 2, bbox: [0.1, 0.1, 0.8, 0.2], color: [0.6, 0.05, 0.3] }];
-emit(html, { type: "ready", entries: [entry], pageIndices: [2, 5], layoutRegions });
+emit(html, { type: "ready", entries: [entry], initialPageIdx: 2, layoutRegions });
 assert.equal(delivered.at(-1).message.layoutRegions, layoutRegions);
 emit(html, { type: "select", id: entry.id });
 assert.equal(delivered.at(-1).message.pageIdx, 2);
@@ -50,7 +54,7 @@ assert.equal(delivered.at(-2).message.sourceKey, samePageKey);
 assert.equal(delivered.at(-2).message.pageIdx, 5);
 assert.equal(delivered.at(-1).message.sourceKey, samePageKey);
 // 同一结果重复激活仍保留映射，可供重挂载的 PDF 查看器恢复。
-window.__mineruTrace.activate("one");
+window.__mineruTrace.activate("one", "source-one");
 emit(pdf, { type: "ready" }, location.origin);
 assert.equal(delivered.at(-1).message.entries.length, 1);
 assert.equal(delivered.at(-1).message.layoutRegions, layoutRegions);
@@ -59,13 +63,13 @@ emit(frame("foreign"), { type: "select", id: entry.id });
 emit(pdf, { type: "select", id: entry.id }, "https://foreign.test");
 emit(html, { type: "select", id: "missing" });
 assert.equal(delivered.length, count);
-window.__mineruTrace.activate("two");
+window.__mineruTrace.activate("two", "source-one");
 const switched = delivered.length;
-emit(html, { type: "ready", entries: [entry], pageIndices: [2, 5] });
+emit(html, { type: "ready", entries: [entry], initialPageIdx: 2 });
 emit(pdf, { type: "select", id: entry.id }, location.origin);
 assert.equal(delivered.length, switched);
 emit(pdf, { type: "ready", documentId: "two" }, location.origin);
-assert.equal(delivered.at(-1).message.layoutRegions.length, 0);
+assert.equal(delivered.at(-1).message.type, "bind");
 window.__mineruTrace.reset();
 console.log("Trace identity, handshake and bidirectional routing passed");
 
@@ -110,7 +114,7 @@ const checkHtmlNavigation = (
     };
     const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
     vm.runInNewContext(`(${source})(${JSON.stringify({
-        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, pageIndices: [2, 5],
+        pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, initialPageIdx: 2,
         layoutRegions: [
             { ...entry.sources[0], child_path: [0], color: [0.2, 0.4, 0.9] },
             { ...entry.sources[1], color: [0.6, 0.05, 0.3] },
@@ -118,13 +122,17 @@ const checkHtmlNavigation = (
         ]
     })})`, context);
     assert.deepEqual(targetOrigins, [eventOrigin]);
+    htmlHandlers.message({ source: htmlParent, origin: eventOrigin, data: {
+        channel: "mineru-trace", documentId: "one", type: "request-ready"
+    } });
+    assert.deepEqual(targetOrigins, [eventOrigin, eventOrigin]);
     // 同一父窗口传来的不同来源消息仍须拒绝，避免规范化放宽来源边界。
     htmlHandlers.message({ source: htmlParent, origin: "https://foreign.test", data: {
-        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
+        channel: "mineru-trace", sourceId: "source-one", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
     } });
     assert.equal(navigation.hidden, true);
     htmlHandlers.message({ source: htmlParent, origin: eventOrigin, data: {
-        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
+        channel: "mineru-trace", sourceId: "source-one", documentId: "one", type: "select", id: entry.id, pageIdx: 2, scroll: false
     } });
     htmlHandlers.scroll();
     assert.equal(navigation.hidden, false);
@@ -132,7 +140,7 @@ const checkHtmlNavigation = (
     assert.equal(selected.style["--trace-color"], "rgb(51 102 230)");
     assert.equal(navigation.style["--trace-color"], selected.style["--trace-color"]);
     htmlHandlers.message({ source: htmlParent, origin: eventOrigin, data: {
-        channel: "mineru-trace", documentId: "one", type: "select", id: entry.id,
+        channel: "mineru-trace", sourceId: "source-one", documentId: "one", type: "select", id: entry.id,
         pageIdx: 5, sourceKey: samePageKey, scroll: false
     } });
     assert.equal(selected.style["--trace-color"], "rgb(0 153 26)");
@@ -208,6 +216,7 @@ class TraceNode {
 const pdfHandlers = {};
 const pdfParent = { postMessage() {} };
 const scrolls = [];
+const jumps = [];
 let boxRect = { left: 950, top: 800, width: 100, height: 80 };
 const pdfBox = { traceIds: [entry.id], getBoundingClientRect: () => boxRect };
 const container = {
@@ -227,19 +236,28 @@ const pdfContext = {
     ResizeObserver: class { observe() {} },
     window: { addEventListener: (name, callback) => { pdfHandlers[name] = callback; } },
     viewer: {
+        pagesCount: 6, currentScale: 1.75,
         getPageView: () => ({ div: { querySelector: () => ({ children: [pdfBox] }) } }),
-        getCachedPageViews: () => [], scrollPageIntoView() {}
+        getCachedPageViews: () => [],
+        // 记录实际页跳转，验证重复握手不移动用户位置或改变缩放。
+        scrollPageIntoView({ pageNumber }) { jumps.push(pageNumber); }
     },
     eventBus: { on() {}, off() {} }
 };
 const pdfScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/trace.mjs"), "utf8");
 vm.runInNewContext(`${pdfScript.replace("export function", "function")}
-installTrace({ viewer, eventBus, container, documentId: "one", messages: {} });`, pdfContext);
+installTrace({ viewer, eventBus, container, sourceId: "source-one", messages: {} });`, pdfContext);
 // 模拟已验证的父页面消息，复用生产 init/select 的完整分发路径。
 const emitPdf = data => pdfHandlers.message({ source: pdfParent, origin: location.origin, data: {
-    channel: "mineru-trace", documentId: "one", ...data
+    channel: "mineru-trace", sourceId: "source-one", documentId: "one", ...data
 } });
-emitPdf({ type: "init", entries: [entry], pageIndices: [2, 5] });
+emitPdf({ type: "bind" });
+emitPdf({ type: "init", entries: [entry], initialPageIdx: 2 });
+assert.deepEqual(jumps, [3]);
+emitPdf({ type: "bind" });
+emitPdf({ type: "init", entries: [entry], initialPageIdx: 5 });
+assert.deepEqual(jumps, [3]);
+assert.equal(pdfContext.viewer.currentScale, 1.75);
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).top, 800);
 assert.equal(scrolls.at(-1).left, 850);
@@ -250,6 +268,15 @@ assert.ok(scrolls.at(-1).left <= 0);
 boxRect = { left: 950, top: 800, width: 700, height: 80 };
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).left, 1034);
+// 无版式框仍使用实际解析范围首跳；空页范围和 clear 不触发跳页。
+emitPdf({ type: "bind", documentId: "two" });
+emitPdf({ type: "init", documentId: "two", entries: [], initialPageIdx: 5 });
+assert.equal(jumps.at(-1), 6);
+const jumpCount = jumps.length;
+emitPdf({ type: "clear", documentId: "two" });
+emitPdf({ type: "bind", documentId: "three" });
+emitPdf({ type: "init", documentId: "three", entries: [], initialPageIdx: null });
+assert.equal(jumps.length, jumpCount);
 console.log("PDF source navigation handles horizontal zoom overflow");
 
 // 用同一入口挂载完整页面，覆盖跨栏后跨页的三段链及真实焦点优先级。
@@ -265,7 +292,7 @@ Object.assign(mergeContainer, { clientLeft: 0, clientTop: 0, rect: { left: 100, 
 const pageViews = [0, 1].map(index => {
     const div = new TraceNode();
     div.rect = { left: 100, top: 40 + index * 602, width: 500, height: 600 };
-    return { id: index + 1, div, pdfPage: {} };
+    return { id: [3, 6][index], div, pdfPage: {} };
 });
 const mergeContext = {
     parent: pdfParent, location, AbortController,
@@ -287,7 +314,8 @@ const mergeContext = {
     },
     container: mergeContainer,
     viewer: {
-        getPageView: index => pageViews[index], getCachedPageViews: () => pageViews,
+        pagesCount: 6,
+        getPageView: index => pageViews.find(page => page.id === index + 1), getCachedPageViews: () => pageViews,
         scrollPageIntoView() {}
     },
     eventBus: {
@@ -297,10 +325,10 @@ const mergeContext = {
     messages: { trace_merged: "合并", trace_merged_description: "由 {count} 个原始内容块合并" }
 };
 vm.runInNewContext(`${pdfScript.replace("export function", "function")}
-globalThis.disposeTrace = installTrace({ viewer, eventBus, container, documentId: "one", messages });`, mergeContext);
+globalThis.disposeTrace = installTrace({ viewer, eventBus, container, sourceId: "source-one", messages });`, mergeContext);
 // 消息经过生产身份校验，避免测试绕过初始化和选择流程。
 const emitMerge = data => mergeHandlers.message({ source: pdfParent, origin: location.origin, data: {
-    channel: "mineru-trace", documentId: "one", ...data
+    channel: "mineru-trace", sourceId: "source-one", documentId: "one", ...data
 } });
 // 一次刷新执行已排队的回调，并验证更新确实按帧合并。
 const flushConnections = () => {
@@ -321,7 +349,8 @@ const single = { id: "single", depth: 0, sources: [{
 }] };
 const parentChain = { id: "parent", depth: 0, sources: chain.sources.map(source => ({ ...source, child_path: [] })) };
 const layoutRegionsForChain = chain.sources.map(source => ({ ...source, type: "text", index: 1, color: [0.6, 0.05, 0.3] }));
-const mergeInit = { type: "init", entries: [parentChain, chain, single], pageIndices: [2, 5], layoutRegions: layoutRegionsForChain };
+const mergeInit = { type: "init", entries: [parentChain, chain, single], initialPageIdx: 2, layoutRegions: layoutRegionsForChain };
+emitMerge({ type: "bind" });
 emitMerge(mergeInit);
 flushConnections();
 const overlay = mergeBody.children[0];
@@ -365,7 +394,7 @@ mergeEvents.updateviewarea();
 flushConnections();
 assert.equal(overlay.children.length, 1);
 pageViews[1].pdfPage = {};
-mergeEvents.pagerendered({ pageNumber: 2 });
+mergeEvents.pagerendered({ pageNumber: 6 });
 flushConnections();
 assert.equal(overlay.children.length, 2);
 // 重复来源不会多画线，几何无效的中间片段阻断两侧线段。

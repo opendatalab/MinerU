@@ -160,7 +160,8 @@ def test_gradio_pdf_uses_packaged_images_without_cropping(
         """完整素材不允许调用任何源 PDF 裁图兜底。"""
         raise AssertionError("Packaged images must not be recropped")
 
-    monkeypatch.setattr(gradio_artifacts._ImageContext, "crop_for_block", reject_crop)
+    monkeypatch.setattr(PDFDocument, "crop_image", reject_crop)
+    monkeypatch.setattr(PDFDocument, "render_page", reject_crop)
     artifacts = gradio_artifacts.persist_parse_result(
         restored,
         source,
@@ -173,8 +174,7 @@ def test_gradio_pdf_uses_packaged_images_without_cropping(
     inline_path = BeautifulSoup(body.content, "html.parser").img["src"]
     assert (artifacts.root / inline_path).read_bytes() == image
     source.unlink()
-    artifacts.source_path.unlink()
-    artifacts.origin_pdf_path.unlink()
+    monkeypatch.undo()
     downloaded = Path(gradio_artifacts.render_download(artifacts.as_state(), "pdf"))
     with PDFDocument(render_pdf(result.middle_json, layout=PdfLayout.ORIGINAL)) as expected:
         with PDFDocument(downloaded.read_bytes()) as actual:
@@ -227,7 +227,7 @@ def test_client_rejects_missing_or_unsafe_markup_asset(source: str) -> None:
 
 def test_client_preserves_markup_attributes_and_code_literals() -> None:
     """带空格、实体、不同引号的 src 可恢复，代码中相同 HTML 字面量不变。"""
-    data = b"image-bytes"
+    _, data, _ = _result()
     path = "images/a b&c.png"
     source = "images/a%20b&amp;c.png"
     value = {
@@ -269,3 +269,17 @@ def test_save_and_restore_leave_code_image_literals_unchanged() -> None:
     restored = api_client._parse_result_from_zip_bytes(packed, include_images=True)
     assert restored.pages[1].blocks[0].content[0].content == literal
     assert result.pages[1].blocks[0].content[0].content == literal
+
+
+def test_client_reports_corrupt_image_at_restore_boundary() -> None:
+    """缺失引用之外，损坏的实际 sidecar 也必须在恢复阶段明确失败。"""
+    result, _, _ = _result()
+    original = _entries(build_default_zip(result))
+    name = next(name for name in original if name.startswith("images/"))
+    original[name] = b"corrupt image bytes"
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name, data in original.items():
+            archive.writestr(name, data)
+    with pytest.raises(api_client._V1APIError, match="Invalid image sidecar"):
+        api_client._parse_result_from_zip_bytes(output.getvalue(), include_images=True)

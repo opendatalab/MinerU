@@ -3,7 +3,7 @@ async (page) => {
     const pdfElement = page.locator("iframe.mineru-pdf-frame");
     const pdf = await (await pdfElement.elementHandle()).contentFrame();
     const html = await (await page.locator("iframe.mineru-rendered-html-frame").elementHandle()).contentFrame();
-    const viewport = page.viewportSize();
+    const viewport = page.viewportSize() || await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     const data = await html.evaluate(() => {
         const script = [...document.scripts].find(node => node.textContent.includes('"layoutRegions":'));
         const config = JSON.parse(script.textContent.slice(script.textContent.lastIndexOf(")(") + 2, -2));
@@ -11,7 +11,7 @@ async (page) => {
             id: node.dataset.docvortexTraceId, type: node.dataset.blockType,
             sources: JSON.parse(node.dataset.docvortexSources)
         }));
-        return { documentId: config.documentId, pageIndices: config.pageIndices, entries };
+        return { documentId: config.documentId, entries };
     });
     const merged = data.entries.filter(entry => entry.sources.length > 1);
     if (!merged.length) throw new Error("The real parse result has no merged sources to check");
@@ -24,26 +24,26 @@ async (page) => {
     // 通过页码控件取得端点页面的实际尺寸，再把线段中点滚入视口。
     const showEdge = async (entry, index) => {
         for (const source of entry.sources.slice(index, index + 2)) {
-            const number = data.pageIndices.indexOf(source.page_idx) + 1;
+            const number = source.page_idx + 1;
             await pdf.locator("#page").fill(String(number));
             await pdf.locator("#page").press("Enter");
             await pdf.locator(`.page[data-page-number="${number}"] .mineru-trace-layer`).waitFor({ state: "attached" });
         }
-        await pdf.evaluate(({ entry, index, pageIndices }) => {
+        await pdf.evaluate(({ entry, index }) => {
             const host = document.getElementById("viewer-container");
             const sources = entry.sources.slice(index, index + 2);
             const bounds = sources.map(source => document.querySelector(
-                `.page[data-page-number="${pageIndices.indexOf(source.page_idx) + 1}"]`
+                `.page[data-page-number="${source.page_idx + 1}"]`
             ).getBoundingClientRect());
             const middle = (bounds[0].top + sources[0].bbox[3] * bounds[0].height +
                 bounds[1].top + sources[1].bbox[1] * bounds[1].height) / 2;
             host.scrollTop += middle - host.getBoundingClientRect().top - host.clientHeight / 2;
-        }, { entry, index, pageIndices: data.pageIndices });
+        }, { entry, index });
         await pdf.locator("#toolbar").hover();
     };
     // 直接比较 SVG 端点和实际命中框的角点，允许最多 2 CSS px 的亚像素排版误差。
     const checkEdges = async (entry) => {
-        await pdf.waitForFunction(({ entry, pageIndices }) => {
+        await pdf.waitForFunction(({ entry }) => {
             const svg = document.querySelector(".mineru-merge-layer");
             if (svg?.dataset.traceId !== entry.id || !svg.children.length) return false;
             const origin = svg.getBoundingClientRect();
@@ -54,7 +54,7 @@ async (page) => {
                 const index = keys.indexOf(JSON.stringify(from));
                 if (index < 0 || keys[index + 1] !== JSON.stringify(to)) throw new Error("Merge source order changed");
                 const rects = entry.sources.slice(index, index + 2).map(source => {
-                    const pageNode = document.querySelector(`.page[data-page-number="${pageIndices.indexOf(source.page_idx) + 1}"]`);
+                    const pageNode = document.querySelector(`.page[data-page-number="${source.page_idx + 1}"]`);
                     const node = [...pageNode.querySelectorAll("button[data-trace-id]")].find(node =>
                         node.traceIds.includes(entry.id) && node.source.bbox.every((value, i) => value === source.bbox[i]));
                     if (!node) throw new Error("Missing rendered source hit box");
@@ -71,7 +71,7 @@ async (page) => {
             }
             if (getComputedStyle(svg).pointerEvents !== "none") throw new Error("Merge layer intercepts clicks");
             return true;
-        }, { entry, pageIndices: data.pageIndices });
+        }, { entry });
     };
     for (const entry of merged) {
         await selectEntry(entry);

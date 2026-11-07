@@ -403,3 +403,14 @@ body.dark .gradio-container {
         max-height: 240px;
     }
 }
+
+/* 上传外观和原生文件桥接解耦，状态变化不会重建预览。 */
+.mineru-upload-target { display: flex; align-items: center; justify-content: center; min-height: 110px; padding: 16px; border: 1px dashed var(--border-color-primary); border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
+.mineru-upload-target input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.mineru-upload-target:focus-within { outline: 2px solid var(--color-accent); }
+.mineru-upload-status { font-size: 13px; margin-top: 6px; overflow-wrap: anywhere; }
+.mineru-pdf-host [role="status"], .mineru-pdf-host [role="alert"] { padding: 24px; }
+
+.mineru-kit-preview:has(.mineru-pdf-host iframe, .mineru-pdf-host [role]) .mineru-kit-generic-preview { display: none !important; }
+
+.mineru-pdf-host { height: 100%; min-height: 0; }

@@ -19,7 +19,7 @@ def test_pdf_trace_preview_and_public_render(tmp_path: Path) -> None:
     source.write_bytes(_pdf_bytes())
     middle = _middle_json(with_image=False)
     artifacts = persist_parse_result(ParseResult(middle_json=middle), source, output_root=tmp_path, page_range="")
-    assert _prepare_preview("pdf", artifacts).pdf_path == artifacts.origin_pdf_path
+    assert _prepare_preview("pdf", artifacts).pdf_path is None
     assert not (artifacts.root / "layout.pdf").exists()
     preview = render_html_preview(artifacts, public_base_url="http://testserver")
     frame = BeautifulSoup(preview, "html.parser").iframe
@@ -27,7 +27,8 @@ def test_pdf_trace_preview_and_public_render(tmp_path: Path) -> None:
     document = BeautifulSoup(frame["srcdoc"], "html.parser")
     assert document.select_one("[data-docvortex-trace-id]")
     assert artifacts.root.name in document.get_text() or artifacts.root.name in str(document)
-    assert "pageIndices" in str(document)
+    assert "initialPageIdx" in str(document)
+    assert "pageIndices" not in str(document)
     trace_style = next(style.string for style in document.select("style") if ".mineru-trace-pages {" in (style.string or ""))
     assert "max-height: calc(100vh - var(--mineru-preview-offset, 8px) - 8px)" in trace_style
     assert "overflow-y: auto" in trace_style

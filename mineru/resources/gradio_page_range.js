@@ -1,4 +1,4 @@
-(tiers, flashOnlyExtensions, maxPages, file, position, metadata, previous, handleAValue, handleBValue, tierSelection) => {
+(tiers, flashOnlyExtensions, maxPages, file, position, metadata, previous, handleAValue, handleBValue, tierSelection, sourceReady) => {
     // 纯前端状态转换：经原生组件事件读写值，不逐次向 Python 发送拖动请求。
     // 内部元数据使用 JSON 文本，避免不同 Gradio 版本的 JSON 组件封装差异。
     const { text, message } = window.__mineruI18n;
@@ -80,7 +80,7 @@
         slider(state.handle_a, state.start_handle === "a" ? text("start_page") : text("end_page")),
         slider(state.handle_b, state.start_handle === "b" ? text("start_page") : text("end_page")),
         summary, range, JSON.stringify(state),
-        update({ interactive: Boolean(path) && (!needsRange || count > 0) }),
+        update({ interactive: Boolean(path) && sourceReady === path && (!needsRange || count > 0) }),
         update({ value: escapeHtml(notice), visible: Boolean(notice) }),
         // 同一事件同时更新值、标签和页码，程序赋值无需再触发 tier.input。
         update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1, visible: !flashOnly && tiers.length > 1 }),

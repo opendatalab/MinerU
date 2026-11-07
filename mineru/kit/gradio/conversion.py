@@ -26,6 +26,8 @@ class ConversionInput:
     tier_position: int | float
     page_range: str
     force_ocr: bool = False
+    session_id: str = ""
+    source_id: str = ""
 
 
 @dataclass(frozen=True)

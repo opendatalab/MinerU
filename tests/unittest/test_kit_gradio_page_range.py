@@ -158,6 +158,7 @@ def test_launch_remote_preserves_capabilities_without_local_fallback(
     events: list[str] = []
     failure = V1ArtifactError("startup failure", code="server_start_failed")
     remote_cap = V1ServerCapabilities("http://remote.test", remote_tiers, ("default",), ("upload",))
+
     async def discover_remote() -> V1ServerCapabilities:
         """记录主服务完成能力发现的时间点。"""
         events.append("remote")
@@ -323,7 +324,7 @@ def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> Non
         events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
         assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
         assert events[0]["trigger_mode"] == "always_last"
-        assert len(events[0]["targets"]) == 5
+        assert len(events[0]["targets"]) == 6
         assert events[0]["outputs"][:2] == [sliders[1]._id, sliders[2]._id]
     handler = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
     assert len(handler.inputs) == 4
