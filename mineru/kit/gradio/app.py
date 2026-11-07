@@ -259,6 +259,16 @@ def _resource_text(resource_name: str) -> str:
     return resource_path.read_text(encoding="utf-8")
 
 
+def _render_upload(file_types: list[str]) -> str:
+    """渲染动作图标空状态和紧凑文件条，双语标记只作用于文字叶节点。"""
+    template = _resource_text("gradio_upload.html")
+    template = template.replace("{{ACCEPT}}", html.escape(",".join(file_types), quote=True))
+    template = template.replace("{{UPLOAD_LABEL}}", html.escape(MESSAGES["upload_drop"][1], quote=True))
+    for key in ("upload_choose", "upload_drag", "upload_paste", "upload_document", "upload_image", "upload_or"):
+        template = template.replace("{{" + key.upper() + "}}", localized_text(key))
+    return template
+
+
 def _download_icon_css() -> str:
     """为各下载格式生成本地 SVG 遮罩，随按钮文字适配主题且不改变无障碍名称。"""
     rules = []
@@ -366,6 +376,16 @@ def build_gradio_app(
         raise ValueError("V1 API server did not advertise any parsing tier")
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
+
+    def upload_context(_data: object, request: object | None = None) -> dict[str, str]:
+        """为可取消的进度上传提供原生 Gradio 地址，沿用请求鉴权和反向代理挂载前缀。"""
+        # Gradio 的组件服务函数传入原始 Starlette Request，普通事件则使用 gr.Request 包装。
+        if request is not None and not isinstance(request, gr.Request):
+            request = gr.Request(request=request)
+        base_url = _gradio_public_base_url(request)
+        return {"upload_url": f"{base_url}/gradio_api/upload", "file_url_prefix": f"{base_url}/gradio_api/file="}
+
+    upload_context.__annotations__["request"] = gr.Request
     examples = _example_files(file_types) if enable_example else []
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS + _download_icon_css()
     i18n = gr.I18n(**translations())
@@ -409,18 +429,15 @@ def build_gradio_app(
                 )
                 upload_control = gr.HTML(
                     value="",
-                    html_template='<label class="mineru-upload-target"><input type="file" accept="'
-                    + ",".join(file_types)
-                    + '" />'
-                    '<span class="mineru-upload-label"></span></label><div class="mineru-upload-status" role="status"></div>'
-                    '<button type="button" class="mineru-upload-retry" hidden></button>',
+                    html_template=_render_upload(file_types),
                     js_on_load="("
                     + _resource_text("gradio_upload.js")
-                    + ")({element, props, upload, accepted: "
+                    + ")({element, props, server, accepted: "
                     + json.dumps(file_types)
                     + ", imageExtensions: "
                     + json.dumps(sorted(IMAGE_EXTENSIONS))
                     + "})",
+                    server_functions=[upload_context],
                     elem_classes=["mineru-upload-file"],
                 )
                 with gr.Group():
@@ -497,7 +514,7 @@ def build_gradio_app(
                         interactive=False,
                         elem_classes=["mineru-convert-button"],
                     )
-                    clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1)
+                    clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1, elem_id="mineru-kit-clear")
                 status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
                 if examples:
                     gr.Examples(

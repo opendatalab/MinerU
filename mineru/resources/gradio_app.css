@@ -405,10 +405,76 @@ body.dark .gradio-container {
 }
 
 /* 上传外观和原生文件桥接解耦，状态变化不会重建预览。 */
-.mineru-upload-target { display: flex; align-items: center; justify-content: center; min-height: 110px; padding: 16px; border: 1px dashed var(--border-color-primary); border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
+.mineru-upload-target {
+    display: flex; align-items: center; justify-content: center;
+    box-sizing: border-box; min-height: 132px; padding: 20px 12px;
+    border: 1px dashed var(--border-color-primary); border-radius: 10px;
+    color: var(--body-text-color); cursor: pointer; overflow-wrap: anywhere; text-align: center;
+}
 .mineru-upload-target input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .mineru-upload-target:focus-within { outline: 2px solid var(--color-accent); }
+.mineru-upload-file [hidden] { display: none !important; }
+.mineru-upload-empty { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: 100%; }
+.mineru-upload-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 22px; }
+.mineru-upload-action { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; }
+.mineru-upload-action svg { width: 25px; height: 25px; }
+.mineru-upload-types {
+    display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px;
+    color: var(--body-text-color-subdued); font-size: 12px; line-height: 18px;
+}
+.mineru-upload-type { display: inline-flex; align-items: center; gap: 5px; }
+.mineru-upload-type svg { width: 15px; height: 15px; }
+.mineru-upload-empty svg { flex-shrink: 0; margin: 0; }
+.mineru-upload-file-row {
+    position: relative; isolation: isolate; overflow: hidden;
+    display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 12px 10px 12px 12px;
+    box-sizing: border-box; border: 1px solid var(--border-color-primary); border-radius: 10px;
+    background: var(--background-fill-primary); color: var(--body-text-color);
+}
+.mineru-upload-fill {
+    position: absolute; z-index: -1; left: 0; top: 0; bottom: 0; width: 0;
+    background: rgba(249, 115, 22, 0.13); pointer-events: none; transition: opacity 0.55s ease;
+}
+.dark .mineru-upload-fill { background: rgba(249, 115, 22, 0.18); }
+.mineru-upload-file-row.is-settled .mineru-upload-fill { opacity: 0; }
+.mineru-upload-file-icon {
+    display: flex; align-items: center; justify-content: center; flex: 0 0 30px; width: 30px; height: 38px;
+    border-radius: 7px; color: #b95810; background: #fff1e3;
+}
+.dark .mineru-upload-file-icon { color: #f4ad72; background: #39291d; }
+.mineru-upload-details { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; gap: 2px; }
+.mineru-upload-label { display: flex; min-width: 0; font-size: 14px; font-weight: 500; line-height: 20px; }
+.mineru-upload-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mineru-upload-extension { flex: 0 0 auto; }
+.mineru-upload-size { font-size: 12px; line-height: 16px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums; }
+.mineru-upload-indicator {
+    display: flex; justify-content: flex-end; align-items: center; flex: 0 0 28px;
+    font-size: 12px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums;
+}
+.mineru-upload-file .mineru-upload-remove {
+    display: flex; align-items: center; justify-content: center; flex: 0 0 28px;
+    width: 28px !important; height: 32px !important; padding: 0 !important; margin: 0;
+    border: 0 !important; border-radius: 6px; cursor: pointer;
+    color: var(--body-text-color-subdued) !important; background: transparent !important;
+}
+.mineru-upload-file .mineru-upload-remove:hover {
+    color: var(--body-text-color) !important; background: var(--background-fill-secondary) !important;
+}
+.mineru-upload-remove:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.mineru-upload-file-row svg { flex-shrink: 0; margin: 0; }
+/* Gradio 的正文样式也会单独设置 SVG 子元素颜色，图标路径须显式继承类型色。 */
+.mineru-upload-file-row svg, .mineru-upload-file-row svg * { color: inherit !important; }
+.mineru-upload-meter {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
 .mineru-upload-status { font-size: 13px; margin-top: 6px; overflow-wrap: anywhere; }
+.mineru-upload-status:empty { display: none; }
+@media (pointer: coarse) {
+    .mineru-upload-file .mineru-upload-remove { flex-basis: 44px; width: 44px !important; height: 44px !important; }
+    .mineru-upload-file-row { padding-top: 9px; padding-bottom: 9px; }
+}
+@media (prefers-reduced-motion: reduce) { .mineru-upload-fill { transition: none; } }
 .mineru-pdf-host [role="status"], .mineru-pdf-host [role="alert"] { padding: 24px; }
 
 .mineru-kit-preview:has(.mineru-pdf-host iframe, .mineru-pdf-host [role]) .mineru-kit-generic-preview { display: none !important; }
