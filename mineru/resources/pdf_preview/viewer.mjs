@@ -1,3 +1,4 @@
+import { installTrace } from "./trace.mjs";
 // 查看器独立于宿主框架运行；PDF、字体和解码器只从同源的固定资源目录读取。
 const params = new URLSearchParams(window.location.hash.slice(1));
 const messages = JSON.parse(params.get("messages") || "{}");
@@ -25,6 +26,7 @@ let resizeObserver;
 let resizeFrame;
 let fitWidth = true;
 let ready = false;
+let disposeTrace;
 
 // 清除或换文件时释放渲染队列、worker 和观察器，旧页面不会向新预览写入结果。
 const dispose = () => {
@@ -32,6 +34,7 @@ const dispose = () => {
     disposed = true;
     cancelAnimationFrame(resizeFrame);
     resizeObserver?.disconnect();
+    disposeTrace?.();
     try {
         viewer?.setDocument(null);
         links?.setDocument(null);
@@ -102,6 +105,9 @@ try {
             ready = true;
             document.getElementById("toolbar").setAttribute("aria-busy", "false");
             resize();
+            if (params.get("documentId")) {
+                disposeTrace = installTrace({ viewer, eventBus, container, documentId: params.get("documentId"), messages });
+            }
         });
         eventBus.on("pagechanging", updateControls);
         eventBus.on("scalechanging", updateControls);

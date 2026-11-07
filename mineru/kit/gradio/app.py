@@ -380,6 +380,7 @@ def build_gradio_app(
             _resource_text("gradio_status_timer.js"),
         )
     )
+    app_js = app_js.replace("__MINERU_TRACE__", _resource_text("gradio_trace.js"))
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversions = SessionConversions()
     conversion_service = ConversionService(

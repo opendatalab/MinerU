@@ -9,9 +9,10 @@ import shutil
 import time
 import uuid
 import zipfile
+from copy import deepcopy
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Literal, cast
@@ -68,7 +69,6 @@ class RunArtifacts:
     downloads_dir: Path
     file_suffix: str
     origin_pdf_path: Path | None = None
-    layout_pdf_path: Path | None = None
     page_indices: tuple[int, ...] = ()
     generated_downloads: dict[str, Path] = field(default_factory=dict)
 
@@ -84,7 +84,6 @@ class RunArtifacts:
             "downloads_dir": str(self.downloads_dir),
             "file_suffix": self.file_suffix,
             "origin_pdf_path": str(self.origin_pdf_path) if self.origin_pdf_path else "",
-            "layout_pdf_path": str(self.layout_pdf_path) if self.layout_pdf_path else "",
             "page_indices": list(self.page_indices),
             "generated_downloads": {key: str(value) for key, value in self.generated_downloads.items()},
         }
@@ -134,10 +133,9 @@ class RunArtifacts:
         ]
         for path in core_paths:
             _ensure_path_inside(root, path)
-        optional_paths = [_optional_path(state.get(key)) for key in ("origin_pdf_path", "layout_pdf_path")]
-        for path in optional_paths:
-            if path is not None:
-                _ensure_path_inside(root, path)
+        origin_pdf_path = _optional_path(state.get("origin_pdf_path"))
+        if origin_pdf_path is not None:
+            _ensure_path_inside(root, origin_pdf_path)
         return cls(
             root=root,
             stem=stem,
@@ -147,8 +145,7 @@ class RunArtifacts:
             structured_content_path=Path(cast(str, state["structured_content_path"])).resolve(),
             downloads_dir=Path(cast(str, state["downloads_dir"])).resolve(),
             file_suffix=cast(str, state["file_suffix"]),
-            origin_pdf_path=optional_paths[0],
-            layout_pdf_path=optional_paths[1],
+            origin_pdf_path=origin_pdf_path,
             page_indices=page_indices,
             generated_downloads=generated_downloads,
         )
@@ -266,33 +263,19 @@ def persist_parse_result(
     finally:
         _close_image_context(image_context)
 
-    if origin_pdf is not None:
-        from .preview import draw_layout_overlay
-
-        layout_path = artifacts.root / "layout.pdf"
-        try:
-            with _output_stage("layout_pdf", artifacts):
-                draw_layout_overlay(
-                    result.middle_json,
-                    origin_pdf,
-                    layout_path,
-                    page_indices=artifacts.page_indices,
-                )
-        except Exception as exc:
-            logger.warning("Skipping Gradio layout overlay for {}: {}", artifacts.stem, exc)
-        else:
-            artifacts.layout_pdf_path = layout_path
-
     return artifacts
 
 
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
     with _output_stage("html_preview", artifacts):
-        value = _render_html(artifacts, public_base_url=public_base_url)
+        if artifacts.origin_pdf_path is not None:
+            value = _render_html(artifacts, public_base_url=public_base_url, include_source_map=True)
+        else:
+            value = _render_html(artifacts, public_base_url=public_base_url)
         # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
         value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
-        value = _prepare_preview_links(value)
+        value = _prepare_preview_links(value, include_outline=True)
         return (
             '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
             'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
@@ -300,8 +283,57 @@ def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str
         )
 
 
-def _prepare_preview_links(document: str) -> str:
-    """仅为预览中的网页外链指定新标签页，保留内部锚点及邮件、电话等链接行为。"""
+def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: MiddleJson, public_base_url: str) -> str:
+    """向隔离结果页注入溯源配置，并由公共接口提供合并前的原始布局。"""
+    from docvortex.visualization import collect_layout_regions
+
+    from .i18n import MESSAGES
+
+    base = urlsplit(public_base_url)
+    config = (
+        json.dumps(
+            {
+                "documentId": artifacts.root.name,
+                "pageIndices": list(artifacts.page_indices),
+                "parentOrigin": f"{base.scheme}://{base.netloc}",
+                "pageLabels": MESSAGES["trace_source"],
+                "layoutRegions": [asdict(region) for region in collect_layout_regions(middle_json.pages)],
+            },
+            ensure_ascii=True,
+        )
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+    script = (Path(__file__).resolve().parents[2] / "resources" / "gradio_trace_html.js").read_text(encoding="utf-8")
+    styles = """<style>
+[data-docvortex-trace-id], .mineru-trace-pages {
+    --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
+[data-docvortex-trace-id] { cursor: pointer; scroll-margin: 24px; }
+[data-docvortex-trace-id]:hover:not(:has([data-docvortex-trace-id]:hover)),
+[data-docvortex-trace-id]:focus-visible {
+    outline: 1px solid var(--trace-strong); outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 5%, transparent); }
+[data-mineru-selected] { outline: 2px solid var(--trace-strong) !important; outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent) !important; }
+.mineru-trace-pages { position: fixed; right: 8px; z-index: 100;
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 75%; padding: 5px; background: Canvas;
+    box-sizing: border-box; max-height: calc(100vh - var(--mineru-preview-offset, 8px) - 8px);
+    overflow-y: auto; overscroll-behavior: contain;
+    border: 1px solid var(--trace-strong); border-radius: 6px; }
+.mineru-trace-pages[hidden] { display: none; }
+.mineru-trace-pages button { cursor: pointer; color: CanvasText; background: Canvas;
+    border: 1px solid #aaa; border-radius: 4px; padding: 3px 6px; }
+.mineru-trace-pages button[aria-pressed=true] { border-color: var(--trace-strong);
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent); }
+</style>"""
+    document = document.replace("</head>", styles + "</head>", 1)
+    return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
+
+
+def _prepare_preview_links(document: str, *, include_outline: bool = False) -> str:
+    """为预览中的网页外链指定新标签页，并按需复用当前 DOM 准备目录。"""
     soup = BeautifulSoup(document, "html.parser")
     for link in soup.find_all("a", href=True):
         try:
@@ -312,16 +344,56 @@ def _prepare_preview_links(document: str) -> str:
             continue
         link["target"] = "_blank"
         link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+    if include_outline:
+        _add_outline_preview(soup)
     return str(soup)
 
 
-def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
+def _add_outline_preview(soup: BeautifulSoup) -> None:
+    """复用预览 DOM 准备唯一标题锚点和纯文本标签，并注入当前 iframe 的目录资源。"""
+    from .i18n import MESSAGES
+
+    if soup.head is None or soup.body is None:
+        return
+    used_ids = {str(node["id"]) for node in soup.find_all(id=True)}
+    count = 0
+    for heading in soup.select("article.docvortex-document .docvortex-heading"):
+        if heading.name not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            continue
+        label_node = deepcopy(heading)
+        for formula in label_node.select("[data-docvortex-latex]"):
+            formula.replace_with(str(formula["data-docvortex-latex"]))
+        label = " ".join(label_node.get_text().split())
+        if not label:
+            continue
+        count += 1
+        if not heading.get("id"):
+            identifier = f"mineru-outline-{count}"
+            while identifier in used_ids:
+                identifier += "-toc"
+            heading["id"] = identifier
+            used_ids.add(identifier)
+        heading["data-mineru-outline-label"] = label
+    if not count:
+        return
+    resources = Path(__file__).resolve().parents[2] / "resources"
+    style = soup.new_tag("style", attrs={"data-mineru-outline": ""})
+    style.string = (resources / "gradio_outline.css").read_text(encoding="utf-8")
+    soup.head.append(style)
+    labels = {key: MESSAGES[f"outline_{key}"] for key in ("title", "expand", "collapse")}
+    config = json.dumps(labels, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    script = soup.new_tag("script", attrs={"data-mineru-outline": ""})
+    script.string = f"({(resources / 'gradio_outline.js').read_text(encoding='utf-8')})({config});"
+    soup.body.append(script)
+
+
+def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_source_map: bool = False) -> str:
     """把已物化语义树渲染为使用当前 Gradio 静态图片地址的独立 HTML。"""
     if urlsplit(public_base_url).scheme not in {"http", "https"} or not urlsplit(public_base_url).netloc:
         raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
     asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(artifacts.root.as_posix(), safe='/:')}"
-    return cast(
+    document = cast(
         str,
         render(
             result.middle_json,
@@ -330,9 +402,13 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
                 standalone=True,
                 document_title=artifacts.stem,
                 asset_base_url=asset_base_url,
+                include_source_map=include_source_map,
             ),
         ),
     )
+    if include_source_map:
+        return _add_trace_preview(document, artifacts, middle_json=result.middle_json, public_base_url=public_base_url)
+    return document
 
 
 def _build_text_download(artifacts: RunArtifacts, format_name: Literal["markdown", "json"]) -> Path:

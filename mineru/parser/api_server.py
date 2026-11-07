@@ -71,6 +71,7 @@ from .page_range import (
 )
 from .process_control import ManagedProcessControlWatcher
 from .server_tiers import model_tier_for_server_tiers, parse_server_tier, resolve_server_tiers
+from .url_source import UrlSourceTransport
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
@@ -1156,7 +1157,9 @@ async def _extract_bytes(
             raise ValueError("File has no content")
         return _ExtractedSource(file_store.read_blob(sha))
     if isinstance(source, _UrlSource):
-        async with httpx.AsyncClient(timeout=url_timeout) as cli:
+        async with httpx.AsyncClient(
+            timeout=url_timeout, transport=UrlSourceTransport(), trust_env=False, follow_redirects=False
+        ) as cli:
             # 流式读取并在超过 max_url_bytes 时中止，避免无上限响应被整包缓冲进内存。
             async with cli.stream("GET", source.url) as r:
                 r.raise_for_status()

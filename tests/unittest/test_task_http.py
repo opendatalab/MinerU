@@ -32,7 +32,7 @@ from test_http_api_example_script import _Server
 
 from mineru.kit.router import RouterSettings
 from mineru.kit.router import create_app as create_router
-from mineru.parser import api_server
+from mineru.parser import api_server, url_source
 from mineru.filetypes import batch_effective_parse_tier
 from mineru.tasks.contracts import TaskFileInput, UploadTaskOptions
 from mineru.tasks.errors import ApiServerError
@@ -535,8 +535,15 @@ def test_real_documents_match_local_parser_outputs(live_service: _LiveService, d
 
 
 @pytest.mark.parametrize("document", ["html", "pdf"])
-def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService, document: str) -> None:
+def test_url_task_over_http_downloads_chunked_source(
+    live_service: _LiveService, document: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """真实 TCP URL 无需 HEAD 或长度头，保留文件页范围且不向源站发送 API Key。"""
+    async def resolve_test_source(request: httpx.Request) -> list[str]:
+        """用本机源站模拟已获准的公网目标；默认阻断策略由 SSRF 专项回归覆盖。"""
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(url_source, "_resolve_public_addresses", resolve_test_source)
     if document == "pdf":
         sample = Path(__file__).resolve().parents[2] / "demo" / "pdfs" / "demo1.pdf"
         if sample.is_file():

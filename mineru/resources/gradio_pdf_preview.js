@@ -36,6 +36,7 @@
     })[character]);
 
     if (action === "reset" || action === "clear") {
+        window.__mineruTrace?.reset();
         disposeCurrentViewer();
         state.source = action === "clear" ? "" : key(args[0]);
         state.conversion = "";
@@ -44,6 +45,7 @@
         return empty();
     }
     if (action === "begin") {
+        window.__mineruTrace?.reset();
         state.conversion = state.source;
         return [];
     }
@@ -55,6 +57,7 @@
     } else if (action === "result") {
         if (!runId || state.conversion !== state.source) return skip();
         state.result = runId;
+        window.__mineruTrace?.activate(runId);
     } else {
         return skip();
     }
@@ -67,10 +70,12 @@
     try {
         const messages = Object.fromEntries([
             "preview", "pdf_loading", "pdf_previous", "pdf_next", "pdf_page", "pdf_zoom_out", "pdf_zoom_in",
+            "trace_regions", "trace_source", "trace_merged", "trace_merged_description",
             "pdf_fit_width", "pdf_invalid", "pdf_password", "pdf_load_failed",
         ].map((name) => [name, text(name)]));
         const viewerUrl = fileUrl(viewer);
         const params = new URLSearchParams({ file: fileUrl(file, viewerUrl), messages: JSON.stringify(messages) });
+        if (action === "result") params.set("documentId", runId);
         const url = new URL(viewerUrl);
         // Gradio 6 会复用 iframe 节点；只改 hash 不会重新加载文档，必须改变查询参数。
         url.searchParams.set("document", String(++state.revision));

@@ -13,7 +13,6 @@ import time
 import zipfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -46,11 +45,11 @@ def url_downloads(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
             headers={"content-type": "text/html; charset=utf-8"},
         )
 
-    def download_client(**kwargs: Any) -> httpx.AsyncClient:
-        """使用真实 httpx 流式客户端，隔离源站网络而不替换下载业务实现。"""
-        return httpx.AsyncClient(transport=httpx.MockTransport(respond), **kwargs)
+    def download_transport() -> httpx.MockTransport:
+        """仅隔离源站传输，保留真实 httpx 客户端和下载业务实现。"""
+        return httpx.MockTransport(respond)
 
-    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
+    monkeypatch.setattr(api_server, "UrlSourceTransport", download_transport)
     return requests
 
 
@@ -873,11 +872,11 @@ def test_cancel_url_download_closes_stream_and_releases_worker(
         """返回实际异步流，使取消发生在读取源字节期间。"""
         return httpx.Response(200, stream=SlowSource(), headers={"content-type": "text/html"})
 
-    def download_client(**kwargs: Any) -> httpx.AsyncClient:
+    def download_transport() -> httpx.MockTransport:
         """仅隔离 URL 来源网络，不改变任务和 Router 的生命周期实现。"""
-        return httpx.AsyncClient(transport=httpx.MockTransport(respond), **kwargs)
+        return httpx.MockTransport(respond)
 
-    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
+    monkeypatch.setattr(api_server, "UrlSourceTransport", download_transport)
     response = client.post("/v1/tasks", json={"files": [_url_manifest()]})
     assert response.status_code == 202
     task = response.json()

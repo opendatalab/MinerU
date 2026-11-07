@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from docvortex.content.table import build_row_rendered_cell_segments, build_table_state_from_html, detect_table_headers
 from docvortex.content.table import expand_header_count_by_rowspan as _expand_header_count_by_rowspan
@@ -15,7 +15,18 @@ from ....types import PageInfo, TableBlock, TableBodyBlock
 from ..llm_client import LLMAidedClient
 from ..llm_report import LLMFeatureReport
 
+if TYPE_CHECKING:
+    from docvortex.content.table import RenderedCellSegment
+
 CellMergeFlag = Literal[0, 1]
+
+
+@dataclass(frozen=True, slots=True)
+class _SharedRowSpanGroup:
+    """保存两侧跨行范围均一致的单元格组，以及上下都有文字的参考位置。"""
+
+    member_indexes: tuple[int, ...]
+    text_pair_indexes: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +40,7 @@ class _CellMergeCandidate:
     previous_segment_col_ranges: tuple[tuple[int, int], ...]
     blank_continuation_segments: tuple[int, ...]
     both_blank_segments: tuple[int, ...]
+    shared_row_span_groups: tuple[_SharedRowSpanGroup, ...]
 
 
 def _table_body_html(table: TableBlock) -> str | None:
@@ -92,6 +104,46 @@ def _build_cell_merge_prompt(previous_texts: list[str], current_texts: list[str]
 """
 
 
+def _collect_shared_row_span_groups(
+    previous_segments: list[RenderedCellSegment],
+    current_segments: list[RenderedCellSegment],
+    previous_boundary_row: int,
+    current_boundary_row: int,
+    current_row_count: int,
+) -> tuple[_SharedRowSpanGroup, ...]:
+    """依据公开的单元格原始行范围分组，缺少可选跨度信息时跳过新增规则。"""
+    groups: dict[tuple[int, int, int, int], list[int]] = {}
+    for index, (previous, current) in enumerate(zip(previous_segments, current_segments)):
+        # 已发布的旧版片段可能缺少这组可选元数据，现有文本和空白规则仍可独立执行。
+        previous_start = getattr(previous, "start_row", None)
+        previous_end = getattr(previous, "end_row", None)
+        current_start = getattr(current, "start_row", None)
+        current_end = getattr(current, "end_row", None)
+        if previous_start is None or previous_end is None or current_start is None or current_end is None:
+            continue
+        if (previous.start_col, previous.end_col) != (current.start_col, current.end_col):
+            continue
+        if previous_end - previous_start <= 1 or current_end - current_start <= 1:
+            continue
+        if (
+            previous_end != previous_boundary_row + 1
+            or current_start != current_boundary_row
+            or current_end > current_row_count
+        ):
+            continue
+        profile = (previous_start, previous_end, current_start, current_end)
+        groups.setdefault(profile, []).append(index)
+    return tuple(
+        _SharedRowSpanGroup(
+            member_indexes=tuple(indexes),
+            text_pair_indexes=tuple(
+                index for index in indexes if previous_segments[index].text.strip() and current_segments[index].text.strip()
+            ),
+        )
+        for indexes in groups.values()
+    )
+
+
 def _prepare_cell_merge_candidate(
     previous_table: TableBlock,
     current_table: TableBlock,
@@ -147,6 +199,13 @@ def _prepare_cell_merge_candidate(
             and not current.text.strip()
             and not current.has_non_text_content
         ),
+        shared_row_span_groups=_collect_shared_row_span_groups(
+            previous_segments,
+            current_segments,
+            previous_metrics.row_idx,
+            current_metrics.row_idx,
+            len(current_state.rows),
+        ),
     )
 
 
@@ -160,7 +219,7 @@ def _validate_cell_merge(value: object, expected_count: int) -> list[CellMergeFl
 
 
 def _complete_blank_cell_merges(candidate: _CellMergeCandidate, segment_flags: list[CellMergeFlag]) -> list[CellMergeFlag]:
-    """先补非空到空白的续接，再在已有合并且仅剩双空格时补齐整行。"""
+    """依次补齐非空到空白、整行双空格以及已确认跨行组内的共享空白格。"""
     completed = list(segment_flags)
     if any(segment_flags):
         for index in candidate.blank_continuation_segments:
@@ -170,6 +229,15 @@ def _complete_blank_cell_merges(candidate: _CellMergeCandidate, segment_flags: l
     if any(completed) and all(index in candidate.both_blank_segments for index in unmerged):
         for index in unmerged:
             completed[index] = 1
+    for group in candidate.shared_row_span_groups:
+        # 参考信号只采用模型的原始文本续接标记，避免规则新增的 1 被反过来当作依据。
+        if not any(segment_flags[index] for index in group.text_pair_indexes):
+            continue
+        if any(completed[index] == 0 and index not in candidate.both_blank_segments for index in group.member_indexes):
+            continue
+        for index in group.member_indexes:
+            if index in candidate.both_blank_segments:
+                completed[index] = 1
     return completed
 
 

@@ -36,7 +36,7 @@ class GradioDocumentIO(Protocol):
         output_root: Path,
         page_range: str,
     ) -> RunArtifacts:
-        """物化解析结果及布局预览，只返回路径和可序列化的产物描述。"""
+        """物化解析结果及原文预览，只返回路径和可序列化的产物描述。"""
         ...
 
 

@@ -16,7 +16,7 @@ from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..config import VlmConfig, get_config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
-from ..integrations.docvortex import read_source_properties
+from ..integrations.docvortex import read_source_properties, translate_resource_limit
 from ..utils.async_utils import run_sync
 from ..utils.logger import configure_global_log_level
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
@@ -77,8 +77,9 @@ class MinerUParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        prepared = self._prepare_input(path, page_range, source_context)
-        middle_json, _ = self._run_analysis(prepared)
+        with translate_resource_limit():
+            prepared = self._prepare_input(path, page_range, source_context)
+            middle_json, _ = self._run_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
                 middle_json.pages,
@@ -100,8 +101,9 @@ class MinerUParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        prepared = await run_sync(self._prepare_input, path, page_range, source_context)
-        middle_json, _ = await self._arun_analysis(prepared)
+        with translate_resource_limit():
+            prepared = await run_sync(self._prepare_input, path, page_range, source_context)
+            middle_json, _ = await self._arun_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
                 middle_json.pages,

@@ -903,7 +903,7 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
 
 
 def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
-    """验证严格 Middle JSON、布局 PDF 和七种下载产物。"""
+    """验证严格 Middle JSON、原文预览 PDF 和七种下载产物。"""
     source = tmp_path / "报告.pdf"
     source.write_bytes(_pdf_bytes())
     result = ParseResult(middle_json=_middle_json())
@@ -911,9 +911,9 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
 
     assert artifacts.middle_json_path.read_text(encoding="utf-8").find('"schema_version": "2.0"') >= 0
     assert artifacts.origin_pdf_path == artifacts.root / "origin.pdf"
-    assert artifacts.layout_pdf_path == artifacts.root / "layout.pdf"
     assert artifacts.origin_pdf_path is not None and artifacts.origin_pdf_path.is_file()
-    assert artifacts.layout_pdf_path is not None and artifacts.layout_pdf_path.is_file()
+    assert artifacts.origin_pdf_path.read_bytes() == source.read_bytes()
+    assert not (artifacts.root / "layout.pdf").exists()
     assert not (artifacts.root / "model_output.json").exists()
     assert not list(artifacts.root.glob("*.zip"))
     assert list((artifacts.root / "images").glob("*.jpg"))
@@ -939,16 +939,10 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     with zipfile.ZipFile(latex_path) as archive:
         assert f"{artifacts.stem}.tex" in archive.namelist()
         assert any(name.startswith("images/") for name in archive.namelist())
-    layout_page = PdfReader(str(artifacts.layout_pdf_path)).pages[0]
-    layout_stream = layout_page.get_contents()
-    assert layout_stream is not None
-    layout_commands = layout_stream.get_data()
-    assert b"20 240 140 30 re" in layout_commands
-    assert b"20 60 140 150 re" in layout_commands
 
 
-def test_persist_image_input_creates_real_origin_and_layout_pdfs(tmp_path: Path) -> None:
-    """验证图片输入会生成可读取的 origin/layout PDF，而不是伪装扩展名。"""
+def test_persist_image_input_creates_real_origin_pdf(tmp_path: Path) -> None:
+    """验证图片输入生成可读取的原文预览 PDF。"""
     source = tmp_path / "scan.png"
     Image.new("RGB", (64, 48), "white").save(source)
     artifacts = persist_parse_result(
@@ -958,11 +952,9 @@ def test_persist_image_input_creates_real_origin_and_layout_pdfs(tmp_path: Path)
         page_range="",
     )
     assert artifacts.origin_pdf_path is not None
-    assert artifacts.layout_pdf_path is not None
     assert artifacts.origin_pdf_path.read_bytes().startswith(b"%PDF")
-    assert artifacts.layout_pdf_path.read_bytes().startswith(b"%PDF")
     assert len(PdfReader(str(artifacts.origin_pdf_path)).pages) == 1
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 1
+    assert not (artifacts.root / "layout.pdf").exists()
 
 
 def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> None:
@@ -986,7 +978,7 @@ def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> 
 
 
 def test_persist_page_range_keeps_cropped_origin_page_order(tmp_path: Path) -> None:
-    """验证任意 V1 page_range 会同步应用到 origin 和 layout PDF。"""
+    """验证 V1 page_range 会应用到原文预览 PDF 并保留原始页号映射。"""
     source = tmp_path / "three-pages.pdf"
     source.write_bytes(_pdf_bytes(page_count=3))
     artifacts = persist_parse_result(
@@ -998,8 +990,7 @@ def test_persist_page_range_keeps_cropped_origin_page_order(tmp_path: Path) -> N
     assert artifacts.page_indices == (1, 2)
     assert artifacts.origin_pdf_path is not None
     assert len(PdfReader(str(artifacts.origin_pdf_path)).pages) == 2
-    assert artifacts.layout_pdf_path is not None
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 2
+    assert not (artifacts.root / "layout.pdf").exists()
 
 
 def test_run_artifact_paths_are_absolute_and_inside_output_root(tmp_path: Path) -> None:
@@ -1585,82 +1576,36 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("page_indices", [(), (2, 0, 1)])
-def test_layout_preview_matches_shared_renderer_and_pdf_document(tmp_path: Path, page_indices: tuple[int, ...]) -> None:
-    """三个公开入口使用相同页映射、边框和页面属性，缺失页不回退到其他结果。"""
-    from docvortex.document.pdf import PDFDocument
-    from docvortex.visualization import render_layout_pdf
+@pytest.mark.parametrize("suffix", ["pdf", "png"])
+def test_persist_skips_layout_pdf_rendering(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str) -> None:
+    """PDF 和图片持久化跳过布局 PDF 绘制，并能恢复含旧布局路径的会话状态。"""
+    from docvortex import visualization
 
-    from mineru.kit.gradio.preview import draw_layout_overlay
-
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes(page_count=3))
-    middle = _middle_json(page_indices=(1, 2))
-    before = middle.model_dump(mode="json")
-    expected = render_layout_pdf(source.read_bytes(), middle.pages, page_indices=page_indices or None)
-    preview = tmp_path / "preview" / "layout.pdf"
-    draw_layout_overlay(middle, source, preview, page_indices=page_indices)
-    document_output = tmp_path / "document.pdf"
-    with PDFDocument(source.read_bytes()) as document:
-        document.draw_layout_bbox(middle.pages, str(document_output), page_indices=page_indices or None)
-    expected_pages = PdfReader(io.BytesIO(expected)).pages
-    for output in (preview, document_output):
-        actual_pages = PdfReader(output).pages
-        assert len(actual_pages) == 3
-        for actual, wanted in zip(actual_pages, expected_pages):
-            assert actual.mediabox == wanted.mediabox
-            assert actual.cropbox == wanted.cropbox
-            assert actual.rotation == wanted.rotation
-            wanted_content = wanted.get_contents()
-            if wanted_content is None:
-                assert actual.get_contents() is None
-            else:
-                assert actual.get_contents().get_data() == wanted_content.get_data()
-    assert middle.model_dump(mode="json") == before
-    missing_page = 1 if page_indices else 0
-    assert expected_pages[missing_page].get_contents() is None
-
-
-def test_layout_preview_rejects_invalid_input_without_writing(tmp_path: Path) -> None:
-    """薄封装保留输入校验，并在映射非法时不写入布局产物。"""
-    from mineru.kit.gradio.preview import draw_layout_overlay
-
-    source = tmp_path / "source.pdf"
-    output = tmp_path / "layout.pdf"
-    with pytest.raises(TypeError, match="MiddleJson"):
-        draw_layout_overlay({}, source, output)
-    with pytest.raises(FileNotFoundError):
-        draw_layout_overlay(_middle_json(), source, output)
-    source.write_bytes(_pdf_bytes())
-    with pytest.raises(ValueError, match="page_indices length"):
-        draw_layout_overlay(_middle_json(), source, output, page_indices=(0, 1))
-    assert not output.exists()
-
-
-def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """共享绘制失败仍由 Gradio 记录告警，其他解析文件和下载包继续生成。"""
     from mineru.kit.gradio import artifacts as artifact_module
-    from mineru.kit.gradio import preview
+    from mineru.kit.gradio.conversion_service import _prepare_preview
 
-    def fail_layout(*_args: Any, **_kwargs: Any) -> bytes:
-        """模拟共享绘制引擎失败以验证产品层降级路径。"""
-        raise ValueError("layout fixture failure")
-
-    warnings = Mock()
-    monkeypatch.setattr(preview, "render_layout_pdf", fail_layout)
-    monkeypatch.setattr(artifact_module.logger, "warning", warnings)
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes())
+    render_layout = Mock(side_effect=AssertionError("WebUI must skip layout PDF rendering"))
+    monkeypatch.setattr(visualization, "render_layout_pdf", render_layout)
+    source = tmp_path / f"source.{suffix}"
+    if suffix == "pdf":
+        source.write_bytes(_pdf_bytes())
+    else:
+        Image.new("RGB", (64, 48), "white").save(source)
     artifacts = persist_parse_result(
         ParseResult(middle_json=_middle_json()), source, output_root=tmp_path / "output", page_range=""
     )
-    assert artifacts.layout_pdf_path is None
+    render_layout.assert_not_called()
     assert artifacts.origin_pdf_path.is_file()
     assert artifacts.middle_json_path.is_file()
     assert artifacts.markdown_path.is_file()
     assert not (artifacts.root / "layout.pdf").exists()
-    assert any("Skipping Gradio layout overlay" in call.args[0] for call in warnings.call_args_list)
-    with zipfile.ZipFile(render_download(artifacts.as_state(), "markdown")) as archive:
+    state = artifacts.as_state()
+    assert "layout_pdf_path" not in state
+    legacy_state = {**state, "layout_pdf_path": str(artifacts.root / "layout.pdf")}
+    restored = artifact_module.RunArtifacts.from_state(legacy_state)
+    assert restored.as_state() == state
+    assert _prepare_preview(suffix, restored).pdf_path == artifacts.origin_pdf_path
+    with zipfile.ZipFile(render_download(legacy_state, "markdown")) as archive:
         assert f"{artifacts.stem}.md" in archive.namelist()
         assert "layout.pdf" not in archive.namelist()
 

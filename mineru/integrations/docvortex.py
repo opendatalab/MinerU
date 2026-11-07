@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Literal
+
+from docvortex.errors import DocumentError
 from pydantic import BaseModel, ConfigDict, JsonValue
 from docvortex.schema import DocumentProperties, FileSuffix, MiddleJson, ModelJson
 from docvortex.document.contracts import HtmlSourceContext
+
+from ..errors import InvalidRequestError
+
+
+@contextmanager
+def translate_resource_limit() -> Iterator[None]:
+    """将共享文档资源限制映射为产品输入错误，其他文档异常保留原有处理。"""
+    try:
+        yield
+    except DocumentError as exc:
+        if exc.code == "resource_limit":
+            raise InvalidRequestError(exc.code, exc.message, exc.param) from exc
+        raise
 
 
 class MinerUMetadata(BaseModel):
@@ -30,13 +47,13 @@ def read_source_properties(
     suffix: FileSuffix,
     source_context: HtmlSourceContext | None = None,
 ) -> DocumentProperties:
-    """提取原始输入属性；正文引擎决定输入有效性，属性失败仅记录诊断。"""
+    """提取原始属性，资源限制立即终止处理，其他属性失败仅记录诊断。"""
     from docvortex import extract_metadata
-    from docvortex.errors import DocumentError
     from loguru import logger
 
     try:
-        result = extract_metadata(data, file_suffix=suffix, source_context=source_context)
+        with translate_resource_limit():
+            result = extract_metadata(data, file_suffix=suffix, source_context=source_context)
     except DocumentError as exc:
         logger.warning("metadata_unavailable: source metadata skipped: {}", exc)
         return DocumentProperties()
@@ -56,4 +73,11 @@ def validate_mineru_metadata(document: ModelJson | MiddleJson) -> None:
         MinerUMetadata.model_validate(document.extensions["mineru"])
 
 
-__all__ = ["read_source_properties", "MinerUMetadata", "build_metadata", "with_mineru_metadata", "validate_mineru_metadata"]
+__all__ = [
+    "read_source_properties",
+    "translate_resource_limit",
+    "MinerUMetadata",
+    "build_metadata",
+    "with_mineru_metadata",
+    "validate_mineru_metadata",
+]

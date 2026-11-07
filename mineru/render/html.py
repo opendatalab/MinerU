@@ -14,6 +14,7 @@ def render_html(
     asset_base_url: str = "",
     standalone: bool = True,
     document_title: str | None = None,
+    include_source_map: bool = False,
 ) -> str:
     """惰性加载 HTML 实现并渲染严格 MiddleJson。"""
     from docvortex.render.html import render_html as _render_html
@@ -24,6 +25,7 @@ def render_html(
         asset_base_url=asset_base_url,
         standalone=standalone,
         document_title=document_title,
+        include_source_map=include_source_map,
     )
 
 

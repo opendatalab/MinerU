@@ -263,7 +263,8 @@ const appContext = vm.createContext({
 });
 vm.runInContext(resource("gradio_app.js")
     .replace("__MINERU_I18N__", "stubI18n")
-    .replace("__MINERU_STATUS_TIMER__", "stubTimer"), appContext)();
+    .replace("__MINERU_STATUS_TIMER__", "stubTimer")
+    .replace("__MINERU_TRACE__", "() => {}"), appContext)();
 while (frames.length) frames.shift()();
 const beforeRefresh = localizations;
 observer([externalMutation]);

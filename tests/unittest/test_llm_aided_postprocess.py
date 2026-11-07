@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from mineru.backend.analysis.contracts import AnalysisResult
 from mineru.backend.postprocess.llm_client import LLMAidedClient
-from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
+from mineru.backend.postprocess.llm_aided import aio_apply_llm_aided_postprocess, apply_llm_aided_postprocess
 from mineru.backend.postprocess.table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
 from mineru.backend.postprocess.title_leveling import apply_llm_title_leveling
 from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig
@@ -793,6 +793,58 @@ def test_partial_input_skips_title_but_keeps_table_cell_merge() -> None:
     assert client.operations == ["cross_page_table_cell_merge"]
     assert title.level == 2
     assert pages[1].blocks[0].cell_merge == [0, 1]  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("configured,explicit", [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("indices", [tuple(range(20)), (4, 5, 6), (0, 4, 19)])
+def test_partial_title_scope_preserves_document_identity(
+    asynchronous: bool, configured: bool, explicit: bool, indices: tuple[int, ...]
+) -> None:
+    """同步和异步分级按配置或显式参数放行，覆盖截断、中间片段和非连续原页号。"""
+    titles = [
+        ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline(f"Section {index}"), level=2)
+        for index in indices
+    ]
+    middle = _middle_json(
+        [PageInfo(page_idx=index, blocks=[title]) for index, title in zip(indices, titles)], is_full_document=False
+    )
+    metadata = middle.metadata.model_dump()
+    config = _llm_config(title=True).model_copy(update={"allow_partial_title_leveling": configured})
+    client = _QueuedValidatedClient([{str(index): 3 for index in range(len(titles))}])
+    if asynchronous:
+        asyncio.run(aio_apply_llm_aided_postprocess(
+            middle, config, client=client, allow_partial_title_leveling=explicit  # type: ignore[arg-type]
+        ))
+    else:
+        apply_llm_aided_postprocess(
+            middle, config, client=client, allow_partial_title_leveling=explicit  # type: ignore[arg-type]
+        )
+    enabled = configured or explicit
+    assert client.operations == (["title_leveling"] if enabled else [])
+    assert [title.level for title in titles] == [3 if enabled else 2] * len(titles)
+    assert middle.is_full_document is False
+    assert [page.page_idx for page in middle.pages] == list(indices)
+    assert middle.metadata.model_dump() == metadata
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("title_enabled", [False, True])
+def test_partial_title_policy_respects_main_switch_and_empty_titles(asynchronous: bool, title_enabled: bool) -> None:
+    """放行部分文档仍由标题总开关控制，空标题集合不发送模型请求。"""
+    pages = []
+    if not title_enabled:
+        title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline("Section"), level=2)
+        pages = [PageInfo(page_idx=4, blocks=[title])]
+    middle = _middle_json(pages, is_full_document=False)
+    config = _llm_config(title=title_enabled).model_copy(update={"allow_partial_title_leveling": True})
+    client = _QueuedValidatedClient([])
+    if asynchronous:
+        asyncio.run(aio_apply_llm_aided_postprocess(middle, config, client=client))  # type: ignore[arg-type]
+    else:
+        apply_llm_aided_postprocess(middle, config, client=client)  # type: ignore[arg-type]
+    assert client.operations == []
+    assert middle.is_full_document is False
 
 
 def test_front_vlm_cell_merge_detection_remains_disabled() -> None:

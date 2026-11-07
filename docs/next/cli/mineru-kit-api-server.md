@@ -221,6 +221,11 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 
 本地 api-server 默认监听 loopback。它可以通过 `--api-key` 设置固定 API Key；默认不设置 API Key。设置后，客户端必须发送 `Authorization: Bearer <api-key>`。
 
+URL 来源仅允许公网单播目标。worker 校验全部 DNS 地址并固定连接已校验的 IP，内网、回环、
+链路本地、云元数据和特殊地址返回逐文件 `unsupported_source` 错误。`--allow-http-source` 仅放行
+公网 HTTP。URL 下载使用直连并拒绝重定向，环境代理对此下载无效，环境 CA 配置继续用于 TLS 校验。
+对外部署应配置 API Key 和 worker 出站限制。内网文档可以通过客户端上传。
+
 ## 6. API 覆盖范围
 
 `mineru-kit api-server` 目标是实现 v1 API（非 doclib API）中的绝大多数 path。

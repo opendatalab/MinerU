@@ -230,6 +230,13 @@ def test_epub_preview_anchors_stay_in_srcdoc_without_changing_download(tmp_path:
     assert [link["href"] for link in preview.find_all("a", href=True)] == [
         link["href"] for link in download.find_all("a", href=True)
     ]
+    # 目录只扩展预览副本，移除其专属数据后继续严格比较原始正文。
+    for node in preview.select("[data-mineru-outline]"):
+        node.decompose()
+    for heading in preview.select("[data-mineru-outline-label]"):
+        del heading["data-mineru-outline-label"]
+        if download.find(id=heading.get("id")) is None:
+            del heading["id"]
     assert preview.body == download.body
     assert preview.find("script", id="MathJax-script")["src"].startswith("https://")
     assert preview.find_all("img")

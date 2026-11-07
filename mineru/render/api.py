@@ -166,6 +166,7 @@ def render(
             asset_base_url=resolved_options.asset_base_url,
             standalone=resolved_options.standalone,
             document_title=resolved_options.document_title,
+            include_source_map=resolved_options.include_source_map,
         )
 
     if output_format is RenderFormat.LATEX:
