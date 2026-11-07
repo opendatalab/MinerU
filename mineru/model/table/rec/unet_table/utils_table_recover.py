@@ -419,8 +419,51 @@ def _select_clear_best_cell(
     return None
 
 
-def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.ndarray):
+def _select_atomic_cell(ocr_box: np.ndarray, pred_boxes: np.ndarray, coverage_scores: np.ndarray) -> int | None:
+    """按中心包含、覆盖率和最近距离，为图片或公式确定唯一的有效单元格。"""
+    valid_indices = np.flatnonzero(
+        np.isfinite(pred_boxes).all(axis=1) & (pred_boxes[:, 2] > pred_boxes[:, 0]) & (pred_boxes[:, 3] > pred_boxes[:, 1])
+    )
+    if not len(valid_indices):
+        return None
+
+    boxes = pred_boxes[valid_indices]
+    center = (ocr_box[:2] + ocr_box[2:]) / 2
+    # 两轴均采用左闭右开区间，公共边界稳定归到右侧或下侧单元格。
+    candidates = ((boxes[:, :2] <= center) & (center < boxes[:, 2:])).all(axis=1)
+    primary_scores = -coverage_scores[valid_indices]
+    if not candidates.any():
+        candidates = coverage_scores[valid_indices] > 0
+    if not candidates.any():
+        candidates = np.ones(len(boxes), dtype=bool)
+        distances = np.maximum(np.maximum(boxes[:, :2] - center, center - boxes[:, 2:]), 0)
+        primary_scores = np.sum(distances**2, axis=1)
+    center_distances = np.sum(((boxes[:, :2] + boxes[:, 2:]) / 2 - center) ** 2, axis=1)
+
+    def rank(position: int) -> tuple[float, float, float, float, float, float, int]:
+        """用中心距离、几何坐标和原始索引消除平局，避免归属依赖遍历顺序。"""
+        return (
+            float(primary_scores[position]),
+            float(center_distances[position]),
+            float(boxes[position, 0]),
+            float(boxes[position, 1]),
+            float(boxes[position, 2]),
+            float(boxes[position, 3]),
+            int(valid_indices[position]),
+        )
+
+    best_position = min(np.flatnonzero(candidates).tolist(), key=rank)
+    return int(valid_indices[best_position])
+
+
+def match_ocr_cell(
+    dt_rec_boxes: list[list[Any]],
+    pred_bboxes: np.ndarray,
+    *,
+    atomic_token_indices: frozenset[int] = frozenset(),
+) -> tuple[dict[int, list[list[Any]]], list[list[Any]]]:
     """
+    将 OCR 匹配到单元格；标记的图片和公式整体归属，其余文字保留跨格拆分。
     :param dt_rec_boxes: [[(4.2), text, score]]
     :param pred_bboxes: shap (4,2)
     :return:
@@ -494,6 +537,14 @@ def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.nd
     matched = {}
     not_match_orc_boxes = []
     for i, gt_box in enumerate(dt_rec_boxes):
+        if i in atomic_token_indices:
+            cell_idx = _select_atomic_cell(ocr_boxes[i], pred_boxes, coverage[i])
+            if cell_idx is not None:
+                matched.setdefault(cell_idx, []).append(gt_box)
+            else:
+                not_match_orc_boxes.append(gt_box)
+            continue
+
         projection_indices = np.flatnonzero(projection_mask[i])
         if len(projection_indices) > 1:
             min_segment_width = _min_projection_segment_width(str(gt_box[1]), ocr_boxes[i])

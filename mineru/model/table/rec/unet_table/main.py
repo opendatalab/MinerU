@@ -4,7 +4,7 @@ import logging
 import time
 import traceback
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from bs4 import BeautifulSoup
@@ -66,9 +66,12 @@ class WiredTableRecognition:
     def __call__(
         self,
         img: InputType,
-        ocr_result: Optional[List[Union[List[List[float]], str, str]]] = None,
-        **kwargs,
+        ocr_result: list[list[Any]] | None = None,
+        *,
+        atomic_token_indices: frozenset[int] = frozenset(),
+        **kwargs: Any,
     ) -> WiredTableOutput:
+        """恢复有线表格结构，并在匹配时保持指定图片和公式 token 完整。"""
         s = time.perf_counter()
         need_ocr = True
         col_threshold = 15
@@ -98,7 +101,9 @@ class WiredTableRecognition:
                     logi_points[idx_list],
                     time.perf_counter() - s,
                 )
-            cell_box_det_map, not_match_orc_boxes = match_ocr_cell(ocr_result, polygons)
+            cell_box_det_map, not_match_orc_boxes = match_ocr_cell(
+                ocr_result, polygons, atomic_token_indices=atomic_token_indices
+            )
             # 如果有识别框没有ocr结果，直接进行rec补充
             cell_box_det_map = self.fill_blank_rec(img, polygons, cell_box_det_map)
             # 转换为中间格式，修正识别框坐标,将物理识别框，逻辑识别框，ocr识别框整合为dict，方便后续处理
@@ -269,7 +274,16 @@ class UnetTableModel:
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
         self.ocr_engine = ocr_engine
 
-    def predict(self, input_img, ocr_result, wireless_html_code, return_metadata: bool = False):
+    def predict(
+        self,
+        input_img: Image.Image | np.ndarray,
+        ocr_result: list[list[Any]] | None,
+        wireless_html_code: str,
+        return_metadata: bool = False,
+        *,
+        atomic_token_indices: frozenset[int] = frozenset(),
+    ) -> str | dict[str, Any]:
+        """传递不可拆分对象索引，并按现有规则选择有线或无线表格结果。"""
         if isinstance(input_img, Image.Image):
             np_img = np.asarray(input_img)
         elif isinstance(input_img, np.ndarray):
@@ -287,7 +301,7 @@ class UnetTableModel:
             ]
 
         try:
-            wired_table_results = self.wired_table_model(np_img, ocr_result)
+            wired_table_results = self.wired_table_model(np_img, ocr_result, atomic_token_indices=atomic_token_indices)
             wired_structure_results = self.wired_table_model(np_img, need_ocr=False) if return_metadata else None
 
             # viser = VisTable()
