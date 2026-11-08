@@ -19,6 +19,22 @@
     const text = key => window.__mineruI18n?.text(key) || key;
     const identity = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join("");
     const isImage = name => imageExtensions.some(extension => name.toLowerCase().endsWith(`.${extension}`));
+    // 文件图标只按用途分组，不改变可上传格式；图片仍复用后端提供的扩展名集合。
+    const iconByExtension = {
+        pdf: "pdf", ofd: "ofd",
+        doc: "document", docx: "document", odt: "document", rtf: "document",
+        xls: "sheet", xlsx: "sheet", ods: "sheet", csv: "sheet", tsv: "sheet",
+        ppt: "slides", pptx: "slides", odp: "slides",
+        html: "web", htm: "web", shtml: "web", mhtml: "web", mht: "web",
+        epub: "ebook",
+    };
+    // 大小写后缀使用相同图标，无后缀或未知格式回退到普通文件图标。
+    const fileIconKind = name => {
+        if (isImage(name)) return "image";
+        const dot = name.lastIndexOf(".");
+        const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+        return Object.hasOwn(iconByExtension, extension) ? iconByExtension[extension] : "file";
+    };
     // 本地 File 和 Gradio FileData 共用文件名规则，不把文件名当作 HTML。
     const fileName = file => file?.orig_name || file?.name || file?.path?.split(/[\\/]/).pop() || "";
     // 使用十进制单位；未知大小不能伪装成空文件。
@@ -41,13 +57,20 @@
         node("label").title = name;
         node("size").textContent = pending && progress !== null
             ? `${formatSize(transferred)} / ${formatSize(size)}` : formatSize(size);
-        node("document-icon").toggleAttribute("hidden", isImage(name));
-        node("image-icon").toggleAttribute("hidden", !isImage(name));
-        node("indicator").hidden = !complete && (!pending || progress === null);
+        // 完成状态放在文件大小旁，右侧仅保留上传百分比或清除操作。
+        node("finished").hidden = !complete;
+        node("finished").textContent = `· ${text("upload_complete")}`;
+        const kind = fileIconKind(name);
+        const hasBadge = kind === "pdf" || kind === "ofd";
+        node("file-icon").setAttribute("data-file-kind", kind);
+        element.querySelectorAll("[data-mineru-upload-icon]").forEach(icon => {
+            icon.toggleAttribute("hidden", icon.dataset.mineruUploadIcon !== (hasBadge ? "file" : kind));
+        });
+        node("format-badge").hidden = !hasBadge;
+        node("format-badge").textContent = hasBadge ? kind.toUpperCase() : "";
+        node("indicator").hidden = !pending || progress === null;
         node("percent").hidden = !pending || progress === null;
         node("percent").textContent = `${Math.floor(progress || 0)}%`;
-        node("complete").toggleAttribute("hidden", !complete);
-        node("complete").setAttribute("aria-label", text("upload_complete"));
         node("fill").style.width = `${progress || 0}%`;
         node("fill").hidden = failed || (!pending && !uploadedFile);
         node("meter").hidden = !pending;

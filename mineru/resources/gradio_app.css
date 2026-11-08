@@ -438,15 +438,32 @@ body.dark .gradio-container {
 .dark .mineru-upload-fill { background: rgba(249, 115, 22, 0.18); }
 .mineru-upload-file-row.is-settled .mineru-upload-fill { opacity: 0; }
 .mineru-upload-file-icon {
-    display: flex; align-items: center; justify-content: center; flex: 0 0 30px; width: 30px; height: 38px;
+    position: relative; display: flex; align-items: center; justify-content: center;
+    flex: none; width: 34px; height: 34px; box-sizing: border-box;
     border-radius: 7px; color: #b95810; background: #fff1e3;
 }
 .dark .mineru-upload-file-icon { color: #f4ad72; background: #39291d; }
+.mineru-upload-file-icon svg { width: 20px; height: 20px; }
+/* PDF/OFD 的纸张和文字共用固定坐标，不受外层 flex 主轴或文件条高度影响。 */
+.mineru-upload-file-icon[data-file-kind="pdf"] svg,
+.mineru-upload-file-icon[data-file-kind="ofd"] svg {
+    position: absolute; left: 5px; top: 1.5px; width: 24px; height: 25px;
+}
+.mineru-upload-format-badge {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 0 2px;
+    color: inherit !important; background: inherit; font-size: 11px; line-height: 13px; font-weight: 500;
+    letter-spacing: 0.1px;
+}
 .mineru-upload-details { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; gap: 2px; }
 .mineru-upload-label { display: flex; min-width: 0; font-size: 14px; font-weight: 500; line-height: 20px; }
 .mineru-upload-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mineru-upload-extension { flex: 0 0 auto; }
-.mineru-upload-size { font-size: 12px; line-height: 16px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums; }
+.mineru-upload-meta {
+    display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 4px;
+    font-size: 12px; line-height: 16px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums;
+}
+.mineru-upload-meta > span { color: inherit !important; }
+.mineru-upload-finished { white-space: nowrap; }
 .mineru-upload-indicator {
     display: flex; justify-content: flex-end; align-items: center; flex: 0 0 28px;
     font-size: 12px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums;

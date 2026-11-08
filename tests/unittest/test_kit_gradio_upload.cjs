@@ -24,12 +24,15 @@ function makeNode() {
     };
 }
 const names = ["target", "file-row", "stem", "extension", "label", "size", "document-icon", "image-icon", "indicator",
-    "percent", "complete", "fill", "meter", "remove", "status", "retry"];
+    "percent", "finished", "fill", "meter", "remove", "status", "retry", "file-icon", "format-badge"];
 const nodes = Object.fromEntries(names.map(name => [name, makeNode()]));
+const icons = ["file", "document", "image", "sheet", "slides", "web", "ebook"].map(kind =>
+    Object.assign(kind === "document" || kind === "image" ? nodes[`${kind}-icon`] : makeNode(), {dataset: {mineruUploadIcon: kind}}));
 nodes["file-row"].classList = { toggle: (name, value) => value ? nodes["file-row"].classes.add(name) : nodes["file-row"].classes.delete(name) };
 const input = Object.assign(makeNode(), {value: "", files: []});
 const element = {
     querySelector: selector => selector === 'input[type="file"]' ? input : nodes[selector.replace(".mineru-upload-", "")],
+    querySelectorAll: selector => selector === "[data-mineru-upload-icon]" ? icons : [],
     addEventListener: (name, handler) => { handlers[name] = handler; },
 };
 const requests = [];
@@ -105,7 +108,8 @@ const clear = () => nodes.remove.events.click({preventDefault() {}});
     assert.equal(nodes.size.textContent, "2.5 KB / 10.0 KB");
     first.progress(10000, 10000);
     assert.equal(nodes.status.textContent, "upload_confirming");
-    assert.equal(nodes.complete.hidden, true);
+    assert.equal(nodes.finished.hidden, true);
+    assert.equal(nodes.indicator.hidden, false);
     const secondFile = new File([new Uint8Array(20000)], "same.pdf");
     handlers.drop({preventDefault() {}, dataTransfer: {files: [secondFile]}});
     await tick();
@@ -125,16 +129,27 @@ const clear = () => nodes.remove.events.click({preventDefault() {}});
     const data = window.__mineruUpload.bridge(receipt);
     assert.equal(data.url, context.file_url_prefix + "/cache/new%20%231.pdf");
     assert.equal(data.size, 20000);
-    assert.equal(nodes.complete.hidden, false);
+    assert.equal(nodes.finished.hidden, false);
+    assert.equal(nodes.finished.textContent, "· upload_complete");
+    assert.equal(nodes.indicator.hidden, true);
+    assert.equal(nodes.percent.hidden, true);
     assert.equal(nodes.size.textContent, "20.0 KB");
+    // 语言重新初始化只更新完成文案，不丢失文件大小或重新显示百分比。
+    window.__mineruI18n.text = key => key === "upload_complete" ? "已上传" : key;
+    window.__mineruUpload.localize();
+    assert.equal(nodes.finished.textContent, "· 已上传");
+    assert.equal(nodes.size.textContent, "20.0 KB");
+    window.__mineruI18n.text = key => key;
     assert.equal(window.__mineruUpload.bridge(receipt).__type__, "update");
     window.__mineruUpload.prepared("prepare failed");
     assert.equal(nodes.retry.hidden, false);
+    assert.equal(nodes.finished.hidden, true);
     const requestCount = requests.length;
     nodes.retry.events.click();
     await tick();
     assert.equal(requests.length, requestCount);
     assert.equal(JSON.parse(values.at(-1)).file.path, "/cache/new #1.pdf");
+    assert.equal(nodes.finished.hidden, false);
     assert.equal(window.__mineruUpload.bridge(receipt).__type__, "update");
 
     await choose(new File(["file"], '<img src=x onerror=alert(1)>.pdf'));
@@ -145,7 +160,9 @@ const clear = () => nodes.remove.events.click({preventDefault() {}});
     assert.equal(nodes.status.textContent, "File too large");
     assert.equal(nodes.status.attributes.role, "alert");
     assert.equal(nodes.retry.hidden, false);
+    assert.equal(nodes.finished.hidden, true);
     nodes.retry.events.click();
+    assert.equal(nodes.finished.hidden, true);
     await tick();
     assert.notEqual(requests.at(-1), rejected);
     requests.at(-1).dispatchEvent(new Event("error"));
@@ -168,6 +185,7 @@ const clear = () => nodes.remove.events.click({preventDefault() {}});
     await tick();
     assert.equal(nodes.target.hidden, false);
     assert.equal(nodes["file-row"].hidden, true);
+    assert.equal(nodes.finished.hidden, true);
     assert.equal(values.length, beforeClear);
     assert.equal(window.__mineruUpload.bridge(receipt).__type__, "update");
 
