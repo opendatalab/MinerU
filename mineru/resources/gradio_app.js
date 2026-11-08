@@ -1,6 +1,6 @@
 (viewerEntry) => {
     const preview = __MINERU_PDF_PREVIEW__;
-    const APP_SCRIPT_VERSION = "v9-page-capsule";
+    const APP_SCRIPT_VERSION = "v10-page-gestures";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         preview("setup", viewerEntry);
         return;
@@ -50,27 +50,12 @@
         });
     };
 
-    // 原生 range 的值更新后重画共用轨道，不修改组件值或触发额外事件。
-    const refreshPageRangeTrack = () => {
-        const track = document.querySelector(".mineru-page-sliders");
-        const handleA = track?.querySelector('.mineru-page-handle-a input[type="range"]');
-        const handleB = track?.querySelector('.mineru-page-handle-b input[type="range"]');
-        if (!handleA || !handleB) {
-            return;
-        }
-        const span = Math.max(1, Number(handleA.max) - 1);
-        const start = Math.min(Number(handleA.value), Number(handleB.value));
-        const end = Math.max(Number(handleA.value), Number(handleB.value));
-        track.style.setProperty("--range-start", `${(start - 1) / span * 100}%`);
-        track.style.setProperty("--range-end", `${(end - 1) / span * 100}%`);
-    };
-
     // 自定义 HTML 由 Gradio 动态重绘，统一在 DOM 变更后补本地化和忽略状态。
     const refreshMineruCustomHtml = () => {
         statusTimer.sync();
         localizeMineruCustomText();
         applyOfficePreviewNoticePreference();
-        refreshPageRangeTrack();
+        window.__mineruPageRange?.localize();
     };
 
     refreshMineruCustomHtml();
@@ -84,10 +69,10 @@
             attributeFilter: ["title", "aria-label", "data-mineru-i18n-en", "data-mineru-i18n-zh"],
         };
         const uiObserver = new MutationObserver((mutations) => {
-            // 本地计时与排队动画的文字变化无需重新扫描整页，避免递归本地化。
+            // 本地计时、选页预览与排队动画无需重新扫描整页，避免递归本地化。
             if (mutations.every(({ target }) => {
                 const element = target.nodeType === 1 ? target : target.parentElement;
-                return element?.closest?.("[data-mineru-local-timer], [data-mineru-local-animation]");
+                return element?.closest?.("[data-mineru-local-timer], [data-mineru-local-animation], [data-mineru-page-live]");
             })) {
                 return;
             }
@@ -131,39 +116,5 @@
             target.closest(".office-preview-notice")?.classList.add("is-dismissed");
             return;
         }
-    });
-
-
-    // 拖动时下一帧读取 Gradio 已同步的值；键盘输入也走同一条路径。
-    document.addEventListener("input", (event) => {
-        if (event.target instanceof Element && event.target.closest(".mineru-page-sliders")) {
-            requestAnimationFrame(refreshPageRangeTrack);
-        }
-    });
-
-    // 优先命中离指针最近的物理滑块；重合时按当前起止角色决定左右半边的命中目标。
-    document.addEventListener("pointermove", (event) => {
-        if (event.buttons || !(event.target instanceof Element)) {
-            return;
-        }
-        const track = event.target.closest(".mineru-page-sliders");
-        const rootA = track?.querySelector(".mineru-page-handle-a");
-        const rootB = track?.querySelector(".mineru-page-handle-b");
-        const handleA = rootA?.querySelector('input[type="range"]');
-        const handleB = rootB?.querySelector('input[type="range"]');
-        if (!handleA || !handleB) {
-            return;
-        }
-        const bounds = handleA.getBoundingClientRect();
-        const span = Math.max(1, Number(handleA.max) - 1);
-        const centerA = bounds.left + 14 + (Number(handleA.value) - 1) / span * (bounds.width - 28);
-        const centerB = bounds.left + 14 + (Number(handleB.value) - 1) / span * (bounds.width - 28);
-        const startHandle = track.closest(".mineru-kit-page-range")
-            ?.querySelector("[data-start-handle]")?.getAttribute("data-start-handle") || "a";
-        const preferA = handleA.value === handleB.value
-            ? (event.clientX < centerA ? startHandle === "a" : startHandle !== "a")
-            : Math.abs(event.clientX - centerA) < Math.abs(event.clientX - centerB);
-        rootA.style.zIndex = preferA ? "5" : "2";
-        rootB.style.zIndex = preferA ? "2" : "5";
     });
 }

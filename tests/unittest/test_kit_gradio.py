@@ -1239,8 +1239,8 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert label_event["backend_fn"] is False
     assert label_event["queue"] is False
     assert label_event["trigger_mode"] == "always_last"
-    assert label_event["outputs"][7:9] == [slider._id, label._id]
-    preference = demo.blocks[label_event["outputs"][9]]
+    assert label_event["outputs"][6:8] == [slider._id, label._id]
+    preference = demo.blocks[label_event["outputs"][8]]
     assert preference.visible is False
     assert json.loads(preference.value) == {"tier": default_tier, "locked": False}
     assert preference._id in label_event["inputs"]

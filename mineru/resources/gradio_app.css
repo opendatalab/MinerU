@@ -55,7 +55,7 @@ body.dark .gradio-container {
     padding: 0 !important;
     gap: 0 !important;
 }
-/* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
+/* 两端共用本地交互轨道，透明热区扩大到 44px，原生 range 保留键盘与读屏语义。 */
 .mineru-kit-page-range {
     --page-accent: #316ede; --page-bg: #fff; --page-text: #25252a; --page-muted: #72727c;
     --page-border: #e0e1e6; --page-track: #e8e9ef; --page-hover: #edf0f6;
@@ -115,7 +115,12 @@ body.dark .gradio-container {
 }
 .mineru-kit-page-range .mineru-page-preset:hover:not(:disabled) { background: var(--page-hover) !important; }
 .mineru-page-preset:disabled, .mineru-page-number input:disabled { opacity: .6; }
-.mineru-page-sliders { position: relative !important; height: 48px; min-height: 48px !important; gap: 0 !important; margin-top: 7px; }
+.mineru-page-control { padding: 0 !important; border: 0 !important; overflow: visible !important; }
+.mineru-page-control .html-container { padding: 0 !important; }
+.mineru-page-sliders {
+    position: relative; height: 48px; min-height: 48px; margin-top: 7px;
+    touch-action: pan-y; user-select: none; cursor: pointer;
+}
 .mineru-page-sliders::before {
     content: ""; position: absolute; left: 14px; right: 14px; top: 17px; height: 14px; border-radius: 99px;
     background: linear-gradient(to right,
@@ -123,34 +128,32 @@ body.dark .gradio-container {
         var(--page-accent) var(--range-start, 0%), var(--page-accent) var(--range-end, 100%),
         var(--page-track) var(--range-end, 100%));
 }
-.mineru-page-sliders > .form { position: static !important; }
-.mineru-page-handle-a, .mineru-page-handle-b {
-    position: absolute !important; inset: 0; width: 100% !important; min-width: 0 !important;
-    padding: 0 !important; border: 0 !important; background: transparent !important; pointer-events: none;
-}
-.mineru-page-handle-a .head, .mineru-page-handle-b .head,
-.mineru-page-sliders .min_value, .mineru-page-sliders .max_value { display: none !important; }
+.mineru-page-handle-a, .mineru-page-handle-b { position: absolute; inset: 0; pointer-events: none; }
 .mineru-page-sliders input[type="range"] {
     position: absolute; inset: 0; width: 100%; height: 48px; padding: 0; margin: 0;
-    appearance: none; pointer-events: none; background: transparent !important;
+    opacity: 0; pointer-events: none;
 }
-.mineru-page-sliders input[type="range"]::-webkit-slider-runnable-track { height: 14px; background: transparent !important; }
-.mineru-page-sliders input[type="range"]::-moz-range-track,
-.mineru-page-sliders input[type="range"]::-moz-range-progress { height: 14px; background: transparent !important; }
-.mineru-page-sliders input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none; pointer-events: auto; width: 28px; height: 28px; margin-top: -7px;
-    border: 0; border-radius: 50%; background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px);
-    box-shadow: 0 2px 7px #00000020; cursor: grab;
+.mineru-page-thumb {
+    position: absolute; left: calc(14px + (100% - 28px) * var(--page-position, 0)); top: 10px;
+    width: 28px; height: 28px; transform: translateX(-50%); border-radius: 50%;
+    background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px);
+    box-shadow: 0 2px 7px #00000020; transition: box-shadow .12s ease, scale .12s ease;
 }
-.mineru-page-sliders input[type="range"]::-moz-range-thumb {
-    pointer-events: auto; width: 28px; height: 28px; border: 0; border-radius: 50%;
-    background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px); box-shadow: 0 2px 7px #00000020; cursor: grab;
+.mineru-page-sliders[data-keyboard="true"] input:focus-visible + .mineru-page-thumb {
+    outline: 2px solid var(--page-accent); outline-offset: 3px;
 }
-.mineru-page-sliders input[type="range"]:disabled::-webkit-slider-thumb { pointer-events: none; }
-.mineru-page-sliders input[type="range"]:disabled::-moz-range-thumb { pointer-events: none; }
-.mineru-page-handle-a { z-index: 2; }
-.mineru-page-handle-b { z-index: 3; }
-.mineru-page-handle-a:focus-within, .mineru-page-handle-b:focus-within { z-index: 4; }
+.mineru-page-sliders[data-active="a"] .mineru-page-handle-a,
+.mineru-page-sliders[data-active="b"] .mineru-page-handle-b { z-index: 2; }
+.mineru-page-sliders[data-active="a"] .mineru-page-handle-a .mineru-page-thumb,
+.mineru-page-sliders[data-active="b"] .mineru-page-handle-b .mineru-page-thumb,
+.mineru-page-sliders[data-active="pan"] .mineru-page-thumb,
+.mineru-page-sliders[data-active="pending"] .mineru-page-thumb {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--page-accent) 14%, transparent), 0 3px 8px #00000025;
+}
+.mineru-page-sliders[data-hover="pan"], .mineru-page-sliders[data-hover="a"],
+.mineru-page-sliders[data-hover="b"], .mineru-page-sliders[data-hover="pending"] { cursor: grab; }
+.mineru-page-sliders[data-active]:not([data-active=""]) { cursor: grabbing; }
+.mineru-page-sliders[data-disabled="true"] { cursor: default; }
 @media (pointer: coarse) {
     .mineru-page-number label { min-height: 44px; }
     .mineru-kit-page-range .mineru-page-number input { width: 40px !important; height: 28px; min-height: 28px; font-size: 16px; }

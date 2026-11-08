@@ -483,7 +483,7 @@ def build_gradio_app(
                 # 用 JSON 文本承载前端状态，保持现有事件输入契约。
                 page_metadata = gr.Textbox(value="{}", visible=False)
                 page_selection = gr.Textbox(value="{}", visible=False)
-                # 通过子 HTML 的明确状态控制显隐，保留原生滑块的交互状态。
+                # 摘要控制显隐，选页组件本地预览手势并在松手时原子提交两端。
                 with gr.Column(min_width=0, elem_classes=["mineru-kit-page-range"]):
                     page_summary = gr.HTML(value="", elem_classes=["mineru-page-summary"])
                     with gr.Row(elem_classes=["mineru-page-inputs"]):
@@ -517,30 +517,19 @@ def build_gradio_app(
                             min_width=0,
                             elem_classes=["mineru-page-preset"],
                         )
-                    with gr.Row(elem_classes=["mineru-page-sliders"]):
-                        page_handle_a = gr.Slider(
-                            minimum=1,
-                            # 新版 Gradio 拒绝零跨度，单页与空状态仍保持禁用和值为 1。
-                            maximum=2,
-                            value=1,
-                            step=1,
-                            precision=0,
-                            label=i18n("mineru.start_page"),
-                            interactive=False,
-                            container=False,
-                            elem_classes=["mineru-page-handle-a"],
-                        )
-                        page_handle_b = gr.Slider(
-                            minimum=1,
-                            maximum=2,
-                            value=1,
-                            step=1,
-                            precision=0,
-                            label=i18n("mineru.end_page"),
-                            interactive=False,
-                            container=False,
-                            elem_classes=["mineru-page-handle-b"],
-                        )
+                    page_control = gr.HTML(
+                        value="{}",
+                        html_template=_resource_text("gradio_page_control.html"),
+                        js_on_load=(
+                            "("
+                            + _resource_text("gradio_page_control.js").replace(
+                                "__MINERU_PAGE_RANGE_MODEL__", _resource_text("gradio_page_range_model.js")
+                            )
+                            + f")({{element, props, trigger, watch, maxPages: {json.dumps(max_pages)}}})"
+                        ),
+                        apply_default_css=False,
+                        elem_classes=["mineru-page-control"],
+                    )
                 page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button(
@@ -933,16 +922,14 @@ def build_gradio_app(
             tier_control,
             page_metadata,
             page_selection,
-            page_handle_a,
-            page_handle_b,
+            page_control,
             tier_selection,
             source_ready,
             page_start,
             page_end,
         ]
         range_outputs = [
-            page_handle_a,
-            page_handle_b,
+            page_control,
             page_summary,
             page_range,
             page_selection,
@@ -955,15 +942,16 @@ def build_gradio_app(
             page_end,
             page_preset,
         ]
-        range_script = _resource_text("gradio_page_range.js")
+        range_script = _resource_text("gradio_page_range.js").replace(
+            "__MINERU_PAGE_RANGE_MODEL__", _resource_text("gradio_page_range_model.js")
+        )
         # 共用一个 always_last 事件流，避免文件、元数据、清除与拖动的并行回调互相覆盖。
         gr.on(
             triggers=[
                 input_file.change,
                 tier_control.input,
                 page_metadata.change,
-                page_handle_a.input,
-                page_handle_b.input,
+                page_control.input,
                 source_ready.change,
                 page_start.submit,
                 page_start.blur,

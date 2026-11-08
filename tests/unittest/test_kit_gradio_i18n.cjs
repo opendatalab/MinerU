@@ -15,25 +15,25 @@ for (const [languages, language, expected] of [
     assert.equal(i18n.resolveLocale(), expected);
     assert.equal(i18n.text("force_ocr_info"), messages.force_ocr_info[expected === "zh" ? 1 : 0]);
     assert.ok(i18n.text("failed", { error: "$& 文件.pdf" }).includes("$& 文件.pdf"));
-    const range = vm.runInContext(resource("gradio_page_range.js"), context);
+    const range = vm.runInContext(resource("gradio_page_range.js")
+        .replace("__MINERU_PAGE_RANGE_MODEL__", resource("gradio_page_range_model.js")), context);
     const out = range(["flash", "standard"], ["csv"], 20, "/test.pdf", 1,
-        JSON.stringify({ path: "/test.pdf", page_count: 10 }), "{}", 1, 1,
+        JSON.stringify({ path: "/test.pdf", page_count: 10 }), "{}", "{}",
         JSON.stringify({ tier: "standard", locked: false }));
-    assert.equal(out[0].label, i18n.text("start_page"));
-    assert.equal(out[3], "1-10");
-    assert.ok(out[2].includes(i18n.text("page_limit", { count: 20 })));
-    assert.equal(out[8].props.selected_tier, "standard");
-    assert.equal(out[8].props.locked, false);
-    assert.ok(!out[2].includes("<strong>"));
-    assert.ok(!out[2].includes(i18n.text("start_page")));
-    assert.ok(!out[2].includes(i18n.text("end_page")));
+    assert.equal(out[2], "1-10");
+    assert.ok(out[1].includes(i18n.text("page_limit", { count: 20 })));
+    assert.equal(out[7].props.selected_tier, "standard");
+    assert.equal(out[7].props.locked, false);
+    assert.ok(!out[1].includes("<strong>"));
+    assert.ok(!out[1].includes(i18n.text("start_page")));
+    assert.ok(!out[1].includes(i18n.text("end_page")));
     for (const [position, tier] of ["flash", "basic", "standard", "advanced"].entries()) {
         const labels = expected === "zh"
             ? ["flash · 极速", "basic · 中", "standard · 高", "advanced · 极高"]
             : ["flash", "basic · medium", "standard · high", "advanced · xhigh"];
         const result = range(["flash", "basic", "standard", "advanced"], ["csv"], null, null, position,
-            "{}", "{}", 1, 1, JSON.stringify({ tier, locked: false }));
-        assert.equal(result[8].props.selected_tier, tier);
+            "{}", "{}", "{}", JSON.stringify({ tier, locked: false }));
+        assert.equal(result[7].props.selected_tier, tier);
         assert.equal(i18n.text(`tier_compact_${tier}`), labels[position]);
     }
     const download = vm.runInContext(resource("gradio_download.js"), context);

@@ -312,20 +312,17 @@ def test_metadata_does_not_read_non_pdf(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> None:
-    """双滑块联动与档位切换不请求 Python，公开转换输入在页码之后增加 OCR 开关。"""
+    """选页手势原子提交且不请求 Python，公开转换输入仍保持四个参数。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
     demo = gradio_app.build_gradio_app(Mock(), capabilities, output_root=tmp_path, max_pages=20, enable_example=False)
-    sliders = [block for block in demo.blocks.values() if block.__class__.__name__ == "Slider"]
-    assert len(sliders) == 3
-    assert sliders[1].elem_classes == ["mineru-page-handle-a"]
-    assert sliders[2].elem_classes == ["mineru-page-handle-b"]
-    for slider in sliders[1:]:
-        assert slider.step == 1 and slider.precision == 0
-        events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
-        assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
-        assert events[0]["trigger_mode"] == "always_last"
-        assert len(events[0]["targets"]) == 10
-        assert events[0]["outputs"][:2] == [sliders[1]._id, sliders[2]._id]
+    control = next(block for block in demo.blocks.values() if "mineru-page-control" in (block.elem_classes or []))
+    assert control.__class__.__name__ == "HTML"
+    assert control.html_template.count('type="range"') == 2
+    events = [event for event in demo.config["dependencies"] if (control._id, "input") in event["targets"]]
+    assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
+    assert events[0]["trigger_mode"] == "always_last"
+    assert len(events[0]["targets"]) == 9
+    assert events[0]["outputs"][0] == control._id
     numbers = [block for block in demo.blocks.values() if "mineru-page-number" in (block.elem_classes or [])]
     assert len(numbers) == 2
     for number in numbers:
@@ -374,3 +371,10 @@ def test_frontend_tier_capsule_interactions() -> None:
     node = shutil.which("node")
     assert node is not None
     subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_tier.cjs"))], check=True)
+
+
+def test_frontend_page_range_gestures() -> None:
+    """执行真实手势控制器，验证本地预览、原子提交、整段平移和取消竞态。"""
+    node = shutil.which("node")
+    assert node is not None
+    subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_page_control.cjs"))], check=True)
