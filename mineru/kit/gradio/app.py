@@ -486,6 +486,37 @@ def build_gradio_app(
                 # 通过子 HTML 的明确状态控制显隐，保留原生滑块的交互状态。
                 with gr.Column(min_width=0, elem_classes=["mineru-kit-page-range"]):
                     page_summary = gr.HTML(value="", elem_classes=["mineru-page-summary"])
+                    with gr.Row(elem_classes=["mineru-page-inputs"]):
+                        page_start = gr.Number(
+                            value=1,
+                            minimum=1,
+                            maximum=1,
+                            precision=0,
+                            label=i18n("mineru.start_page_short"),
+                            show_label=True,
+                            interactive=False,
+                            min_width=0,
+                            elem_classes=["mineru-page-number", "mineru-page-start"],
+                        )
+                        page_end = gr.Number(
+                            value=1,
+                            minimum=1,
+                            maximum=1,
+                            precision=0,
+                            label=i18n("mineru.end_page_short"),
+                            show_label=True,
+                            interactive=False,
+                            min_width=0,
+                            elem_classes=["mineru-page-number", "mineru-page-end"],
+                        )
+                        page_preset = gr.Button(
+                            i18n("mineru.page_all"),
+                            interactive=False,
+                            size="sm",
+                            scale=0,
+                            min_width=0,
+                            elem_classes=["mineru-page-preset"],
+                        )
                     with gr.Row(elem_classes=["mineru-page-sliders"]):
                         page_handle_a = gr.Slider(
                             minimum=1,
@@ -906,6 +937,8 @@ def build_gradio_app(
             page_handle_b,
             tier_selection,
             source_ready,
+            page_start,
+            page_end,
         ]
         range_outputs = [
             page_handle_a,
@@ -918,6 +951,9 @@ def build_gradio_app(
             tier,
             tier_control,
             tier_selection,
+            page_start,
+            page_end,
+            page_preset,
         ]
         range_script = _resource_text("gradio_page_range.js")
         # 共用一个 always_last 事件流，避免文件、元数据、清除与拖动的并行回调互相覆盖。
@@ -929,6 +965,10 @@ def build_gradio_app(
                 page_handle_a.input,
                 page_handle_b.input,
                 source_ready.change,
+                page_start.submit,
+                page_start.blur,
+                page_end.submit,
+                page_end.blur,
             ],
             fn=None,
             inputs=range_inputs,
@@ -938,6 +978,17 @@ def build_gradio_app(
                 f"{json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS))}, {json.dumps(max_pages)}, ...args)"
             ),
             trigger_mode="always_last",
+            **private_event_kwargs,
+        )
+        # 快捷选择仍调用同一状态机，一次更新两端、精确输入和提交范围。
+        page_preset.click(
+            fn=None,
+            inputs=range_inputs,
+            outputs=range_outputs,
+            js=(
+                f"(...args) => ({range_script})({json.dumps(tier_choices)}, "
+                f"{json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS))}, {json.dumps(max_pages)}, ...args, true)"
+            ),
             **private_event_kwargs,
         )
 

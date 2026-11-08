@@ -1,6 +1,6 @@
 (viewerEntry) => {
     const preview = __MINERU_PDF_PREVIEW__;
-    const APP_SCRIPT_VERSION = "v8-persistent-source";
+    const APP_SCRIPT_VERSION = "v9-page-capsule";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         preview("setup", viewerEntry);
         return;
@@ -156,8 +156,8 @@
         }
         const bounds = handleA.getBoundingClientRect();
         const span = Math.max(1, Number(handleA.max) - 1);
-        const centerA = bounds.left + 8 + (Number(handleA.value) - 1) / span * (bounds.width - 16);
-        const centerB = bounds.left + 8 + (Number(handleB.value) - 1) / span * (bounds.width - 16);
+        const centerA = bounds.left + 14 + (Number(handleA.value) - 1) / span * (bounds.width - 28);
+        const centerB = bounds.left + 14 + (Number(handleB.value) - 1) / span * (bounds.width - 28);
         const startHandle = track.closest(".mineru-kit-page-range")
             ?.querySelector("[data-start-handle]")?.getAttribute("data-start-handle") || "a";
         const preferA = handleA.value === handleB.value

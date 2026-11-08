@@ -17,7 +17,7 @@ const tieredExtensions = JSON.parse(process.argv[3]);
 function createUi(limit = 20, availableTiers = tiers) {
     const defaultTier = availableTiers.includes("standard") ? "standard" : availableTiers.at(-1);
     const state = {
-        file: null, position: availableTiers.indexOf(defaultTier), metadata: {}, previous: {}, a: 1, b: 1,
+        file: null, position: availableTiers.indexOf(defaultTier), metadata: {}, previous: {}, a: 1, b: 1, start: 1, end: 1,
         tierSelection: { tier: defaultTier, locked: false },
     };
     return {
@@ -29,13 +29,16 @@ function createUi(limit = 20, availableTiers = tiers) {
             const result = reduce(
                 availableTiers, flashOnlyExtensions, limit, state.file, state.position,
                 JSON.stringify(state.metadata), JSON.stringify(state.previous), state.a, state.b,
-                JSON.stringify(state.tierSelection), (typeof state.file === "string" ? state.file : state.file?.path) || ""
+                JSON.stringify(state.tierSelection), (typeof state.file === "string" ? state.file : state.file?.path) || "",
+                state.start, state.end, action === "preset"
             );
             if ("value" in result[0]) state.a = result[0].value;
             if ("value" in result[1]) state.b = result[1].value;
             if (result[4].__type__ !== "update") state.previous = JSON.parse(result[4]);
             if ("value" in result[7]) state.position = result[7].value;
             state.tierSelection = JSON.parse(result[9]);
+            state.start = result[10].value;
+            state.end = result[11].value;
             return result;
         },
         upload(count, filename = "/report.pdf") {
@@ -142,8 +145,11 @@ function assertSelection(result, a, b, startHandle) {
     assert.equal(result[0].label, startHandle === "a" ? "起始页" : "结束页");
     assert.equal(result[1].label, startHandle === "b" ? "起始页" : "结束页");
     assert.equal(result[3], start === end ? String(start) : `${start}-${end}`);
-    assert(result[2].includes(`[${start}-${end}] · ${end - start + 1} 页`));
+    assert(result[2].includes(`>${end - start + 1}</span> / ${state.page_count} 页`));
+    assert(result[2].includes(start === end ? `第 ${start} 页` : `第 ${start}–${end} 页`));
     assert(result[2].includes(`data-start-handle="${startHandle}"`));
+    assert.equal(result[10].value, start);
+    assert.equal(result[11].value, end);
 }
 
 let ui = createUi();
@@ -229,12 +235,42 @@ ui = createUi();
 ui.step("file", { file: { path: "/bad.pdf" } });
 out = ui.step("metadata", { metadata: { path: "/bad.pdf", page_count: 0, error: "<bad>" } });
 assert.equal(out[5].interactive, false);
-assert.match(out[2], /无法读取 PDF 页数/);
+assert.match(out[2], /无法读取页数/);
 assert.equal(out[6].value, "&lt;bad&gt;");
 out = ui.step("tier", { position: 0 });
 assert.equal(out[5].interactive, false);
 assert.equal(out[6].visible, true);
 assert.equal(out[6].value, "&lt;bad&gt;");
+
+// 精确输入与滑块共用物理端点；快捷选择一次恢复两端，包含已交叉和单页上限。
+ui = createUi();
+out = ui.upload(48);
+assert.equal(out[12].value, "前 20 页");
+assertSelection(ui.step("end", { end: 30 }), 11, 30, "a");
+assertSelection(ui.step("start", { start: 5 }), 5, 24, "a");
+assertSelection(ui.step("start", { start: 10 }), 10, 24, "a");
+assertSelection(ui.step("start", { start: 40 }), 40, 24, "b");
+assertSelection(ui.step("end", { end: 48 }), 48, 29, "b");
+assertSelection(ui.step("start", { start: null }), 48, 29, "b");
+assertSelection(ui.step("end", { end: NaN }), 48, 29, "b");
+assertSelection(ui.step("preset"), 1, 20, "a");
+assertSelection(ui.step("end", { end: 999 }), 29, 48, "a");
+assertSelection(ui.step("start", { start: 0 }), 1, 20, "a");
+ui = createUi(null);
+assert.equal(ui.upload(48)[12].value, "全部");
+ui.step("end", { end: 20 });
+assertSelection(ui.step("preset"), 1, 48, "a");
+ui = createUi(20);
+out = ui.upload(12);
+assert.equal(out[12].value, "全部");
+out = ui.upload(1, "/single.pdf");
+assert.equal(out[10].interactive, false);
+assert.equal(out[11].maximum, 1);
+assert.equal(out[12].interactive, false);
+ui = createUi(1);
+ui.upload(48);
+assertSelection(ui.step("end", { end: 40 }), 40, 40, "a");
+assertSelection(ui.step("preset"), 1, 1, "a");
 
 // 确定性遍历总页数和上限：物理值允许倒序，排序后的范围、角色与上限必须一致。
 for (const count of [1, 12, 20, 100]) {

@@ -57,26 +57,71 @@ body.dark .gradio-container {
 }
 /* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
 .mineru-kit-page-range {
-    display: none !important; position: relative; padding: 4px 12px 15px !important; overflow: visible !important;
-    border: 1px solid var(--mineru-panel-border); border-radius: 8px;
+    --page-accent: #316ede; --page-bg: #fff; --page-text: #25252a; --page-muted: #72727c;
+    --page-border: #e0e1e6; --page-track: #e8e9ef; --page-hover: #edf0f6;
+    display: none !important; position: relative; padding: 14px 16px 32px !important; overflow: visible !important;
+    border: 1px solid var(--page-border); border-radius: 16px;
+    color: var(--page-text); background: var(--page-bg);
     gap: 0 !important; flex: 0 0 auto !important;
+}
+.dark .mineru-kit-page-range {
+    --page-accent: #438cff; --page-bg: #2d2d2f; --page-text: #f2f2f5; --page-muted: #a6a6af;
+    --page-border: #48484d; --page-track: #424247; --page-hover: #38383e;
 }
 /* 用明确的选页状态控制可见性，保留原生滑块的交互状态。 */
 .mineru-kit-page-range:has([data-range-visible="true"]) { display: flex !important; }
 .mineru-page-summary, .mineru-page-summary .html-container { padding: 0 !important; }
-.mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.mineru-page-values { font-size: 12px; justify-content: center; }
-.mineru-page-selection { font-weight: 600; color: var(--mineru-accent); }
-.mineru-page-axis { position: absolute; bottom: 0; left: 0; right: 0; font-size: 12px; opacity: .7; }
+.mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mineru-page-values { flex-wrap: nowrap; gap: 6px; min-height: 20px; font-size: 12px; line-height: 20px; }
+.mineru-page-heading { display: flex; align-items: baseline; flex: 1; min-width: 0; gap: 6px; }
+.mineru-page-title { flex: none; color: var(--page-text); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.mineru-page-limit { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--page-muted); font-size: 11px; white-space: nowrap; }
+.mineru-page-selection { flex: none; margin-left: auto; color: var(--page-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mineru-page-selected-count { color: var(--page-accent); font-weight: 500; }
+.mineru-page-axis { position: absolute; font-size: 11px; line-height: 16px; color: var(--page-muted); font-variant-numeric: tabular-nums; }
+.mineru-page-interval { text-align: center; }
 .mineru-page-summary { position: static !important; }
-.mineru-kit-page-range .mineru-page-axis { bottom: 4px; left: 12px; right: 12px; }
-.mineru-page-sliders { position: relative !important; height: 32px; min-height: 32px !important; gap: 0 !important; }
+.mineru-kit-page-range .mineru-page-axis { bottom: 12px; left: 16px; right: 16px; }
+/* 紧凑数字输入保留原生 Gradio 组件，避免 HTML 重绘打断焦点和正在输入的数字。 */
+.mineru-page-inputs { align-items: center !important; flex-wrap: nowrap !important; gap: 6px !important; margin-top: 12px; }
+.mineru-page-inputs > .form {
+    display: flex !important; align-items: center; flex: 0 1 auto !important; min-width: 0 !important; gap: 6px !important;
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+.mineru-kit-page-range .mineru-page-number {
+    flex: 0 0 auto !important; min-width: 0 !important; width: auto !important; padding: 0 !important; margin: 0 !important;
+    border: 0 !important; background: transparent !important; overflow: visible !important;
+}
+.mineru-page-end { display: flex !important; align-items: center; gap: 6px; }
+.mineru-page-end::before { content: "—"; color: var(--page-muted); font-size: 12px; line-height: 18px; }
+.mineru-page-number label { display: flex !important; align-items: center; gap: 4px; margin: 0 !important; padding: 0 !important; }
+.mineru-page-number .label-wrap, .mineru-page-number .block-title { padding: 0 !important; margin: 0 !important; }
+/* 原生标签的底部留白用于纵向表单，横排时必须清除才能与输入框、横线居中对齐。 */
+.mineru-page-number label > span {
+    margin: 0 !important; padding: 0 !important; font-size: 12px !important; line-height: 18px;
+    color: var(--page-muted); white-space: nowrap;
+}
+.mineru-kit-page-range .mineru-page-number input {
+    box-sizing: border-box; width: 34px !important; min-width: 0 !important; height: 24px; min-height: 24px;
+    padding: 2px 3px !important; margin: 0 !important;
+    border: 1px solid var(--page-border); border-radius: 6px; background: var(--page-bg); color: var(--page-text);
+    font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; text-align: center; appearance: textfield;
+}
+.mineru-page-number input::-webkit-inner-spin-button, .mineru-page-number input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.mineru-kit-page-range .mineru-page-preset {
+    flex: 0 0 auto !important; min-width: 0 !important; min-height: 24px; width: auto !important; margin-left: auto;
+    padding: 3px 0 !important; border: 0 !important; box-shadow: none !important; border-radius: 6px;
+    background: transparent !important; color: var(--page-accent) !important; font-size: 12px; font-weight: 400; white-space: nowrap;
+}
+.mineru-kit-page-range .mineru-page-preset:hover:not(:disabled) { background: var(--page-hover) !important; }
+.mineru-page-preset:disabled, .mineru-page-number input:disabled { opacity: .6; }
+.mineru-page-sliders { position: relative !important; height: 48px; min-height: 48px !important; gap: 0 !important; margin-top: 7px; }
 .mineru-page-sliders::before {
-    content: ""; position: absolute; left: 8px; right: 8px; top: 14px; height: 4px; border-radius: 4px;
+    content: ""; position: absolute; left: 14px; right: 14px; top: 17px; height: 14px; border-radius: 99px;
     background: linear-gradient(to right,
-        var(--border-color-primary, #ddd) var(--range-start, 0%),
-        var(--mineru-accent) var(--range-start, 0%), var(--mineru-accent) var(--range-end, 100%),
-        var(--border-color-primary, #ddd) var(--range-end, 100%));
+        var(--page-track) var(--range-start, 0%),
+        var(--page-accent) var(--range-start, 0%), var(--page-accent) var(--range-end, 100%),
+        var(--page-track) var(--range-end, 100%));
 }
 .mineru-page-sliders > .form { position: static !important; }
 .mineru-page-handle-a, .mineru-page-handle-b {
@@ -86,19 +131,31 @@ body.dark .gradio-container {
 .mineru-page-handle-a .head, .mineru-page-handle-b .head,
 .mineru-page-sliders .min_value, .mineru-page-sliders .max_value { display: none !important; }
 .mineru-page-sliders input[type="range"] {
-    position: absolute; inset: 0; width: 100%; height: 32px; padding: 0; margin: 0;
-    pointer-events: none; background: transparent !important;
+    position: absolute; inset: 0; width: 100%; height: 48px; padding: 0; margin: 0;
+    appearance: none; pointer-events: none; background: transparent !important;
 }
-.mineru-page-sliders input[type="range"]::-webkit-slider-runnable-track { background: transparent !important; }
+.mineru-page-sliders input[type="range"]::-webkit-slider-runnable-track { height: 14px; background: transparent !important; }
 .mineru-page-sliders input[type="range"]::-moz-range-track,
-.mineru-page-sliders input[type="range"]::-moz-range-progress { background: transparent !important; }
-.mineru-page-sliders input[type="range"]::-webkit-slider-thumb { pointer-events: auto; }
-.mineru-page-sliders input[type="range"]::-moz-range-thumb { pointer-events: auto; }
+.mineru-page-sliders input[type="range"]::-moz-range-progress { height: 14px; background: transparent !important; }
+.mineru-page-sliders input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; width: 28px; height: 28px; margin-top: -7px;
+    border: 0; border-radius: 50%; background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px);
+    box-shadow: 0 2px 7px #00000020; cursor: grab;
+}
+.mineru-page-sliders input[type="range"]::-moz-range-thumb {
+    pointer-events: auto; width: 28px; height: 28px; border: 0; border-radius: 50%;
+    background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px); box-shadow: 0 2px 7px #00000020; cursor: grab;
+}
 .mineru-page-sliders input[type="range"]:disabled::-webkit-slider-thumb { pointer-events: none; }
 .mineru-page-sliders input[type="range"]:disabled::-moz-range-thumb { pointer-events: none; }
 .mineru-page-handle-a { z-index: 2; }
 .mineru-page-handle-b { z-index: 3; }
 .mineru-page-handle-a:focus-within, .mineru-page-handle-b:focus-within { z-index: 4; }
+@media (pointer: coarse) {
+    .mineru-page-number label { min-height: 44px; }
+    .mineru-kit-page-range .mineru-page-number input { width: 40px !important; height: 28px; min-height: 28px; font-size: 16px; }
+    .mineru-kit-page-range .mineru-page-preset { min-height: 44px; }
+}
 .mineru-page-notice { font-size: 13px; color: var(--body-text-color-subdued); }
 .mineru-upload-file label[data-testid="block-label"] {
     align-items: flex-start !important;

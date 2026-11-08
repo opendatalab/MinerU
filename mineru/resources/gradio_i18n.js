@@ -19,6 +19,7 @@
         const selectors = [
             ".mineru-upload-file > label", ".mineru-force-ocr", ".mineru-actions button",
             ".mineru-tier-label", ".mineru-page-handle-a label", ".mineru-page-handle-b label",
+            ".mineru-page-number label", ".mineru-page-preset",
             ".mineru-kit-pdf-preview > label", ".mineru-kit-image-preview > label",
             ".mineru-markdown-tabs [role=tab]", ".mineru-markdown-tabs .tab-wrapper [aria-hidden] button",
             ".mineru-kit-download-options button", "#mineru-kit-examples > .label",

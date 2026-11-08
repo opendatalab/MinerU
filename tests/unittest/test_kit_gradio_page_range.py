@@ -324,8 +324,18 @@ def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> Non
         events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
         assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
         assert events[0]["trigger_mode"] == "always_last"
-        assert len(events[0]["targets"]) == 6
+        assert len(events[0]["targets"]) == 10
         assert events[0]["outputs"][:2] == [sliders[1]._id, sliders[2]._id]
+    numbers = [block for block in demo.blocks.values() if "mineru-page-number" in (block.elem_classes or [])]
+    assert len(numbers) == 2
+    for number in numbers:
+        assert number.minimum == 1 and number.precision == 0
+        events = [event for event in demo.config["dependencies"] if (number._id, "blur") in event["targets"]]
+        assert len(events) == 1 and (number._id, "submit") in events[0]["targets"]
+        assert events[0]["backend_fn"] is False and events[0]["queue"] is False
+    preset = next(block for block in demo.blocks.values() if "mineru-page-preset" in (block.elem_classes or []))
+    preset_event = next(event for event in demo.config["dependencies"] if (preset._id, "click") in event["targets"])
+    assert preset_event["backend_fn"] is False and preset_event["queue"] is False
     handler = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
     assert len(handler.inputs) == 4
     assert handler.inputs[2].__class__.__name__ == "Textbox" and handler.inputs[2].visible is False

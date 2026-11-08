@@ -1,4 +1,5 @@
-(tiers, flashOnlyExtensions, maxPages, file, position, metadata, previous, handleAValue, handleBValue, tierSelection, sourceReady) => {
+(tiers, flashOnlyExtensions, maxPages, file, position, metadata, previous, handleAValue, handleBValue, tierSelection, sourceReady,
+    startValue = null, endValue = null, preset = false) => {
     // 纯前端状态转换：经原生组件事件读写值，不逐次向 Python 发送拖动请求。
     // 内部元数据使用 JSON 文本，避免不同 Gradio 版本的 JSON 组件封装差异。
     const { text, message } = window.__mineruI18n;
@@ -44,12 +45,25 @@
         const linkedPosition = (active, other) => maxPages !== null && Math.abs(active - other) + 1 > maxPages
             ? active + Math.sign(other - active) * (maxPages - 1)
             : other;
-        if (handleAValue !== state.handle_a) {
-            state.handle_a = clamp(handleAValue);
-            state.handle_b = linkedPosition(state.handle_a, state.handle_b);
-        } else if (handleBValue !== state.handle_b) {
-            state.handle_b = clamp(handleBValue);
-            state.handle_a = linkedPosition(state.handle_b, state.handle_a);
+        // 数字输入和滑块复用同一端点更新；交叉后仍以当前语义角色定位物理滑块。
+        const moveHandle = (handle, value) => {
+            const active = `handle_${handle}`;
+            const other = handle === "a" ? "handle_b" : "handle_a";
+            state[active] = clamp(value);
+            state[other] = linkedPosition(state[active], state[other]);
+        };
+        if (preset) {
+            state.handle_a = 1;
+            state.handle_b = Math.min(count, maxPages ?? count);
+            state.start_handle = "a";
+        } else if (Number.isFinite(handleAValue) && handleAValue !== state.handle_a) {
+            moveHandle("a", handleAValue);
+        } else if (Number.isFinite(handleBValue) && handleBValue !== state.handle_b) {
+            moveHandle("b", handleBValue);
+        } else if (Number.isFinite(startValue) && startValue !== Math.min(state.handle_a, state.handle_b)) {
+            moveHandle(state.start_handle, startValue);
+        } else if (Number.isFinite(endValue) && endValue !== Math.max(state.handle_a, state.handle_b)) {
+            moveHandle(state.start_handle === "a" ? "b" : "a", endValue);
         }
     }
 
@@ -66,16 +80,23 @@
     const end = Math.max(state.handle_a, state.handle_b);
     const selected = end - start + 1;
     const limitText = maxPages === null ? text("page_unlimited") : text("page_limit", { count: maxPages });
-    const selectionText = count ? `[${start}-${end}] · ${text("page_count", { count: selected })}`
-        : text(state.error ? "page_read_failed" : "reading_pages");
+    const selectionText = `<span class="mineru-page-selected-count">${count ? selected : "–"}</span> / `
+        + text("page_count", { count: count || "–" });
+    const intervalText = count ? (start === end ? text("page_single", { page: start }) : text("page_interval", { start, end }))
+        : text(state.error ? "page_read_failed_short" : "reading_pages");
     const summary = `<div class="mineru-page-values" data-range-visible="${visible}" data-start-handle="${state.start_handle}">`
+        + `<span class="mineru-page-heading"><span class="mineru-page-title">${text("page_range")}</span>`
+        + `<span class="mineru-page-limit" title="${escapeHtml(limitText)}">${limitText}</span></span>`
         + `<span class="mineru-page-selection">${selectionText}</span>`
         + `</div>`
-        + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count || "–"}</span></div>`;
+        + `<div class="mineru-page-axis"><span>1</span><span class="mineru-page-interval" aria-live="polite">${intervalText}</span>`
+        + `<span>${count || "–"}</span></div>`;
     const notice = needsRange && !count ? message(state.error) : "";
     const range = count ? (start === end ? String(start) : `${start}-${end}`) : "";
     // 新版 Gradio 要求非零跨度；单页时禁用滑块，实际页数和提交范围仍为 1。
     const slider = (value, label) => update({ minimum: 1, maximum: Math.max(2, count), value, interactive, label });
+    // 数字框确认输入时夹紧到真实页数；单页保持可见但不可编辑。
+    const number = (value, label) => update({ minimum: 1, maximum: Math.max(1, count), value, interactive, label });
     return [
         slider(state.handle_a, state.start_handle === "a" ? text("start_page") : text("end_page")),
         slider(state.handle_b, state.start_handle === "b" ? text("start_page") : text("end_page")),
@@ -86,5 +107,9 @@
         update({ value: effectivePosition }),
         update({ value: effectivePosition, props: { selected_tier: selectedTier, locked: flashOnly } }),
         JSON.stringify(tierSelection),
+        number(start, text("start_page_short")),
+        number(end, text("end_page_short")),
+        update({ value: maxPages !== null && count > maxPages ? text("page_first", { count: maxPages }) : text("page_all"),
+            interactive }),
     ];
 }
