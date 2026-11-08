@@ -284,14 +284,14 @@ def _download_icon_css() -> str:
 
 
 def _render_header() -> str:
-    """渲染复用旧版视觉风格的静态 Header。"""
+    """渲染响应式按钮与统一资源菜单的 Header。"""
     template = _resource_text("gradio_header.html")
     values = {
         "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "Hugging Face",
         "{{HEADER_MODEL_MODELSCOPE_LINK}}": "ModelScope",
-        "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU · arXiv",
-        "{{HEADER_PAPER_MINERU25_REPORT}}": "MinerU 2.5 · arXiv",
-        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "MinerU 2.5 Pro · arXiv",
+        "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU",
+        "{{HEADER_PAPER_MINERU25_REPORT}}": "MinerU 2.5",
+        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "MinerU 2.5 Pro",
     }
     for placeholder, key in {
         "HEADER_TITLE": "header_title",
@@ -414,9 +414,12 @@ def build_gradio_app(
     )
 
     with gr.Blocks() as demo:
+        # Header 自行定义排版，避免 Gradio 的按钮字体与链接下划线覆盖设计。
         gr.HTML(
             _render_header(),
             elem_classes=["mineru-header-html"],
+            js_on_load=f"({_resource_text('gradio_header.js')})({{element}})",
+            apply_default_css=False,
         )
         with gr.Row(elem_classes=["mineru-kit-workspace"]):
             with gr.Column(scale=2, min_width=280, elem_classes=["mineru-kit-control", "mineru-control-column"]):

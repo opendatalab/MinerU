@@ -1,67 +1,137 @@
 <html><head>
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css">
+<!--
+  Header 图标使用 Lucide 0.468.0，与方案预览保持一致。
+  ISC License
+
+  Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
+  All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose with or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+-->
 <style>
-  /* 统一链接和菜单按钮的外框布局，避免行内基线额外撑高菜单按钮。 */
+  .mineru-demo-header {
+    --mineru-header-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mineru-header-button-bg: #363636;
+    padding: 24px;
+    color: #ffffff;
+  }
+  .dark .mineru-demo-header {
+    --mineru-header-button-bg: #2b2b2b;
+  }
+  .mineru-demo-header,
+  .mineru-demo-header * {
+    box-sizing: border-box;
+  }
+  /* 关闭 Gradio 排版后显式保留原有标题的字重与行高。 */
+  .mineru-demo-header h1 {
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .mineru-demo-header a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .mineru-demo-header .mineru-header-links {
+    width: 100%;
+  }
+  /* 窄屏直接使用两列，避免自动换行产生三加一或第二行缩进。 */
+  .mineru-demo-header .publication-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  .mineru-demo-header.is-wide .publication-links {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: 520px;
+  }
+  /* 链接与菜单触发器共用整格宽度和点击高度，图标不再额外携带右边距。 */
   .mineru-demo-header .link-block {
-    display: inline-flex;
+    display: block;
+    min-width: 0;
+    border-radius: 22px;
+  }
+  .mineru-demo-header .link-block .external-link {
+    appearance: none;
+    display: flex;
     align-items: center;
-    vertical-align: middle;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 8px;
     border: 1px solid transparent;
-    border-radius: 24px;
-    background-color: rgba(54, 54, 54, 1);
-    cursor: pointer !important;
+    border-radius: inherit;
+    background: var(--mineru-header-button-bg);
+    color: #ffffff;
+    font: 400 14px/1.25 var(--mineru-header-font);
+    letter-spacing: normal;
+    text-decoration: none;
+    white-space: nowrap;
+    outline: none;
+    box-shadow: none;
+    /* 仅过渡颜色，避免继承 Gradio 的全属性动画导致字号和尺寸短暂变化。 */
+    transition: background-color 120ms ease, color 120ms ease;
+    cursor: pointer;
   }
-  .link-block:hover {
-    background-color: rgba(54, 54, 54, 0.75) !important;
-    cursor: pointer !important;
+  .mineru-demo-header .external-link:hover,
+  .mineru-demo-header .external-link[aria-expanded="true"] {
+    background: #484848;
   }
-  .mineru-demo-header .external-link {
+  .mineru-demo-header .mineru-header-label {
+    display: block;
+    font: inherit;
+  }
+  .mineru-demo-header svg {
+    display: block;
+  }
+  .mineru-demo-header .external-link .icon {
     display: inline-flex;
     align-items: center;
-    height: 36px;
-    line-height: 36px;
-    padding: 0 16px !important;
-    cursor: pointer !important;
+    justify-content: center;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
   }
-  .external-link,
-  .external-link:hover {
-    cursor: pointer !important;
+  .mineru-demo-header .mineru-header-chevron {
+    flex: 0 0 11px;
+    width: 11px;
+    height: 11px;
+    opacity: 0.8;
+  }
+  .mineru-demo-header .icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  /* Header 已自带内边距，去掉 Gradio 外层的重复留白，给极窄屏按钮保留空间。 */
+  .block.mineru-header-html .html-container {
+    padding: 0 !important;
   }
   .mineru-header-menu {
     position: relative;
   }
   .block.mineru-header-html,
   .block.mineru-header-html .html-container,
-  .block.mineru-header-html .prose {
+  .block.mineru-header-html .mineru-header-html {
     overflow: visible !important;
     position: relative !important;
     z-index: 100 !important;
   }
-  .mineru-demo-header .mineru-header-trigger {
-    appearance: none;
-    font: inherit;
-    display: inline-flex;
-    align-items: center;
-    height: 36px;
-    line-height: 36px;
-    padding: 0 16px !important;
-    /* 覆盖 Gradio 为 HTML 按钮添加的底部外边距，保持外框高度一致。 */
-    margin: 0 !important;
-    background: transparent !important;
-    border: 0;
-    border-color: transparent !important;
-  }
-  .mineru-header-trigger:hover,
-  .mineru-header-trigger:focus,
-  .mineru-header-trigger:focus-visible,
-  .mineru-header-trigger:active {
-    background: transparent !important;
-    border-color: transparent !important;
-    color: #ffffff !important;
-    outline: none !important;
-    box-shadow: none !important;
-  }
-  .mineru-header-menu::after {
+  .mineru-header-menu.is-open::after {
     content: "";
     position: absolute;
     left: 0;
@@ -71,80 +141,83 @@
   }
   .mineru-header-popover {
     position: absolute;
-    left: 50%;
+    left: 0;
     top: calc(100% + 10px);
     z-index: 20;
     /* 按最长链接文字确定宽度，避免固定宽度产生过多左右留白。 */
     width: max-content;
-    max-width: calc(100vw - 48px);
-    padding: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 8px;
-    background: rgba(17, 24, 39, 0.82);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
+    max-width: min(264px, var(--mineru-header-popover-max-width, calc(100vw - 64px)));
+    padding: 7px;
+    border: 1px solid #536079;
+    border-radius: 10px;
+    background: #172336;
+    box-shadow: 0 8px 20px #001b4a44;
     opacity: 0;
     pointer-events: none;
-    transform: translate(-50%, 8px);
-    transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+    transform: translateY(8px);
+    /* 可见性立即切换，让快速重开时的键盘焦点不受过渡首帧阻挡。 */
+    transition: opacity 120ms ease, transform 120ms ease;
     visibility: hidden;
   }
-  .mineru-header-menu:hover .mineru-header-popover,
-  .mineru-header-menu:focus-within .mineru-header-popover {
+  .mineru-demo-header .mineru-model-popover {
+    left: auto;
+    right: 0;
+  }
+  .mineru-demo-header.is-wide .mineru-header-popover {
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, 8px);
+  }
+  .mineru-header-menu.is-open .mineru-header-popover {
     opacity: 1;
     pointer-events: auto;
-    transform: translate(-50%, 0);
+    transform: translateY(0);
     visibility: visible;
   }
-  .mineru-demo-header .mineru-header-popover-link {
-    display: block;
-    padding: 10px 12px !important;
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.92) !important;
-    font-size: 14px;
-    line-height: 1.25;
-    text-align: center;
-    white-space: nowrap;
+  .mineru-demo-header.is-wide .mineru-header-menu.is-open .mineru-header-popover {
+    transform: translate(-50%, 0);
   }
-  .mineru-header-popover-link:hover,
-  .mineru-header-popover-link:focus {
-    background: rgba(255, 255, 255, 0.12);
-    color: #ffffff !important;
-    outline: none;
-    text-decoration: none !important;
-  }
-  a {
+  .mineru-demo-header .mineru-header-popover .mineru-header-popover-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    padding: 9px 11px;
+    border-radius: 5px;
+    color: #f3f6fb;
+    font: 400 14px/1.4 var(--mineru-header-font);
+    letter-spacing: normal;
+    text-align: left;
     text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    transition: background-color 120ms ease;
   }
-  .mineru-demo-header .external-link {
-    padding-left: 16px !important;
-    padding-right: 16px !important;
-    text-decoration: none !important;
+  .mineru-demo-header .mineru-header-popover-link:hover {
+    background: #2b3e58;
   }
-  .mineru-demo-header,
-  .mineru-demo-header h1,
-  .mineru-demo-header h1 *,
-  .mineru-demo-header p,
-  .mineru-demo-header p *,
-  .mineru-demo-header .external-link,
-  .mineru-demo-header .external-link * {
-    color: #ffffff !important;
+  .mineru-demo-header .mineru-header-popover-link svg {
+    flex: 0 0 13px;
+    width: 13px;
+    height: 13px;
+    opacity: 0.8;
   }
-  .mineru-demo-header .external-link *,
-  .mineru-demo-header .external-link:hover {
-    text-decoration: none !important;
-  }
-  .mineru-demo-header .external-link {
-    font-size: 14px !important;
-    font-weight: 400 !important;
-  }
-  .mineru-demo-header .mineru-header-popover,
-  .mineru-demo-header .mineru-header-popover * {
-    color: rgba(255, 255, 255, 0.92) !important;
-  }
-  .mineru-demo-header .mineru-header-popover-link:hover,
   .mineru-demo-header .mineru-header-popover-link:focus {
-    color: #ffffff !important;
+    outline: none;
+  }
+  .mineru-demo-header .external-link:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+  }
+  .mineru-demo-header .mineru-header-popover-link:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
+  }
+  @media (max-width: 420px) {
+    .mineru-demo-header {
+      padding: 20px 16px;
+    }
   }
 </style></head>
 
@@ -156,7 +229,6 @@
       align-items: center;
       text-align: center;
       background: linear-gradient(45deg, #007bff 0%, #0056b3 100%);
-      padding: 24px;
       gap: 24px;
       border-radius: 8px;
     ">
@@ -192,58 +264,80 @@
           <img src="https://img.shields.io/github/stars/opendatalab/MinerU.svg" alt="{{HEADER_STARS_ALT}}" style="vertical-align: middle; position: relative; top: 5px;">
         </a>
     </p>
-    <style>
-      .link-block + .link-block {
-        margin-left: 20px;
-      }
-    </style>
-
-    <div class="column has-text-centered">
+    <div class="mineru-header-links">
       <div class="publication-links">
         <!-- Code Link. -->
         <span class="link-block">
           <a href="https://github.com/opendatalab/MinerU" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
-            <span class="icon" style="margin-right: 4px">
-              <i class="fab fa-github" style="color: white; margin-right: 4px"></i>
+            <span class="icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
+              </svg>
             </span>
-            <span style="color: white">{{HEADER_CODE_LINK}}</span>
+            <span class="mineru-header-label">{{HEADER_CODE_LINK}}</span>
           </a>
         </span>
         <!-- Model Links. -->
         <span class="link-block mineru-header-menu mineru-model-menu">
-          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-model-trigger" style="text-decoration: none; cursor: pointer" aria-haspopup="true">
-            <span class="icon" style="margin-right: 4px">
-              <i class="fas fa-cube" style="color: white; margin-right: 4px"></i>
+          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-model-trigger" style="text-decoration: none; cursor: pointer" aria-expanded="false" aria-controls="mineru-model-links">
+            <span class="icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+              </svg>
             </span>
-            <span style="color: white">{{HEADER_MODEL_LINK}}</span>
+            <span class="mineru-header-label">{{HEADER_MODEL_LINK}}</span>
+            <svg class="mineru-header-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <span class="mineru-header-popover mineru-model-popover">
-            <a href="https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">{{HEADER_MODEL_HUGGINGFACE_LINK}}</a>
-            <a href="https://modelscope.cn/models/OpenDataLab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">{{HEADER_MODEL_MODELSCOPE_LINK}}</a>
+          <span class="mineru-header-popover mineru-model-popover" id="mineru-model-links" hidden>
+            <a href="https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">
+              <span>{{HEADER_MODEL_HUGGINGFACE_LINK}}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
+            <a href="https://modelscope.cn/models/OpenDataLab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">
+              <span>{{HEADER_MODEL_MODELSCOPE_LINK}}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
           </span>
         </span>
         <!-- arXiv Links. -->
         <span class="link-block mineru-header-menu mineru-paper-menu">
-          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-paper-trigger" style="text-decoration: none; cursor: pointer" aria-haspopup="true">
-            <span class="icon" style="margin-right: 8px">
-              <i class="fas fa-file" style="color: white"></i>
+          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-paper-trigger" style="text-decoration: none; cursor: pointer" aria-expanded="false" aria-controls="mineru-paper-links">
+            <span class="icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+                <path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
+              </svg>
             </span>
-            <span style="color: white">{{HEADER_PAPER_LINK}}</span>
+            <span class="mineru-header-label">{{HEADER_PAPER_LINK}}</span>
+            <svg class="mineru-header-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <span class="mineru-header-popover mineru-paper-popover">
-            <a href="https://arxiv.org/abs/2409.18839" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU_REPORT}}</a>
-            <a href="https://arxiv.org/abs/2509.22186" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU25_REPORT}}</a>
-            <a href="https://arxiv.org/abs/2604.04771" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU25PRO_REPORT}}</a>
+          <span class="mineru-header-popover mineru-paper-popover" id="mineru-paper-links" hidden>
+            <a href="https://arxiv.org/abs/2409.18839" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">
+              <span>{{HEADER_PAPER_MINERU_REPORT}}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
+            <a href="https://arxiv.org/abs/2509.22186" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">
+              <span>{{HEADER_PAPER_MINERU25_REPORT}}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
+            <a href="https://arxiv.org/abs/2604.04771" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">
+              <span>{{HEADER_PAPER_MINERU25PRO_REPORT}}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
           </span>
         </span>
 
         <!-- Homepage Link. -->
         <span class="link-block">
           <a href="https://mineru.net/?source=online" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
-            <span class="icon" style="margin-right: 8px">
-              <i class="fas fa-home" style="color: white"></i>
+            <span class="icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>
+                <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              </svg>
             </span>
-            <span style="color: white">{{HEADER_HOMEPAGE_LINK}}</span>
+            <span class="mineru-header-label">{{HEADER_HOMEPAGE_LINK}}</span>
           </a>
         </span>
 
