@@ -14,7 +14,7 @@
 .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #8952d9; }
 .dark .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #b482fc; }
 .mineru-tier-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; min-height: 36px; }
-.mineru-tier-title, .mineru-tier-current { font-size: 16px; line-height: 24px; font-weight: 500; }
+.mineru-tier-title, .mineru-tier-current { font-size: 14px; line-height: 24px; font-weight: 500; }
 .mineru-tier-title { white-space: nowrap; }
 .mineru-tier-current { color: var(--tier-accent); text-align: center; white-space: nowrap; }
 .mineru-tier-capsule .mineru-tier-reset { justify-self: end; display: none; place-items: center; width: 36px; height: 36px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 9px; box-shadow: none; background: transparent; color: var(--tier-muted); cursor: pointer; }
