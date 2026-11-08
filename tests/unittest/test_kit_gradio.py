@@ -1235,6 +1235,7 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert slider.interactive is (len(tiers) > 1)
     assert slider.visible is False
     assert label.value == default_position
+    assert f"defaultIndex: {default_position}" in label.js_on_load
     assert label.props == {"selected_tier": default_tier, "locked": False}
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
     label_events = [event for event in demo.config["dependencies"] if (label._id, "input") in event["targets"]]

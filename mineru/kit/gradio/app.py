@@ -445,7 +445,8 @@ def build_gradio_app(
                     html_template=_resource_text("gradio_tier.html"),
                     js_on_load=(
                         f"({_resource_text('gradio_tier.js')})"
-                        f"({{element, props, trigger, watch, tiers: {json.dumps(tier_choices)}}})"
+                        f"({{element, props, trigger, watch, tiers: {json.dumps(tier_choices)}, "
+                        f"defaultIndex: {tier_choices.index(preferred_tier)}}})"
                     ),
                     selected_tier=preferred_tier,
                     locked=False,

@@ -1,10 +1,10 @@
 /* 自有胶囊使用独立选择器，兼容本地 Gradio 和 HF Space 的 CSS 前缀处理。 */
 .mineru-tier-control, .mineru-tier-control .html-container { padding: 0 !important; overflow: visible !important; }
 .mineru-tier-capsule {
-    --tier-position: 0; --tier-knob: 28px; --tier-accent: #316ede;
+    --tier-position: 0; --tier-knob: 30px; --tier-accent: #316ede;
     --tier-bg: #fff; --tier-text: #25252a; --tier-muted: #72727c;
     --tier-border: #e0e1e6; --tier-track: #e8e9ef; --tier-dot: #b3b6c1; --tier-hover: #edf0f6;
-    box-sizing: border-box; padding: 16px 16px 11px; border: 1px solid var(--tier-border); border-radius: 16px;
+    box-sizing: border-box; padding: 14px 18px 12px; border: 1px solid var(--tier-border); border-radius: 18px;
     color: var(--tier-text); background: var(--tier-bg); font-family: inherit;
 }
 .dark .mineru-tier-capsule {
@@ -13,12 +13,16 @@
 }
 .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #8952d9; }
 .dark .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #b482fc; }
-.mineru-tier-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.mineru-tier-title, .mineru-tier-current { font-size: 13px; line-height: 20px; font-weight: 500; }
-.mineru-tier-title { flex-shrink: 0; }
-.mineru-tier-current { color: var(--tier-accent); text-align: right; }
+.mineru-tier-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; min-height: 36px; }
+.mineru-tier-title, .mineru-tier-current { font-size: 16px; line-height: 24px; font-weight: 500; }
+.mineru-tier-title { white-space: nowrap; }
+.mineru-tier-current { color: var(--tier-accent); text-align: center; white-space: nowrap; }
+.mineru-tier-capsule .mineru-tier-reset { justify-self: end; display: none; place-items: center; width: 36px; height: 36px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 9px; box-shadow: none; background: transparent; color: var(--tier-muted); cursor: pointer; }
+.mineru-tier-capsule .mineru-tier-reset:hover:not(:disabled) { color: var(--tier-text); background: var(--tier-hover); }
+.mineru-tier-capsule .mineru-tier-reset:disabled { opacity: 0.45; cursor: default; }
+.mineru-tier-reset svg { display: block; width: 20px; height: 20px; }
 .mineru-tier-options[hidden] { display: none !important; }
-.mineru-tier-rail { position: relative; height: 48px; margin-top: 4px; user-select: none; }
+.mineru-tier-rail { position: relative; height: 50px; margin-top: 2px; user-select: none; }
 .mineru-tier-track { position: absolute; inset: 15px 0; overflow: hidden; border-radius: 99px; background: var(--tier-track); pointer-events: none; }
 .mineru-tier-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); background: var(--tier-accent); transition: width 180ms cubic-bezier(.2,.85,.25,1); }
 .mineru-tier-capsule[data-tier="advanced"] .mineru-tier-fill { background: linear-gradient(105deg, #3d56d8, #9574ed 55%, #9b66e5); }
@@ -28,20 +32,22 @@
 .mineru-tier-dot { width: 6px; height: 6px; margin-inline: -3px; border-radius: 50%; background: var(--tier-dot); }
 .mineru-tier-dot[data-passed="true"] { background: #ffffff66; }
 .mineru-tier-thumb { position: absolute; top: 50%; left: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); width: var(--tier-knob); height: var(--tier-knob); transform: translate(-50%, -50%); border-radius: 50%; background: #fff; box-shadow: 0 2px 7px #00000020; pointer-events: none; transition: left 180ms cubic-bezier(.2,.85,.25,1); }
-.mineru-tier-thumb::after { content: ""; position: absolute; inset: 11px; border-radius: 50%; background: var(--tier-accent); }
+.mineru-tier-thumb::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--tier-accent); }
 .mineru-tier-capsule.is-dragging .mineru-tier-fill, .mineru-tier-capsule.is-dragging .mineru-tier-thumb { transition: none; }
 .mineru-tier-capsule .mineru-tier-range { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; cursor: grab; touch-action: pan-y; z-index: 1; box-shadow: none; }
 .mineru-tier-range:active { cursor: grabbing; }
 .mineru-tier-range::-webkit-slider-runnable-track { height: 100%; background: transparent; border: 0; box-shadow: none; }
-.mineru-tier-range::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: var(--tier-knob); height: 48px; background: transparent; border: 0; box-shadow: none; }
+.mineru-tier-range::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: var(--tier-knob); height: 50px; background: transparent; border: 0; box-shadow: none; }
 .mineru-tier-range::-moz-range-track { height: 100%; background: transparent; border: 0; }
 .mineru-tier-range::-moz-range-progress { background: transparent; }
-.mineru-tier-range::-moz-range-thumb { width: var(--tier-knob); height: 48px; background: transparent; border: 0; box-shadow: none; }
-.mineru-tier-choices { display: flex; justify-content: space-between; gap: 2px; margin: -1px -4px 0; }
-.mineru-tier-capsule .mineru-tier-choice { min-width: 0; margin: 0; padding: 5px 4px; border: 0; border-radius: 5px; box-shadow: none; background: transparent; color: var(--tier-muted); font-family: inherit; font-size: 11px; font-weight: 400; line-height: 16px; cursor: pointer; }
-.mineru-tier-capsule .mineru-tier-choice[aria-pressed="true"] { color: var(--tier-text); font-weight: 500; }
-.mineru-tier-capsule .mineru-tier-choice:hover { background: var(--tier-hover); }
-.mineru-tier-range:focus-visible, .mineru-tier-choice:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
+.mineru-tier-range::-moz-range-thumb { width: var(--tier-knob); height: 50px; background: transparent; border: 0; box-shadow: none; }
+.mineru-tier-range:focus-visible, .mineru-tier-reset:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
 .mineru-tier-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (pointer: coarse) { .mineru-tier-capsule .mineru-tier-choice { min-height: 44px; } }
+@media (pointer: coarse) { .mineru-tier-capsule .mineru-tier-reset { width: 44px; height: 44px; } }
+/* Gradio 会过滤容器查询；由尺寸观察器按控件实际宽度切换，兼容窄桌面侧栏。 */
+.mineru-tier-capsule.is-wide .mineru-tier-heading { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+.mineru-tier-capsule.is-wide .mineru-tier-reset { display: inline-grid; }
+@media (max-width: 420px) {
+    .mineru-tier-capsule { padding-inline: 14px; }
+}
 @media (prefers-reduced-motion: reduce) { .mineru-tier-fill, .mineru-tier-thumb { transition: none; } }

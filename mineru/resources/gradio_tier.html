@@ -2,6 +2,12 @@
     <div class="mineru-tier-heading">
         <span class="mineru-tier-title" data-mineru-i18n-key="tier">解析等级</span>
         <span class="mineru-tier-current"></span>
+        <button class="mineru-tier-reset" type="button" aria-label="恢复默认等级" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
+            </svg>
+        </button>
     </div>
     <div class="mineru-tier-options">
         <div class="mineru-tier-rail">
@@ -10,7 +16,6 @@
             <div class="mineru-tier-thumb" aria-hidden="true"></div>
             <input class="mineru-tier-range" type="range" min="0" max="1" step="0.001" aria-label="解析等级" />
         </div>
-        <div class="mineru-tier-choices"></div>
     </div>
     <output class="mineru-tier-announcement" aria-live="polite"></output>
 </div>

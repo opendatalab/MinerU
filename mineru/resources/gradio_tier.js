@@ -1,25 +1,25 @@
 // 胶囊只负责呈现与用户输入；文件锁档、可用档位和会话偏好仍由共享联动事件决定。
-({ element, props, trigger, watch, tiers }) => {
+({ element, props, trigger, watch, tiers, defaultIndex }) => {
     const capsule = element.querySelector(".mineru-tier-capsule");
     const range = element.querySelector(".mineru-tier-range");
-    const choices = element.querySelector(".mineru-tier-choices");
+    const reset = element.querySelector(".mineru-tier-reset");
     const dots = element.querySelector(".mineru-tier-dots");
     let dragging = false;
     let committed = Number(props.value);
     let locked = props.locked;
     const maximum = tiers.length - 1;
     // 词典可能晚于组件挂载；初始化完成后由应用入口统一补齐本地化。
-    const text = key => window.__mineruI18n?.text(key) || (key === "tier" ? "解析等级" : "");
+    const text = (key, values = {}) => window.__mineruI18n?.text(key, values) || (key === "tier" ? "解析等级" : "");
     // 所有提交值都夹紧为当前服务实际开放的整数档位。
     const clamp = value => Math.max(0, Math.min(maximum, Math.round(value)));
 
-    for (const [index, tier] of tiers.entries()) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "mineru-tier-choice";
-        button.dataset.index = String(index);
-        button.textContent = tier;
-        choices.appendChild(button);
+    // 仅在整行文字与重置按钮都能容纳时显示重置，判断控件宽度而非视口宽度。
+    const resize = () => capsule.classList.toggle("is-wide", capsule.getBoundingClientRect().width >= 340);
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(capsule);
+    resize();
+
+    for (let index = 0; index < tiers.length; index++) {
         const dot = document.createElement("span");
         dot.className = "mineru-tier-dot";
         dots.appendChild(dot);
@@ -39,11 +39,14 @@
         range.disabled = disabled;
         range.setAttribute("aria-label", text("tier"));
         range.setAttribute("aria-valuetext", text(`tier_${tier}`) || tier);
-        for (const [i, button] of [...choices.children].entries()) {
-            button.disabled = disabled;
-            button.setAttribute("aria-pressed", String(!locked && i === index));
-            button.setAttribute("aria-label", text(`tier_${tiers[i]}`) || tiers[i]);
-            dots.children[i].dataset.passed = String(i <= index);
+        const defaultLabel = text(`tier_compact_${tiers[defaultIndex]}`) || tiers[defaultIndex];
+        const resetLabel = text("tier_reset", { tier: defaultLabel }) || `恢复默认等级：${defaultLabel}`;
+        reset.disabled = disabled || index === defaultIndex;
+        reset.setAttribute("aria-label", resetLabel);
+        reset.setAttribute("title", locked ? text("tier_locked") : index === defaultIndex
+            ? text("tier_at_default", { tier: defaultLabel }) : resetLabel);
+        for (const [i, dot] of [...dots.children].entries()) {
+            dot.dataset.passed = String(i <= index);
         }
         if (announce) element.querySelector(".mineru-tier-announcement").textContent = text(`tier_${tier}`) || tier;
     };
@@ -59,7 +62,7 @@
         render(Number(range.value));
     };
 
-    // 松手、点击文字和键盘都走同一提交入口，只派发一次用户 input。
+    // 松手、重置和键盘都走同一提交入口，只派发一次用户 input。
     const commit = value => {
         dragging = false;
         capsule.classList.remove("is-dragging");
@@ -94,9 +97,9 @@
         event.preventDefault();
         commit(values[event.key]);
     });
-    choices.addEventListener("click", event => {
-        const button = event.target.closest(".mineru-tier-choice");
-        if (button && !button.disabled) commit(Number(button.dataset.index));
+    // 默认档位由服务端共享选择器注入；锁档时不改写会话的未锁定偏好。
+    reset.addEventListener("click", () => {
+        if (!reset.disabled) commit(defaultIndex);
     });
     watch(["value", "selected_tier", "locked"], sync);
     window.__mineruTier = { localize: sync };
