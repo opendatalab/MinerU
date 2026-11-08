@@ -125,11 +125,17 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     assert reset_dependency["backend_fn"] is False
     assert "Preparing request..." in reset_dependency["js"]
     upload = next(fn for fn in app.fns.values() if fn.name == "convert_handler").inputs[0]
+    preview = next(fn for fn in app.fns.values() if fn.name == "update_file_preview")
+    preview_event = next(dep for dep in app.config["dependencies"] if dep["id"] == preview._id)
     reset_on_upload = next(
         dep
         for dep in app.config["dependencies"]
-        if (upload._id, "change") in dep["targets"] and dep["outputs"] == reset_dependency["outputs"][1:-4]
+        if dep["trigger_after"] == preview_event["trigger_after"] and dep["outputs"] == reset_dependency["outputs"][1:-4]
     )
+    preparation = next(dep for dep in app.config["dependencies"] if dep["id"] == reset_on_upload["trigger_after"])
+    assert (upload._id, "change") in preparation["targets"]
+    assert reset_on_upload["inputs"] == [preparation["outputs"][0]]
+    assert '"source"' in reset_on_upload["js"]
     assert reset_dependency["outputs"][0] not in reset_on_upload["outputs"]
     assert reset_on_upload["js"] and reset_on_upload["backend_fn"] is False
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]

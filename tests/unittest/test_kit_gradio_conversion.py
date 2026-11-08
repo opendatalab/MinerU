@@ -260,6 +260,22 @@ def test_source_preview_and_conversion_follow_frontend_preparation(tmp_path: Pat
         assert not any((ticket._id, "change") in item["targets"] for item in dependencies.values())
 
 
+def test_local_selection_resets_results_before_upload_finishes(tmp_path: Path) -> None:
+    """本地替换尚无服务端路径时就清空旧正文、JSON 和下载，上传失败也不残留旧结果。"""
+    app = _application(tmp_path, SimpleNamespace())
+    preview = _callback(app, "update_file_preview")
+    request = SimpleNamespace(session_hash="local-replacement")
+    old = json.dumps({"id": "a" * 32, "revision": 1, "path": "/cache/old.pdf"})
+    preview("/cache/old.pdf", request, old)
+    selected = json.dumps({"id": "b" * 32, "revision": 2, "path": ""})
+    updates = preview(None, request, selected)
+    assert updates[0]["value"] is None
+    assert updates[5] == updates[-1] == ""
+    assert updates[6] is None and updates[7] == ""
+    assert all(update["interactive"] is False for update in updates[8:15])
+    assert all(update == {"__type__": "update"} for update in preview(None, request, selected))
+
+
 def test_conversion_and_poll_are_full_non_generator_responses(tmp_path: Path) -> None:
     """通过 Gradio process_api 反复序列化，确认结果不会创建生成器差分缓存。"""
     from gradio import Request

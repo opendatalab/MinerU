@@ -121,7 +121,7 @@
             if (operation === "clear") { state.clear(); return skip(); }
             if (operation === "reset") { reset(values[0]); return skip(); }
             if (operation === "prepare") {
-                if (!values[0] && state.localSelected) return skip();
+                // 本地选择尚无服务器路径，也要生成匹配空路径的票据以清除旧结果。
                 reset(values[0]);
                 return JSON.stringify({ id: state.sourceId, revision: state.revision, path: key(values[0]) });
             }
@@ -129,6 +129,8 @@
                 let receipt;
                 try { receipt = JSON.parse(values[0]); } catch { return skip(); }
                 if (!receipt || receipt.id !== state.sourceId || receipt.path !== state.source) return skip();
+                // 空路径只表示旧源已失效，不能把这类回执当作上传或准备成功。
+                if (!receipt.path) return "";
                 window.__mineruUpload?.prepared(receipt.error);
                 if (receipt.error) { if (!state.frame) notice(receipt.error, true); return ""; }
                 if (receipt.pdf) mount(receipt.pdf);

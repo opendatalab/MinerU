@@ -30,7 +30,7 @@ const window = {
     addEventListener: (name, fn) => events[name] = fn,
     __mineruI18n: { text: key => key },
     __mineruTrace: { reset() {}, activate(...values) { activations.push(values); } },
-    __mineruUpload: { isImage: name => name.endsWith(".png"), invalidate() {}, sync() {}, prepared() {} },
+    __mineruUpload: { isImage: name => name.endsWith(".png"), invalidate() {}, sync() {}, prepared(error) { this.error = error; } },
 };
 const invoke = vm.runInNewContext(`(${script})`, { window, document, location, crypto, URL: LocalURL, URLSearchParams });
 // 使用真实文件路径而非编码后的 URL 判断文件身份。
@@ -45,6 +45,16 @@ assert.ok(originalFrame && state.uploading);
 assert.equal(new URLSearchParams(new URL(originalFrame.src).hash.slice(1)).get("file"), `blob:${location.origin}/1`);
 invoke("reset", null);
 assert.equal(state.frame, originalFrame);
+// 上传开始的空 FileData 仍须产生本次选择票据，让后端立即清除旧结果。
+const selectedTicket = JSON.parse(invoke("prepare", null));
+assert.equal(selectedTicket.id, "local-one");
+assert.equal(selectedTicket.path, "");
+assert.equal(selectedTicket.revision, state.revision);
+assert.equal(state.frame, originalFrame);
+// 失效旧源的空路径回执不能清空已经显示的上传失败信息。
+window.__mineruUpload.error = "upload failed";
+assert.equal(invoke("prepared", JSON.stringify({ ...selectedTicket, error: "" })), "");
+assert.equal(window.__mineruUpload.error, "upload failed");
 const uploadingRevision = state.revision;
 assert.equal(state.bind(first, "local-one"), true);
 assert.ok(state.revision > uploadingRevision);

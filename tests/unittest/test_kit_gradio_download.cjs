@@ -65,4 +65,31 @@ assert.deepEqual(step("complete", "pdf", file, receipt(retry), "run-b"), [{ __ty
 assert.equal(downloads.length, count);
 step("complete", "pdf", file, receipt(current), "run-b");
 assert.equal(downloads.length, count + 1);
+
+// 重复文件事件保留完整下载状态，包括已经生成的结果和尚未返回的下载令牌。
+const source = {id: "a".repeat(32), revision: 1, path: "/cache/source.pdf"};
+window.__mineruPdfPreview = {sourceId: source.id, source: source.path};
+step("source", "", JSON.stringify(source));
+step("activate", "", "run-c");
+const [duplicateToken] = step("begin", "html", "run-c");
+const duplicate = step("source", "", JSON.stringify(source));
+assert.equal(duplicate.length, formats.length * 4 + 2);
+assert.ok(duplicate.every(value => value.__type__ === "update" && Object.keys(value).length === 1));
+const beforeDuplicate = downloads.length;
+step("complete", "html", file, receipt(duplicateToken), "run-c");
+assert.equal(downloads.length, beforeDuplicate + 1);
+
+// 新的本地选择立即撤销旧下载，迟到的旧选择票据不能撤销新结果。
+const replacement = {id: "b".repeat(32), revision: 2, path: ""};
+window.__mineruPdfPreview = {sourceId: replacement.id, source: ""};
+const changed = step("source", "", JSON.stringify(replacement));
+assert.equal(changed[0], "");
+assert.ok(changed.slice(-8, -1).every(update => update.interactive === false));
+step("activate", "", "run-d");
+const [replacementToken] = step("begin", "pdf", "run-d");
+const stale = step("source", "", JSON.stringify(source));
+assert.equal(stale.length, formats.length * 4 + 2);
+assert.ok(stale.every(value => value.__type__ === "update" && Object.keys(value).length === 1));
+step("complete", "pdf", file, receipt(replacementToken), "run-d");
+assert.equal(downloads.length, beforeDuplicate + 2);
 console.log("download lifecycle passed");

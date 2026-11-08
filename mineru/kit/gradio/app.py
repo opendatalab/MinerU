@@ -869,9 +869,16 @@ def build_gradio_app(
         # 文件切换只重置下载控件；转换点击另加状态卡片，避免重置结果错位清空卡片。
         begin_conversion_outputs = [status_panel, *download_reset_outputs]
 
-        # 先在前端失效旧请求，再等待上传/清除/转换的 Python 回调，防止迟到的下载被触发。
-        gr.on(
-            triggers=[input_file.change, clear_button.click],
+        # 匹配选择票据后才重置下载，重复文件事件与迟到票据保留当前结果。
+        prepare_input.then(
+            fn=None,
+            inputs=source_preparation_ticket,
+            outputs=download_reset_outputs,
+            js=download_js("source"),
+            **private_event_kwargs,
+        )
+        # 显式清除立即失效下载，不等待上传或转换的 Python 回调。
+        clear_button.click(
             fn=None,
             inputs=[],
             outputs=download_reset_outputs,
