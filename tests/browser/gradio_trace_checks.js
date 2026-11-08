@@ -22,7 +22,7 @@ async (page) => {
         await page.frameLocator("iframe.mineru-pdf-frame").locator("button[data-trace-id]").first().waitFor();
         const pdf = await (await page.locator("iframe.mineru-pdf-frame").elementHandle()).contentFrame();
         const html = await (await page.locator("iframe.mineru-rendered-html-frame").elementHandle()).contentFrame();
-        const documentId = new URLSearchParams(new URL(pdf.url()).hash.slice(1)).get("documentId");
+        const documentId = await page.evaluate(() => window.__mineruPdfPreview.result);
         if (!documentId) throw new Error("Convert the PDF before checking source navigation");
         const pageInput = pdf.locator("#page");
         if (Number(await pageInput.getAttribute("max")) < 2) throw new Error("Use a PDF with at least two pages");

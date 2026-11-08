@@ -88,7 +88,7 @@ const zoom = (delta) => {
 // 模块和 worker 使用同一份固定发行包，不启用 PDF 内嵌脚本、编辑或交互表单。
 try {
     const source = new URL(params.get("file") || "", window.location.href);
-    if (!params.get("file") || source.origin !== window.location.origin || !source.pathname.includes("/gradio_api/file=")) {
+    if (!params.get("file") || source.origin !== window.location.origin || !(source.protocol === "blob:" || source.pathname.includes("/gradio_api/file="))) {
         throw new Error("Invalid PDF source");
     }
     const pdfjs = await import("./vendor/pdfjs/legacy/build/pdf.min.mjs");
@@ -105,9 +105,7 @@ try {
             ready = true;
             document.getElementById("toolbar").setAttribute("aria-busy", "false");
             resize();
-            if (params.get("documentId")) {
-                disposeTrace = installTrace({ viewer, eventBus, container, documentId: params.get("documentId"), messages });
-            }
+            disposeTrace = installTrace({ viewer, eventBus, container, sourceId: params.get("sourceId"), messages });
         });
         eventBus.on("pagechanging", updateControls);
         eventBus.on("scalechanging", updateControls);

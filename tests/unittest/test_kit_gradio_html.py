@@ -125,6 +125,7 @@ def test_materialized_html_and_independent_archives(tmp_path: Path, image_source
     else:
         (tmp_path / "图 1.png").write_bytes(red)
         (tmp_path / "图 2.png").write_bytes(blue)
+        image_body.image_base64 = None
         image_body.image_path = "图 1.png"
         table_image = quote("图 2.png")
     middle.pages[0].blocks.extend(
@@ -150,7 +151,6 @@ def test_materialized_html_and_independent_archives(tmp_path: Path, image_source
     assert "base64," not in artifacts.middle_json_path.read_text()
     # 后续导出只能读取物化素材，不再需要源文件或源目录中的图片。
     source.unlink()
-    artifacts.source_path.unlink()
     if image_source == "sidecar":
         (tmp_path / "图 1.png").unlink()
         (tmp_path / "图 2.png").unlink()
@@ -262,10 +262,10 @@ def test_epub_preview_anchors_stay_in_srcdoc_without_changing_download(tmp_path:
 def test_preview_link_targets_preserve_document_links(href: str, external: bool) -> None:
     """按链接协议区分网页与文内跳转，覆盖表格链接并保留已有 rel 和其他标签内容。"""
     document = (
-        '<html><head><style>a { color: blue; }</style></head><body>'
+        "<html><head><style>a { color: blue; }</style></head><body>"
         f'<table><tr><td><a href="{html.escape(href, quote=True)}" target="_self" rel="nofollow noopener">'
         '<em>Reference</em></a></td></tr></table><a id="chapter-one">Chapter One</a>'
-        '<script>const example = "<a href=\'https://example.test\'>";</script></body></html>'
+        "<script>const example = \"<a href='https://example.test'>\";</script></body></html>"
     )
     original = BeautifulSoup(document, "html.parser")
     prepared = BeautifulSoup(_prepare_preview_links(document), "html.parser")

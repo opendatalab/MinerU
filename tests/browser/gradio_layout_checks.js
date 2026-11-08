@@ -2,12 +2,14 @@
 async (page) => {
     const pdf = await (await page.locator("iframe.mineru-pdf-frame").elementHandle()).contentFrame();
     const html = await (await page.locator("iframe.mineru-rendered-html-frame").elementHandle()).contentFrame();
-    const viewport = page.viewportSize();
+    const viewport = page.viewportSize() || await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     // 从生产预览配置读取期望布局，逐项核对实际 DOM 和页面几何。
     const config = await html.evaluate(() => {
         const script = [...document.scripts].find(node => node.textContent.includes('"layoutRegions":'));
         return JSON.parse(script.textContent.slice(script.textContent.lastIndexOf(")(") + 2, -2));
     });
+    const firstPage = Math.min(...config.layoutRegions.map(region => region.page_idx)) + 1;
+    const pageCount = Number(await pdf.locator("#pages").textContent());
     const toggle = pdf.locator("#trace-toggle");
     if (await toggle.getAttribute("aria-pressed") !== "true") await toggle.click();
     // 翻页必须等待当前页浮层完成挂载，覆盖 PDF.js 缓存重建。
@@ -20,7 +22,7 @@ async (page) => {
     // 坐标以实际页框为基准，标签允许收缩但类型、编号和身份必须完整。
     const checkPage = async (number) => {
         await goToPage(number);
-        const expected = config.layoutRegions.filter(region => region.page_idx === config.pageIndices[number - 1]);
+        const expected = config.layoutRegions.filter(region => region.page_idx === number - 1);
         await pdf.waitForFunction(({ number, expected }) => {
             const host = document.querySelector(`.page[data-page-number="${number}"]`);
             const layer = host?.querySelector(".mineru-layout-layer");
@@ -61,11 +63,11 @@ async (page) => {
         return expected.length;
     };
     const checkedPages = [];
-    for (const number of [...new Set([1, Math.min(2, config.pageIndices.length), config.pageIndices.length])]) {
+    for (const number of [...new Set([firstPage, Math.min(firstPage + 1, pageCount), pageCount])]) {
         checkedPages.push({ number, regions: await checkPage(number) });
     }
-    await goToPage(1);
-    const sourceButton = pdf.locator('.page[data-page-number="1"] button[data-trace-id]').last();
+    await goToPage(firstPage);
+    const sourceButton = pdf.locator(` .page[data-page-number="${firstPage}"] button[data-trace-id]`.trim()).last();
     const sourceId = await sourceButton.getAttribute("data-trace-id");
     await sourceButton.click();
     await html.waitForFunction(id => document.querySelector("[data-mineru-selected]")?.dataset.docvortexTraceId === id, sourceId);
@@ -100,7 +102,7 @@ async (page) => {
     await pdf.waitForFunction(key => document.querySelector(".mineru-layout-region.expanded")?.dataset.sourceKey === key, hoveredKey);
     await toggle.hover();
     await pdf.waitForFunction(key => document.querySelector(".mineru-layout-region.expanded")?.dataset.sourceKey === key, selectedKey);
-    const inspector = pdf.locator('.page[data-page-number="1"] .mineru-layout-inspector').first();
+    const inspector = pdf.locator(`.page[data-page-number="${firstPage}"] .mineru-layout-inspector`).first();
     if (await inspector.count()) {
         const key = await inspector.getAttribute("data-source-key");
         await inspector.focus();
@@ -117,7 +119,7 @@ async (page) => {
         await html.locator(`[data-docvortex-trace-id="${merged.id}"]`).press("Enter");
         for (const source of merged.sources) {
             await html.getByRole("button", { name: new RegExp(` ${source.page_idx + 1}$`) }).click();
-            const number = config.pageIndices.indexOf(source.page_idx) + 1;
+            const number = source.page_idx + 1;
             await pdf.waitForFunction(number => Number(document.querySelector("#page").value) === number, number);
             await checkPage(number);
             const key = JSON.stringify([source.page_idx, source.block_index, source.child_path]);
@@ -135,7 +137,7 @@ async (page) => {
         .find(sources => sources.length > new Set(sources.map(source => source.page_idx)).size));
     if (samePage) {
         for (const source of samePage) {
-            await goToPage(config.pageIndices.indexOf(source.page_idx) + 1);
+            await goToPage(source.page_idx + 1);
             const key = JSON.stringify([source.page_idx, source.block_index, source.child_path]);
             const buttons = pdf.locator("button[data-trace-id]");
             const index = await buttons.evaluateAll((nodes, key) => nodes.findIndex(node => node.dataset.sourceKey === key), key);
@@ -149,11 +151,11 @@ async (page) => {
     await pdf.waitForFunction(() => [...document.querySelectorAll(".mineru-layout-region:not(.selected):not(.hovered)")]
         .every(node => getComputedStyle(node).visibility === "hidden"));
     await toggle.click();
-    await goToPage(1);
+    await goToPage(firstPage);
     const oldScale = await pdf.locator("#scale").innerText();
     await pdf.locator("#zoom-in").click();
     await pdf.waitForFunction(value => document.querySelector("#scale").textContent !== value, oldScale);
-    await checkPage(1);
+    await checkPage(firstPage);
     const selectedSources = await html.evaluate(() => {
         const selected = document.querySelector("[data-mineru-selected]");
         return selected ? JSON.parse(selected.dataset.docvortexSources) : [];
@@ -166,7 +168,7 @@ async (page) => {
     await pdf.locator("#fit").click();
     await page.setViewportSize({ width: 375, height: 900 });
     await page.locator("iframe.mineru-pdf-frame").scrollIntoViewIfNeeded();
-    await checkPage(1);
+    await checkPage(firstPage);
     // 辅助块的压缩标签也能通过键盘查看完整类型，且使用独立的只读检查元素。
     const compactInspector = await pdf.locator(".mineru-layout-inspector").evaluateAll(nodes => nodes.findIndex(node => {
         const region = [...node.closest(".page").querySelectorAll(".mineru-layout-region")]
@@ -185,7 +187,7 @@ async (page) => {
     const overflow = await pdf.evaluate(() => document.getElementById("toolbar").scrollWidth > innerWidth);
     if (overflow) throw new Error("Narrow toolbar overflows");
     await page.setViewportSize(viewport);
-    await checkPage(1);
+    await checkPage(firstPage);
     return {
         checkedPages, sourceId, targetId, colors, mergedSources: merged?.sources, samePageSources: samePage,
         layoutRegions: config.layoutRegions.length, narrow: true, zoom: true, inspectedAuxiliary: compactInspector >= 0

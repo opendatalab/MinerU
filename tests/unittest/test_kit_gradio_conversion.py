@@ -11,10 +11,11 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import unquote
 
 import pytest
+from PIL import Image
 
 from mineru.kit.gradio import document_io
 from mineru.kit.gradio import app as gradio_app
@@ -51,11 +52,15 @@ def _conversions(app: Any) -> SessionConversions:
 
 
 @pytest.mark.parametrize("with_session", [False, True])
-@pytest.mark.parametrize("outcome", ["success", "input_error", "parse_error", "cancelled"])
-def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, outcome: str) -> None:
+@pytest.mark.parametrize("outcome", ["success", "input_error", "prepare_error", "parse_error", "cancelled"])
+@pytest.mark.parametrize("extension", ["pdf", "png"])
+def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, outcome: str, extension: str) -> None:
     """公开请求的所有退出路径都释放任务，成功响应中的素材仍能独立下载。"""
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes())
+    source = tmp_path / f"source.{extension}"
+    if extension == "pdf":
+        source.write_bytes(_pdf_bytes())
+    else:
+        Image.new("RGB", (20, 30), "red").save(source)
     client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
     if outcome == "parse_error":
         client.parse_file.side_effect = V1ArtifactError("controlled failure")
@@ -65,6 +70,9 @@ def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, out
     convert = _callback(app, "convert_handler")
     downloader = _callback(app, "handler")
     conversions = _conversions(app)
+    sources = inspect.getclosurevars(convert).nonlocals["conversion_service"].sources
+    if outcome == "prepare_error":
+        sources.document_io.prepare_source = Mock(side_effect=OSError("controlled preparation failure"))
 
     async def scenario() -> None:
         """连续使用不同 API 会话，确认注册表不会随请求数量增长。"""
@@ -74,13 +82,48 @@ def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, out
             assert len(response) == 16
             assert conversions.runs == {}
             assert conversions.revisions == {}
+            if not with_session:
+                assert sources.current == {}
+                assert sources.revisions == {}
+                directories = list((tmp_path / "output/gradio/sources").glob("*"))
+                assert len(directories) == (index + 1 if outcome == "success" else 0)
             if outcome == "success":
                 state = response[6]
                 assert state and Path(state["root"]).is_dir()
+                assert Path(state["prepared_source"]["preview_pdf_path"]).is_file()
                 path, receipt = downloader(state, json.dumps({"run_id": response[7]}), request)
                 assert path and Path(path).is_file() and not json.loads(receipt)["error"]
             elif outcome != "cancelled":
                 assert "Failed:" in response[0] and response[6] is None
+
+    asyncio.run(scenario())
+
+
+def test_public_conversion_recovers_preparation_in_same_session(tmp_path: Path) -> None:
+    """公开 API 在准备故障恢复后可用同一会话和上传路径再次转换。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
+    app = _application(tmp_path, client)
+    convert = _callback(app, "convert_handler")
+    sources = inspect.getclosurevars(convert).nonlocals["conversion_service"].sources
+    prepare = Mock(wraps=sources.document_io.prepare_source, side_effect=OSError("temporary copy failure"))
+    sources.document_io.prepare_source = prepare
+    request = SimpleNamespace(session_hash="api-retry")
+
+    async def scenario() -> None:
+        """第一次返回原始错误，第二次重做准备并产出可用预览和下载记录。"""
+        failure = await convert(str(source), 0, "", False, request)
+        assert "temporary copy failure" in failure[0] and failure[6] is None
+        client.parse_file.assert_not_awaited()
+        prepare.side_effect = None
+        success = await convert(str(source), 0, "", False, request)
+        assert "Completed" in success[0] and success[6]
+        assert prepare.call_count == 2
+        client.parse_file.assert_awaited_once()
+        await sources.retire(request.session_hash)
+        assert sources.current == {} and sources.revisions == {}
+        assert Path(success[6]["prepared_source"]["preview_pdf_path"]).is_file()
 
     asyncio.run(scenario())
 
@@ -203,10 +246,10 @@ def test_frontend_conversion_receipts() -> None:
 
 
 def test_source_preview_and_conversion_follow_frontend_preparation(tmp_path: Path) -> None:
-    """两个后端入口都在前端准备后串联，票据更新自身不能额外触发任务。"""
+    """预览和转换均在匹配票据生成后串联，票据更新自身不能额外触发任务。"""
     app = _application(tmp_path, SimpleNamespace())
     dependencies = {item["id"]: item for item in app.config["dependencies"]}
-    for name in ("prepare_source_preview", "convert_ui"):
+    for name in ("prepare_uploaded_source", "update_file_preview", "prepare_source_preview", "convert_ui"):
         callback = next(fn for fn in app.fns.values() if fn.name == name)
         event = dependencies[callback._id]
         begin = dependencies[event["trigger_after"]]
@@ -215,6 +258,79 @@ def test_source_preview_and_conversion_follow_frontend_preparation(tmp_path: Pat
         assert ticket._id in begin["outputs"]
         assert event["api_visibility"] == "private"
         assert not any((ticket._id, "change") in item["targets"] for item in dependencies.values())
+
+
+def test_local_selection_resets_results_before_upload_finishes(tmp_path: Path) -> None:
+    """本地替换尚无服务端路径时就清空旧正文、JSON 和下载，上传失败也不残留旧结果。"""
+    app = _application(tmp_path, SimpleNamespace())
+    preview = _callback(app, "update_file_preview")
+    request = SimpleNamespace(session_hash="local-replacement")
+    old = json.dumps({"id": "a" * 32, "revision": 1, "path": "/cache/old.pdf"})
+    preview("/cache/old.pdf", request, old)
+    selected = json.dumps({"id": "b" * 32, "revision": 2, "path": ""})
+    updates = preview(None, request, selected)
+    assert updates[0]["value"] is None
+    assert updates[5] == updates[-1] == ""
+    assert updates[6] is None and updates[7] == ""
+    assert all(update["interactive"] is False for update in updates[8:15])
+    assert all(update == {"__type__": "update"} for update in preview(None, request, selected))
+
+
+@pytest.mark.parametrize("extension", ["docx", "csv"])
+def test_native_example_ready_does_not_wait_for_previous_preparation(tmp_path: Path, extension: str) -> None:
+    """原生示例就绪不等待旧图片准备，关闭会话仍等待自身后台清理且不阻塞其他会话。"""
+    from mineru.kit.gradio.sources import PreparedSource
+
+    image = tmp_path / "previous.png"
+    Image.new("RGB", (20, 30), "red").save(image)
+    example = tmp_path / f"example.{extension}"
+    example.write_bytes(b"native example")
+    started, finish = threading.Event(), threading.Event()
+    app = _application(tmp_path, SimpleNamespace())
+    prepare = _callback(app, "prepare_uploaded_source")
+    sources = inspect.getclosurevars(prepare).nonlocals["conversion_service"].sources
+    original = sources.document_io.prepare_source
+    request = SimpleNamespace(session_hash="native-example")
+
+    def delayed(path: Path, *, source_id: str, output_root: Path) -> PreparedSource:
+        """保持旧图片的同步准备未完成，以检测就绪回执和关闭回收的等待边界。"""
+        started.set()
+        assert finish.wait(10)
+        return original(path, source_id=source_id, output_root=output_root)
+
+    sources.document_io.prepare_source = delayed
+
+    async def scenario() -> None:
+        """通过真实上传和关闭回调交错请求，确认旧任务安全退出后才删除目录。"""
+        first = json.dumps({"id": "a" * 32, "revision": 1, "path": str(image)})
+        replacement = json.dumps({"id": "b" * 32, "revision": 2, "path": str(example)})
+        old = asyncio.create_task(prepare(str(image), first, request))
+        pending: list[asyncio.Task[Any]] = [old]
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            native = asyncio.create_task(prepare(str(example), replacement, request))
+            pending.append(native)
+            ready, _ = await asyncio.wait({native}, timeout=1)
+            assert native in ready, "Native example is blocked by the old preparation"
+            assert json.loads(native.result()) == {"id": "b" * 32, "path": str(example), "pdf": None, "error": ""}
+            assert not old.done() and not finish.is_set()
+            unrelated = asyncio.create_task(sources.retire("unrelated-session"))
+            pending.append(unrelated)
+            ready, _ = await asyncio.wait({unrelated}, timeout=1)
+            assert unrelated in ready, "Another session is blocked by the old preparation"
+            closing = asyncio.create_task(_callback(app, "unload_session")(request))
+            pending.append(closing)
+            await asyncio.sleep(0)
+            assert not closing.done()
+        finally:
+            finish.set()
+            await asyncio.gather(*pending, return_exceptions=True)
+        assert "expired" in json.loads(old.result())["error"]
+        closing.result()
+        assert not (tmp_path / "output/gradio/sources" / ("a" * 32)).exists()
+        assert request.session_hash not in sources.current and request.session_hash not in sources.revisions
+
+    asyncio.run(scenario())
 
 
 def test_conversion_and_poll_are_full_non_generator_responses(tmp_path: Path) -> None:

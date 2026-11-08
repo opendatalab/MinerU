@@ -158,6 +158,7 @@ def test_launch_remote_preserves_capabilities_without_local_fallback(
     events: list[str] = []
     failure = V1ArtifactError("startup failure", code="server_start_failed")
     remote_cap = V1ServerCapabilities("http://remote.test", remote_tiers, ("default",), ("upload",))
+
     async def discover_remote() -> V1ServerCapabilities:
         """记录主服务完成能力发现的时间点。"""
         events.append("remote")
@@ -311,20 +312,27 @@ def test_metadata_does_not_read_non_pdf(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> None:
-    """双滑块联动与档位切换不请求 Python，公开转换输入在页码之后增加 OCR 开关。"""
+    """选页手势原子提交且不请求 Python，公开转换输入仍保持四个参数。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
     demo = gradio_app.build_gradio_app(Mock(), capabilities, output_root=tmp_path, max_pages=20, enable_example=False)
-    sliders = [block for block in demo.blocks.values() if block.__class__.__name__ == "Slider"]
-    assert len(sliders) == 3
-    assert sliders[1].elem_classes == ["mineru-page-handle-a"]
-    assert sliders[2].elem_classes == ["mineru-page-handle-b"]
-    for slider in sliders[1:]:
-        assert slider.step == 1 and slider.precision == 0
-        events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
-        assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
-        assert events[0]["trigger_mode"] == "always_last"
-        assert len(events[0]["targets"]) == 5
-        assert events[0]["outputs"][:2] == [sliders[1]._id, sliders[2]._id]
+    control = next(block for block in demo.blocks.values() if "mineru-page-control" in (block.elem_classes or []))
+    assert control.__class__.__name__ == "HTML"
+    assert control.html_template.count('type="range"') == 2
+    events = [event for event in demo.config["dependencies"] if (control._id, "input") in event["targets"]]
+    assert len(events) == 1 and events[0]["backend_fn"] is False and events[0]["queue"] is False
+    assert events[0]["trigger_mode"] == "always_last"
+    assert len(events[0]["targets"]) == 9
+    assert events[0]["outputs"][0] == control._id
+    numbers = [block for block in demo.blocks.values() if "mineru-page-number" in (block.elem_classes or [])]
+    assert len(numbers) == 2
+    for number in numbers:
+        assert number.minimum == 1 and number.precision == 0
+        events = [event for event in demo.config["dependencies"] if (number._id, "blur") in event["targets"]]
+        assert len(events) == 1 and (number._id, "submit") in events[0]["targets"]
+        assert events[0]["backend_fn"] is False and events[0]["queue"] is False
+    preset = next(block for block in demo.blocks.values() if "mineru-page-preset" in (block.elem_classes or []))
+    preset_event = next(event for event in demo.config["dependencies"] if (preset._id, "click") in event["targets"])
+    assert preset_event["backend_fn"] is False and preset_event["queue"] is False
     handler = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
     assert len(handler.inputs) == 4
     assert handler.inputs[2].__class__.__name__ == "Textbox" and handler.inputs[2].visible is False
@@ -356,3 +364,17 @@ def test_frontend_page_range_state_machine() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_frontend_tier_capsule_interactions() -> None:
+    """执行胶囊交互回归，覆盖吸附、整数提交、文件锁档竞态及缺档服务。"""
+    node = shutil.which("node")
+    assert node is not None
+    subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_tier.cjs"))], check=True)
+
+
+def test_frontend_page_range_gestures() -> None:
+    """执行真实手势控制器，验证本地预览、原子提交、整段平移和取消竞态。"""
+    node = shutil.which("node")
+    assert node is not None
+    subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_page_control.cjs"))], check=True)

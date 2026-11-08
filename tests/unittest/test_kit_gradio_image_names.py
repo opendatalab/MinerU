@@ -16,8 +16,6 @@ from test_kit_gradio_html import _image_bytes
 
 from mineru.kit.common import save_parse_result
 from mineru.kit.gradio.artifacts import (
-    _build_image_context,
-    _close_image_context,
     _materialize_middle_json,
     persist_parse_result,
     render_download,
@@ -68,16 +66,9 @@ def test_crops_use_original_pages_and_parent_type(tmp_path: Path, page_indices: 
             mean = ImageStat.Stat(image.convert("RGB")).mean
         assert mean[channel] > 240 and sum(value for index, value in enumerate(mean) if index != channel) < 20
 
-    # 单独读取裁图缓存也不应产生任何临时图片文件。
-    crop_root = tmp_path / "crop-only"
-    context = _build_image_context(saved.middle_json, artifacts.origin_pdf_path, crop_root, page_indices=page_indices)
-    try:
-        block = saved.pages[0].blocks[1].content[0]
-        first = context.crop_for_block(block, middle_page_idx=page_indices[0])
-        assert first and context.crop_for_block(block, middle_page_idx=page_indices[0]) is first
-        assert not crop_root.exists()
-    finally:
-        _close_image_context(context)
+    # 保存后的素材重复物化不需要 PDF 对象，也不会重新编码图片。
+    repeated = _materialize_middle_json(saved.middle_json, artifacts.root)
+    assert repeated == saved.middle_json
 
 
 def test_parent_names_table_images_and_repeated_materialization(tmp_path: Path) -> None:
@@ -134,8 +125,7 @@ def test_parent_names_table_images_and_repeated_materialization(tmp_path: Path) 
         "images/page_0_table_image_2_2.png",
     ]
     assert before["page_0_image_1.png"] == before["page_0_table_2.png"]
-    context = _build_image_context(saved.middle_json, None, artifacts.root)
-    repeated = _materialize_middle_json(saved.middle_json, context)
+    repeated = _materialize_middle_json(saved.middle_json, artifacts.root)
     assert repeated == saved.middle_json
     assert {path.name: path.read_bytes() for path in (artifacts.root / "images").iterdir()} == before
     for format_name in ("markdown", "json", "latex"):
@@ -168,8 +158,7 @@ def test_identical_images_on_different_pages_keep_their_names(tmp_path: Path) ->
     middle = _middle_json(file_suffix="docx", page_indices=(2, 5))
     for page in middle.pages:
         page.blocks[1].content[0].image_base64 = _image_uri("red")
-    context = _build_image_context(middle, None, tmp_path)
-    result = _materialize_middle_json(middle, context)
+    result = _materialize_middle_json(middle, tmp_path)
     assert [page.blocks[1].content[0].image_path for page in result.pages] == [
         "images/page_2_image_21.png",
         "images/page_5_image_51.png",
@@ -183,15 +172,14 @@ def test_conflicting_contents_never_overwrite_or_take_inline_ordinals(tmp_path: 
     middle.pages[0].page_idx = 1
     body = middle.pages[0].blocks[1].content[0]
     body.image_base64 = _image_uri("red")
-    context = _build_image_context(middle, None, tmp_path)
-    first = _materialize_middle_json(middle, context).pages[0].blocks[1].content[0].image_path
+    first = _materialize_middle_json(middle, tmp_path).pages[0].blocks[1].content[0].image_path
     body.image_base64 = _image_uri("blue")
     body.content = f'<img src="{_image_uri("blue")}">'
-    saved = _materialize_middle_json(middle, context)
+    saved = _materialize_middle_json(middle, tmp_path)
     second = saved.pages[0].blocks[1].content[0].image_path
     assert first == "images/page_1_image_1.png"
     assert second == "images/page_1_image_1_duplicate_1.png"
-    assert _materialize_middle_json(saved, context) == saved
+    assert _materialize_middle_json(saved, tmp_path) == saved
     assert saved.pages[0].blocks[1].content[0].content == '<img src="images/page_1_image_1_1.png">'
     assert (tmp_path / first).read_bytes() == _image_bytes("red")
     assert (tmp_path / second).read_bytes() == _image_bytes("blue")
