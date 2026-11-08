@@ -214,9 +214,9 @@
         },
         // 启动脚本晚于组件挂载时补齐当前状态的语言，不重置文件选择。
         localize() { render(); },
-        // 示例直接写入隐藏 File 时补全文件类型和大小，不关联旧的本地 File。
+        // 示例写入隐藏 File 时中止旧上传；本地上传开始产生的空值桥接仍保留传输。
         sync(file) {
-            if (pending || (file?.path && uploadedFile?.path === file.path)) return;
+            if ((pending && !file) || (file?.path && uploadedFile?.path === file.path)) return;
             invalidate();
             uploadedFile = file;
             progress = file ? 100 : 0;

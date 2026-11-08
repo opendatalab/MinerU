@@ -136,6 +136,11 @@ class SessionSources:
         current = self.current.get(session)
         if source_id and (not current or current[0] != source_id or current[1].original_path != path.resolve()):
             raise ValueError("Source preparation has expired")
+        # API 不携带浏览器选择身份，故障恢复后须重建任务；待完成的任务仍由并发请求共享。
+        if not source_id and current:
+            task = current[1].task
+            if task.done() and (task.cancelled() or task.exception() is not None):
+                current = None
         if not current or current[1].original_path != path.resolve():
             await self.prepare(session, path, uuid.uuid4().hex, self.revisions.get(session, 0) + 1)
         lease = self.current[session][1]
@@ -156,8 +161,10 @@ class SessionSources:
         await self._cleanup(lease)
 
     async def retire(self, session: str, *, revision: int | None = None) -> None:
-        """清除和关闭时使准备失效，不强制终止正在运行的同步转换。"""
-        if revision is not None:
+        """清除时保留修订屏障，关闭会话时释放记录，并等待同步转换安全退出。"""
+        if revision is None:
+            self.revisions.pop(session, None)
+        else:
             if revision <= self.revisions.get(session, 0):
                 return
             self.revisions[session] = revision

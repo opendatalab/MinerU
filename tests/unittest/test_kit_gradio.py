@@ -1113,11 +1113,15 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
     click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
     assert upload._id in click["outputs"]
     status = next(block for block in demo.blocks.values() if "mineru-status-panel" in (block.elem_classes or []))
+    preview = next(fn for fn in demo.fns.values() if fn.name == "update_file_preview")
     preview_change = next(
         event
         for event in demo.config["dependencies"]
-        if (upload._id, "change") in event["targets"] and status._id in event["outputs"]
+        if event["id"] == preview._id
     )
+    assert status._id in preview_change["outputs"]
+    preparation = next(event for event in demo.config["dependencies"] if event["id"] == preview_change["trigger_after"])
+    assert (upload._id, "change") in preparation["targets"] and preparation["backend_fn"] is False
     assert preview_change["show_progress"] == "hidden"
 
     empty_cwd = tmp_path / "empty"

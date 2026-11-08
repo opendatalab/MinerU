@@ -206,6 +206,43 @@ const clear = () => nodes.remove.events.click({preventDefault() {}});
     requests.at(-1).respond("/empty.pdf");
     await tick();
     assert.equal(nodes.size.textContent, "0 B");
+
+    // 示例替换正在上传的文件时中止旧传输，内部清空桥接则继续保留本地上传。
+    await choose(new File(["pending"], "pending-example.pdf"));
+    const replaced = requests.at(-1);
+    window.__mineruUpload.sync(null);
+    assert.equal(replaced.aborted, false);
+    assert.equal(nodes.stem.textContent, "pending-example");
+    const beforeExample = values.length;
+    window.__mineruPdfPreview.sourceId = "example-source";
+    window.__mineruUpload.sync({path: "/first-example.pdf", orig_name: "first-example.pdf", size: 1234});
+    assert.equal(replaced.aborted, true);
+    assert.equal(nodes.stem.textContent, "first-example");
+    assert.equal(nodes.size.textContent, "1.2 KB");
+    assert.equal(nodes.finished.hidden, false);
+    assert.equal(nodes.percent.hidden, true);
+    replaced.progress(100, 100);
+    replaced.respond("/late-replaced.pdf");
+    await tick();
+    assert.equal(nodes.stem.textContent, "first-example");
+    assert.equal(values.length, beforeExample);
+    window.__mineruUpload.sync({path: "/second-example.pdf", orig_name: "second-example.pdf", size: 2000});
+    assert.equal(nodes.stem.textContent, "second-example");
+    assert.equal(nodes.size.textContent, "2.0 KB");
+
+    // 上传地址尚未返回时选择示例，也不能在地址返回后重新发起旧上传。
+    contextGate = new Promise(resolve => { resolveContext = resolve; });
+    await choose(new File(["pending"], "waiting-context.pdf"));
+    const beforeExampleContext = requests.length;
+    window.__mineruPdfPreview.sourceId = "another-example-source";
+    window.__mineruUpload.sync({path: "/third-example.pdf", orig_name: "third-example.pdf"});
+    resolveContext(context);
+    contextGate = null;
+    await tick();
+    assert.equal(requests.length, beforeExampleContext);
+    assert.equal(nodes.stem.textContent, "third-example");
+    assert.equal(nodes.finished.hidden, false);
+
     await choose(new File(["closing"], "closing.pdf"));
     const closing = requests.at(-1);
     windowHandlers.pagehide();

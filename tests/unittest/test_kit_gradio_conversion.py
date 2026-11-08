@@ -11,10 +11,11 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import unquote
 
 import pytest
+from PIL import Image
 
 from mineru.kit.gradio import document_io
 from mineru.kit.gradio import app as gradio_app
@@ -51,11 +52,15 @@ def _conversions(app: Any) -> SessionConversions:
 
 
 @pytest.mark.parametrize("with_session", [False, True])
-@pytest.mark.parametrize("outcome", ["success", "input_error", "parse_error", "cancelled"])
-def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, outcome: str) -> None:
+@pytest.mark.parametrize("outcome", ["success", "input_error", "prepare_error", "parse_error", "cancelled"])
+@pytest.mark.parametrize("extension", ["pdf", "png"])
+def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, outcome: str, extension: str) -> None:
     """公开请求的所有退出路径都释放任务，成功响应中的素材仍能独立下载。"""
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes())
+    source = tmp_path / f"source.{extension}"
+    if extension == "pdf":
+        source.write_bytes(_pdf_bytes())
+    else:
+        Image.new("RGB", (20, 30), "red").save(source)
     client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
     if outcome == "parse_error":
         client.parse_file.side_effect = V1ArtifactError("controlled failure")
@@ -65,6 +70,9 @@ def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, out
     convert = _callback(app, "convert_handler")
     downloader = _callback(app, "handler")
     conversions = _conversions(app)
+    sources = inspect.getclosurevars(convert).nonlocals["conversion_service"].sources
+    if outcome == "prepare_error":
+        sources.document_io.prepare_source = Mock(side_effect=OSError("controlled preparation failure"))
 
     async def scenario() -> None:
         """连续使用不同 API 会话，确认注册表不会随请求数量增长。"""
@@ -74,13 +82,48 @@ def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, out
             assert len(response) == 16
             assert conversions.runs == {}
             assert conversions.revisions == {}
+            if not with_session:
+                assert sources.current == {}
+                assert sources.revisions == {}
+                directories = list((tmp_path / "output/gradio/sources").glob("*"))
+                assert len(directories) == (index + 1 if outcome == "success" else 0)
             if outcome == "success":
                 state = response[6]
                 assert state and Path(state["root"]).is_dir()
+                assert Path(state["prepared_source"]["preview_pdf_path"]).is_file()
                 path, receipt = downloader(state, json.dumps({"run_id": response[7]}), request)
                 assert path and Path(path).is_file() and not json.loads(receipt)["error"]
             elif outcome != "cancelled":
                 assert "Failed:" in response[0] and response[6] is None
+
+    asyncio.run(scenario())
+
+
+def test_public_conversion_recovers_preparation_in_same_session(tmp_path: Path) -> None:
+    """公开 API 在准备故障恢复后可用同一会话和上传路径再次转换。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
+    app = _application(tmp_path, client)
+    convert = _callback(app, "convert_handler")
+    sources = inspect.getclosurevars(convert).nonlocals["conversion_service"].sources
+    prepare = Mock(wraps=sources.document_io.prepare_source, side_effect=OSError("temporary copy failure"))
+    sources.document_io.prepare_source = prepare
+    request = SimpleNamespace(session_hash="api-retry")
+
+    async def scenario() -> None:
+        """第一次返回原始错误，第二次重做准备并产出可用预览和下载记录。"""
+        failure = await convert(str(source), 0, "", False, request)
+        assert "temporary copy failure" in failure[0] and failure[6] is None
+        client.parse_file.assert_not_awaited()
+        prepare.side_effect = None
+        success = await convert(str(source), 0, "", False, request)
+        assert "Completed" in success[0] and success[6]
+        assert prepare.call_count == 2
+        client.parse_file.assert_awaited_once()
+        await sources.retire(request.session_hash)
+        assert sources.current == {} and sources.revisions == {}
+        assert Path(success[6]["prepared_source"]["preview_pdf_path"]).is_file()
 
     asyncio.run(scenario())
 
@@ -203,10 +246,10 @@ def test_frontend_conversion_receipts() -> None:
 
 
 def test_source_preview_and_conversion_follow_frontend_preparation(tmp_path: Path) -> None:
-    """两个后端入口都在前端准备后串联，票据更新自身不能额外触发任务。"""
+    """预览和转换均在匹配票据生成后串联，票据更新自身不能额外触发任务。"""
     app = _application(tmp_path, SimpleNamespace())
     dependencies = {item["id"]: item for item in app.config["dependencies"]}
-    for name in ("prepare_source_preview", "convert_ui"):
+    for name in ("prepare_uploaded_source", "update_file_preview", "prepare_source_preview", "convert_ui"):
         callback = next(fn for fn in app.fns.values() if fn.name == name)
         event = dependencies[callback._id]
         begin = dependencies[event["trigger_after"]]

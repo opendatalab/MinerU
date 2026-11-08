@@ -1001,7 +1001,8 @@ def build_gradio_app(
             request: object | None = None,
         ) -> tuple[object, ...]:
             """保留公开转换 API 的四个输入和原生组件输出，普通响应一次返回结果。"""
-            session = getattr(request, "session_hash", None) or uuid.uuid4().hex
+            session_hash = getattr(request, "session_hash", None)
+            session = session_hash or uuid.uuid4().hex
             run = conversions.start(session, uuid.uuid4().hex)
             assert run is not None
             try:
@@ -1013,6 +1014,8 @@ def build_gradio_app(
                 return conversion_updates(outcome, status_html=run.state.render(), download_formats=_DOWNLOAD_FORMATS)
             finally:
                 conversions.cancel(session, run.run_id)
+                if not session_hash:
+                    await conversion_service.sources.retire(session)
 
         convert_outputs = [
             status_panel,
@@ -1192,7 +1195,7 @@ def build_gradio_app(
             **private_event_kwargs,
         )
         demo.unload(unload_session)
-        source_preview_event = input_file.change(
+        source_preview_event = prepare_input.then(
             fn=update_file_preview,
             inputs=[input_file, source_preparation_ticket],
             outputs=preview_outputs,

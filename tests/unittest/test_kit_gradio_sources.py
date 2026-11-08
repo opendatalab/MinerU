@@ -144,6 +144,38 @@ def test_successful_result_retains_source_but_failed_prepare_can_retry(tmp_path:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("failure_type", [OSError, asyncio.CancelledError])
+def test_api_retry_replaces_failed_preparation_task(tmp_path: Path, failure_type: type[BaseException]) -> None:
+    """同会话 API 重试会重建失败或取消的准备任务，并继续合并并发重试。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    io = LocalGradioDocumentIO()
+    io.prepare_source = Mock(wraps=io.prepare_source, side_effect=failure_type("preparation failed"))
+
+    async def scenario() -> None:
+        """故障恢复后沿用 API 会话和输入路径，显式浏览器身份仍禁止被替换。"""
+        registry = SessionSources(io, tmp_path)
+        with pytest.raises(failure_type):
+            await registry.acquire("api-session", source)
+        failed_id, failed_lease = registry.current["api-session"]
+        with pytest.raises(failure_type):
+            await registry.acquire("api-session", source, source_id=failed_id)
+        assert io.prepare_source.call_count == 1 and failed_lease.users == 0
+        io.prepare_source.side_effect = None
+        first, second = await asyncio.gather(*(registry.acquire("api-session", source) for _ in range(2)))
+        prepared, lease = first
+        assert first == second and prepared.parse_path.is_file()
+        assert prepared.source_id != failed_id and failed_lease.retired
+        assert io.prepare_source.call_count == 2 and lease.users == 2
+        await registry.release(lease)
+        await registry.release(second[1])
+        await registry.retire("api-session")
+        await asyncio.gather(*registry.cleanups)
+        assert not prepared.root.exists()
+
+    asyncio.run(scenario())
+
+
 def test_prepared_source_rejects_path_escape(tmp_path: Path) -> None:
     """共享源目录只能包含本次输入文件，不能扩大为任意 output root 路径。"""
     pdf = tmp_path / "source.pdf"
