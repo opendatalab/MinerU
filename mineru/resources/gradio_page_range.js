@@ -82,9 +82,9 @@
         summary, range, JSON.stringify(state),
         update({ interactive: Boolean(path) && sourceReady === path && (!needsRange || count > 0) }),
         update({ value: escapeHtml(notice), visible: Boolean(notice) }),
-        // 同一事件同时更新值、标签和页码，程序赋值无需再触发 tier.input。
-        update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1, visible: !flashOnly && tiers.length > 1 }),
-        text("tier_value", { tier: text(`tier_${selectedTier}`), notice: "" }),
+        // 同时更新公开 API 数值与胶囊状态；程序赋值不触发胶囊的 input 事件。
+        update({ value: effectivePosition }),
+        update({ value: effectivePosition, props: { selected_tier: selectedTier, locked: flashOnly } }),
         JSON.stringify(tierSelection),
     ];
 }

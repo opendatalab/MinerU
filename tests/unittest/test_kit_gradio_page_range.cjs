@@ -52,9 +52,9 @@ for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, e
     ui.step("tier", { position: 3 });
     const out = ui.step("file", { file: { path: `/source.${extension}` } });
     assert.equal(out[7].value, 3);
-    assert.equal(out[7].interactive, false);
-    assert.equal(out[7].visible, false);
-    assert.equal(out[8], "解析等级：flash（极速）");
+    assert.equal(out[8].props.locked, true);
+    assert.equal(out[7].visible, undefined);
+    assert.equal(out[8].props.selected_tier, "flash");
     assert.equal(out[5].interactive, true);
     assert.equal(out[3], "");
     assert.match(out[2], /data-range-visible="false"/);
@@ -65,8 +65,8 @@ for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, e
     assert.equal(ui.state.tierSelection.tier, "advanced");
     const cleared = ui.step("clear");
     assert.equal(cleared[7].value, 3);
-    assert.equal(cleared[7].interactive, true);
-    assert.equal(cleared[8], "解析等级：advanced（极高）");
+    assert.equal(cleared[8].props.locked, false);
+    assert.equal(cleared[8].props.selected_tier, "advanced");
     assert.equal(cleared[5].interactive, false);
 }
 
@@ -76,8 +76,8 @@ for (const extension of tieredExtensions.flatMap((extension) => [extension, exte
     ui.step("file", { file: "/source.csv" });
     const out = ui.step("file", { file: { path: `/source.${extension}` } });
     assert.equal(out[7].value, 2);
-    assert.equal(out[7].interactive, true);
-    assert.equal(out[8], "解析等级：standard（高）");
+    assert.equal(out[8].props.locked, false);
+    assert.equal(out[8].props.selected_tier, "standard");
     assert.equal(out[5].interactive, extension.toLowerCase() !== "pdf");
     assert.deepEqual(ui.state.tierSelection, { tier: "standard", locked: false });
 }
@@ -87,16 +87,16 @@ for (const availableTiers of [["standard"], ["basic", "standard", "advanced"], [
     const ui = createUi(20, availableTiers);
     const originalPosition = ui.state.position;
     const out = ui.step("file", { file: "/source.csv" });
-    assert.equal(out[7].interactive, false);
+    assert.equal(out[8].props.locked, true);
     assert.equal(out[7].value, originalPosition);
-    assert.equal(out[7].visible, false);
+    assert.equal(out[7].visible, undefined);
     assert.equal(out[5].interactive, true);
     assert.equal(out[6].visible, false);
-    assert.equal(out[8], "解析等级：flash（极速）");
+    assert.equal(out[8].props.selected_tier, "flash");
     const restored = ui.step("file", { file: "/source.png" });
     assert.equal(restored[7].value, originalPosition);
-    assert.equal(restored[7].interactive, availableTiers.length > 1);
-    assert.equal(restored[7].visible, availableTiers.length > 1);
+    assert.equal(restored[8].props.locked, false);
+    assert.equal(restored[7].visible, undefined);
     assert.equal(restored[5].interactive, true);
     assert.equal(restored[6].visible, false);
 }

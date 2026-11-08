@@ -55,13 +55,6 @@ body.dark .gradio-container {
     padding: 0 !important;
     gap: 0 !important;
 }
-/* HF Space 不执行 Gradio 的自定义 CSS 前缀改写，以下规则必须独立压过
-   Gradio 自带 scoped 样式（div.svelte-*、.head.svelte-*、.prose 等）。 */
-.mineru-tier-slider .head,
-.mineru-tier-slider .min_value,
-.mineru-tier-slider .max_value {
-    display: none !important;
-}
 /* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
 .mineru-kit-page-range {
     display: none !important; position: relative; padding: 4px 12px 15px !important; overflow: visible !important;

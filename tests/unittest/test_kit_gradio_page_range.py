@@ -357,3 +357,10 @@ def test_frontend_page_range_state_machine() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_frontend_tier_capsule_interactions() -> None:
+    """执行胶囊交互回归，覆盖吸附、整数提交、文件锁档竞态及缺档服务。"""
+    node = shutil.which("node")
+    assert node is not None
+    subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_tier.cjs"))], check=True)

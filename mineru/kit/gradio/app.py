@@ -387,7 +387,7 @@ def build_gradio_app(
 
     upload_context.__annotations__["request"] = gr.Request
     examples = _example_files(file_types) if enable_example else []
-    app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS + _download_icon_css()
+    app_css = _resource_text("gradio_app.css") + _resource_text("gradio_tier.css") + _KIT_MENU_CSS + _download_icon_css()
     i18n = gr.I18n(**translations())
     app_js = (
         _resource_text("gradio_app.js")
@@ -440,27 +440,33 @@ def build_gradio_app(
                     server_functions=[upload_context],
                     elem_classes=["mineru-upload-file"],
                 )
-                with gr.Group():
-                    tier_label = gr.Markdown(
-                        value=MESSAGES["tier_value"][1].format(tier=MESSAGES[f"tier_{preferred_tier}"][1], notice=""),
-                        padding=True,
-                        elem_classes=["mineru-tier-label"],
-                    )
-                    tier = gr.Slider(
-                        minimum=0,
-                        # 单档位时保留非零跨度，避免原生滑块计算进度时除零。
-                        maximum=max(1, len(tier_choices) - 1),
-                        value=tier_choices.index(preferred_tier),
-                        step=1,
-                        precision=0,
-                        interactive=len(tier_choices) > 1,
-                        visible=len(tier_choices) > 1,
-                        label=i18n("mineru.tier"),
-                        show_label=False,
-                        elem_classes=["mineru-tier-slider"],
-                    )
-                    # 独立保存会话的未锁定档位，不随文件和页码选区一起重置。
-                    tier_selection = gr.Textbox(value=json.dumps({"tier": preferred_tier, "locked": False}), visible=False)
+                tier_control = gr.HTML(
+                    value=tier_choices.index(preferred_tier),
+                    html_template=_resource_text("gradio_tier.html"),
+                    js_on_load=(
+                        f"({_resource_text('gradio_tier.js')})"
+                        f"({{element, props, trigger, watch, tiers: {json.dumps(tier_choices)}}})"
+                    ),
+                    selected_tier=preferred_tier,
+                    locked=False,
+                    apply_default_css=False,
+                    elem_classes=["mineru-tier-control"],
+                )
+                # 隐藏的原生数值组件保留公开转换 API 的整数档位协议。
+                tier = gr.Slider(
+                    minimum=0,
+                    maximum=max(1, len(tier_choices) - 1),
+                    value=tier_choices.index(preferred_tier),
+                    step=1,
+                    precision=0,
+                    interactive=len(tier_choices) > 1,
+                    visible=False,
+                    label=i18n("mineru.tier"),
+                    show_label=False,
+                    elem_classes=["mineru-tier-slider"],
+                )
+                # 独立保存会话的未锁定档位，不随文件和页码选区一起重置。
+                tier_selection = gr.Textbox(value=json.dumps({"tier": preferred_tier, "locked": False}), visible=False)
                 force_ocr = gr.Checkbox(
                     value=False,
                     label=i18n("mineru.force_ocr"),
@@ -893,7 +899,7 @@ def build_gradio_app(
         # 文件页数只在上传后读取；前端缓存元数据，tier 切换和拖动不发起 Python 请求。
         range_inputs = [
             input_file,
-            tier,
+            tier_control,
             page_metadata,
             page_selection,
             page_handle_a,
@@ -910,7 +916,7 @@ def build_gradio_app(
             convert_button,
             page_notice,
             tier,
-            tier_label,
+            tier_control,
             tier_selection,
         ]
         range_script = _resource_text("gradio_page_range.js")
@@ -918,7 +924,7 @@ def build_gradio_app(
         gr.on(
             triggers=[
                 input_file.change,
-                tier.input,
+                tier_control.input,
                 page_metadata.change,
                 page_handle_a.input,
                 page_handle_b.input,
@@ -1092,7 +1098,8 @@ def build_gradio_app(
         )
         ui_convert_event = begin_conversion.then(
             fn=convert_ui,
-            inputs=[input_file, tier, page_range, force_ocr, conversion_ticket],
+            # 直接读取胶囊已提交值，避免快速点击转换时等待隐藏 API 数值的联动回写。
+            inputs=[input_file, tier_control, page_range, force_ocr, conversion_ticket],
             outputs=conversion_receipt,
             queue=True,
             concurrency_limit=None,

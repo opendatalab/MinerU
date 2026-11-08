@@ -1218,27 +1218,22 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
 def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     tmp_path: Path, tiers: tuple[str, ...], default_position: int, default_tier: str, maximum: int
 ) -> None:
-    """验证乱序、缺档及单档位下的原生滑块默认值与文件切换、清除行为。"""
+    """验证乱序、缺档及单档位下的胶囊默认值，保留公开 API 的整数输入。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(
         V1ArtifactClient(api_url=capabilities.base_url), capabilities, output_root=tmp_path, enable_example=False
     )
     slider = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Slider")
-    label = next(block for block in demo.blocks.values() if "mineru-tier-label" in (block.elem_classes or []))
+    label = next(block for block in demo.blocks.values() if "mineru-tier-control" in (block.elem_classes or []))
     assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
     assert slider.value == default_position
     assert default_tier == select_default_task_tier(tiers)
     assert slider.interactive is (len(tiers) > 1)
-    assert slider.visible is (len(tiers) > 1)
-    assert (
-        label.value
-        == "解析等级："
-        + {"flash": "flash（极速）", "basic": "basic（中）", "standard": "standard（高）", "advanced": "advanced（极高）"}[
-            default_tier
-        ]
-    )
+    assert slider.visible is False
+    assert label.value == default_position
+    assert label.props == {"selected_tier": default_tier, "locked": False}
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
-    label_events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
+    label_events = [event for event in demo.config["dependencies"] if (label._id, "input") in event["targets"]]
     assert len(label_events) == 1
     label_event = label_events[0]
     assert label_event["backend_fn"] is False
@@ -1255,6 +1250,8 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
             assert slider not in fn.outputs and label not in fn.outputs
         if fn.name == "convert_handler":
             assert fn.inputs[1] is slider
+        if fn.name == "convert_ui":
+            assert fn.inputs[1] is label
     assert slider.api_info()["type"] == "integer"
 
 

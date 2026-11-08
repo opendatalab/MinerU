@@ -11,6 +11,7 @@
     const i18n = window.__mineruI18n = __MINERU_I18N__;
     preview("setup", viewerEntry);
     window.__mineruUpload?.localize();
+    window.__mineruTier?.localize();
     (__MINERU_TRACE__)();
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
     window.__mineruStatusPanel = statusTimer;
