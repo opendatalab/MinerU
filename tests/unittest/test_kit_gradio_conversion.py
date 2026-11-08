@@ -276,6 +276,63 @@ def test_local_selection_resets_results_before_upload_finishes(tmp_path: Path) -
     assert all(update == {"__type__": "update"} for update in preview(None, request, selected))
 
 
+@pytest.mark.parametrize("extension", ["docx", "csv"])
+def test_native_example_ready_does_not_wait_for_previous_preparation(tmp_path: Path, extension: str) -> None:
+    """原生示例就绪不等待旧图片准备，关闭会话仍等待自身后台清理且不阻塞其他会话。"""
+    from mineru.kit.gradio.sources import PreparedSource
+
+    image = tmp_path / "previous.png"
+    Image.new("RGB", (20, 30), "red").save(image)
+    example = tmp_path / f"example.{extension}"
+    example.write_bytes(b"native example")
+    started, finish = threading.Event(), threading.Event()
+    app = _application(tmp_path, SimpleNamespace())
+    prepare = _callback(app, "prepare_uploaded_source")
+    sources = inspect.getclosurevars(prepare).nonlocals["conversion_service"].sources
+    original = sources.document_io.prepare_source
+    request = SimpleNamespace(session_hash="native-example")
+
+    def delayed(path: Path, *, source_id: str, output_root: Path) -> PreparedSource:
+        """保持旧图片的同步准备未完成，以检测就绪回执和关闭回收的等待边界。"""
+        started.set()
+        assert finish.wait(10)
+        return original(path, source_id=source_id, output_root=output_root)
+
+    sources.document_io.prepare_source = delayed
+
+    async def scenario() -> None:
+        """通过真实上传和关闭回调交错请求，确认旧任务安全退出后才删除目录。"""
+        first = json.dumps({"id": "a" * 32, "revision": 1, "path": str(image)})
+        replacement = json.dumps({"id": "b" * 32, "revision": 2, "path": str(example)})
+        old = asyncio.create_task(prepare(str(image), first, request))
+        pending: list[asyncio.Task[Any]] = [old]
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            native = asyncio.create_task(prepare(str(example), replacement, request))
+            pending.append(native)
+            ready, _ = await asyncio.wait({native}, timeout=1)
+            assert native in ready, "Native example is blocked by the old preparation"
+            assert json.loads(native.result()) == {"id": "b" * 32, "path": str(example), "pdf": None, "error": ""}
+            assert not old.done() and not finish.is_set()
+            unrelated = asyncio.create_task(sources.retire("unrelated-session"))
+            pending.append(unrelated)
+            ready, _ = await asyncio.wait({unrelated}, timeout=1)
+            assert unrelated in ready, "Another session is blocked by the old preparation"
+            closing = asyncio.create_task(_callback(app, "unload_session")(request))
+            pending.append(closing)
+            await asyncio.sleep(0)
+            assert not closing.done()
+        finally:
+            finish.set()
+            await asyncio.gather(*pending, return_exceptions=True)
+        assert "expired" in json.loads(old.result())["error"]
+        closing.result()
+        assert not (tmp_path / "output/gradio/sources" / ("a" * 32)).exists()
+        assert request.session_hash not in sources.current and request.session_hash not in sources.revisions
+
+    asyncio.run(scenario())
+
+
 def test_conversion_and_poll_are_full_non_generator_responses(tmp_path: Path) -> None:
     """通过 Gradio process_api 反复序列化，确认结果不会创建生成器差分缓存。"""
     from gradio import Request

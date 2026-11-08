@@ -95,7 +95,7 @@ class SessionSources:
         self.output_root = output_root
         self.current: dict[str, tuple[str, _SourceLease]] = {}
         self.revisions: dict[str, int] = {}
-        self.cleanups: set[asyncio.Task[None]] = set()
+        self.cleanups: dict[asyncio.Task[None], str] = {}
 
     async def prepare(self, session: str, path: Path, source_id: str, revision: int) -> PreparedSource:
         """接收单调选择修订号，拒绝晚到准备请求并复用本轮已创建的任务。"""
@@ -122,14 +122,14 @@ class SessionSources:
             return source
         finally:
             if previous:
-                self._schedule_cleanup(previous[1])
+                self._schedule_cleanup(session, previous[1])
             await self._cleanup(lease)
 
-    def _schedule_cleanup(self, lease: _SourceLease) -> None:
-        """旧同步准备在后台安全退出，不阻塞已经就绪的新文件回执。"""
+    def _schedule_cleanup(self, session: str, lease: _SourceLease) -> None:
+        """按会话登记后台回收，不阻塞新文件就绪，关闭时仍可等待自身任务。"""
         task = asyncio.create_task(self._cleanup(lease))
-        self.cleanups.add(task)
-        task.add_done_callback(self.cleanups.discard)
+        self.cleanups[task] = session
+        task.add_done_callback(self.cleanups.pop)
 
     async def acquire(self, session: str, path: Path, *, source_id: str = "") -> tuple[PreparedSource, _SourceLease]:
         """浏览器使用预检记录；公开 API 在转换前走同一准备流程。"""
@@ -161,7 +161,7 @@ class SessionSources:
         await self._cleanup(lease)
 
     async def retire(self, session: str, *, revision: int | None = None) -> None:
-        """清除时保留修订屏障，关闭会话时释放记录，并等待同步转换安全退出。"""
+        """选择变更只失效并后台回收，关闭会话时等待自身旧任务安全退出。"""
         if revision is None:
             self.revisions.pop(session, None)
         else:
@@ -171,7 +171,11 @@ class SessionSources:
         previous = self.current.pop(session, None)
         if previous:
             previous[1].retired = True
-            await self._cleanup(previous[1])
+            self._schedule_cleanup(session, previous[1])
+        if revision is None:
+            for task, owner in tuple(self.cleanups.items()):
+                if owner == session:
+                    await await_task_completion(task)
 
     async def _cleanup(self, lease: _SourceLease) -> None:
         """等待同步准备真正结束后回收未引用目录，失败任务已自行清理。"""
