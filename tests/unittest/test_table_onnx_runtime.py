@@ -4,6 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from pathlib import Path
 
+from mineru.model.runtime import onnx_device
+from mineru.config import get_config
+
 import pytest
 
 from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
@@ -233,14 +236,15 @@ def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.Mo
             "gpu", with_gpu_classification(GpuAdapter(7, "id", "intel", 0x8086, 1, 0), classify_d3d12_gpu(True)), backend="dml"
         )
     )
-    monkeypatch.setattr(onnx, "resolve_onnx_device", select)
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", select)
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())
     factory = Mock(return_value=native)
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     model = TSRUnet({"model_path": "unet.onnx", "small_backend": "onnx", "intra_op_num_threads": 2})
     assert isinstance(model.session.session, onnx.DirectMLSession)
-    select.assert_called_once_with(intra_op_num_threads=2, inter_op_num_threads=1)
+    select.assert_called_once_with(allow_download=True, intra_op_num_threads=2, inter_op_num_threads=1)
     opts = factory.call_args.kwargs["sess_options"]
     assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == (2, 1)
     assert not opts.enable_cpu_mem_arena and not opts.enable_mem_pattern
@@ -256,7 +260,7 @@ def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.Mo
 @pytest.mark.parametrize("legacy_device", ["cpu", "auto", "cuda"])
 def test_torch_unet_retains_legacy_table_device(monkeypatch: pytest.MonkeyPatch, legacy_device: str) -> None:
     monkeypatch.setenv("MINERU_TABLE_DEVICE", legacy_device)
-    monkeypatch.setattr(onnx, "resolve_onnx_device", Mock(side_effect=AssertionError("ONNX selection")))
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", Mock(side_effect=AssertionError("ONNX selection")))
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)

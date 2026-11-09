@@ -236,12 +236,13 @@ def test_atom_and_context_caches_are_isolated_by_stack(monkeypatch: pytest.Monke
     assert full is not light
     assert manager.get_atom_model("ocr", small_backend="onnx", device="cpu") is light
     monkeypatch.setattr(hybrid, "HybridLocalModelContext", factory)
-    monkeypatch.setattr(hybrid, "get_device", lambda: "cpu")
+    from mineru.config import get_config
+
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
     context_manager = hybrid.HybridLocalModelContextSingleton()
-    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda: "torch")
-    full_context = context_manager.get_model()
-    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda: "onnx")
-    assert context_manager.get_model() is not full_context
+    context = context_manager.get_model()
+    monkeypatch.setattr(get_config().model, "small_backend", "torch")
+    assert context_manager.get_model() is context
     assert factory.call_args.kwargs == {"small_backend": "onnx", "device": "cpu"}
 
 

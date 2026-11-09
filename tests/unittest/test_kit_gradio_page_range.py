@@ -374,7 +374,7 @@ def test_frontend_tier_capsule_interactions() -> None:
 
 
 def test_frontend_page_range_gestures() -> None:
-    """执行真实手势控制器，验证本地预览、原子提交、整段平移和取消竞态。"""
+    """执行真实手势控制器，验证最近端点选择、连续拖动、原子提交和取消竞态。"""
     node = shutil.which("node")
     assert node is not None
     subprocess.run([node, str(Path(__file__).with_name("test_kit_gradio_page_control.cjs"))], check=True)

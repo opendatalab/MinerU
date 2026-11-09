@@ -180,6 +180,25 @@ class V1ArtifactClient:
         self._capabilities = capabilities
         return capabilities
 
+    async def read_runtime_device(self) -> Literal["cpu", "gpu"] | None:
+        """只查询一次 health 的默认设备模式，信息缺失或请求失败均返回未知。"""
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(3),
+                follow_redirects=True,
+                trust_env=should_trust_env_for_url(self.base_url),
+                transport=self._transport,
+            ) as client:
+                response = await client.get(f"{self.base_url}/v1/health", headers=self._headers())
+                health = _check_json_response(response, endpoint="GET /v1/health")
+        except (httpx.HTTPError, V1ArtifactError):
+            return None
+        runtime = health.get("runtime")
+        if health.get("status") != "ok" or not isinstance(runtime, dict):
+            return None
+        device = runtime.get("device")
+        return cast(Literal["cpu", "gpu"], device) if device in ("cpu", "gpu") else None
+
     async def parse_file(
         self,
         path: Path,
@@ -267,6 +286,10 @@ class GradioArtifactClient:
     def capabilities(self) -> V1ServerCapabilities:
         """返回所连接服务实际发布的 PDF/图片档位及协议能力。"""
         return self._capabilities
+
+    async def read_runtime_device(self) -> Literal["cpu", "gpu"] | None:
+        """读取所连接服务的设备模式，不改写共享能力或保存跨页面设备缓存。"""
+        return await self._primary.read_runtime_device()
 
     async def parse_file(
         self,

@@ -119,7 +119,7 @@ body.dark .gradio-container {
 .mineru-page-control .html-container { padding: 0 !important; }
 .mineru-page-sliders {
     position: relative; height: 48px; min-height: 48px; margin-top: 7px;
-    touch-action: pan-y; user-select: none; cursor: pointer;
+    touch-action: pan-y; -webkit-user-select: none; user-select: none; cursor: pointer;
 }
 .mineru-page-sliders::before {
     content: ""; position: absolute; left: 14px; right: 14px; top: 17px; height: 14px; border-radius: 99px;
@@ -146,11 +146,10 @@ body.dark .gradio-container {
 .mineru-page-sliders[data-active="b"] .mineru-page-handle-b { z-index: 2; }
 .mineru-page-sliders[data-active="a"] .mineru-page-handle-a .mineru-page-thumb,
 .mineru-page-sliders[data-active="b"] .mineru-page-handle-b .mineru-page-thumb,
-.mineru-page-sliders[data-active="pan"] .mineru-page-thumb,
 .mineru-page-sliders[data-active="pending"] .mineru-page-thumb {
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--page-accent) 14%, transparent), 0 3px 8px #00000025;
 }
-.mineru-page-sliders[data-hover="pan"], .mineru-page-sliders[data-hover="a"],
+.mineru-page-sliders[data-hover="a"],
 .mineru-page-sliders[data-hover="b"], .mineru-page-sliders[data-hover="pending"] { cursor: grab; }
 .mineru-page-sliders[data-active]:not([data-active=""]) { cursor: grabbing; }
 .mineru-page-sliders[data-disabled="true"] { cursor: default; }

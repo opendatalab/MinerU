@@ -63,6 +63,7 @@
 | [ADR-0033](0033-middle-json-inline-spans.md) | Accepted | Middle JSON 2.0 结构化行内 Span |
 | [ADR-0034](0034-tsv-independent-file-suffix.md) | Accepted | TSV 独立文件后缀 |
 | [ADR-0035](0035-doclib-persistent-token.md) | Accepted | Doclib 持久本机凭证（替代 ADR-0021 的无认证策略） |
+| [ADR-0036](0036-process-runtime-device.md) | Accepted | 进程默认设备决策与 ONNX 配置边界 |
 
 ## 模板
 

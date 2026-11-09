@@ -1,13 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Process-local ONNX selection, with a single persisted cpu/gpu preference."""
+"""ONNX 底层选型与偏好持久化；正式进程缓存由 device_state 负责。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import os
 from pathlib import Path
 import sys
-import threading
 from typing import Literal
 
 from filelock import FileLock
@@ -16,6 +13,7 @@ from loguru import logger
 from .windows_gpu import GpuAdapter, discover_gpus, preferred_gpu
 from .webgpu import WebGPUDevice, discover_webgpu_devices, select_webgpu_device
 from .gpu import is_discrete_gpu
+from .device_types import OnnxSelection
 
 # Require at least 20% lower GPU inference time; simplified to 0.8 at the user's request.
 # Evidence: docs/next/onnx-selection-validation.md. Each backend can be calibrated independently.
@@ -25,35 +23,6 @@ METACOMMANDS: dict[str, dict[str, bool]] = {
     "amd": {"layout": True, "mfr": True, "ocr_rec": True, "unet": True},
     "nvidia": {"layout": True, "mfr": True, "ocr_rec": False, "unet": False},
 }
-
-
-@dataclass(frozen=True)
-class OnnxSelection:
-    """Immutable actual route. Adapter identity is valid only in this process."""
-
-    device: Literal["cpu", "gpu"] = "cpu"
-    adapter: GpuAdapter | WebGPUDevice | None = None
-    reason: str = "cpu"
-    backend: Literal["dml", "webgpu"] | None = None
-
-
-_lock = threading.RLock()
-_selections: dict[tuple[int, str, str, str, bool], OnnxSelection] = {}
-
-
-def cached_onnx_device(*, allow_download: bool = True) -> OnnxSelection | None:
-    """只读查询当前配置的进程内选择，用于区分本次选型与已缓存结果。"""
-    from ...config import get_config, get_config_file_path, get_config_source
-
-    key = (
-        os.getpid(),
-        get_config_file_path(),
-        get_config().model.onnx_device,
-        get_config_source("model.onnx_device"),
-        allow_download,
-    )
-    with _lock:
-        return _selections.get(key)
 
 
 def metacommands_enabled(vendor: str, model_kind: str) -> bool | None:
@@ -159,6 +128,7 @@ def _select(
 def _select_and_save(
     requested: str, source: str, intra_op_num_threads: int, inter_op_num_threads: int, *, allow_download: bool = True
 ) -> OnnxSelection:
+    """在文件锁保护下重读已有偏好，仅保存已完成的自动选型。"""
     from ...config import read_onnx_device_from_file, update_config_file
 
     if requested == "auto" and source != "env":
@@ -175,43 +145,38 @@ def _select_and_save(
 def resolve_onnx_device(
     *, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0, allow_download: bool = True
 ) -> OnnxSelection:
-    """在首次模型使用或 CPU/GPU 候选达标的 API 自动推荐时选型；导入和只读诊断不调用。"""
+    """执行一次底层选型并保留持久化规则，不读取或发布进程默认设备快照。"""
     from ...config import get_config, get_config_file_path, get_config_source
 
     requested = get_config().model.onnx_device
     source = get_config_source("model.onnx_device")
     path = get_config_file_path()
-    key = (os.getpid(), path, requested, source, allow_download)
-    with _lock:
-        if key in _selections:
-            return _selections[key]
-        try:
-            if requested != "auto" or sys.platform not in {"win32", "linux"}:
+    try:
+        if requested != "auto" or sys.platform not in {"win32", "linux"}:
+            selection = _select_and_save(
+                requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
+            )
+        else:
+            try:
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                selection_lock = FileLock(f"{path}.onnx-selection.lock", timeout=30)
+                selection_lock.acquire()
+            except OSError:
                 selection = _select_and_save(
                     requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
                 )
             else:
                 try:
-                    Path(path).parent.mkdir(parents=True, exist_ok=True)
-                    selection_lock = FileLock(f"{path}.onnx-selection.lock", timeout=30)
-                    selection_lock.acquire()
-                except OSError:
                     selection = _select_and_save(
                         requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
                     )
-                else:
-                    try:
-                        selection = _select_and_save(
-                            requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
-                        )
-                    finally:
-                        selection_lock.release()
-        except Exception as error:
-            logger.warning("ONNX device selection failed; using CPU for this process: {}", error)
-            selection = OnnxSelection(reason="selection_failed")
-        _selections[key] = selection
-        logger.info("ONNX device selected: {}", selection)
-        return selection
+                finally:
+                    selection_lock.release()
+    except Exception as error:
+        logger.warning("ONNX device selection failed; using CPU: {}", error)
+        selection = OnnxSelection(reason="selection_failed")
+    logger.info("ONNX device selected: {}", selection)
+    return selection
 
 
 def confirm_gpu_session(selection: OnnxSelection) -> None:
@@ -232,7 +197,6 @@ __all__ = [
     "ONNX_GPU_TIME_RATIO_THRESHOLDS",
     "OnnxSelection",
     "choose_gpu",
-    "cached_onnx_device",
     "confirm_gpu_session",
     "inspect_onnx_candidate",
     "metacommands_enabled",

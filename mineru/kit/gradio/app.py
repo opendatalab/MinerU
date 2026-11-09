@@ -7,10 +7,10 @@ import html
 import json
 import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 from ...filetypes import (
@@ -284,14 +284,14 @@ def _download_icon_css() -> str:
 
 
 def _render_header() -> str:
-    """渲染复用旧版视觉风格的静态 Header。"""
+    """渲染响应式按钮与统一资源菜单的 Header。"""
     template = _resource_text("gradio_header.html")
     values = {
         "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "Hugging Face",
         "{{HEADER_MODEL_MODELSCOPE_LINK}}": "ModelScope",
-        "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU · arXiv",
-        "{{HEADER_PAPER_MINERU25_REPORT}}": "MinerU 2.5 · arXiv",
-        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "MinerU 2.5 Pro · arXiv",
+        "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU",
+        "{{HEADER_PAPER_MINERU25_REPORT}}": "MinerU 2.5",
+        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "MinerU 2.5 Pro",
     }
     for placeholder, key in {
         "HEADER_TITLE": "header_title",
@@ -363,6 +363,7 @@ def build_gradio_app(
     enable_api: bool = True,
     max_pages: int | None = None,
     document_io: GradioDocumentIO | None = None,
+    runtime_device_loader: Callable[[], Awaitable[Literal["cpu", "gpu"] | None]] | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
     import gradio as gr
@@ -376,6 +377,10 @@ def build_gradio_app(
         raise ValueError("V1 API server did not advertise any parsing tier")
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
+
+    async def read_runtime_device(_data: object) -> Literal["cpu", "gpu"] | None:
+        """供每个页面的胶囊挂载时读取一次设备状态，不参与档位或解析状态更新。"""
+        return await runtime_device_loader() if runtime_device_loader is not None else None
 
     def upload_context(_data: object, request: object | None = None) -> dict[str, str]:
         """为可取消的进度上传提供原生 Gradio 地址，沿用请求鉴权和反向代理挂载前缀。"""
@@ -414,9 +419,12 @@ def build_gradio_app(
     )
 
     with gr.Blocks() as demo:
+        # Header 自行定义排版，避免 Gradio 的按钮字体与链接下划线覆盖设计。
         gr.HTML(
             _render_header(),
             elem_classes=["mineru-header-html"],
+            js_on_load=f"({_resource_text('gradio_header.js')})({{element}})",
+            apply_default_css=False,
         )
         with gr.Row(elem_classes=["mineru-kit-workspace"]):
             with gr.Column(scale=2, min_width=280, elem_classes=["mineru-kit-control", "mineru-control-column"]):
@@ -445,8 +453,10 @@ def build_gradio_app(
                     html_template=_resource_text("gradio_tier.html"),
                     js_on_load=(
                         f"({_resource_text('gradio_tier.js')})"
-                        f"({{element, props, trigger, watch, tiers: {json.dumps(tier_choices)}}})"
+                        f"({{element, props, trigger, watch, server, tiers: {json.dumps(tier_choices)}, "
+                        f"defaultIndex: {tier_choices.index(preferred_tier)}}})"
                     ),
+                    server_functions=[read_runtime_device],
                     selected_tier=preferred_tier,
                     locked=False,
                     apply_default_css=False,
@@ -1358,6 +1368,7 @@ def launch_gradio(
             enable_example=enable_example,
             enable_api=enable_api,
             max_pages=max_pages,
+            runtime_device_loader=routed_client.read_runtime_device,
         )
         _launch_gradio_app(
             demo,

@@ -10,6 +10,9 @@ import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from mineru.model.runtime import onnx_device
+from mineru.config import get_config
+
 import pytest
 
 from mineru.model.runtime.gpu import classify_vulkan_gpu, with_gpu_classification
@@ -136,16 +139,17 @@ def test_linux_routes_only_five_models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(onnx, "sys", SimpleNamespace(platform="linux"))
     select = Mock(return_value=OnnxSelection("gpu", device(), backend="webgpu"))
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: [webgpu.WEBGPU_PROVIDER]))
-    monkeypatch.setattr(onnx, "resolve_onnx_device", select)
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", select)
     monkeypatch.setattr(onnx, "create_ort_session", factory)
     for kind in ("layout", "mfr", "ocr_det", "ocr_rec", "unet"):
         onnx.ort_session("test.onnx", model_kind=kind)
         assert factory.call_args.kwargs["adapter"] == device()
-    assert select.call_count == 5
+    assert select.call_count == 1
     for kind in ("", "seal_det", "table", "slanet_plus", "mfr_tail_cpu"):
         onnx.ort_session("test.onnx", model_kind=kind)
         assert factory.call_args.kwargs["adapter"] is None
-    assert select.call_count == 5
+    assert select.call_count == 1
 
 
 def test_webgpu_creation_and_two_session_runs_share_lock(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -100,9 +100,9 @@ _VLM_MODEL_REPOS: dict[str, ModelRepo] = {
 
 def small_model_repo(backend: str | None = None) -> ModelRepo:
     """独立选择小模型仓库，不读取 VLM 引擎或其权重格式。"""
-    from .runtime.device import resolve_small_model_backend
+    from .runtime.device_state import resolve_model_backend
 
-    return _SMALL_MODEL_REPOS[resolve_small_model_backend(backend)]
+    return _SMALL_MODEL_REPOS[resolve_model_backend(backend)]
 
 
 def vlm_model_repo(engine: str | None = None) -> ModelRepo:

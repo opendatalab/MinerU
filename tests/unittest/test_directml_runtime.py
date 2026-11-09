@@ -9,6 +9,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
+from mineru.model.runtime import onnx_device
+from mineru.config import get_config
+
 import pytest
 
 from mineru.model.runtime.gpu import classify_d3d12_gpu, with_gpu_classification
@@ -48,7 +51,8 @@ def test_cpu_models_do_not_select_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(onnx, "sys", SimpleNamespace(platform="win32"))
     select = Mock(side_effect=AssertionError("selection"))
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
-    monkeypatch.setattr(onnx, "resolve_onnx_device", select)
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", select)
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     for kind in ("", "ocr_det", "seal_det", "table", "mfr_tail_cpu"):
         onnx.ort_session("test.onnx", model_kind=kind)

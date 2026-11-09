@@ -172,7 +172,9 @@ def test_only_automatic_onnx_route_adds_intel_compatibility(
 
 @pytest.mark.parametrize("decision", ["cpu", "gpu"])
 def test_server_main_applies_automatic_mode_before_gpu_defaults(monkeypatch: pytest.MonkeyPatch, decision: str) -> None:
-    monkeypatch.setattr(onnx_device, "resolve_onnx_device", lambda: OnnxSelection(decision, reason="configured_" + decision))
+    monkeypatch.setattr(
+        onnx_device, "resolve_onnx_device", lambda **_: OnnxSelection(decision, reason="configured_" + decision)
+    )
     monkeypatch.setattr(server.sys, "argv", ["llama-server", "-m", "model.gguf", "--mmproj", "mmproj.gguf"])
     monkeypatch.setattr(server, "_read_gguf_context_length", lambda path: 0)
     execute = Mock()
