@@ -278,7 +278,7 @@ ui.upload(48);
 assertSelection(ui.step("end", { end: 40 }), 40, 40, "a");
 assertSelection(ui.step("preset"), 1, 1, "a");
 
-// 一次提交的两端必须同时生效，保持平移长度和交叉后的物理身份。
+// 一次提交的两端必须同时生效，保留页数上限联动和交叉后的物理身份。
 ui = createUi();
 ui.upload(48);
 assertSelection(ui.step("pair", { a: 21, b: 40 }), 21, 40, "a");

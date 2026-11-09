@@ -1,6 +1,7 @@
 // 指针拖动只更新本地外观，松手后通过一个组件值原子提交两端。
 ({ element, props, trigger, watch, maxPages }) => {
-    const { move, translate } = (__MINERU_PAGE_RANGE_MODEL__)();
+    const { move } = (__MINERU_PAGE_RANGE_MODEL__)();
+    const ownerDocument = element.ownerDocument;
     const rail = element.querySelector(".mineru-page-sliders");
     const inputs = ["a", "b"].map(handle => element.querySelector(`.mineru-page-handle-${handle} input`));
     let committed = JSON.parse(props.value || "{}");
@@ -13,10 +14,9 @@
         const node = element.closest(".mineru-kit-page-range")?.querySelector(selector);
         if (node && value && node.textContent !== value) node.textContent = value;
     };
-    // 平移只取整一次偏移量，避免两个浮点端点分别舍入后偶发多选一页。
+    // 松手时按当前物理端点取整，并重新应用页数上限。
     const snap = (a, b) => {
         const count = Math.max(1, committed.page_count || 1);
-        if (drag?.handle === "pan") return translate(...drag.initial, Math.round(a - drag.initial[0]), count);
         const handle = drag?.handle === "b" ? "b" : "a";
         return move(Math.round(a), Math.round(b), handle, Math.round(handle === "a" ? a : b), count, maxPages);
     };
@@ -57,14 +57,20 @@
     const release = () => {
         const previous = drag;
         drag = null;
+        ownerDocument.removeEventListener("pointermove", pointerMove, true);
+        ownerDocument.removeEventListener("pointerup", pointerUp, true);
+        ownerDocument.removeEventListener("pointercancel", pointerCancel, true);
+        ownerDocument.removeEventListener("dragstart", preventNativeDrag, true);
+        previous?.surface.remove();
         if (previous && rail.hasPointerCapture(previous.id)) rail.releasePointerCapture(previous.id);
     };
-    // 取消、窗口失焦和文件切换恢复最后的正式范围，不提交半途选择。
+    // Escape 和触屏滚动等明确取消才回滚本地预览。
     const cancel = () => {
+        if (!drag) return;
         release();
         render(committed.handle_a || 1, committed.handle_b || 1);
     };
-    // 一次 input 携带完整范围，整段平移不能拆成两个可能相互覆盖的事件。
+    // 一次 input 携带完整范围，超出上限时联动的另一端不能拆成独立提交。
     const commit = () => {
         const [a, b] = snap(...visual);
         release();
@@ -84,15 +90,14 @@
         if (changed) release();
         if (!drag) render(committed.handle_a || 1, committed.handle_b || 1);
     };
-    // 中段只在端点命中区之外启用；接近或重合时优先保留端点的可抓取性。
+    // 任意轨道位置都选择最近端点；等距时优先起点，完全重合时保留方向判定。
     const hit = (x, bounds) => {
         const span = Math.max(1, committed.page_count - 1);
         const centers = visual.map(value => bounds.left + 14 + (value - 1) / span * (bounds.width - 28));
         const distances = centers.map(center => Math.abs(x - center));
-        if (Math.abs(centers[0] - centers[1]) < 1 && Math.min(...distances) <= 22) return "pending";
-        if (Math.min(...distances) <= 22) return distances[0] <= distances[1] ? "a" : "b";
-        if (x > Math.min(...centers) && x < Math.max(...centers)) return "pan";
-        return distances[0] <= distances[1] ? "a" : "b";
+        if (Math.abs(centers[0] - centers[1]) < 1 && Math.min(...distances) <= 14) return "pending";
+        if (distances[0] === distances[1]) return committed.start_handle || "a";
+        return distances[0] < distances[1] ? "a" : "b";
     };
     // 同一指针保持物理端点身份；重合时由第一次有效移动方向决定起止端。
     const preview = event => {
@@ -104,12 +109,28 @@
             drag.handle = delta < 0 ? start : start === "a" ? "b" : "a";
             inputs[drag.handle === "a" ? 0 : 1].focus({ preventScroll: true });
         }
-        if (drag.handle === "pan") render(...translate(...drag.initial, delta, committed.page_count));
-        else {
-            const index = drag.handle === "a" ? 0 : 1;
-            render(...move(...visual, drag.handle, drag.initial[index] + delta, committed.page_count, maxPages));
-        }
+        const index = drag.handle === "a" ? 0 : 1;
+        render(...move(...visual, drag.handle, drag.initial[index] + delta, committed.page_count, maxPages));
     };
+    // 捕获丢失后仍接收页面事件；漏收松手时保持最后位置，不随重入鼠标移动。
+    const pointerMove = event => {
+        if (!drag || event.pointerId !== drag.id) return;
+        if (event.buttons === 0) { commit(); return; }
+        preview(event);
+    };
+    // 松手先补算最终坐标，再原子提交两端，支持轨道外部和预览区域。
+    const pointerUp = event => {
+        if (!drag || event.pointerId !== drag.id) return;
+        preview(event);
+        commit();
+    };
+    // 仅当前指针的实际取消才回滚，其他触点不能干扰当前端点。
+    const pointerCancel = event => { if (drag?.id === event.pointerId) cancel(); };
+    // 窗口意外失焦时保留当前选择，不退回拖动起点。
+    const finishInterrupted = () => { if (drag) commit(); };
+    // 防止原生 HTML 拖放接管手势并触发 pointercancel、禁拖光标。
+    const preventNativeDrag = event => { if (drag) event.preventDefault(); };
+    // 点击轨道立即移动最近端点，按住后继续使用该端点的连续拖动规则。
     rail.addEventListener("pointerdown", event => {
         if (event.button !== 0 || event.isPrimary === false || drag || (committed.page_count || 0) < 2) return;
         event.preventDefault();
@@ -117,13 +138,24 @@
         const bounds = rail.getBoundingClientRect();
         const handle = hit(event.clientX, bounds);
         const width = Math.max(1, bounds.width - 28);
-        drag = { id: event.pointerId, x: event.clientX, width, handle, initial: [...visual] };
+        // 透明层隔离 PDF/Office iframe，捕获意外丢失时松手仍能送达当前文档。
+        // 挂到 body 并内联定位，避免 Gradio 的容器裁切和 CSS 前缀处理。
+        const surface = ownerDocument.createElement("div");
+        surface.className = "mineru-page-drag-surface";
+        surface.setAttribute("aria-hidden", "true");
+        Object.assign(surface.style, { position: "fixed", inset: "0", zIndex: "2147483647", cursor: "grabbing" });
+        drag = { id: event.pointerId, surface, x: event.clientX, width, handle, initial: [...visual] };
+        ownerDocument.body.appendChild(surface);
+        ownerDocument.addEventListener("pointermove", pointerMove, true);
+        ownerDocument.addEventListener("pointerup", pointerUp, true);
+        ownerDocument.addEventListener("pointercancel", pointerCancel, true);
+        ownerDocument.addEventListener("dragstart", preventNativeDrag, true);
         rail.setPointerCapture(event.pointerId);
         if (handle === "a" || handle === "b") {
             const index = handle === "a" ? 0 : 1;
             const center = bounds.left + 14 + (visual[index] - 1) / (committed.page_count - 1) * width;
-            // 命中透明热区时不跳动；点击轨道空白处才直接定位最近端点。
-            if (Math.abs(event.clientX - center) > 22) {
+            // 抓住可见圆点保留抓取偏移；圆点外的轨道点击直接定位最近端点。
+            if (Math.abs(event.clientX - center) > 14) {
                 render(...move(...visual, handle, 1 + (event.clientX - bounds.left - 14) / width
                     * (committed.page_count - 1), committed.page_count, maxPages));
                 drag.initial = [...visual];
@@ -134,18 +166,12 @@
         }
         render(...visual);
     });
+    // 未拖动时仅更新命中提示，拖动中的连续位置由页面级监听负责。
     rail.addEventListener("pointermove", event => {
-        if (drag) { preview(event); return; }
-        if (committed.page_count > 1) rail.dataset.hover = hit(event.clientX, rail.getBoundingClientRect());
+        if (!drag && committed.page_count > 1) rail.dataset.hover = hit(event.clientX, rail.getBoundingClientRect());
     });
     rail.addEventListener("pointerleave", () => { delete rail.dataset.hover; });
-    rail.addEventListener("pointerup", event => {
-        if (!drag || event.pointerId !== drag.id) return;
-        preview(event);
-        commit();
-    });
-    rail.addEventListener("pointercancel", event => { if (drag?.id === event.pointerId) cancel(); });
-    rail.addEventListener("lostpointercapture", event => { if (drag?.id === event.pointerId) cancel(); });
+    // 捕获丢失事件的 buttons 在浏览器间不一致；仅由页面移动、松手或失焦结束手势。
     // 原生 range 保留焦点和读屏语义；方向键逐页、Home/End 到文档边界。
     for (const [index, input] of inputs.entries()) {
         // 指针聚焦不保留键盘焦点环；Tab 进入时仍给出清晰的焦点提示。
@@ -169,7 +195,7 @@
             commit();
         });
     }
-    window.addEventListener("blur", cancel);
+    window.addEventListener("blur", finishInterrupted);
     watch(["value"], sync);
     window.__mineruPageRange = { localize: sync };
     sync();

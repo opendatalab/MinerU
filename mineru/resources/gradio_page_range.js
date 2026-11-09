@@ -54,7 +54,7 @@
         } else if (selection.path === path && selection.page_count === count
             && Number.isFinite(selection.handle_a) && Number.isFinite(selection.handle_b)
             && (selection.handle_a !== state.handle_a || selection.handle_b !== state.handle_b)) {
-            // 整段平移必须接收同一提交中的两端；旧文件手势和越界输入不能污染新状态。
+            // 上限约束可能联动另一端，必须接收同一提交的完整范围；旧文件手势不能污染新状态。
             state.handle_a = clamp(Math.round(selection.handle_a), count);
             state.handle_b = clamp(Math.round(selection.handle_b), count);
             moveHandle("a", state.handle_a);

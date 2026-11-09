@@ -10,10 +10,5 @@
         if (Math.abs(active - other) > distance) other = active + Math.sign(other - active) * distance;
         return handle === "a" ? [active, other] : [other, active];
     };
-    // 整段移动共用一个偏移量，到达文档边界时保持选区长度。
-    const translate = (a, b, delta, count) => {
-        const offset = Math.max(1 - Math.min(a, b), Math.min(count - Math.max(a, b), delta));
-        return [a + offset, b + offset];
-    };
-    return { clamp, move, translate };
+    return { clamp, move };
 }

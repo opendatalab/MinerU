@@ -22,7 +22,8 @@
 .mineru-tier-capsule .mineru-tier-reset:disabled { opacity: 0.45; cursor: default; }
 .mineru-tier-reset svg { display: block; width: 20px; height: 20px; }
 .mineru-tier-options[hidden] { display: none !important; }
-.mineru-tier-rail { position: relative; height: 50px; margin-top: 2px; user-select: none; }
+.mineru-tier-rail { position: relative; height: 50px; margin-top: 2px; -webkit-user-select: none; user-select: none; touch-action: pan-y; cursor: grab; }
+.mineru-tier-capsule.is-dragging .mineru-tier-rail { cursor: grabbing; }
 .mineru-tier-track { position: absolute; inset: 15px 0; overflow: hidden; border-radius: 99px; background: var(--tier-track); pointer-events: none; }
 .mineru-tier-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); background: var(--tier-accent); transition: width 180ms cubic-bezier(.2,.85,.25,1); }
 .mineru-tier-capsule[data-tier="advanced"] .mineru-tier-fill { background: linear-gradient(105deg, #3d56d8, #9574ed 55%, #9b66e5); }
@@ -34,14 +35,19 @@
 .mineru-tier-thumb { position: absolute; top: 50%; left: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); width: var(--tier-knob); height: var(--tier-knob); transform: translate(-50%, -50%); border-radius: 50%; background: #fff; box-shadow: 0 2px 7px #00000020; pointer-events: none; transition: left 180ms cubic-bezier(.2,.85,.25,1); }
 .mineru-tier-thumb::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--tier-accent); }
 .mineru-tier-capsule.is-dragging .mineru-tier-fill, .mineru-tier-capsule.is-dragging .mineru-tier-thumb { transition: none; }
-.mineru-tier-capsule .mineru-tier-range { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; cursor: grab; touch-action: pan-y; z-index: 1; box-shadow: none; }
-.mineru-tier-range:active { cursor: grabbing; }
+/* 原生输入仅保留键盘和读屏语义，指针统一交给轨道处理。 */
+.mineru-tier-capsule .mineru-tier-range { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; pointer-events: none; z-index: 1; box-shadow: none; }
 .mineru-tier-range::-webkit-slider-runnable-track { height: 100%; background: transparent; border: 0; box-shadow: none; }
 .mineru-tier-range::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: var(--tier-knob); height: 50px; background: transparent; border: 0; box-shadow: none; }
 .mineru-tier-range::-moz-range-track { height: 100%; background: transparent; border: 0; }
 .mineru-tier-range::-moz-range-progress { background: transparent; }
 .mineru-tier-range::-moz-range-thumb { width: var(--tier-knob); height: 50px; background: transparent; border: 0; box-shadow: none; }
-.mineru-tier-range:focus-visible, .mineru-tier-reset:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
+/* 透明输入不绘制浏览器或 Gradio 的整条焦点框，键盘焦点改为仅标记可见圆点。 */
+.mineru-tier-capsule .mineru-tier-range,
+.mineru-tier-capsule .mineru-tier-range:focus,
+.mineru-tier-capsule .mineru-tier-range:focus-visible { outline: none !important; box-shadow: none !important; }
+.mineru-tier-rail[data-keyboard="true"]:focus-within .mineru-tier-thumb,
+.mineru-tier-reset:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
 .mineru-tier-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (pointer: coarse) { .mineru-tier-capsule .mineru-tier-reset { width: 44px; height: 44px; } }
 /* Gradio 会过滤容器查询；由尺寸观察器按控件实际宽度切换，兼容窄桌面侧栏。 */
