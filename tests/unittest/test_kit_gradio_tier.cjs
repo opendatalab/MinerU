@@ -32,6 +32,8 @@ function node() {
         setAttribute(name, value) { this.attributes[name] = value; },
         // 生产代码仅在属性变化时写入 DOM。
         getAttribute(name) { return this.attributes[name]; },
+        // 判断点击是否来自说明按钮或其装饰图标。
+        contains(target) { return target === this || this.children.includes(target); },
         // 重放浏览器事件时调用生产回调。
         addEventListener(name, callback) { this.events[name] = callback; },
         // 页面级监听只在手势期间存在，重复清理保持幂等。
@@ -55,8 +57,10 @@ function node() {
 
 // 每个控件独立持有 props 和提交记录，模拟 Gradio watch 的输出回执。
 function setup(tiers, position = 0, defaultIndex = position) {
-    const nodes = Object.fromEntries(["capsule", "rail", "thumb", "range", "reset", "dots", "title", "current", "options", "announcement"]
+    const nodes = Object.fromEntries(["capsule", "rail", "thumb", "range", "reset", "dots", "title", "current", "options", "announcement",
+        "label", "device", "device-tooltip"]
         .map(name => [name, node()]));
+    nodes["device-tooltip"].hidden = true;
     const props = { value: position, selected_tier: tiers[position], locked: false };
     const submissions = [];
     // 保留目标档位参数，验证动态按钮说明没有使用当前档位替代默认值。
@@ -69,6 +73,15 @@ function setup(tiers, position = 0, defaultIndex = position) {
     nodes.thumb.getBoundingClientRect = () => ({ width: 30,
         left: nodes.thumb.animatedLeft ?? 100 + Number(nodes.capsule.style["--tier-position"] || 0) * 270 });
     let watcher;
+    let receiveRuntime, rejectRuntime;
+    let runtimeReads = 0;
+    const server = {
+        // 延迟设备响应，用于覆盖拖动期间返回和每页只查询一次的约束。
+        read_runtime_device() {
+            runtimeReads++;
+            return new Promise((resolve, reject) => { receiveRuntime = resolve; rejectRuntime = reject; });
+        },
+    };
     const ownerDocument = { ...node(), body: node(), createElement: node };
     // 不模拟浏览器布局，只提供生产脚本所需的尺寸观察接口。
     class ResizeObserver {
@@ -77,11 +90,17 @@ function setup(tiers, position = 0, defaultIndex = position) {
     }
     vm.runInNewContext(`(${script})`, { window, document: ownerDocument, ResizeObserver })({
         element: { ownerDocument, querySelector: selector => nodes[selector.replace(".mineru-tier-", "")] },
-        props, tiers, defaultIndex,
+        props, tiers, defaultIndex, server,
         trigger: event => { submissions.push([event, props.value]); },
         watch: (_keys, callback) => { watcher = callback; },
     });
     return { nodes, props, submissions, window, document: ownerDocument,
+        // 排空设备响应微任务后检查真实前端处理结果。
+        async runtime(value) { receiveRuntime(value); await Promise.resolve(); },
+        // 失败时等待 catch 完成，确保未知状态不影响其余控件。
+        async failRuntime() { rejectRuntime(new Error("offline")); await Promise.resolve(); await Promise.resolve(); },
+        // 读取网络调用次数，用户交互不应触发重新查询。
+        runtimeReads() { return runtimeReads; },
         // 回执到来时同步现有实例，不能重建控件掩盖拖动竞态。
         update(patch) { Object.assign(props, patch); watcher(); },
         // 键盘默认行为必须被阻止，否则细步长会额外改变值。
@@ -221,7 +240,7 @@ for (const reason of ["escape", "pointercancel"]) {
     assert.equal(fast.submissions.length, count);
     assert.equal(fast.nodes.rail.capture, null);
     assert.equal(fast.document.body.children.length, 0);
-    assert.deepEqual(Object.keys(fast.document.events), []);
+    assert.deepEqual(Object.keys(fast.document.events).sort(), ["keydown", "pointerdown"]);
 }
 
 // 按住时失去捕获仍由页面事件跟踪，在胶囊外松手也只提交一次最终位置。
@@ -237,7 +256,7 @@ outside.pointer("pointerup", outside.x(1.1));
 assert.equal(outside.props.value, 1);
 assert.deepEqual(outside.submissions, [["input", 1]]);
 assert.equal(outside.document.body.children.length, 0);
-assert.deepEqual(Object.keys(outside.document.events), []);
+assert.deepEqual(Object.keys(outside.document.events).sort(), ["keydown", "pointerdown"]);
 
 // 已松手的捕获丢失、输入或窗口失焦均保留最后位置，不能退回起点。
 for (const reason of ["released-capture", "input-blur", "window-blur", "missed-up"]) {
@@ -257,7 +276,7 @@ for (const reason of ["released-capture", "input-blur", "window-blur", "missed-u
     assert.equal(interrupted.props.value, 1);
     assert.deepEqual(interrupted.submissions, [["input", 1]]);
     assert.equal(interrupted.document.body.children.length, 0);
-    assert.deepEqual(Object.keys(interrupted.document.events), []);
+    assert.deepEqual(Object.keys(interrupted.document.events).sort(), ["keydown", "pointerdown"]);
 }
 
 // 辅助技术的 input/change 仍生效，重复通知不能产生两次业务提交。
@@ -303,3 +322,64 @@ for (const [tiers, defaultIndex, selectedIndex] of [
     resetUi.nodes.reset.events.click();
     assert.equal(resetUi.submissions.length, 1);
 }
+
+// 覆盖设备状态与四个档位的组合，以及查询只发生在首次挂载的约束。
+async function testRuntimeDevice() {
+    for (const device of ["gpu", "cpu", null, "mps"]) {
+        for (const [position, tier] of ["flash", "basic", "standard", "advanced"].entries()) {
+            const runtimeUi = setup(["flash", "basic", "standard", "advanced"], position);
+            assert.equal(runtimeUi.runtimeReads(), 1);
+            await runtimeUi.runtime(device);
+            const expectedDevice = ["cpu", "gpu"].includes(device) ? device : "unknown";
+            const expectedEffect = device === "gpu" ? "fast" : tier === "advanced" ? "slow" : "none";
+            assert.equal(runtimeUi.nodes.capsule.dataset.runtime, expectedDevice);
+            assert.equal(runtimeUi.nodes.capsule.dataset.stars, expectedEffect);
+            assert.equal(runtimeUi.nodes.device.attributes["aria-label"], `runtime_device_${expectedDevice}`);
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
+            runtimeUi.nodes.device.events.pointerenter();
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, false);
+            runtimeUi.nodes.device.events.pointerleave();
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
+            runtimeUi.nodes.device.events.click();
+            assert.equal(runtimeUi.nodes["device-tooltip"].textContent, `runtime_device_${expectedDevice}`);
+            runtimeUi.document.events.keydown({ key: "Escape" });
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
+            runtimeUi.nodes.device.events.focus();
+            runtimeUi.nodes.device.events.blur();
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
+            runtimeUi.nodes.device.events.click();
+            runtimeUi.document.events.pointerdown({ target: runtimeUi.nodes.range });
+            assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
+            assert.equal(runtimeUi.props.value, position);
+            assert.deepEqual(runtimeUi.submissions, []);
+            runtimeUi.update({ locked: true, selected_tier: "flash" });
+            assert.equal(runtimeUi.nodes.capsule.dataset.runtime, expectedDevice);
+            assert.equal(runtimeUi.nodes.capsule.dataset.stars, device === "gpu" ? "fast" : "none");
+            runtimeUi.update({ locked: false, selected_tier: tier });
+            assert.equal(runtimeUi.nodes.capsule.dataset.stars, expectedEffect);
+            // 语言变化只重绘提示，设备快照不能被清空或重新读取。
+            runtimeUi.window.__mineruI18n.text = key => `en:${key}`;
+            runtimeUi.window.__mineruTier.localize();
+            assert.equal(runtimeUi.nodes["device-tooltip"].textContent, `en:runtime_device_${expectedDevice}`);
+            assert.equal(runtimeUi.runtimeReads(), 1);
+        }
+    }
+    const late = setup(["flash", "basic", "standard", "advanced"], 1);
+    late.pointer("pointerdown", late.x(1));
+    late.pointer("pointermove", late.x(1.8));
+    await late.runtime("gpu");
+    assert(Math.abs(late.visual() - 1.8) < 1e-9);
+    assert(late.nodes.capsule.classList.contains("is-dragging"));
+    assert.equal(late.props.value, 1);
+    assert.deepEqual(late.submissions, []);
+    late.pointer("pointerup", late.x(2));
+    assert.equal(late.props.value, 2);
+    assert.equal(late.runtimeReads(), 1);
+    const failed = setup(["advanced"]);
+    await failed.failRuntime();
+    assert.equal(failed.nodes.capsule.dataset.runtime, "unknown");
+    assert.equal(failed.nodes.capsule.dataset.stars, "slow");
+    assert.equal(failed.nodes.options.hidden, true);
+}
+// 异步断言失败必须使 Node 及调用它的 pytest 返回失败。
+testRuntimeDevice().catch(error => { console.error(error); process.exitCode = 1; });

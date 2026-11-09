@@ -1,5 +1,5 @@
 // 胶囊只负责呈现与用户输入；文件锁档、可用档位和会话偏好仍由共享联动事件决定。
-({ element, props, trigger, watch, tiers, defaultIndex }) => {
+({ element, props, trigger, watch, server, tiers, defaultIndex }) => {
     const ownerDocument = element.ownerDocument;
     const capsule = element.querySelector(".mineru-tier-capsule");
     const rail = element.querySelector(".mineru-tier-rail");
@@ -7,6 +7,11 @@
     const range = element.querySelector(".mineru-tier-range");
     const reset = element.querySelector(".mineru-tier-reset");
     const dots = element.querySelector(".mineru-tier-dots");
+    const label = element.querySelector(".mineru-tier-label");
+    const current = element.querySelector(".mineru-tier-current");
+    const deviceButton = element.querySelector(".mineru-tier-device");
+    const deviceTooltip = element.querySelector(".mineru-tier-device-tooltip");
+    let runtimeDevice = null;
     let drag = null;
     let committed = Number(props.value);
     let visual = committed;
@@ -19,18 +24,53 @@
     // 高频拖动只改变化的文字和属性，避免反复触发整页本地化观察器。
     const setText = (selector, value) => {
         const node = element.querySelector(selector);
-        if (node.textContent !== value) node.textContent = value;
+        if (node.textContent === value) return false;
+        node.textContent = value;
+        return true;
     };
     // 同值属性不重复写入 DOM；无障碍说明仍在档位或语言变化时更新。
     const setAttribute = (node, name, value) => {
         if (node.getAttribute(name) !== value) node.setAttribute(name, value);
     };
 
-    // 仅在整行文字与重置按钮都能容纳时显示重置，判断控件宽度而非视口宽度。
-    const resize = () => capsule.classList.toggle("is-wide", capsule.getBoundingClientRect().width >= 340);
+    // 按本地化文字的实际宽度给闪电和重置留空间，窄栏继续隐藏重置按钮。
+    const resize = () => {
+        const minimumWidth = Math.max(340, label.getBoundingClientRect().width * 2
+            + current.getBoundingClientRect().width + 54);
+        capsule.classList.toggle("is-wide", capsule.getBoundingClientRect().width >= minimumWidth);
+    };
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(capsule);
     resize();
+
+    // 设备信息独立于档位偏好；提示、颜色和动效只消费当前页面的只读快照。
+    const renderDevice = () => {
+        capsule.dataset.runtime = runtimeDevice || "unknown";
+        capsule.dataset.stars = runtimeDevice === "gpu" ? "fast" : capsule.dataset.tier === "advanced" ? "slow" : "none";
+        const message = text(`runtime_device_${runtimeDevice || "unknown"}`) || "未提供设备信息";
+        setText(".mineru-tier-device-tooltip", message);
+        setAttribute(deviceButton, "aria-label", message);
+    };
+    // 点击和悬浮只展开相同提示，不触发任何设备选型或网络查询。
+    const showDeviceInfo = () => { deviceTooltip.hidden = false; };
+    // Escape、失焦和外部点击均可主动关闭提示，避免焦点样式使提示重新出现。
+    const hideDeviceInfo = () => { deviceTooltip.hidden = true; };
+    deviceButton.addEventListener("pointerenter", showDeviceInfo);
+    // 点击后保留焦点提示；仅悬浮时随鼠标移出关闭。
+    deviceButton.addEventListener("pointerleave", () => {
+        if (ownerDocument.activeElement !== deviceButton) hideDeviceInfo();
+    });
+    deviceButton.addEventListener("focus", showDeviceInfo);
+    deviceButton.addEventListener("click", showDeviceInfo);
+    deviceButton.addEventListener("blur", hideDeviceInfo);
+    // 页面其他控件不会改变设备快照，只负责关闭已展开的说明。
+    ownerDocument.addEventListener("pointerdown", event => {
+        if (!deviceButton.contains(event.target)) hideDeviceInfo();
+    });
+    // 不阻断滑块自身的 Escape 取消语义。
+    ownerDocument.addEventListener("keydown", event => {
+        if (event.key === "Escape") hideDeviceInfo();
+    });
 
     for (let index = 0; index < tiers.length; index++) {
         const dot = document.createElement("span");
@@ -48,8 +88,10 @@
         capsule.dataset.tier = tier;
         capsule.style.setProperty("--tier-position", String(maximum ? visual / maximum : 0));
         range.value = String(index);
-        setText(".mineru-tier-title", text("tier"));
-        setText(".mineru-tier-current", text(`tier_compact_${tier}`) || tier);
+        const titleChanged = setText(".mineru-tier-title", text("tier"));
+        const currentChanged = setText(".mineru-tier-current", text(`tier_compact_${tier}`) || tier);
+        if (titleChanged || currentChanged) resize();
+        renderDevice();
         element.querySelector(".mineru-tier-options").hidden = disabled;
         range.disabled = disabled;
         setAttribute(range, "aria-label", text("tier"));
@@ -189,4 +231,12 @@
     watch(["value", "selected_tier", "locked"], sync);
     window.__mineruTier = { localize: sync };
     sync();
+    // 每次页面挂载只发起一次 health 查询；迟到的响应不重绘滑块或打断当前拖动。
+    const receiveDevice = device => {
+        runtimeDevice = device === "cpu" || device === "gpu" ? device : null;
+        renderDevice();
+    };
+    server.read_runtime_device().then(receiveDevice)
+        // 状态查询失败不影响解析，保持未知并等待用户下次重新打开页面。
+        .catch(() => receiveDevice(null));
 }

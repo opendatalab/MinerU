@@ -4,7 +4,7 @@
     --tier-position: 0; --tier-knob: 30px; --tier-accent: #316ede;
     --tier-bg: #fff; --tier-text: #25252a; --tier-muted: #72727c;
     --tier-border: #e0e1e6; --tier-track: #e8e9ef; --tier-dot: #b3b6c1; --tier-hover: #edf0f6;
-    box-sizing: border-box; padding: 14px 18px 12px; border: 1px solid var(--tier-border); border-radius: 18px;
+    position: relative; box-sizing: border-box; padding: 14px 18px 12px; border: 1px solid var(--tier-border); border-radius: 18px;
     color: var(--tier-text); background: var(--tier-bg); font-family: inherit;
 }
 .dark .mineru-tier-capsule {
@@ -14,9 +14,17 @@
 .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #8952d9; }
 .dark .mineru-tier-capsule[data-tier="advanced"] { --tier-accent: #b482fc; }
 .mineru-tier-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; min-height: 36px; }
+.mineru-tier-label { display: flex; align-items: center; justify-self: start; gap: 6px; }
 .mineru-tier-title, .mineru-tier-current { font-size: 14px; line-height: 24px; font-weight: 500; }
 .mineru-tier-title { white-space: nowrap; }
-.mineru-tier-current { color: var(--tier-accent); text-align: center; white-space: nowrap; }
+.mineru-tier-current { justify-self: center; color: var(--tier-accent); text-align: center; white-space: nowrap; }
+.mineru-tier-capsule .mineru-tier-device { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; width: 30px; height: 36px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 8px; box-shadow: none; background: transparent; color: var(--tier-muted); cursor: pointer; }
+.mineru-tier-capsule .mineru-tier-device:hover { background: var(--tier-hover); }
+.mineru-tier-device svg { display: block; width: 16px; height: 16px; }
+.mineru-tier-capsule[data-runtime="gpu"] .mineru-tier-device { color: var(--tier-accent); }
+.mineru-tier-capsule[data-runtime="gpu"] .mineru-tier-device svg { fill: currentColor; }
+.mineru-tier-device-tooltip { position: absolute; top: 52px; left: 14px; z-index: 10; box-sizing: border-box; width: max-content; max-width: calc(100% - 28px); padding: 7px 10px; border-radius: 8px; background: var(--tier-text); color: var(--tier-bg); font-size: 12px; line-height: 20px; font-weight: 400; white-space: normal; overflow-wrap: anywhere; pointer-events: none; }
+.mineru-tier-device-tooltip[hidden] { display: none !important; }
 .mineru-tier-capsule .mineru-tier-reset { justify-self: end; display: none; place-items: center; width: 36px; height: 36px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 9px; box-shadow: none; background: transparent; color: var(--tier-muted); cursor: pointer; }
 .mineru-tier-capsule .mineru-tier-reset:hover:not(:disabled) { color: var(--tier-text); background: var(--tier-hover); }
 .mineru-tier-capsule .mineru-tier-reset:disabled { opacity: 0.45; cursor: default; }
@@ -27,8 +35,34 @@
 .mineru-tier-track { position: absolute; inset: 15px 0; overflow: hidden; border-radius: 99px; background: var(--tier-track); pointer-events: none; }
 .mineru-tier-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); background: var(--tier-accent); transition: width 180ms cubic-bezier(.2,.85,.25,1); }
 .mineru-tier-capsule[data-tier="advanced"] .mineru-tier-fill { background: linear-gradient(105deg, #3d56d8, #9574ed 55%, #9b66e5); }
-.mineru-tier-stars { position: absolute; inset: 0; opacity: 0; background-image: radial-gradient(circle at 10% 33%, #ffffff91 0 1px, transparent 2px), radial-gradient(circle at 23% 72%, #ffffff65 0 1px, transparent 2px), radial-gradient(circle at 39% 32%, #ffffff91 0 1px, transparent 2px), radial-gradient(circle at 52% 64%, #ffffff91 0 1px, transparent 2px), radial-gradient(circle at 65% 36%, #ffffff91 0 1px, transparent 2px), radial-gradient(circle at 79% 76%, #ffffff91 0 1px, transparent 2px), radial-gradient(circle at 89% 23%, #ffffff91 0 1px, transparent 2px); }
-.mineru-tier-capsule[data-tier="advanced"] .mineru-tier-stars { opacity: 1; }
+/* 两种动效复用八个星点，GPU 优先采用单向快速流动；星光始终由填充区域裁切。 */
+.mineru-tier-stars { position: absolute; inset: 0; display: none; overflow: hidden; pointer-events: none; }
+.mineru-tier-capsule[data-stars="slow"] .mineru-tier-stars,
+.mineru-tier-capsule[data-stars="fast"] .mineru-tier-stars { display: block; }
+.mineru-tier-star { position: absolute; top: var(--star-y); left: 0; width: 100%; height: var(--star-size, 2px); opacity: .55; animation: mineru-tier-twinkle var(--star-period) var(--star-delay) ease-in-out infinite alternate; }
+.mineru-tier-star::before { content: ""; position: absolute; top: 0; left: var(--star-x); width: var(--star-size, 2px); height: 100%; border-radius: 50%; background: #fff; box-shadow: 0 0 3px #ffffff45; }
+.mineru-tier-star:nth-child(1) { --star-x: 8%; --star-y: 25%; --star-size: 2px; --star-period: 4.2s; --star-delay: -2.2s; }
+.mineru-tier-star:nth-child(2) { --star-x: 20%; --star-y: 65%; --star-size: 3px; --star-period: 5.1s; --star-delay: -1.6s; }
+.mineru-tier-star:nth-child(3) { --star-x: 32%; --star-y: 42%; --star-size: 2px; --star-period: 3.7s; --star-delay: -3s; }
+.mineru-tier-star:nth-child(4) { --star-x: 44%; --star-y: 73%; --star-size: 2px; --star-period: 4.8s; --star-delay: -.8s; }
+.mineru-tier-star:nth-child(5) { --star-x: 57%; --star-y: 30%; --star-size: 3px; --star-period: 5.6s; --star-delay: -4s; }
+.mineru-tier-star:nth-child(6) { --star-x: 68%; --star-y: 60%; --star-size: 2px; --star-period: 4.6s; --star-delay: -2.8s; }
+.mineru-tier-star:nth-child(7) { --star-x: 80%; --star-y: 28%; --star-size: 2px; --star-period: 5s; --star-delay: -1s; }
+.mineru-tier-star:nth-child(8) { --star-x: 92%; --star-y: 68%; --star-size: 2px; --star-period: 3.9s; --star-delay: -2.5s; }
+.mineru-tier-capsule[data-stars="fast"] .mineru-tier-star { animation: mineru-tier-flow-left calc(var(--star-period) * .35) var(--star-delay) linear infinite; }
+.mineru-tier-capsule[data-stars="fast"] .mineru-tier-star::before { left: 0; }
+@keyframes mineru-tier-twinkle {
+    0% { opacity: .12; transform: translate(-7px, 2px); }
+    48% { opacity: .8; }
+    100% { opacity: .25; transform: translate(8px, -3px); }
+}
+@keyframes mineru-tier-flow-left {
+    0% { opacity: 0; transform: translateX(105%); }
+    12% { opacity: .7; }
+    52% { opacity: .9; }
+    88% { opacity: .5; }
+    100% { opacity: 0; transform: translateX(-5%); }
+}
 .mineru-tier-dots { position: absolute; inset: 0 calc(var(--tier-knob) / 2); display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .mineru-tier-dot { width: 6px; height: 6px; margin-inline: -3px; border-radius: 50%; background: var(--tier-dot); }
 .mineru-tier-dot[data-passed="true"] { background: #ffffff66; }
@@ -47,13 +81,24 @@
 .mineru-tier-capsule .mineru-tier-range:focus,
 .mineru-tier-capsule .mineru-tier-range:focus-visible { outline: none !important; box-shadow: none !important; }
 .mineru-tier-rail[data-keyboard="true"]:focus-within .mineru-tier-thumb,
-.mineru-tier-reset:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
+.mineru-tier-reset:focus-visible,
+.mineru-tier-device:focus-visible { outline: 2px solid var(--tier-accent); outline-offset: 3px; }
 .mineru-tier-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (pointer: coarse) { .mineru-tier-capsule .mineru-tier-reset { width: 44px; height: 44px; } }
+/* 触屏扩展透明点击区，保留窄栏标题行的排版宽度，避免英文最长档位与闪电相碰。 */
+@media (pointer: coarse) {
+    .mineru-tier-capsule .mineru-tier-reset { width: 44px; height: 44px; }
+    .mineru-tier-capsule .mineru-tier-device { height: 44px; }
+    .mineru-tier-device::after { content: ""; position: absolute; inset: 0 -7px; }
+    .mineru-tier-device-tooltip { top: 64px; }
+}
 /* Gradio 会过滤容器查询；由尺寸观察器按控件实际宽度切换，兼容窄桌面侧栏。 */
 .mineru-tier-capsule.is-wide .mineru-tier-heading { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
 .mineru-tier-capsule.is-wide .mineru-tier-reset { display: inline-grid; }
 @media (max-width: 420px) {
     .mineru-tier-capsule { padding-inline: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { .mineru-tier-fill, .mineru-tier-thumb { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .mineru-tier-fill, .mineru-tier-thumb { transition: none; }
+    .mineru-tier-star { animation: none !important; }
+    .mineru-tier-capsule[data-stars="fast"] .mineru-tier-star::before { left: var(--star-x); }
+}
