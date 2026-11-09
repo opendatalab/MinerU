@@ -15,8 +15,8 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "EPUB、HTML/MHTML、OFD、CSV 和 TSV。",
     ),
     "header_support_text": (
-        "If you found our project helpful, please give us a ⭐️ to support us!",
-        "如果我们的项目对你有帮助，请点亮 ⭐️ 支持我们！",
+        "If you find our project helpful, please consider supporting us with a ⭐️!",
+        "如果我们的项目对您有帮助，请点亮 ⭐️ 支持我们！",
     ),
     "stars": ("GitHub stars", "GitHub 星标"),
     "code": ("Code", "代码"),
