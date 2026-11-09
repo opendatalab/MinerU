@@ -272,7 +272,7 @@ repo 同时声明默认下载策略:
 - `download_mode="full"`: `download_model_repo(repo)` 下载完整仓库。
 - `download_mode="required_paths"`: `download_model_repo(repo)` 只下载 `repo.required_paths()` 对应的文件/目录。
 
-当前 `PDF-Extract-Kit-1.0` 使用 `required_paths`，避免拉取仓库中未被 runtime 使用的大量历史/可选权重。`MinerU2.5-Pro-2605-1.2B` 保持 `full`，因为 VLM 模型加载通常需要完整 tokenizer/config/weights 文件集；整仓 readiness 由仓库根目录的 `.mineru_complete` 表示，不再维护逐文件 paths 清单。
+当前小模型仓库使用 `required_paths`，避免拉取仓库中未被 runtime 使用的大量历史/可选权重。VLM 仓库保持 `full`，因为模型加载通常需要完整 tokenizer/config/weights 文件集；整仓 readiness 由仓库根目录的 `.mineru_complete` 文件清单验证，不在 registry 中手工维护逐文件 paths 清单。
 
 ### 7. 下载 API
 
@@ -347,17 +347,25 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 
 校验规则:
 
-- `model.source=local` 时禁止下载，只做 ready 检查。
+- `model.source=local` 时禁止模型文件下载或更新；旧标记自动迁移可以后台查询远端元数据，来源配置仍保持 `local`。
 - `mineru-kit models verify <repo>` 检查指定 repo 的完整 required paths。
 - `mineru-kit models verify --tier <tier>` 只接受 Basic/Standard，并检查对应 repo 集合。
 - managed local parse server 只检查 Basic 或 Standard 启动能力对应的 `REPOS_FOR_TIER`；Standard 模型集同时覆盖 Advanced 请求。
 - partial download 只验证本次请求 paths，不要求整仓 ready。
-- 最终文件存在时视为 ready；Hugging Face 和 ModelScope 都先写临时文件，完成后再移动到最终路径。
-- `full` 模式在 ModelRepo 根目录写入空白 `.mineru_complete`，表示整仓 ready；`required_paths` 模式在每个目录型 ModelPath 下分别写入 marker，文件型 ModelPath 仍按最终文件是否存在判断。
-- marker 只由 MinerU 在 provider 下载成功返回且下载后 payload 检查通过后创建。
-- 下载或更新目录前删除旧 marker；下载失败、payload 缺失或进程中断时不创建 marker。
+- 独立文件必须存在且非空；有对应完成清单时还需满足清单中的大小要求。Hugging Face 和 ModelScope 都先写临时文件，完成后再移动到最终路径。
+- `full` 模式在 ModelRepo 根目录写入 `.mineru_complete`；`required_paths` 模式在每个目录型 ModelPath 下分别写入 marker。标记是带 `version: 1` 的 JSON，其中 `files` 保存相对于标记目录的文件路径和字节大小。
+- marker 只由 MinerU 在 provider 下载成功或旧标记在线迁移核验成功后原子发布，要求远程预期文件全部落盘且大小一致。清单由 provider 文件列表生成，不能通过扫描现有本地文件自行认证完整性。
+- 仓库和目录路径共用就绪检查。目录继承祖先 marker 时，只检查清单中属于当前请求范围的文件；清单未覆盖的目录不能凭祖先 marker 通过检查。正常复用无需联网。
+- 下载或更新文件、目录前删除相关目录及祖先 marker；下载失败、文件缺失或进程中断时不创建 marker。局部更新成功后合并原父清单并重新验证全部成员，其他成员仍缺失时不恢复父目录 marker。
+- provider 可能依赖自己的元数据跳过已有文件，下载前先移除与远程预期大小不符的失效文件，保证增量修复生效；完整文件继续由 provider 复用。
 - provider 的 `.cache/huggingface`、`._____temp`、`.msc`、`.mdl` 和 `.mv` 等元数据或临时内容不能单独作为模型 payload。
-- 旧版本留下但没有 marker 的目录按未确认完整处理；远端 source 会通过 provider 增量补齐并创建 marker，`local` source 则报告 not ready。
+- 旧版本的零字节 marker 保持兼容：通过本地非空权重、registry 必需路径和权重索引分片检查后，仓库和目录入口均可直接离线复用。`verify_model_repo` 和 `model_path_exists` 仅本地只读检查，不启动迁移。
+- `ModelRepo.ensure()` 和 `ModelPath.ensure()` 成功复用旧模型后，在下载锁外安排守护线程尝试升级。任务使用冻结的目录和仓库信息，按本地 HF 缓存中的 commit 查询旧版本清单；ModelScope 按缓存版本查询并逐项比对 `.msc` 中的文件 commit，允许正常的逐文件多 commit 缓存。请求使用短超时，不调用下载器、不删除或改写模型文件、不修改来源配置。
+- 在线核验成功后，任务通过非阻塞仓库锁重新检查旧标记和文件大小，再原子写入对应范围的新清单。每仓库同时最多一个任务，进程同时最多两个；查询失败、锁竞争、版本不明、文件不匹配或写入失败时保留旧标记，冷却 5 分钟后可在下次使用重试。
+- 无 marker、损坏 JSON 或不支持版本的清单仍按未确认完整处理，不降级为旧标记。有祖先新版清单时，旧子标记不能绕过其严格校验。
+- 实际下载或显式执行 `mineru-kit models download <repo>` 后，由 provider 确认请求范围并发布新版清单。局部更新后的旧父标记只在本地必要文件检查仍通过时恢复为空标记，不伪造整仓新版清单。
+- 旧标记不包含原始文件集合及大小，兼容校验无法识别所有未声明文件的丢失或非空文件的截断；新版清单继续提供逐文件存在性和大小检查。
+- 校验范围为文件缺失、失效软链接和大小变化，不读取大权重计算 hash；`missing_paths` 返回未通过检查的具体文件或完成清单路径。
 
 ### 10. 并发安全
 

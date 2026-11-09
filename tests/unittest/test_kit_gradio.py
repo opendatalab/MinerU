@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import json
 import subprocess
@@ -105,11 +106,14 @@ def _middle_json(
         ]
         if with_image:
             image_index = page_idx * 10 + 1
+            payload = io.BytesIO()
+            Image.new("RGB", (30, 40), (0, 255, 0) if page_idx == 1 else (0, 0, 255)).save(payload, format="JPEG")
             image_body = ImageBodyBlock(
                 type=BlockType.IMAGE_BODY,
                 index=image_index,
                 bbox=(0.1, 0.3, 0.8, 0.8) if file_suffix == "pdf" else None,
                 content="",
+                image_base64="data:image/jpeg;base64," + base64.b64encode(payload.getvalue()).decode(),
             )
             blocks.append(
                 ImageBlock(
@@ -369,7 +373,6 @@ def test_v1_client_discovers_api_server_without_advanced(
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
         tiers=("flash", "basic", "standard"),
-
     )
     request_log: list[tuple[str, str, str | None]] = []
 
@@ -524,12 +527,11 @@ def test_gradio_routes_native_and_pdf_to_standard_only_server(monkeypatch: pytes
     monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
     monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
     _stub_inference(monkeypatch)
-    remote_api = parser_api_server.create_app(
-        upload_dir=str(tmp_path / "remote"), tiers=("standard",), api_key="remote-secret"
-    )
+    remote_api = parser_api_server.create_app(upload_dir=str(tmp_path / "remote"), tiers=("standard",), api_key="remote-secret")
     requests: list[tuple[str, str, str, str | None]] = []
     submissions: list[dict[str, Any]] = []
     with TestClient(remote_api, base_url="http://remote.test") as remote_http:
+
         async def handle(request: httpx.Request) -> httpx.Response:
             """将能力发现、上传和下载都交给唯一远端服务，保留完整请求供断言。"""
             requests.append((request.url.host, request.method, request.url.path, request.headers.get("authorization")))
@@ -903,17 +905,16 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
 
 
 def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
-    """验证严格 Middle JSON、布局 PDF 和七种下载产物。"""
+    """验证严格 Middle JSON、原文预览 PDF 和七种下载产物。"""
     source = tmp_path / "报告.pdf"
     source.write_bytes(_pdf_bytes())
     result = ParseResult(middle_json=_middle_json())
     artifacts = persist_parse_result(result, source, output_root=tmp_path / "output", page_range="")
 
     assert artifacts.middle_json_path.read_text(encoding="utf-8").find('"schema_version": "2.0"') >= 0
-    assert artifacts.origin_pdf_path == artifacts.root / "origin.pdf"
-    assert artifacts.layout_pdf_path == artifacts.root / "layout.pdf"
-    assert artifacts.origin_pdf_path is not None and artifacts.origin_pdf_path.is_file()
-    assert artifacts.layout_pdf_path is not None and artifacts.layout_pdf_path.is_file()
+    assert not (artifacts.root / "origin.pdf").exists()
+    assert artifacts.prepared_source is None
+    assert not (artifacts.root / "layout.pdf").exists()
     assert not (artifacts.root / "model_output.json").exists()
     assert not list(artifacts.root.glob("*.zip"))
     assert list((artifacts.root / "images").glob("*.jpg"))
@@ -939,16 +940,10 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     with zipfile.ZipFile(latex_path) as archive:
         assert f"{artifacts.stem}.tex" in archive.namelist()
         assert any(name.startswith("images/") for name in archive.namelist())
-    layout_page = PdfReader(str(artifacts.layout_pdf_path)).pages[0]
-    layout_stream = layout_page.get_contents()
-    assert layout_stream is not None
-    layout_commands = layout_stream.get_data()
-    assert b"20 240 140 30 re" in layout_commands
-    assert b"20 60 140 150 re" in layout_commands
 
 
-def test_persist_image_input_creates_real_origin_and_layout_pdfs(tmp_path: Path) -> None:
-    """验证图片输入会生成可读取的 origin/layout PDF，而不是伪装扩展名。"""
+def test_image_pdf_is_prepared_outside_result_persistence(tmp_path: Path) -> None:
+    """验证图片输入生成可读取的原文预览 PDF。"""
     source = tmp_path / "scan.png"
     Image.new("RGB", (64, 48), "white").save(source)
     artifacts = persist_parse_result(
@@ -957,15 +952,17 @@ def test_persist_image_input_creates_real_origin_and_layout_pdfs(tmp_path: Path)
         output_root=tmp_path / "output",
         page_range="",
     )
-    assert artifacts.origin_pdf_path is not None
-    assert artifacts.layout_pdf_path is not None
-    assert artifacts.origin_pdf_path.read_bytes().startswith(b"%PDF")
-    assert artifacts.layout_pdf_path.read_bytes().startswith(b"%PDF")
-    assert len(PdfReader(str(artifacts.origin_pdf_path)).pages) == 1
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 1
+    from mineru.kit.gradio.sources import prepare_source
+
+    prepared = prepare_source(source, source_id="1" * 32, output_root=tmp_path / "output")
+    assert prepared.preview_pdf_path is not None
+    assert prepared.preview_pdf_path.read_bytes().startswith(b"%PDF")
+    assert len(PdfReader(str(prepared.preview_pdf_path)).pages) == 1
+    assert not (artifacts.root / "origin.pdf").exists()
+    assert not (artifacts.root / "layout.pdf").exists()
 
 
-def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> None:
+def test_page_range_materialized_images_keep_original_page_indices(tmp_path: Path) -> None:
     """验证抽页后视觉块仍从对应原始页裁图，而不是错位到相邻页。"""
     source = tmp_path / "colors.pdf"
     source.write_bytes(_colored_pdf_bytes([(1, 0, 0), (0, 1, 0), (0, 0, 1)]))
@@ -985,8 +982,8 @@ def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> 
     assert second_mean[2] > second_mean[0] + 100 and second_mean[2] > second_mean[1] + 100
 
 
-def test_persist_page_range_keeps_cropped_origin_page_order(tmp_path: Path) -> None:
-    """验证任意 V1 page_range 会同步应用到 origin 和 layout PDF。"""
+def test_persist_page_range_keeps_original_initial_page_without_pdf(tmp_path: Path) -> None:
+    """验证 V1 page_range 会应用到原文预览 PDF 并保留原始页号映射。"""
     source = tmp_path / "three-pages.pdf"
     source.write_bytes(_pdf_bytes(page_count=3))
     artifacts = persist_parse_result(
@@ -995,11 +992,9 @@ def test_persist_page_range_keeps_cropped_origin_page_order(tmp_path: Path) -> N
         output_root=tmp_path / "output",
         page_range="2-3",
     )
-    assert artifacts.page_indices == (1, 2)
-    assert artifacts.origin_pdf_path is not None
-    assert len(PdfReader(str(artifacts.origin_pdf_path)).pages) == 2
-    assert artifacts.layout_pdf_path is not None
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 2
+    assert artifacts.initial_page_idx == 1
+    assert not list(artifacts.root.glob("*.pdf"))
+    assert not (artifacts.root / "layout.pdf").exists()
 
 
 def test_run_artifact_paths_are_absolute_and_inside_output_root(tmp_path: Path) -> None:
@@ -1009,12 +1004,10 @@ def test_run_artifact_paths_are_absolute_and_inside_output_root(tmp_path: Path) 
     second = create_run_artifacts(source, tmp_path / "output")
     assert first.root != second.root
     assert first.root.is_absolute()
-    assert first.source_path.name == "source.pdf"
     assert first.middle_json_path.name == "middle_json.json"
     assert first.markdown_path.name == "markdown.md"
     assert first.structured_content_path.name == "structured_content.json"
     for path in (
-        first.source_path,
         first.middle_json_path,
         first.markdown_path,
         first.structured_content_path,
@@ -1116,15 +1109,19 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
     (dataset,) = find_examples(demo)
     assert [sample[0] for sample in dataset.samples] == ["demo.pdf"]
     assert dataset.samples_per_page == gradio_app._EXAMPLES_PER_PAGE
-    upload = next(block for block in demo.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
+    upload = next(fn for fn in demo.fns.values() if fn.name == "convert_handler").inputs[0]
     click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
     assert upload._id in click["outputs"]
     status = next(block for block in demo.blocks.values() if "mineru-status-panel" in (block.elem_classes or []))
+    preview = next(fn for fn in demo.fns.values() if fn.name == "update_file_preview")
     preview_change = next(
         event
         for event in demo.config["dependencies"]
-        if (upload._id, "change") in event["targets"] and status._id in event["outputs"]
+        if event["id"] == preview._id
     )
+    assert status._id in preview_change["outputs"]
+    preparation = next(event for event in demo.config["dependencies"] if event["id"] == preview_change["trigger_after"])
+    assert (upload._id, "change") in preparation["targets"] and preparation["backend_fn"] is False
     assert preview_change["show_progress"] == "hidden"
 
     empty_cwd = tmp_path / "empty"
@@ -1137,7 +1134,10 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
 def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) -> None:
     """直接调用事件并传入残留 True，非 PDF 请求仍使用 auto。"""
     source = tmp_path / f"source{suffix}"
-    source.write_bytes(b"placeholder")
+    if source.suffix.lower().lstrip(".") in IMAGE_EXTENSIONS:
+        Image.new("RGB", (20, 30), "white").save(source, format="PNG")
+    else:
+        source.write_bytes(b"placeholder")
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
@@ -1183,7 +1183,7 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     assert not any(component.__class__.__name__ == "DownloadButton" for component in app.blocks.values())
     assert all(component.interactive is False for component in download_buttons)
     file_inputs = [
-        component for component in app.blocks.values() if component.__class__.__name__ == "File" and component.visible
+        component for component in app.blocks.values() if component.__class__.__name__ == "File" and component.file_types
     ]
     assert len(file_inputs) == 1
     assert file_inputs[0].file_count == "single"
@@ -1222,34 +1222,30 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
 def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     tmp_path: Path, tiers: tuple[str, ...], default_position: int, default_tier: str, maximum: int
 ) -> None:
-    """验证乱序、缺档及单档位下的原生滑块默认值与文件切换、清除行为。"""
+    """验证乱序、缺档及单档位下的胶囊默认值，保留公开 API 的整数输入。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("default",), ("upload",))
     demo = build_gradio_app(
         V1ArtifactClient(api_url=capabilities.base_url), capabilities, output_root=tmp_path, enable_example=False
     )
     slider = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Slider")
-    label = next(block for block in demo.blocks.values() if "mineru-tier-label" in (block.elem_classes or []))
+    label = next(block for block in demo.blocks.values() if "mineru-tier-control" in (block.elem_classes or []))
     assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
     assert slider.value == default_position
     assert default_tier == select_default_task_tier(tiers)
     assert slider.interactive is (len(tiers) > 1)
-    assert slider.visible is (len(tiers) > 1)
-    assert (
-        label.value
-        == "解析等级："
-        + {"flash": "flash（极速）", "basic": "basic（中）", "standard": "standard（高）", "advanced": "advanced（极高）"}[
-            default_tier
-        ]
-    )
+    assert slider.visible is False
+    assert label.value == default_position
+    assert f"defaultIndex: {default_position}" in label.js_on_load
+    assert label.props == {"selected_tier": default_tier, "locked": False}
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
-    label_events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
+    label_events = [event for event in demo.config["dependencies"] if (label._id, "input") in event["targets"]]
     assert len(label_events) == 1
     label_event = label_events[0]
     assert label_event["backend_fn"] is False
     assert label_event["queue"] is False
     assert label_event["trigger_mode"] == "always_last"
-    assert label_event["outputs"][7:9] == [slider._id, label._id]
-    preference = demo.blocks[label_event["outputs"][9]]
+    assert label_event["outputs"][6:8] == [slider._id, label._id]
+    preference = demo.blocks[label_event["outputs"][8]]
     assert preference.visible is False
     assert json.loads(preference.value) == {"tier": default_tier, "locked": False}
     assert preference._id in label_event["inputs"]
@@ -1259,6 +1255,8 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
             assert slider not in fn.outputs and label not in fn.outputs
         if fn.name == "convert_handler":
             assert fn.inputs[1] is slider
+        if fn.name == "convert_ui":
+            assert fn.inputs[1] is label
     assert slider.api_info()["type"] == "integer"
 
 
@@ -1267,7 +1265,10 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
 def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: str, uppercase: bool) -> None:
     """高档位残留值对所有轻量格式固定为 Flash，图片则保留用户选择，后缀不区分大小写。"""
     source = tmp_path / f"source.{extension.upper() if uppercase else extension}"
-    source.write_bytes(b"placeholder")
+    if source.suffix.lower().lstrip(".") in IMAGE_EXTENSIONS:
+        Image.new("RGB", (20, 30), "white").save(source, format="PNG")
+    else:
+        source.write_bytes(b"placeholder")
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("standard", "flash"), ("default",), ("upload",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
@@ -1363,7 +1364,9 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     convert_handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
     updates = asyncio.run(collect_updates(convert_handler))
 
-    assert client.calls == [(source.resolve(), expected_tier, "1")]
+    assert len(client.calls) == 1
+    assert client.calls[0][0].read_bytes() == source.read_bytes()
+    assert client.calls[0][1:] == (expected_tier, "1")
     assert len(updates[-1]) == 16
     assert updates[-1][7] == Path(updates[-1][6]["root"]).name
     assert updates[-1][6] is not None
@@ -1497,7 +1500,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         assert handler_fn.concurrency_limit is None
         # 清除和文件切换都使用 Gradio 的会话级取消事件。
         cancellation_events = [dependency for dependency in demo.config["dependencies"] if dependency["cancels"]]
-        assert len(cancellation_events) >= 2
+        assert len(cancellation_events) == 1
         assert all(handler_fn._id in dependency["cancels"] for dependency in cancellation_events)
 
         ui = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_ui")
@@ -1585,82 +1588,36 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("page_indices", [(), (2, 0, 1)])
-def test_layout_preview_matches_shared_renderer_and_pdf_document(tmp_path: Path, page_indices: tuple[int, ...]) -> None:
-    """三个公开入口使用相同页映射、边框和页面属性，缺失页不回退到其他结果。"""
-    from docvortex.document.pdf import PDFDocument
-    from docvortex.visualization import render_layout_pdf
+@pytest.mark.parametrize("suffix", ["pdf", "png"])
+def test_persist_skips_layout_pdf_rendering(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str) -> None:
+    """PDF 和图片持久化跳过布局 PDF 绘制，并能恢复含旧布局路径的会话状态。"""
+    from docvortex import visualization
 
-    from mineru.kit.gradio.preview import draw_layout_overlay
-
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes(page_count=3))
-    middle = _middle_json(page_indices=(1, 2))
-    before = middle.model_dump(mode="json")
-    expected = render_layout_pdf(source.read_bytes(), middle.pages, page_indices=page_indices or None)
-    preview = tmp_path / "preview" / "layout.pdf"
-    draw_layout_overlay(middle, source, preview, page_indices=page_indices)
-    document_output = tmp_path / "document.pdf"
-    with PDFDocument(source.read_bytes()) as document:
-        document.draw_layout_bbox(middle.pages, str(document_output), page_indices=page_indices or None)
-    expected_pages = PdfReader(io.BytesIO(expected)).pages
-    for output in (preview, document_output):
-        actual_pages = PdfReader(output).pages
-        assert len(actual_pages) == 3
-        for actual, wanted in zip(actual_pages, expected_pages):
-            assert actual.mediabox == wanted.mediabox
-            assert actual.cropbox == wanted.cropbox
-            assert actual.rotation == wanted.rotation
-            wanted_content = wanted.get_contents()
-            if wanted_content is None:
-                assert actual.get_contents() is None
-            else:
-                assert actual.get_contents().get_data() == wanted_content.get_data()
-    assert middle.model_dump(mode="json") == before
-    missing_page = 1 if page_indices else 0
-    assert expected_pages[missing_page].get_contents() is None
-
-
-def test_layout_preview_rejects_invalid_input_without_writing(tmp_path: Path) -> None:
-    """薄封装保留输入校验，并在映射非法时不写入布局产物。"""
-    from mineru.kit.gradio.preview import draw_layout_overlay
-
-    source = tmp_path / "source.pdf"
-    output = tmp_path / "layout.pdf"
-    with pytest.raises(TypeError, match="MiddleJson"):
-        draw_layout_overlay({}, source, output)
-    with pytest.raises(FileNotFoundError):
-        draw_layout_overlay(_middle_json(), source, output)
-    source.write_bytes(_pdf_bytes())
-    with pytest.raises(ValueError, match="page_indices length"):
-        draw_layout_overlay(_middle_json(), source, output, page_indices=(0, 1))
-    assert not output.exists()
-
-
-def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """共享绘制失败仍由 Gradio 记录告警，其他解析文件和下载包继续生成。"""
     from mineru.kit.gradio import artifacts as artifact_module
-    from mineru.kit.gradio import preview
+    from mineru.kit.gradio.conversion_service import _prepare_preview
 
-    def fail_layout(*_args: Any, **_kwargs: Any) -> bytes:
-        """模拟共享绘制引擎失败以验证产品层降级路径。"""
-        raise ValueError("layout fixture failure")
-
-    warnings = Mock()
-    monkeypatch.setattr(preview, "render_layout_pdf", fail_layout)
-    monkeypatch.setattr(artifact_module.logger, "warning", warnings)
-    source = tmp_path / "source.pdf"
-    source.write_bytes(_pdf_bytes())
+    render_layout = Mock(side_effect=AssertionError("WebUI must skip layout PDF rendering"))
+    monkeypatch.setattr(visualization, "render_layout_pdf", render_layout)
+    source = tmp_path / f"source.{suffix}"
+    if suffix == "pdf":
+        source.write_bytes(_pdf_bytes())
+    else:
+        Image.new("RGB", (64, 48), "white").save(source)
     artifacts = persist_parse_result(
         ParseResult(middle_json=_middle_json()), source, output_root=tmp_path / "output", page_range=""
     )
-    assert artifacts.layout_pdf_path is None
-    assert artifacts.origin_pdf_path.is_file()
+    render_layout.assert_not_called()
+    assert not list(artifacts.root.glob("*.pdf"))
     assert artifacts.middle_json_path.is_file()
     assert artifacts.markdown_path.is_file()
     assert not (artifacts.root / "layout.pdf").exists()
-    assert any("Skipping Gradio layout overlay" in call.args[0] for call in warnings.call_args_list)
-    with zipfile.ZipFile(render_download(artifacts.as_state(), "markdown")) as archive:
+    state = artifacts.as_state()
+    assert "layout_pdf_path" not in state
+    legacy_state = {**state, "layout_pdf_path": str(artifacts.root / "layout.pdf")}
+    restored = artifact_module.RunArtifacts.from_state(legacy_state)
+    assert restored.as_state() == state
+    assert _prepare_preview(suffix, restored).pdf_path is None
+    with zipfile.ZipFile(render_download(legacy_state, "markdown")) as archive:
         assert f"{artifacts.stem}.md" in archive.namelist()
         assert "layout.pdf" not in archive.namelist()
 
@@ -1693,10 +1650,12 @@ def test_gradio_slow_precheck_keeps_polling_available_and_queues_other_sessions(
         """预检线程阻塞时仍可独立查询准备和排队状态。"""
         requests = [SimpleNamespace(session_hash=f"s{i}") for i in range(2)]
         tickets = [json.dumps({"run_id": f"{i + 1:032x}", "revision": 1}) for i in range(2)]
-        first, second = [
-            asyncio.create_task(handler(str(source), 0, "", False, ticket, request))
-            for ticket, request in zip(tickets, requests)
-        ]
+        first = asyncio.create_task(handler(str(source), 0, "", False, tickets[0], requests[0]))
+        for _ in range(600):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.005)
+        second = asyncio.create_task(handler(str(source), 0, "", False, tickets[1], requests[1]))
         try:
             for _ in range(600):
                 if started.is_set() and "Queued locally" in poll(tickets[1], requests[1]):

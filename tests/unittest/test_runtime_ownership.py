@@ -53,11 +53,10 @@ def local_models(monkeypatch: pytest.MonkeyPatch) -> list[_Atom]:
     monkeypatch.setattr(ModelSingleton, "_models", {})
     monkeypatch.setattr(ModelSingleton, "_closing", {})
     monkeypatch.setattr(ModelSingleton, "_initializing", {})
-    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda backend=None: backend or "onnx")
-    monkeypatch.setattr(hybrid, "get_device", lambda: "cpu")
+    monkeypatch.setattr(get_config().model, "small_backend", "onnx")
     monkeypatch.setattr(hybrid, "ocr_det_batch_setting", lambda: True)
     monkeypatch.setattr(cpu_threads, "initialize_torch_threads", lambda: 2)
-    monkeypatch.setattr(onnx_device, "resolve_onnx_device", lambda: "cpu")
+    monkeypatch.setattr(onnx_device, "resolve_onnx_device", lambda **_: onnx_device.OnnxSelection())
 
     def create(model_name: str, **options: Any) -> _Atom:
         """表格模型像生产构造器一样借用不同配置的 OCR，形成真实二级依赖。"""
@@ -97,10 +96,10 @@ def test_shared_context_keeps_cached_properties_until_last_owner(local_models: l
     assert not hybrid.AtomModelSingleton._models
 
 
-def test_distinct_contexts_preserve_shared_atom_dependencies(
+def test_config_writeback_reuses_context_and_preserves_dependencies(
     local_models: list[_Atom], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """不同 ONNX 配置上下文解析到同一设备时，共享的表格及其 OCR 依赖按最后持有者释放。"""
+    """ONNX 配置写回不拆分上下文，共享模型及 OCR 依赖仍按最后持有者释放。"""
     first, second = RuntimeOwner(), RuntimeOwner()
     manager = hybrid.HybridLocalModelContextSingleton()
     monkeypatch.setattr(get_config().model, "onnx_device", "auto")
@@ -110,7 +109,7 @@ def test_distinct_contexts_preserve_shared_atom_dependencies(
     monkeypatch.setattr(get_config().model, "onnx_device", "cpu")
     with _owned(second):
         right = manager.get_model()
-        assert right is not left
+        assert right is left
         assert right.ocr_model is left.ocr_model
         assert right.wireless_table_model is table
     release_runtime_owner(first)
@@ -122,24 +121,24 @@ def test_distinct_contexts_preserve_shared_atom_dependencies(
     assert not hybrid.AtomModelSingleton._models
 
 
-def test_backend_and_device_changes_release_only_their_context(
+def test_explicit_model_override_releases_only_its_owner(
     local_models: list[_Atom], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """后端或设备切换仍沿原缓存键隔离，关闭一个配置不会回收另一个配置。"""
+    """显式 Torch 模型与默认 ONNX 上下文各自按所有权释放，配置变化不切换默认上下文。"""
     first, second = RuntimeOwner(), RuntimeOwner()
     manager = hybrid.HybridLocalModelContextSingleton()
     with _owned(first):
         onnx_context = manager.get_model()
-    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda backend=None: backend or "torch")
-    monkeypatch.setattr(hybrid, "get_device", lambda: "cuda:0")
+    monkeypatch.setattr(get_config().model, "small_backend", "torch")
     with _owned(second):
-        torch_context = manager.get_model()
-    assert torch_context.ocr_model is not onnx_context.ocr_model
+        assert manager.get_model() is onnx_context
+        explicit = hybrid.AtomModelSingleton().get_atom_model("ocr", small_backend="torch", device="cuda:0")
+        assert explicit is not onnx_context.ocr_model
     release_runtime_owner(first)
     assert len(manager._models) == 1
-    assert len(hybrid.AtomModelSingleton._models) == 2
+    assert len(hybrid.AtomModelSingleton._models) == 3
     with _owned(second):
-        assert manager.get_model() is torch_context
+        assert manager.get_model() is onnx_context
     release_runtime_owner(second)
     assert not manager._models
     assert not hybrid.AtomModelSingleton._models
@@ -157,6 +156,23 @@ def test_cli_pin_survives_application_release(local_models: list[_Atom]) -> None
     with _owned(None):
         assert manager.get_model() is pinned
     assert len(hybrid.AtomModelSingleton._models) == 2
+
+
+def test_explicit_context_does_not_initialize_unrelated_default(
+    local_models: list[_Atom], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """显式 Torch CPU 上下文连同批处理策略和嵌套模型都不触发默认 ONNX 选型。"""
+    from mineru.model.runtime import device_state
+
+    def batch_setting() -> bool:
+        """策略读取当前构造作用域，而不是尚未初始化的进程默认后端。"""
+        assert device_state.resolve_model_device().backend == "torch"
+        return True
+
+    monkeypatch.setattr(hybrid, "ocr_det_batch_setting", batch_setting)
+    context = hybrid.HybridLocalModelContext(device="cpu", small_backend="torch")
+    assert context.small_backend == "torch" and context.device == "cpu"
+    assert device_state.cached_runtime_device() is None
 
 
 def test_empty_and_shared_owner_release_do_not_force_full_gc(

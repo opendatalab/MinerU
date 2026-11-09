@@ -9,10 +9,15 @@ from ...parser.base import ParseResult
 from . import artifacts, page_range
 from .artifacts import RunArtifacts
 from .page_range import PdfPageMetadata
+from .sources import PreparedSource, prepare_source
 
 
 class GradioDocumentIO(Protocol):
     """定义界面和转换服务共享的同步文档操作，不约束宿主的进程实现。"""
+
+    def prepare_source(self, path: Path, *, source_id: str, output_root: Path) -> PreparedSource:
+        """准备一次上传的稳定输入，图片生成的 PDF 由预览与解析共用。"""
+        ...
 
     def pdf_page_metadata(self, file_path: str | None) -> PdfPageMetadata:
         """读取上传文件页数，返回可序列化的文件身份、页数和错误。"""
@@ -36,12 +41,16 @@ class GradioDocumentIO(Protocol):
         output_root: Path,
         page_range: str,
     ) -> RunArtifacts:
-        """物化解析结果及布局预览，只返回路径和可序列化的产物描述。"""
+        """物化完整解析素材，只返回路径和可序列化的产物描述。"""
         ...
 
 
 class LocalGradioDocumentIO:
     """普通 WebUI 的进程内实现，实例化时不打开文档或创建目录。"""
+
+    def prepare_source(self, path: Path, *, source_id: str, output_root: Path) -> PreparedSource:
+        """通过公共图片转换能力准备输入，保持 PDFium 操作可被宿主隔离。"""
+        return prepare_source(path, source_id=source_id, output_root=output_root)
 
     def pdf_page_metadata(self, file_path: str | None) -> PdfPageMetadata:
         """委托现有页数读取实现，沿用共享 PDFium 锁和错误格式。"""

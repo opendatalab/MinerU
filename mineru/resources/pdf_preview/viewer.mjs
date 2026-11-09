@@ -1,3 +1,4 @@
+import { installTrace } from "./trace.mjs";
 // 查看器独立于宿主框架运行；PDF、字体和解码器只从同源的固定资源目录读取。
 const params = new URLSearchParams(window.location.hash.slice(1));
 const messages = JSON.parse(params.get("messages") || "{}");
@@ -25,6 +26,7 @@ let resizeObserver;
 let resizeFrame;
 let fitWidth = true;
 let ready = false;
+let disposeTrace;
 
 // 清除或换文件时释放渲染队列、worker 和观察器，旧页面不会向新预览写入结果。
 const dispose = () => {
@@ -32,6 +34,7 @@ const dispose = () => {
     disposed = true;
     cancelAnimationFrame(resizeFrame);
     resizeObserver?.disconnect();
+    disposeTrace?.();
     try {
         viewer?.setDocument(null);
         links?.setDocument(null);
@@ -85,7 +88,7 @@ const zoom = (delta) => {
 // 模块和 worker 使用同一份固定发行包，不启用 PDF 内嵌脚本、编辑或交互表单。
 try {
     const source = new URL(params.get("file") || "", window.location.href);
-    if (!params.get("file") || source.origin !== window.location.origin || !source.pathname.includes("/gradio_api/file=")) {
+    if (!params.get("file") || source.origin !== window.location.origin || !(source.protocol === "blob:" || source.pathname.includes("/gradio_api/file="))) {
         throw new Error("Invalid PDF source");
     }
     const pdfjs = await import("./vendor/pdfjs/legacy/build/pdf.min.mjs");
@@ -102,6 +105,7 @@ try {
             ready = true;
             document.getElementById("toolbar").setAttribute("aria-busy", "false");
             resize();
+            disposeTrace = installTrace({ viewer, eventBus, container, sourceId: params.get("sourceId"), messages });
         });
         eventBus.on("pagechanging", updateControls);
         eventBus.on("scalechanging", updateControls);

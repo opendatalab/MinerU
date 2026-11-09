@@ -9,9 +9,10 @@ import shutil
 import time
 import uuid
 import zipfile
+from copy import deepcopy
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Literal, cast
@@ -19,14 +20,11 @@ from urllib.parse import quote, urlsplit
 
 from bs4 import BeautifulSoup
 from docvortex.assets import AssetStore, parse_image_data_uri_strict, validate_image_sidecar_path
-from docvortex.document.pdf import PDFDocument
-from docvortex.document.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
-from docvortex.export import materialize_middle
+from docvortex.export import materialize_middle, validate_materialized_assets
 from loguru import logger
 
 from ...filetypes import IMAGE_EXTENSIONS, PDF_EXTENSIONS
 from ...parser.base import ParseResult
-from ...parser.page_range import parse_page_range
 from ...render import (
     DocxRenderOptions,
     EpubRenderOptions,
@@ -38,7 +36,8 @@ from ...render import (
     StructuredContentRenderOptions,
     render,
 )
-from ...types import BlockBase, ImagePayloadBlock, MiddleJson
+from ...types import ImagePayloadBlock, MiddleJson
+from .sources import PreparedSource
 
 DownloadFormat = Literal["markdown", "json", "html", "docx", "latex", "epub", "pdf"]
 
@@ -61,15 +60,13 @@ class RunArtifacts:
 
     root: Path
     stem: str
-    source_path: Path
     middle_json_path: Path
     markdown_path: Path
     structured_content_path: Path
     downloads_dir: Path
     file_suffix: str
-    origin_pdf_path: Path | None = None
-    layout_pdf_path: Path | None = None
-    page_indices: tuple[int, ...] = ()
+    prepared_source: PreparedSource | None = None
+    initial_page_idx: int | None = None
     generated_downloads: dict[str, Path] = field(default_factory=dict)
 
     def as_state(self) -> dict[str, Any]:
@@ -77,15 +74,13 @@ class RunArtifacts:
         return {
             "root": str(self.root),
             "stem": self.stem,
-            "source_path": str(self.source_path),
             "middle_json_path": str(self.middle_json_path),
             "markdown_path": str(self.markdown_path),
             "structured_content_path": str(self.structured_content_path),
             "downloads_dir": str(self.downloads_dir),
             "file_suffix": self.file_suffix,
-            "origin_pdf_path": str(self.origin_pdf_path) if self.origin_pdf_path else "",
-            "layout_pdf_path": str(self.layout_pdf_path) if self.layout_pdf_path else "",
-            "page_indices": list(self.page_indices),
+            "prepared_source": self.prepared_source.as_state() if self.prepared_source else None,
+            "initial_page_idx": self.initial_page_idx,
             "generated_downloads": {key: str(value) for key, value in self.generated_downloads.items()},
         }
 
@@ -97,7 +92,6 @@ class RunArtifacts:
         required = (
             "root",
             "stem",
-            "source_path",
             "middle_json_path",
             "markdown_path",
             "structured_content_path",
@@ -119,13 +113,10 @@ class RunArtifacts:
                 candidate = Path(value).resolve()
                 _ensure_path_inside(root, candidate)
                 generated_downloads[str(key)] = candidate
-        raw_indices = state.get("page_indices", [])
-        page_indices = tuple(int(value) for value in raw_indices) if isinstance(raw_indices, list) else ()
         root = Path(cast(str, state["root"])).resolve()
         core_paths = [
             Path(cast(str, state[key])).resolve()
             for key in (
-                "source_path",
                 "middle_json_path",
                 "markdown_path",
                 "structured_content_path",
@@ -134,55 +125,23 @@ class RunArtifacts:
         ]
         for path in core_paths:
             _ensure_path_inside(root, path)
-        optional_paths = [_optional_path(state.get(key)) for key in ("origin_pdf_path", "layout_pdf_path")]
-        for path in optional_paths:
-            if path is not None:
-                _ensure_path_inside(root, path)
+        prepared = state.get("prepared_source")
+        prepared_source = PreparedSource.from_state(prepared, source_root=root.parent / "sources") if prepared else None
+        initial_page_idx = state.get("initial_page_idx")
+        if initial_page_idx is not None and (type(initial_page_idx) is not int or initial_page_idx < 0):
+            raise ValueError("Invalid initial preview page")
         return cls(
             root=root,
             stem=stem,
-            source_path=Path(cast(str, state["source_path"])).resolve(),
             middle_json_path=Path(cast(str, state["middle_json_path"])).resolve(),
             markdown_path=Path(cast(str, state["markdown_path"])).resolve(),
             structured_content_path=Path(cast(str, state["structured_content_path"])).resolve(),
             downloads_dir=Path(cast(str, state["downloads_dir"])).resolve(),
             file_suffix=cast(str, state["file_suffix"]),
-            origin_pdf_path=optional_paths[0],
-            layout_pdf_path=optional_paths[1],
-            page_indices=page_indices,
+            prepared_source=prepared_source,
+            initial_page_idx=initial_page_idx,
             generated_downloads=generated_downloads,
         )
-
-
-@dataclass
-class _ImageContext:
-    """为一次渲染保存源 PDF、页面映射和已写出的图片资源。"""
-
-    source_pdf: PDFDocument | None
-    source_page_by_middle_page: dict[int, int]
-    output_dir: Path
-    asset_root: Path
-    crop_cache: dict[tuple[int, tuple[float, ...]], bytes] = field(default_factory=dict)
-
-    def crop_for_block(self, block: BlockBase, *, middle_page_idx: int) -> bytes | None:
-        """按 bbox 读取裁后 PDF 页面，仅缓存图片字节，不写出临时图片文件。"""
-        if self.source_pdf is None or block.bbox is None:
-            return None
-        source_page_idx = self.source_page_by_middle_page.get(middle_page_idx, middle_page_idx)
-        if source_page_idx < 0 or source_page_idx >= self.source_pdf.page_count:
-            return None
-        bbox = tuple(float(item) for item in block.bbox)
-        key = (middle_page_idx, bbox)
-        existing = self.crop_cache.get(key)
-        if existing is not None:
-            return existing
-        try:
-            data = self.source_pdf.crop_image(block.bbox, source_page_idx)
-        except Exception as exc:
-            logger.warning("Failed to crop Gradio PDF image page={} bbox={}: {}", source_page_idx, bbox, exc)
-            return None
-        self.crop_cache[key] = data
-        return data
 
 
 def create_run_artifacts(source_path: Path, output_root: Path) -> RunArtifacts:
@@ -196,11 +155,9 @@ def create_run_artifacts(source_path: Path, output_root: Path) -> RunArtifacts:
     downloads_dir = root / "downloads"
     downloads_dir.mkdir()
     source_suffix = source_path.suffix.lower() or ".bin"
-    source_copy = root / f"source{source_suffix}"
     return RunArtifacts(
         root=root,
         stem=stem,
-        source_path=source_copy,
         middle_json_path=root / "middle_json.json",
         markdown_path=root / "markdown.md",
         structured_content_path=root / "structured_content.json",
@@ -218,70 +175,33 @@ def persist_parse_result(
 ) -> RunArtifacts:
     """保存图片已物化的语义副本，并生成 Markdown、Structured Content 和预览文件。"""
     artifacts = create_run_artifacts(source_path, output_root)
-    shutil.copyfile(source_path, artifacts.source_path)
-
-    with _output_stage("origin_pdf", artifacts):
-        origin_pdf, page_indices = _prepare_origin_pdf(
-            artifacts.source_path,
-            page_range=page_range,
-            output_path=artifacts.root / "origin.pdf",
+    artifacts.initial_page_idx = result.pages[0].page_idx if result.pages else None
+    with _output_stage("materialize", artifacts):
+        materialized = _materialize_middle_json(result.middle_json, artifacts.root, asset_root=source_path.parent)
+        artifacts.middle_json_path.write_text(ParseResult(middle_json=materialized).to_json(), encoding="utf-8")
+    with _output_stage("markdown", artifacts):
+        markdown = cast(
+            str,
+            render(
+                materialized,
+                RenderFormat.MARKDOWN,
+                options=MarkdownRenderOptions(),
+            ),
         )
-    artifacts.origin_pdf_path = origin_pdf
-    artifacts.page_indices = tuple(page_indices)
-
-    image_context = _build_image_context(
-        result.middle_json,
-        origin_pdf,
-        artifacts.root,
-        page_indices=artifacts.page_indices,
-        asset_root=source_path.parent,
-    )
-    try:
-        with _output_stage("materialize", artifacts):
-            materialized = _materialize_middle_json(result.middle_json, image_context)
-            artifacts.middle_json_path.write_text(ParseResult(middle_json=materialized).to_json(), encoding="utf-8")
-        with _output_stage("markdown", artifacts):
-            markdown = cast(
-                str,
-                render(
-                    materialized,
-                    RenderFormat.MARKDOWN,
-                    options=MarkdownRenderOptions(),
-                ),
-            )
-            artifacts.markdown_path.write_text(markdown, encoding="utf-8")
-        with _output_stage("structured_json", artifacts):
-            structured = cast(
-                dict[str, Any],
-                render(
-                    materialized,
-                    RenderFormat.STRUCTURED_CONTENT,
-                    options=StructuredContentRenderOptions(),
-                ),
-            )
-            artifacts.structured_content_path.write_text(
-                json.dumps(structured, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-    finally:
-        _close_image_context(image_context)
-
-    if origin_pdf is not None:
-        from .preview import draw_layout_overlay
-
-        layout_path = artifacts.root / "layout.pdf"
-        try:
-            with _output_stage("layout_pdf", artifacts):
-                draw_layout_overlay(
-                    result.middle_json,
-                    origin_pdf,
-                    layout_path,
-                    page_indices=artifacts.page_indices,
-                )
-        except Exception as exc:
-            logger.warning("Skipping Gradio layout overlay for {}: {}", artifacts.stem, exc)
-        else:
-            artifacts.layout_pdf_path = layout_path
+        artifacts.markdown_path.write_text(markdown, encoding="utf-8")
+    with _output_stage("structured_json", artifacts):
+        structured = cast(
+            dict[str, Any],
+            render(
+                materialized,
+                RenderFormat.STRUCTURED_CONTENT,
+                options=StructuredContentRenderOptions(),
+            ),
+        )
+        artifacts.structured_content_path.write_text(
+            json.dumps(structured, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     return artifacts
 
@@ -289,10 +209,13 @@ def persist_parse_result(
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
     with _output_stage("html_preview", artifacts):
-        value = _render_html(artifacts, public_base_url=public_base_url)
+        if artifacts.file_suffix in PDF_EXTENSIONS | IMAGE_EXTENSIONS:
+            value = _render_html(artifacts, public_base_url=public_base_url, include_source_map=True)
+        else:
+            value = _render_html(artifacts, public_base_url=public_base_url)
         # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
         value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
-        value = _prepare_preview_links(value)
+        value = _prepare_preview_links(value, include_outline=True)
         return (
             '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
             'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
@@ -300,8 +223,57 @@ def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str
         )
 
 
-def _prepare_preview_links(document: str) -> str:
-    """仅为预览中的网页外链指定新标签页，保留内部锚点及邮件、电话等链接行为。"""
+def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: MiddleJson, public_base_url: str) -> str:
+    """向隔离结果页注入溯源配置，并由公共接口提供合并前的原始布局。"""
+    from docvortex.visualization import collect_layout_regions
+
+    from .i18n import MESSAGES
+
+    base = urlsplit(public_base_url)
+    config = (
+        json.dumps(
+            {
+                "documentId": artifacts.root.name,
+                "initialPageIdx": artifacts.initial_page_idx,
+                "parentOrigin": f"{base.scheme}://{base.netloc}",
+                "pageLabels": MESSAGES["trace_source"],
+                "layoutRegions": [asdict(region) for region in collect_layout_regions(middle_json.pages)],
+            },
+            ensure_ascii=True,
+        )
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+    script = (Path(__file__).resolve().parents[2] / "resources" / "gradio_trace_html.js").read_text(encoding="utf-8")
+    styles = """<style>
+[data-docvortex-trace-id], .mineru-trace-pages {
+    --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
+[data-docvortex-trace-id] { cursor: pointer; scroll-margin: 24px; }
+[data-docvortex-trace-id]:hover:not(:has([data-docvortex-trace-id]:hover)),
+[data-docvortex-trace-id]:focus-visible {
+    outline: 1px solid var(--trace-strong); outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 5%, transparent); }
+[data-mineru-selected] { outline: 2px solid var(--trace-strong) !important; outline-offset: 3px;
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent) !important; }
+.mineru-trace-pages { position: fixed; right: 8px; z-index: 100;
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 75%; padding: 5px; background: Canvas;
+    box-sizing: border-box; max-height: calc(100vh - var(--mineru-preview-offset, 8px) - 8px);
+    overflow-y: auto; overscroll-behavior: contain;
+    border: 1px solid var(--trace-strong); border-radius: 6px; }
+.mineru-trace-pages[hidden] { display: none; }
+.mineru-trace-pages button { cursor: pointer; color: CanvasText; background: Canvas;
+    border: 1px solid #aaa; border-radius: 4px; padding: 3px 6px; }
+.mineru-trace-pages button[aria-pressed=true] { border-color: var(--trace-strong);
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent); }
+</style>"""
+    document = document.replace("</head>", styles + "</head>", 1)
+    return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
+
+
+def _prepare_preview_links(document: str, *, include_outline: bool = False) -> str:
+    """为预览中的网页外链指定新标签页，并按需复用当前 DOM 准备目录。"""
     soup = BeautifulSoup(document, "html.parser")
     for link in soup.find_all("a", href=True):
         try:
@@ -312,16 +284,56 @@ def _prepare_preview_links(document: str) -> str:
             continue
         link["target"] = "_blank"
         link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+    if include_outline:
+        _add_outline_preview(soup)
     return str(soup)
 
 
-def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
+def _add_outline_preview(soup: BeautifulSoup) -> None:
+    """复用预览 DOM 准备唯一标题锚点和纯文本标签，并注入当前 iframe 的目录资源。"""
+    from .i18n import MESSAGES
+
+    if soup.head is None or soup.body is None:
+        return
+    used_ids = {str(node["id"]) for node in soup.find_all(id=True)}
+    count = 0
+    for heading in soup.select("article.docvortex-document .docvortex-heading"):
+        if heading.name not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            continue
+        label_node = deepcopy(heading)
+        for formula in label_node.select("[data-docvortex-latex]"):
+            formula.replace_with(str(formula["data-docvortex-latex"]))
+        label = " ".join(label_node.get_text().split())
+        if not label:
+            continue
+        count += 1
+        if not heading.get("id"):
+            identifier = f"mineru-outline-{count}"
+            while identifier in used_ids:
+                identifier += "-toc"
+            heading["id"] = identifier
+            used_ids.add(identifier)
+        heading["data-mineru-outline-label"] = label
+    if not count:
+        return
+    resources = Path(__file__).resolve().parents[2] / "resources"
+    style = soup.new_tag("style", attrs={"data-mineru-outline": ""})
+    style.string = (resources / "gradio_outline.css").read_text(encoding="utf-8")
+    soup.head.append(style)
+    labels = {key: MESSAGES[f"outline_{key}"] for key in ("title", "expand", "collapse")}
+    config = json.dumps(labels, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    script = soup.new_tag("script", attrs={"data-mineru-outline": ""})
+    script.string = f"({(resources / 'gradio_outline.js').read_text(encoding='utf-8')})({config});"
+    soup.body.append(script)
+
+
+def _render_html(artifacts: RunArtifacts, *, public_base_url: str, include_source_map: bool = False) -> str:
     """把已物化语义树渲染为使用当前 Gradio 静态图片地址的独立 HTML。"""
     if urlsplit(public_base_url).scheme not in {"http", "https"} or not urlsplit(public_base_url).netloc:
         raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
     asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(artifacts.root.as_posix(), safe='/:')}"
-    return cast(
+    document = cast(
         str,
         render(
             result.middle_json,
@@ -330,9 +342,13 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
                 standalone=True,
                 document_title=artifacts.stem,
                 asset_base_url=asset_base_url,
+                include_source_map=include_source_map,
             ),
         ),
     )
+    if include_source_map:
+        return _add_trace_preview(document, artifacts, middle_json=result.middle_json, public_base_url=public_base_url)
+    return document
 
 
 def _build_text_download(artifacts: RunArtifacts, format_name: Literal["markdown", "json"]) -> Path:
@@ -366,7 +382,6 @@ def render_download(
     if allowed_root is not None:
         _ensure_path_inside(allowed_root.resolve(), artifacts.root)
         for path in (
-            artifacts.source_path,
             artifacts.middle_json_path,
             artifacts.markdown_path,
             artifacts.structured_content_path,
@@ -451,132 +466,43 @@ def render_download(
     return str(target)
 
 
-def _prepare_origin_pdf(
-    source_path: Path,
-    *,
-    page_range: str,
-    output_path: Path,
-    keep_existing: bool = False,
-) -> tuple[Path | None, list[int]]:
-    """将 PDF/image 输入转换为与解析范围一致的 origin PDF。"""
-    if keep_existing and output_path.is_file():
-        try:
-            with PDFDocument(output_path.read_bytes()) as doc:
-                return output_path, list(range(doc.page_count))
-        except Exception:
-            output_path.unlink(missing_ok=True)
-    suffix = source_path.suffix.lower().lstrip(".")
-    source_bytes = source_path.read_bytes()
-    if suffix in IMAGE_EXTENSIONS:
-        pdf_bytes = PDFDocument.from_image(source_bytes).bytes
-        output_path.write_bytes(pdf_bytes)
-        return output_path, [0]
-    if suffix not in PDF_EXTENSIONS:
-        return None, []
-    with PDFDocument(source_bytes) as doc:
-        page_count = doc.page_count
-    page_indices = parse_page_range(page_range, page_count)
-    if page_indices == list(range(page_count)):
-        output_path.write_bytes(source_bytes)
-        return output_path, page_indices
-    rewrite = safe_rewrite_pdf_bytes_with_pdfium_result(source_bytes, page_indices=page_indices)
-    output_path.write_bytes(rewrite.pdf_bytes or source_bytes)
-    return output_path, rewrite.retained_page_indices or page_indices
-
-
-def _build_image_context(
-    middle_json: MiddleJson,
-    origin_pdf: Path | None,
-    output_dir: Path,
-    *,
-    page_indices: tuple[int, ...] = (),
-    asset_root: Path | None = None,
-) -> _ImageContext:
-    """创建页面映射和源 PDF 上下文，供 Markdown 与多格式渲染共享。"""
-    resolved_asset_root = (asset_root or output_dir).resolve()
-    if origin_pdf is None:
-        return _ImageContext(
-            source_pdf=None,
-            source_page_by_middle_page={},
-            output_dir=output_dir,
-            asset_root=resolved_asset_root,
-        )
-    source_pdf = PDFDocument(origin_pdf.read_bytes())
-    page_map = _source_page_map(middle_json, source_pdf.page_count, page_indices)
-    return _ImageContext(
-        source_pdf=source_pdf,
-        source_page_by_middle_page=page_map,
-        output_dir=output_dir,
-        asset_root=resolved_asset_root,
-    )
-
-
-def _source_page_map(middle_json: MiddleJson, source_page_count: int, page_indices: tuple[int, ...]) -> dict[int, int]:
-    """将 Middle JSON 原始页号映射到当前 origin PDF 的顺序页号。"""
-    original_to_output = {
-        original_page_idx: output_page_idx
-        for output_page_idx, original_page_idx in enumerate(page_indices)
-        if output_page_idx < source_page_count
-    }
-    page_map: dict[int, int] = {}
-    for position, page in enumerate(middle_json.pages):
-        mapped = original_to_output.get(page.page_idx)
-        if mapped is not None:
-            page_map[page.page_idx] = mapped
-        elif position < source_page_count:
-            page_map[page.page_idx] = position
-        elif page.page_idx < source_page_count:
-            page_map[page.page_idx] = page.page_idx
-    return page_map
-
-
-def _close_image_context(context: _ImageContext) -> None:
-    """释放上下文持有的 PDFium 文档。"""
-    if context.source_pdf is not None:
-        context.source_pdf.close()
-
-
-def _materialize_middle_json(middle_json: MiddleJson, context: _ImageContext) -> MiddleJson:
+def _materialize_middle_json(middle_json: MiddleJson, output_dir: Path, *, asset_root: Path | None = None) -> MiddleJson:
     """由宿主提供素材字节，统一交给 DocVortex 命名、消解冲突并改写引用。"""
-    images = context.output_dir / "images"
-    _ensure_path_inside(context.output_dir, images)
+    asset_root = (asset_root or output_dir).resolve()
+    images = output_dir / "images"
+    _ensure_path_inside(output_dir, images)
     existing = AssetStore()
     for path in sorted(images.rglob("*")):
         _ensure_path_inside(images, path)
         if path.is_symlink():
             raise ValueError(f"Image assets must not contain symlinks: {path}")
         if path.is_file():
-            existing.add(path.relative_to(context.output_dir).as_posix(), path.read_bytes())
+            existing.add(path.relative_to(output_dir).as_posix(), path.read_bytes())
 
     def resolve_image(block: ImagePayloadBlock, page_idx: int) -> tuple[bytes, str] | None:
-        """保持内嵌载荷、本地路径及 PDF 补裁的现有分支顺序和错误处理。"""
+        """仅消费已有素材；缺失或非法图片明确失败，bbox 不触发源文件补裁。"""
         data: bytes | None = None
         extension = "jpg"
-        if block.image_base64:
-            try:
-                data, extension = parse_image_data_uri_strict(block.image_base64)
-            except ValueError:
-                return None
+        if block.image_base64 is not None:
+            data, extension = parse_image_data_uri_strict(block.image_base64)
         elif block.image_path:
             safe_path = validate_image_sidecar_path(block.image_path)
-            candidate = (context.asset_root / safe_path).resolve()
-            _ensure_path_inside(context.asset_root, candidate)
-            if candidate.is_file():
-                data = candidate.read_bytes()
-                extension = candidate.suffix.lstrip(".") or extension
-        elif block.bbox is not None:
-            data = context.crop_for_block(block, middle_page_idx=page_idx)
+            candidate = (asset_root / safe_path).resolve()
+            _ensure_path_inside(asset_root, candidate)
+            data = candidate.read_bytes()
+            extension = candidate.suffix.lstrip(".") or extension
         return (data, extension) if data else None
 
     document, assets = materialize_middle(
         middle_json,
         existing,
         image_resolver=resolve_image,
-        asset_resolver=_asset_resolver(context.asset_root),
+        asset_resolver=_asset_resolver(asset_root),
     )
+    validate_materialized_assets(document, assets)
     for relative_path, payload in assets.items():
-        target = context.output_dir / relative_path
-        _ensure_path_inside(context.output_dir, target)
+        target = output_dir / relative_path
+        _ensure_path_inside(output_dir, target)
         if target.is_symlink():
             raise ValueError(f"Image assets must not contain symlinks: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -660,13 +586,6 @@ def _ensure_path_inside(root: Path, target: Path) -> None:
         target.resolve().relative_to(root.resolve())
     except ValueError as exc:
         raise ValueError(f"Artifact path escapes output root: {target}") from exc
-
-
-def _optional_path(value: object) -> Path | None:
-    """把 State 中的可选路径字段转换为绝对 Path。"""
-    if not isinstance(value, str) or not value:
-        return None
-    return Path(value).resolve()
 
 
 def _safe_stem(value: str) -> str:

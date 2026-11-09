@@ -114,11 +114,28 @@ Linux 插件缺失、没有可用设备、物理绑定失败、校准超时或�
 
 要重新测量，将配置改回 `auto` 并重启应用。修改程序阈值也不主动覆盖已保存的选择。
 
+## 进程设备快照
+
+`model.onnx_device` 是选型输入和跨进程保存的偏好，不承担模块间运行状态传递。
+自动 tier、llama 自动模式及默认小模型加载统一调用 `resolve_runtime_device()`，
+首次选型后固定本进程后端、CPU/GPU 模式及具体设备；配置写回或运行期间修改环境不会创建第二份决策。
+模型卸载后再次加载仍复用原决策；修改默认设备需要新进程。
+
+`cached_runtime_device()` 只读，尚未初始化时返回 None，不执行探测或校准。
+GPU 泛指非 CPU 加速模式，包括 Torch MPS、XPU、NPU 等；它不保证每个模型或远程 VLM 都在 GPU 上执行。
+单个模型回退 CPU、显式设备覆盖和 llama 原生选卡不修改默认快照。
+显式模型覆盖通过构造作用域传给嵌套会话，不影响其他线程。
+
+正式离线运行缺少校准权重而采用 CPU 后，该决策也固定到进程结束；后续允许下载不会重新选型。
+独立底层预探测和 `hardware info` 不发布正式决策，因此预探测失败不会污染后续正式初始化。
+具体契约见 [ADR-0036](decisions/0036-process-runtime-device.md)。
+
+
 ## llama.cpp 自动模式与手动覆盖 {#llama-auto-mode}
 
 Windows/Linux 的 Engine 和 `llama-server` 复用同一 CPU/GPU 决策：
 
-- 小模型为 ONNX：使用 `resolve_onnx_device()` 的结果和进程缓存。兼容独显免测速；集显或类型未知按既有 OCR 校准决定。
+- 小模型为 ONNX：使用 `resolve_runtime_device()` 快照中的 ONNX 具体选型。兼容独显免测速；集显或类型未知按既有 OCR 校准决定。
 - 小模型为 Torch：使用已核验的 Torch 加速器可用性，不调用 ONNX、不下载 OCR 校准模型。
 - CPU：模型、视觉投影均使用 CPU，server 同时关闭额外算子卸载。
 - GPU：允许原生运行时按默认规则选择显卡；不要求它与 ONNX 使用同一物理卡，不新增 VLM 测速。
@@ -147,7 +164,7 @@ GPU 开放全部四档；CPU 至少 12 核开放到 Standard，至少 4 核开�
 | 印章检测 / 表格分类 / SLANet Plus | CPU | CPU |
 
 普通文字检测和印章检测在模型入口通过 `ocr_det` / `seal_det` 明确区分。
-UNet 与其他模型共享 `model.onnx_device` 的进程内选择，不单独测速；ONNX 栈的 UNet 不受旧 `MINERU_TABLE_DEVICE` 覆盖。
+UNet 与其他模型共享 `RuntimeDevice` 中的 ONNX 选型，不单独测速；ONNX 栈的 UNet 不受旧 `MINERU_TABLE_DEVICE` 覆盖。
 Torch 栈中的表格仍使用其原有 CPU/CUDA 策略。旧实验引擎和实验开关已经移除。
 
 | 厂商 | layout | MFR | rec | UNet |

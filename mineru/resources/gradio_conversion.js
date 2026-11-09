@@ -24,6 +24,8 @@
     };
 
     if (action === "begin") {
+        state.sourceId = window.__mineruPdfPreview?.sourceId;
+        state.sourcePath = window.__mineruPdfPreview?.source;
         stopPreviewLog();
         state.runId = uuid4().replaceAll("-", "");
         state.revision += 1;
@@ -31,7 +33,14 @@
         state.terminal = false;
         state.applied = false;
         window.__mineruStatusPanel?.showPreparing();
-        return [JSON.stringify({ run_id: state.runId, revision: state.revision }), timer(true)];
+        return [JSON.stringify({ run_id: state.runId, revision: state.revision, source_id: state.sourceId }), timer(true)];
+    }
+    if (action === "cancel_source") {
+        const path = args[0]?.path || "";
+        if (path && path === state.sourcePath && state.sourceId === window.__mineruPdfPreview?.sourceId) {
+            return [skip(), skip(), skip()];
+        }
+        action = "cancel";
     }
     if (action === "cancel") {
         stopPreviewLog();

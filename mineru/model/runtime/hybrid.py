@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from ..mfr.pp_formulanet.predict_formula import FormulaRecognizer
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 
-from .device import get_device, resolve_small_model_backend
+from .device_state import model_device_scope, resolve_model_backend, resolve_model_device, resolve_runtime_device
 
 LOCAL_MODEL_INIT_LOCK = LOCAL_MODEL_CACHE_LOCK
 # 这些锁保护 Hybrid medium/high/xhigh 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
@@ -219,12 +219,13 @@ class AtomModelSingleton:
 
     def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
         """根据模型名称和关键配置生成缓存键，并获取对应原子模型。"""
-        small_backend = resolve_small_model_backend(kwargs.get("small_backend"))
+        decision = resolve_model_device(kwargs.get("small_backend"), kwargs.get("device"))
+        small_backend = decision.backend
         if small_backend == "torch":
             from .cpu_threads import initialize_torch_threads
 
             initialize_torch_threads()
-        device = "cpu" if small_backend == "onnx" else (kwargs.get("device") or get_device())
+        device = decision.model_device
         kwargs = {**kwargs, "small_backend": small_backend, "device": device}
         lang = kwargs.get("lang", None)
         ocr_singleton_lang = normalize_ocr_model_lang(lang)
@@ -247,12 +248,14 @@ class AtomModelSingleton:
         else:
             key = atom_model_name
 
-        key = (small_backend, device, key)
-        if small_backend == "onnx":
-            from .onnx_device import resolve_onnx_device
+        key = (decision, key)
 
-            key = (*key, resolve_onnx_device())
-        return get_local_model(self._models, key, lambda: atom_model_init(model_name=atom_model_name, **kwargs))
+        def initialize() -> Any:
+            """在已确定的设备作用域中创建模型，使嵌套 ONNX 会话复用相同选型。"""
+            with model_device_scope(decision):
+                return atom_model_init(model_name=atom_model_name, **kwargs)
+
+        return get_local_model(self._models, key, initialize)
 
     def release_owner(self, owner: RuntimeOwner) -> None:
         """释放应用直接持有的原子模型，仍被其它上下文引用的依赖继续保留。"""
@@ -262,7 +265,14 @@ class AtomModelSingleton:
 @stage_timer("model.initialize")
 def atom_model_init(model_name: str, **kwargs: Any) -> Any:
     """将原子模型名称分派到具体初始化函数，并校验初始化结果。"""
-    small_backend = resolve_small_model_backend(kwargs.get("small_backend"))
+    decision = resolve_model_device(kwargs.get("small_backend"), kwargs.get("device"))
+    with model_device_scope(decision):
+        return _create_atom_model(model_name, **{**kwargs, "small_backend": decision.backend, "device": decision.model_device})
+
+
+def _create_atom_model(model_name: str, **kwargs: Any) -> Any:
+    """在调用者已固定的设备作用域内执行具体模型构造。"""
+    small_backend = kwargs["small_backend"]
     if small_backend == "torch":
         from .cpu_threads import initialize_torch_threads
 
@@ -372,13 +382,15 @@ class HybridLocalModelContextSingleton:
     def get_model(
         self,
     ) -> HybridLocalModelContext:
-        """按小模型后端与实际设备缓存上下文，避免切换配置后混用模型。"""
-        small_backend = resolve_small_model_backend()
-        device = "cpu" if small_backend == "onnx" else get_device()
-        from ...config import get_config
+        """按进程稳定设备复用上下文，配置写回不创建另一份模型。"""
+        decision = resolve_runtime_device()
 
-        key = (small_backend, device, get_config().model.onnx_device if small_backend == "onnx" else None)
-        return get_local_model(self._models, key, lambda: HybridLocalModelContext(device=device, small_backend=small_backend))
+        def initialize() -> HybridLocalModelContext:
+            """在同一设备作用域内创建上下文及其嵌套原子模型。"""
+            with model_device_scope(decision):
+                return HybridLocalModelContext(device=decision.model_device, small_backend=decision.backend)
+
+        return get_local_model(self._models, decision, initialize)
 
     def release_owner(self, owner: RuntimeOwner) -> None:
         """释放应用对上下文的租约，并按依赖关系回收无人持有的原子模型。"""
@@ -387,7 +399,7 @@ class HybridLocalModelContextSingleton:
 
 def ocr_det_batch_setting() -> bool:
     """根据运行设备和 PyTorch 版本确定是否启用 OCR 检测批处理。"""
-    if resolve_small_model_backend() == "onnx":
+    if resolve_model_backend() == "onnx":
         return True
 
     try:
@@ -418,9 +430,11 @@ class HybridLocalModelContext:
     ) -> None:
         """初始化 Hybrid 基础运行时，其他模型在首次访问对应属性时加载。"""
         self._resource = current_local_resource()
-        self.small_backend = resolve_small_model_backend(small_backend)
-        self.device = "cpu" if self.small_backend == "onnx" else (device or get_device())
-        self.enable_ocr_det_batch = True if self.small_backend == "onnx" else ocr_det_batch_setting()
+        self._device_decision = resolve_model_device(small_backend, device)
+        self.small_backend = self._device_decision.backend
+        self.device = self._device_decision.model_device
+        with model_device_scope(self._device_decision):
+            self.enable_ocr_det_batch = True if self.small_backend == "onnx" else ocr_det_batch_setting()
 
         if str(self.device).startswith("npu"):
             try:
@@ -444,7 +458,7 @@ class HybridLocalModelContext:
 
     def _get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
         """把惰性模型登记为上下文依赖，复用 cached_property 时无需重复登记应用。"""
-        with local_resource_scope(self._resource):
+        with local_resource_scope(self._resource), model_device_scope(self._device_decision):
             return self.atom_model_manager.get_atom_model(atom_model_name=atom_model_name, **kwargs)
 
     @cached_property

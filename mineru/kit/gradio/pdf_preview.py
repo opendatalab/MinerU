@@ -7,7 +7,7 @@ import mimetypes
 from pathlib import Path
 from typing import Literal
 
-PreviewAction = Literal["reset", "clear", "begin", "source", "result"]
+PreviewAction = Literal["setup", "reset", "clear", "begin", "source", "result", "prepare", "prepared"]
 
 
 def register_pdf_preview_resources() -> Path:

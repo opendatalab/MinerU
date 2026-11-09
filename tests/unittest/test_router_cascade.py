@@ -12,7 +12,6 @@ import zipfile
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -192,11 +191,11 @@ def test_cascade_can_cancel_while_downstream_submission_is_blocked(tmp_path: Pat
 def test_cascade_renews_worker_results_while_outer_lease_is_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """内层等待外部租约结束期间，仍须续租底层结果并保持下载可用。"""
 
-    def download_client(**kwargs: Any) -> httpx.AsyncClient:
+    def download_transport() -> httpx.MockTransport:
         """仅隔离 URL 源站，Tasks、Files、租约和打包都执行真实实现。"""
-        return httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, content=HTML)), **kwargs)
+        return httpx.MockTransport(lambda request: httpx.Response(200, content=HTML))
 
-    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
+    monkeypatch.setattr(api_server, "UrlSourceTransport", download_transport)
 
     async def scenario() -> None:
         """用短 worker 保留期验证三级链路，并检查外部租约释放后的清理交接。"""

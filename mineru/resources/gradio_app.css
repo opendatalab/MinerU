@@ -55,57 +55,109 @@ body.dark .gradio-container {
     padding: 0 !important;
     gap: 0 !important;
 }
-/* HF Space 不执行 Gradio 的自定义 CSS 前缀改写，以下规则必须独立压过
-   Gradio 自带 scoped 样式（div.svelte-*、.head.svelte-*、.prose 等）。 */
-.mineru-tier-slider .head,
-.mineru-tier-slider .min_value,
-.mineru-tier-slider .max_value {
-    display: none !important;
-}
-/* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
+/* 两端共用本地交互轨道，透明热区扩大到 44px，原生 range 保留键盘与读屏语义。 */
 .mineru-kit-page-range {
-    display: none !important; position: relative; padding: 4px 12px 15px !important; overflow: visible !important;
-    border: 1px solid var(--mineru-panel-border); border-radius: 8px;
+    --page-accent: #316ede; --page-bg: #fff; --page-text: #25252a; --page-muted: #72727c;
+    --page-border: #e0e1e6; --page-track: #e8e9ef; --page-hover: #edf0f6;
+    display: none !important; position: relative; padding: 14px 16px 32px !important; overflow: visible !important;
+    border: 1px solid var(--page-border); border-radius: 16px;
+    color: var(--page-text); background: var(--page-bg);
     gap: 0 !important; flex: 0 0 auto !important;
+}
+.dark .mineru-kit-page-range {
+    --page-accent: #438cff; --page-bg: #2d2d2f; --page-text: #f2f2f5; --page-muted: #a6a6af;
+    --page-border: #48484d; --page-track: #424247; --page-hover: #38383e;
 }
 /* 用明确的选页状态控制可见性，保留原生滑块的交互状态。 */
 .mineru-kit-page-range:has([data-range-visible="true"]) { display: flex !important; }
 .mineru-page-summary, .mineru-page-summary .html-container { padding: 0 !important; }
-.mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.mineru-page-values { font-size: 12px; justify-content: center; }
-.mineru-page-selection { font-weight: 600; color: var(--mineru-accent); }
-.mineru-page-axis { position: absolute; bottom: 0; left: 0; right: 0; font-size: 12px; opacity: .7; }
+.mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mineru-page-values { flex-wrap: nowrap; gap: 6px; min-height: 20px; font-size: 12px; line-height: 20px; }
+.mineru-page-heading { display: flex; align-items: baseline; flex: 1; min-width: 0; gap: 6px; }
+.mineru-page-title { flex: none; color: var(--page-text); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.mineru-page-limit { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--page-muted); font-size: 11px; white-space: nowrap; }
+.mineru-page-selection { flex: none; margin-left: auto; color: var(--page-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mineru-page-selected-count { color: var(--page-accent); font-weight: 500; }
+.mineru-page-axis { position: absolute; font-size: 11px; line-height: 16px; color: var(--page-muted); font-variant-numeric: tabular-nums; }
+.mineru-page-interval { text-align: center; }
 .mineru-page-summary { position: static !important; }
-.mineru-kit-page-range .mineru-page-axis { bottom: 4px; left: 12px; right: 12px; }
-.mineru-page-sliders { position: relative !important; height: 32px; min-height: 32px !important; gap: 0 !important; }
+.mineru-kit-page-range .mineru-page-axis { bottom: 12px; left: 16px; right: 16px; }
+/* 紧凑数字输入保留原生 Gradio 组件，避免 HTML 重绘打断焦点和正在输入的数字。 */
+.mineru-page-inputs { align-items: center !important; flex-wrap: nowrap !important; gap: 6px !important; margin-top: 12px; }
+.mineru-page-inputs > .form {
+    display: flex !important; align-items: center; flex: 0 1 auto !important; min-width: 0 !important; gap: 6px !important;
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+.mineru-kit-page-range .mineru-page-number {
+    flex: 0 0 auto !important; min-width: 0 !important; width: auto !important; padding: 0 !important; margin: 0 !important;
+    border: 0 !important; background: transparent !important; overflow: visible !important;
+}
+.mineru-page-end { display: flex !important; align-items: center; gap: 6px; }
+.mineru-page-end::before { content: "—"; color: var(--page-muted); font-size: 12px; line-height: 18px; }
+.mineru-page-number label { display: flex !important; align-items: center; gap: 4px; margin: 0 !important; padding: 0 !important; }
+.mineru-page-number .label-wrap, .mineru-page-number .block-title { padding: 0 !important; margin: 0 !important; }
+/* 原生标签的底部留白用于纵向表单，横排时必须清除才能与输入框、横线居中对齐。 */
+.mineru-page-number label > span {
+    margin: 0 !important; padding: 0 !important; font-size: 12px !important; line-height: 18px;
+    color: var(--page-muted); white-space: nowrap;
+}
+.mineru-kit-page-range .mineru-page-number input {
+    box-sizing: border-box; width: 34px !important; min-width: 0 !important; height: 24px; min-height: 24px;
+    padding: 2px 3px !important; margin: 0 !important;
+    border: 1px solid var(--page-border); border-radius: 6px; background: var(--page-bg); color: var(--page-text);
+    font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; text-align: center; appearance: textfield;
+}
+.mineru-page-number input::-webkit-inner-spin-button, .mineru-page-number input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.mineru-kit-page-range .mineru-page-preset {
+    flex: 0 0 auto !important; min-width: 0 !important; min-height: 24px; width: auto !important; margin-left: auto;
+    padding: 3px 0 !important; border: 0 !important; box-shadow: none !important; border-radius: 6px;
+    background: transparent !important; color: var(--page-accent) !important; font-size: 12px; font-weight: 400; white-space: nowrap;
+}
+.mineru-kit-page-range .mineru-page-preset:hover:not(:disabled) { background: var(--page-hover) !important; }
+.mineru-page-preset:disabled, .mineru-page-number input:disabled { opacity: .6; }
+.mineru-page-control { padding: 0 !important; border: 0 !important; overflow: visible !important; }
+.mineru-page-control .html-container { padding: 0 !important; }
+.mineru-page-sliders {
+    position: relative; height: 48px; min-height: 48px; margin-top: 7px;
+    touch-action: pan-y; -webkit-user-select: none; user-select: none; cursor: pointer;
+}
 .mineru-page-sliders::before {
-    content: ""; position: absolute; left: 8px; right: 8px; top: 14px; height: 4px; border-radius: 4px;
+    content: ""; position: absolute; left: 14px; right: 14px; top: 17px; height: 14px; border-radius: 99px;
     background: linear-gradient(to right,
-        var(--border-color-primary, #ddd) var(--range-start, 0%),
-        var(--mineru-accent) var(--range-start, 0%), var(--mineru-accent) var(--range-end, 100%),
-        var(--border-color-primary, #ddd) var(--range-end, 100%));
+        var(--page-track) var(--range-start, 0%),
+        var(--page-accent) var(--range-start, 0%), var(--page-accent) var(--range-end, 100%),
+        var(--page-track) var(--range-end, 100%));
 }
-.mineru-page-sliders > .form { position: static !important; }
-.mineru-page-handle-a, .mineru-page-handle-b {
-    position: absolute !important; inset: 0; width: 100% !important; min-width: 0 !important;
-    padding: 0 !important; border: 0 !important; background: transparent !important; pointer-events: none;
-}
-.mineru-page-handle-a .head, .mineru-page-handle-b .head,
-.mineru-page-sliders .min_value, .mineru-page-sliders .max_value { display: none !important; }
+.mineru-page-handle-a, .mineru-page-handle-b { position: absolute; inset: 0; pointer-events: none; }
 .mineru-page-sliders input[type="range"] {
-    position: absolute; inset: 0; width: 100%; height: 32px; padding: 0; margin: 0;
-    pointer-events: none; background: transparent !important;
+    position: absolute; inset: 0; width: 100%; height: 48px; padding: 0; margin: 0;
+    opacity: 0; pointer-events: none;
 }
-.mineru-page-sliders input[type="range"]::-webkit-slider-runnable-track { background: transparent !important; }
-.mineru-page-sliders input[type="range"]::-moz-range-track,
-.mineru-page-sliders input[type="range"]::-moz-range-progress { background: transparent !important; }
-.mineru-page-sliders input[type="range"]::-webkit-slider-thumb { pointer-events: auto; }
-.mineru-page-sliders input[type="range"]::-moz-range-thumb { pointer-events: auto; }
-.mineru-page-sliders input[type="range"]:disabled::-webkit-slider-thumb { pointer-events: none; }
-.mineru-page-sliders input[type="range"]:disabled::-moz-range-thumb { pointer-events: none; }
-.mineru-page-handle-a { z-index: 2; }
-.mineru-page-handle-b { z-index: 3; }
-.mineru-page-handle-a:focus-within, .mineru-page-handle-b:focus-within { z-index: 4; }
+.mineru-page-thumb {
+    position: absolute; left: calc(14px + (100% - 28px) * var(--page-position, 0)); top: 10px;
+    width: 28px; height: 28px; transform: translateX(-50%); border-radius: 50%;
+    background: radial-gradient(circle, var(--page-accent) 0 3px, #fff 3.5px);
+    box-shadow: 0 2px 7px #00000020; transition: box-shadow .12s ease, scale .12s ease;
+}
+.mineru-page-sliders[data-keyboard="true"] input:focus-visible + .mineru-page-thumb {
+    outline: 2px solid var(--page-accent); outline-offset: 3px;
+}
+.mineru-page-sliders[data-active="a"] .mineru-page-handle-a,
+.mineru-page-sliders[data-active="b"] .mineru-page-handle-b { z-index: 2; }
+.mineru-page-sliders[data-active="a"] .mineru-page-handle-a .mineru-page-thumb,
+.mineru-page-sliders[data-active="b"] .mineru-page-handle-b .mineru-page-thumb,
+.mineru-page-sliders[data-active="pending"] .mineru-page-thumb {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--page-accent) 14%, transparent), 0 3px 8px #00000025;
+}
+.mineru-page-sliders[data-hover="a"],
+.mineru-page-sliders[data-hover="b"], .mineru-page-sliders[data-hover="pending"] { cursor: grab; }
+.mineru-page-sliders[data-active]:not([data-active=""]) { cursor: grabbing; }
+.mineru-page-sliders[data-disabled="true"] { cursor: default; }
+@media (pointer: coarse) {
+    .mineru-page-number label { min-height: 44px; }
+    .mineru-kit-page-range .mineru-page-number input { width: 40px !important; height: 28px; min-height: 28px; font-size: 16px; }
+    .mineru-kit-page-range .mineru-page-preset { min-height: 44px; }
+}
 .mineru-page-notice { font-size: 13px; color: var(--body-text-color-subdued); }
 .mineru-upload-file label[data-testid="block-label"] {
     align-items: flex-start !important;
@@ -403,3 +455,97 @@ body.dark .gradio-container {
         max-height: 240px;
     }
 }
+
+/* 上传外观和原生文件桥接解耦，状态变化不会重建预览。 */
+.mineru-upload-target {
+    display: flex; align-items: center; justify-content: center;
+    box-sizing: border-box; min-height: 132px; padding: 20px 12px;
+    border: 1px dashed var(--border-color-primary); border-radius: 10px;
+    color: var(--body-text-color); cursor: pointer; overflow-wrap: anywhere; text-align: center;
+}
+.mineru-upload-target input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.mineru-upload-target:focus-within { outline: 2px solid var(--color-accent); }
+.mineru-upload-file [hidden] { display: none !important; }
+.mineru-upload-empty { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: 100%; }
+.mineru-upload-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 22px; }
+.mineru-upload-action { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; }
+.mineru-upload-action svg { width: 25px; height: 25px; }
+.mineru-upload-types {
+    display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px;
+    color: var(--body-text-color-subdued); font-size: 12px; line-height: 18px;
+}
+.mineru-upload-type { display: inline-flex; align-items: center; gap: 5px; }
+.mineru-upload-type svg { width: 15px; height: 15px; }
+.mineru-upload-empty svg { flex-shrink: 0; margin: 0; }
+.mineru-upload-file-row {
+    position: relative; isolation: isolate; overflow: hidden;
+    display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 12px 10px 12px 12px;
+    box-sizing: border-box; border: 1px solid var(--border-color-primary); border-radius: 10px;
+    background: var(--background-fill-primary); color: var(--body-text-color);
+}
+.mineru-upload-fill {
+    position: absolute; z-index: -1; left: 0; top: 0; bottom: 0; width: 0;
+    background: rgba(249, 115, 22, 0.13); pointer-events: none; transition: opacity 0.55s ease;
+}
+.dark .mineru-upload-fill { background: rgba(249, 115, 22, 0.18); }
+.mineru-upload-file-row.is-settled .mineru-upload-fill { opacity: 0; }
+.mineru-upload-file-icon {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    flex: none; width: 34px; height: 34px; box-sizing: border-box;
+    border-radius: 7px; color: #b95810; background: #fff1e3;
+}
+.dark .mineru-upload-file-icon { color: #f4ad72; background: #39291d; }
+.mineru-upload-file-icon svg { width: 20px; height: 20px; }
+/* PDF/OFD 的纸张和文字共用固定坐标，不受外层 flex 主轴或文件条高度影响。 */
+.mineru-upload-file-icon[data-file-kind="pdf"] svg,
+.mineru-upload-file-icon[data-file-kind="ofd"] svg {
+    position: absolute; left: 5px; top: 1.5px; width: 24px; height: 25px;
+}
+.mineru-upload-format-badge {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 0 2px;
+    color: inherit !important; background: inherit; font-size: 11px; line-height: 13px; font-weight: 500;
+    letter-spacing: 0.1px;
+}
+.mineru-upload-details { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; gap: 2px; }
+.mineru-upload-label { display: flex; min-width: 0; font-size: 14px; font-weight: 500; line-height: 20px; }
+.mineru-upload-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mineru-upload-extension { flex: 0 0 auto; }
+.mineru-upload-meta {
+    display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 4px;
+    font-size: 12px; line-height: 16px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums;
+}
+.mineru-upload-meta > span { color: inherit !important; }
+.mineru-upload-finished { white-space: nowrap; }
+.mineru-upload-indicator {
+    display: flex; justify-content: flex-end; align-items: center; flex: 0 0 28px;
+    font-size: 12px; color: var(--body-text-color-subdued); font-variant-numeric: tabular-nums;
+}
+.mineru-upload-file .mineru-upload-remove {
+    display: flex; align-items: center; justify-content: center; flex: 0 0 28px;
+    width: 28px !important; height: 32px !important; padding: 0 !important; margin: 0;
+    border: 0 !important; border-radius: 6px; cursor: pointer;
+    color: var(--body-text-color-subdued) !important; background: transparent !important;
+}
+.mineru-upload-file .mineru-upload-remove:hover {
+    color: var(--body-text-color) !important; background: var(--background-fill-secondary) !important;
+}
+.mineru-upload-remove:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.mineru-upload-file-row svg { flex-shrink: 0; margin: 0; }
+/* Gradio 的正文样式也会单独设置 SVG 子元素颜色，图标路径须显式继承类型色。 */
+.mineru-upload-file-row svg, .mineru-upload-file-row svg * { color: inherit !important; }
+.mineru-upload-meter {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+.mineru-upload-status { font-size: 13px; margin-top: 6px; overflow-wrap: anywhere; }
+.mineru-upload-status:empty { display: none; }
+@media (pointer: coarse) {
+    .mineru-upload-file .mineru-upload-remove { flex-basis: 44px; width: 44px !important; height: 44px !important; }
+    .mineru-upload-file-row { padding-top: 9px; padding-bottom: 9px; }
+}
+@media (prefers-reduced-motion: reduce) { .mineru-upload-fill { transition: none; } }
+.mineru-pdf-host [role="status"], .mineru-pdf-host [role="alert"] { padding: 24px; }
+
+.mineru-kit-preview:has(.mineru-pdf-host iframe, .mineru-pdf-host [role]) .mineru-kit-generic-preview { display: none !important; }
+
+.mineru-pdf-host { height: 100%; min-height: 0; }

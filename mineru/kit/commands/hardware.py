@@ -153,7 +153,11 @@ def _render_device_selection(data: dict[str, Any]) -> list[str]:
     backend = (data["effective_config"].get("resolved") or {}).get("small_backend")
     probe = next((probe for probe in data["runtimes"] if probe["name"] == backend), None)
     selection = probe["data"].get("selected_device") if probe and probe["status"] == "ok" else None
-    lines = ["Device selection and calibration:", f"  Small model backend: {_value(backend)}"]
+    lines = [
+        "Device selection and calibration:",
+        "  Probe scope: isolated subprocess; not the running server's device state",
+        f"  Small model backend: {_value(backend)}",
+    ]
     reason = selection.get("reason") if selection else None
     reasons = {
         "torch_accelerator": "A Torch accelerator is available",

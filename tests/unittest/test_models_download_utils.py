@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, NoReturn
 
 import pytest
 
 from mineru.model import download as models_download_utils
 from mineru.model.registry import MODEL_COMPLETE_MARKER, MINERU_2_5_PRO_2605_1_2B, ModelRepo, model_path_exists
+
+
+def _write_marker(directory: Path, files: dict[str, int]) -> None:
+    """按持久化协议构造已确认清单，文件是否完整由各测试独立安排。"""
+    (directory / MODEL_COMPLETE_MARKER).write_text(json.dumps({"version": 1, "files": files}), encoding="utf-8")
 
 
 def test_resolve_model_source_does_not_persist_env_auto(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,14 +61,15 @@ def test_download_model_repo_uses_required_path_patterns(
     monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     monkeypatch.setattr(models_download_utils, "resolve_model_source", lambda *args, **kwargs: "modelscope")
 
-    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> dict[str, int]:
+        """模拟 provider 确认局部仓库的预期权重文件。"""
         captured["source"] = model_source
         captured["repo"] = target_repo.name
         captured["patterns"] = patterns
         target = target_repo.local_dir() / "models/weights"
         target.mkdir(parents=True)
         (target / "model.bin").write_text("x", encoding="utf-8")
-        return str(target_repo.local_dir())
+        return {"models/weights/model.bin": 1}
 
     monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
 
@@ -90,14 +99,15 @@ def test_download_model_repo_keeps_full_download_as_default(
     monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     monkeypatch.setattr(models_download_utils, "resolve_model_source", lambda *args, **kwargs: "huggingface")
 
-    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> dict[str, int]:
+        """模拟 provider 返回整仓文件清单。"""
         captured["source"] = model_source
         captured["repo"] = target_repo.name
         captured["patterns"] = patterns
         target = target_repo.local_dir() / "config.json"
         target.parent.mkdir(parents=True)
         target.write_text("{}", encoding="utf-8")
-        return str(target_repo.local_dir())
+        return {"config.json": 2}
 
     monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
 
@@ -109,7 +119,10 @@ def test_download_model_repo_keeps_full_download_as_default(
         "repo": "full-repo",
         "patterns": None,
     }
-    assert (repo.local_dir() / MODEL_COMPLETE_MARKER).read_bytes() == b""
+    assert json.loads((repo.local_dir() / MODEL_COMPLETE_MARKER).read_text()) == {
+        "version": 1,
+        "files": {"config.json": 2},
+    }
 
 
 def test_vlm_repo_verify_requires_root_completion_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -125,6 +138,10 @@ def test_vlm_repo_verify_requires_root_completion_marker(monkeypatch: pytest.Mon
     assert unmarked.missing_paths == [MODEL_COMPLETE_MARKER]
 
     (repo_dir / MODEL_COMPLETE_MARKER).touch()
+
+    assert models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B).ready is False
+    (repo_dir / "model.safetensors").write_bytes(b"weights")
+    _write_marker(repo_dir, {"model.safetensors": 7})
 
     ready = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
 
@@ -149,12 +166,14 @@ def test_model_path_exists_requires_completion_marker_for_directory(
     (weights_dir / "model.bin").write_bytes(b"weights")
     assert model_path_exists(repo.weights) is False
 
-    (weights_dir / MODEL_COMPLETE_MARKER).touch()
+    _write_marker(weights_dir, {"model.bin": 7})
     assert model_path_exists(repo.weights) is True
 
     nested_weights = repo.weights.path("det")
     nested_weights.local_path().mkdir()
     (nested_weights.local_path() / "det.bin").write_bytes(b"weights")
+    assert model_path_exists(nested_weights) is False
+    _write_marker(weights_dir, {"model.bin": 7, "det/det.bin": 7})
     assert model_path_exists(nested_weights) is True
 
     config_path = repo.config.local_path()
@@ -176,7 +195,7 @@ def test_model_path_ensure_reuses_completed_directory_without_resolving_source(
     weights_dir = repo.weights.local_path()
     weights_dir.mkdir(parents=True)
     (weights_dir / "model.bin").write_bytes(b"weights")
-    (weights_dir / MODEL_COMPLETE_MARKER).touch()
+    _write_marker(weights_dir, {"model.bin": 7})
 
     def fail_resolve(*args: object, **kwargs: object) -> NoReturn:
         raise AssertionError("ready model paths must not resolve a remote source")
@@ -200,7 +219,7 @@ def test_model_repo_ensure_reuses_completed_full_repo_without_resolving_source(
     repo.local_dir().mkdir(parents=True)
     repo.config.local_path().write_text("{}", encoding="utf-8")
     repo.weights.local_path().write_bytes(b"weights")
-    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+    _write_marker(repo.local_dir(), {"config.json": 2, "model.bin": 7})
 
     def fail_resolve(*args: object, **kwargs: object) -> NoReturn:
         raise AssertionError("ready model repos must not resolve a remote source")
@@ -226,13 +245,14 @@ def test_model_path_ensure_repairs_unmarked_directory_and_writes_marker(
     (weights_dir / "existing.bin").write_bytes(b"existing")
     calls = 0
 
-    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> dict[str, int]:
+        """模拟增量补齐并返回完整请求目录的文件清单。"""
         nonlocal calls
         calls += 1
         assert model_source == "modelscope"
         assert patterns == ["models/weights", "models/weights/*"]
         (weights_dir / "missing.bin").write_bytes(b"repaired")
-        return str(target_repo.local_dir())
+        return {"models/weights/existing.bin": 8, "models/weights/missing.bin": 8}
 
     monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
 
@@ -358,20 +378,25 @@ def test_nested_download_success_restores_parent_directory_marker(
     nested_weights = repo.weights.path("det")
     nested_weights.local_path().mkdir(parents=True)
     parent_marker = repo.weights.local_path() / MODEL_COMPLETE_MARKER
-    parent_marker.touch()
+    (nested_weights.local_path() / "det.bin").write_bytes(b"old")
+    (repo.weights.local_path() / "rec.bin").write_bytes(b"recognizer")
+    _write_marker(repo.weights.local_path(), {"det/det.bin": 3, "rec.bin": 10})
 
-    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> dict[str, int]:
+        """模拟只更新检测器，父清单中的识别器仍必须保留。"""
         assert model_source == "modelscope"
         assert target_repo is repo
         assert patterns == ["models/weights/det", "models/weights/det/*"]
         (nested_weights.local_path() / "det.bin").write_bytes(b"weights")
-        return str(repo.local_dir())
+        return {"models/weights/det/det.bin": 7}
 
     monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
 
     models_download_utils.download_model_files(repo, [nested_weights], source="modelscope")
 
     assert parent_marker.is_file()
+    assert json.loads(parent_marker.read_text())["files"] == {"det/det.bin": 7, "rec.bin": 10}
+    assert model_path_exists(repo.weights)
     assert (nested_weights.local_path() / MODEL_COMPLETE_MARKER).is_file()
 
 
@@ -389,14 +414,15 @@ def test_download_does_not_mark_metadata_only_directory(
     monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     weights_dir = repo.weights.local_path()
 
-    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> dict[str, int]:
+        """模拟下载器只有元数据、没有任何已确认模型文件。"""
         assert model_source == "modelscope"
         assert target_repo is repo
         assert patterns == ["models/weights", "models/weights/*"]
         (weights_dir / ".cache/huggingface").mkdir(parents=True)
         (weights_dir / ".cache/huggingface/metadata").write_text("metadata", encoding="utf-8")
         (weights_dir / ".msc").write_text("metadata", encoding="utf-8")
-        return str(repo.local_dir())
+        return {}
 
     monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
 
@@ -404,6 +430,72 @@ def test_download_does_not_mark_metadata_only_directory(
         models_download_utils.download_model_repo(repo, source="modelscope")
 
     assert (weights_dir / MODEL_COMPLETE_MARKER).exists() is False
+
+
+@pytest.mark.parametrize("legacy_types", [False, True], ids=["sdk-without-type", "legacy-sdk"])
+@pytest.mark.parametrize("weight_state", ["complete", "missing", "truncated"])
+def test_modelscope_snapshot_excludes_directories_and_checks_real_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    legacy_types: bool,
+    weight_state: str,
+) -> None:
+    """兼容新旧 SDK 的目录清单，同时保留空文件并拒绝缺失或截断的权重。"""
+    repo = ModelRepo(name="repo", repos={"modelscope": "Owner/repo"}, paths={"layout": "Layout/PP-DocLayoutV2"})
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
+    layout = "Layout/PP-DocLayoutV2"
+    fixed_revision = "a" * 40
+    monkeypatch.setattr(models_download_utils, "ms_model_revision", lambda repo_id: fixed_revision)
+    payloads = {f"{layout}/config.json": b"{}", f"{layout}/model.safetensors": b"weights", f"{layout}/empty.txt": b""}
+    directories = ["Layout", layout, "Unused"]
+    # 目录项故意排在文件之后，确保过滤逻辑不依赖 SDK 返回顺序。
+    entries = [{"Path": name, "Size": len(content)} for name, content in payloads.items()]
+    entries.extend({"Path": name, "Size": 0} for name in directories)
+    entries.append({"Path": "Unused/model.bin", "Size": 7})
+    if legacy_types:
+        for entry in entries:
+            entry["Type"] = "tree" if entry["Path"] in directories else "blob"
+
+    class FakeApi:
+        def get_model_files(self, repo_id: str, *, revision: str, recursive: bool) -> list[dict[str, Any]]:
+            """返回真实接口形状的递归清单，覆盖不再包含 Type 的新版 SDK。"""
+            assert repo_id == "Owner/repo"
+            assert revision == fixed_revision
+            assert recursive
+            return entries
+
+    monkeypatch.setitem(sys.modules, "modelscope.hub.api", SimpleNamespace(HubApi=FakeApi))
+    monkeypatch.setitem(sys.modules, "modelscope.utils.constant", SimpleNamespace(DEFAULT_MODEL_REVISION="master"))
+    requested: list[str] = []
+
+    def fake_ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str], revision: str) -> str:
+        """模拟下载真实文件，目录项由 SDK 忽略，缺失和截断按测试参数注入。"""
+        assert repo_id == "Owner/repo"
+        assert revision == fixed_revision
+        requested.extend(allow_patterns)
+        for name, content in payloads.items():
+            target = Path(local_dir) / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if name.endswith("model.safetensors"):
+                if weight_state == "missing":
+                    continue
+                if weight_state == "truncated":
+                    content = content[:-1]
+            target.write_bytes(content)
+        return local_dir
+
+    monkeypatch.setattr(models_download_utils, "ms_snapshot_download", fake_ms_snapshot_download)
+
+    if weight_state != "complete":
+        with pytest.raises(FileNotFoundError, match=r"missing or invalid: Layout/PP-DocLayoutV2/model\.safetensors$"):
+            repo.layout.ensure(source="modelscope")
+        assert not (repo.layout.local_path() / MODEL_COMPLETE_MARKER).exists()
+    else:
+        assert repo.layout.ensure(source="modelscope") == repo.layout.local_path()
+        assert json.loads((repo.layout.local_path() / MODEL_COMPLETE_MARKER).read_text())["files"] == {
+            name.removeprefix(f"{layout}/"): len(content) for name, content in payloads.items()
+        }
+    assert requested == list(payloads)
 
 
 def test_huggingface_snapshot_rejects_missing_expected_files(
@@ -419,9 +511,17 @@ def test_huggingface_snapshot_rejects_missing_expected_files(
     monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
 
     class FakeApi:
-        def list_repo_files(self, repo_id: str) -> list[str]:
+        def model_info(self, repo_id: str, *, files_metadata: bool) -> SimpleNamespace:
+            """提供与下载提交一致的远程文件名和大小。"""
             assert repo_id == "owner/repo"
-            return ["models/weights/config.json", "models/weights/model.bin"]
+            assert files_metadata
+            return SimpleNamespace(
+                sha="commit",
+                siblings=[
+                    SimpleNamespace(rfilename="models/weights/config.json", size=2),
+                    SimpleNamespace(rfilename="models/weights/model.bin", size=7),
+                ],
+            )
 
     monkeypatch.setattr(models_download_utils, "HfApi", FakeApi)
 

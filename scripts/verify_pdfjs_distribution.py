@@ -13,7 +13,7 @@ def verify_distribution(path: Path) -> None:
     """逐文件比较发布包与源码资源，防止递归目录或许可证在打包时遗漏。"""
     root = Path(__file__).resolve().parents[1]
     resources = root / "mineru/resources/pdf_preview"
-    expected = [*resources.rglob("*"), root / "mineru/resources/gradio_pdf_preview.js"]
+    expected = [*resources.rglob("*"), *(root / "mineru/resources").glob("gradio_*.js")]
     if path.suffix == ".whl":
         with zipfile.ZipFile(path) as archive:
             contents = {name: archive.read(name) for name in archive.namelist() if "mineru/resources/" in name}

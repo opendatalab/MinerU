@@ -642,6 +642,12 @@ TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
 
 本地不设固定客户端上传大小或 PDF 页数上限；`usage.limits.max_file_size_bytes/max_pages_per_file` 为 `null`。
 URL 下载沿用服务的来源策略：默认 HTTPS；HTTP 需启用 `--allow-http-source`，下载超时默认 60 秒、大小默认 200 MiB。
+URL 目标必须解析为公网单播地址。worker 在连接前校验全部 IPv4/IPv6 地址，并固定连接已校验的 IP。
+内网、回环、链路本地、云元数据及特殊地址会使对应文件以 `unsupported_source` 失败。
+下载使用直连并拒绝重定向。部署中的 `HTTP_PROXY`、`HTTPS_PROXY` 和 `ALL_PROXY` 对 URL 来源下载无效，
+HTTPS 证书校验继续读取 `SSL_CERT_FILE` / `SSL_CERT_DIR`。内网文档可以通过客户端上传。
+使用 Fake-IP 代理时，应让 worker 的 DNS 返回真实公网地址；`198.18.0.0/15` 等保留网段会被拒绝。
+对外提供解析服务时，应配置 `--api-key` 并限制 worker 的出站网络访问。
 任务记录和上传索引仍为进程内状态，重启不保证恢复。
 
 Router 按就绪文件独立选择 worker 并预占负载，同一父 Task 可使用多个 worker。

@@ -100,7 +100,7 @@ LLM-aided title leveling and cross-page table cell continuation read `$MINERU_HO
 llm_aided:
   api_key: ${MINERU_LLM_API_KEY:-}
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.5-plus
+  model: qwen3.8-flash
   enable_thinking: false
   max_concurrency: 16
   features:

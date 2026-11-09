@@ -69,11 +69,11 @@ CPU 数沿用进程可用逻辑核数，考虑亲和性和 Linux cgroup 配额�
 
 ONNX 分支直接调用现有设备选择入口，不再进行显卡库存初选或显存检查。无论 CPU 核数多少，均在发布服务能力前完成适用选型：GPU 开放全部四档，CPU 按表中核数规则推荐。不受支持平台的 CPU 回退由 ONNX 入口处理，不额外探测 Apple Metal。显式 `--tier` 和 Python 精确集合跳过自动推荐。
 
-推荐与 llama.cpp 自动模式复用相同的小模型设备选择入口，不读取 llama 专用参数，也不增加显卡匹配或独立测速。显存容量未知、偏小或查询失败均不参与推荐；`hardware detect --json` 为兼容保留 `gpu_memory: null`。
+推荐、llama.cpp 自动模式和默认模型加载统一复用 `resolve_runtime_device()` 的不可变进程快照，不读取 llama 专用参数，也不增加显卡匹配或独立测速。显存容量未知、偏小或查询失败均不参与推荐；`hardware detect --json` 为兼容保留 `gpu_memory: null`。
 
 启动选型继续遵守 `model.onnx_device`：`auto` 才按设备策略决定是否测速，显式或已保存的 `cpu/gpu` 不强制重新校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，均跳过 OCR 校准；首次真实 GPU 会话成功后才保存设备偏好。集显或类型无法确认的候选继续按 0.8 阈值测速。需要测速时会按正常模型生命周期准备或下载 OCR rec 权重，并复用已有进程缓存、文件锁、采样阈值及失败回退。下载和模型准备不计入 15 秒校准子进程超时。校准失败或结果不稳定不会阻止后续推荐，但不作为 GPU 胜出证据。
 
-实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`。自动推荐直接采用本次设备结论，历史记录只供诊断，不额外要求有效性能证据。显式或已保存的 `gpu` 只要实际选型为 GPU 就开放全部四档；本次 CPU 或失败结果不会被静态库存覆盖。之后 `/v1/tiers` 在服务生命周期内固定。
+实际 OCR 校准把证据保存在 `<配置文件路径>.onnx-calibration.json`。自动推荐直接采用本次设备结论，历史记录只供诊断，不额外要求有效性能证据。显式或已保存的 `gpu` 只要实际选型为 GPU 就开放全部四档；本次 CPU 或失败结果不会被静态库存覆盖。之后 `/v1/tiers` 和默认设备决策在进程生命周期内固定；配置写回不会改变当前模型缓存。
 
 远程 VLM 配置不自动扩大推荐上限，也不增加 VLM 性能测试。上述 OCR 选型不要求 `--preload-models`；该参数仍另外控制完整模型或 VLM 客户端的提前初始化。
 
@@ -220,6 +220,11 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 `--reload` 不进入正式命令设计。
 
 本地 api-server 默认监听 loopback。它可以通过 `--api-key` 设置固定 API Key；默认不设置 API Key。设置后，客户端必须发送 `Authorization: Bearer <api-key>`。
+
+URL 来源仅允许公网单播目标。worker 校验全部 DNS 地址并固定连接已校验的 IP，内网、回环、
+链路本地、云元数据和特殊地址返回逐文件 `unsupported_source` 错误。`--allow-http-source` 仅放行
+公网 HTTP。URL 下载使用直连并拒绝重定向，环境代理对此下载无效，环境 CA 配置继续用于 TLS 校验。
+对外部署应配置 API Key 和 worker 出站限制。内网文档可以通过客户端上传。
 
 ## 6. API 覆盖范围
 

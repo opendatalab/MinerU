@@ -44,3 +44,55 @@ button:focus-visible, input:focus-visible, #viewer-container:focus-visible { out
     button:hover:enabled { background: #374151; }
     #toolbar { border-color: #4b5563; }
 }
+/* 溯源区域跟随页面 CSS 尺寸，边框显隐和选中状态独立。 */
+.mineru-trace-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mineru-layout-inspector { position: absolute; pointer-events: auto; outline: none; cursor: default; }
+.mineru-trace-layer > button, .mineru-layout-region {
+    --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black);
+}
+.mineru-trace-layer > button { position: absolute; pointer-events: auto; min-width: 0; height: auto; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; cursor: pointer; }
+.mineru-trace-layer > button:hover, .mineru-trace-layer > button:focus-visible {
+    outline: 1px solid var(--trace-strong); outline-offset: 1px;
+    background: color-mix(in srgb, var(--trace-color) 5%, transparent);
+}
+.mineru-trace-layer > button.selected {
+    outline: 2px solid var(--trace-strong); outline-offset: 2px;
+    background: color-mix(in srgb, var(--trace-color) 8%, transparent);
+}
+/* 布局负责装饰，命中区域由溯源层管理。类型色和选中外描边各自表达含义。 */
+.mineru-layout-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.mineru-layout-region { position: absolute; border: 1px solid color-mix(in srgb, var(--trace-color) 55%, transparent); visibility: hidden; }
+.mineru-layout-layer.show-all > .mineru-layout-region,
+.mineru-layout-region.selected, .mineru-layout-region.hovered { visibility: visible; }
+.mineru-layout-region.selected, .mineru-layout-region.hovered { border-color: var(--trace-strong); }
+/* 常驻序号使用紧凑透明文字，只有当前交互的完整标签使用贴合文字的浅底。 */
+.mineru-layout-label {
+    position: absolute; display: block; width: max-content; padding: 0 1px;
+    color: var(--trace-strong); font: 10px/12px system-ui, sans-serif; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}
+.mineru-layout-region.expanded { z-index: 1; }
+.mineru-layout-region.expanded > .mineru-layout-label {
+    padding: 1px 3px; border: 1px solid var(--trace-strong); border-radius: 2px;
+    background: #fff; font-size: 11px; line-height: 13px; text-shadow: none;
+}
+/* 合并关系使用固定 CSS 像素覆盖可见视口，装饰层不接收点击或键盘焦点。 */
+.mineru-merge-layer { position: fixed; z-index: 6; overflow: hidden; pointer-events: none; }
+.mineru-merge-layer > g { --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
+.mineru-merge-layer line { stroke: var(--trace-strong); stroke-width: 1.5px; stroke-dasharray: 6 4; }
+.mineru-merge-layer circle { fill: var(--trace-strong); }
+.mineru-merge-layer rect { fill: #fff; stroke: var(--trace-strong); stroke-width: 1px; }
+.mineru-merge-layer text { fill: var(--trace-strong); font: 11px system-ui, sans-serif; }
+#trace-toggle { font-size: 11px; padding: 0 5px; }
+@media (max-width: 480px) {
+    body:has(#trace-toggle:not([hidden])) { --toolbar-height: 80px; }
+    #toolbar { flex-wrap: wrap; align-content: center; }
+    #trace-toggle { grid-column: 1 / -1; }
+    #toolbar:has(#trace-toggle:not([hidden])) { height: var(--toolbar-height); }
+}
+
+@media (max-width: 360px) {
+    body:has(#trace-toggle:not([hidden])) { --toolbar-height: 112px; }
+    #trace-toggle { grid-area: 3 / 1 / 4 / 6; }
+}

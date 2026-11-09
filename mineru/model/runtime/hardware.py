@@ -77,8 +77,10 @@ def installed_packages() -> list[PackageInfo]:
 def config_summary() -> dict[str, Any]:
     """按白名单输出设备相关配置及来源，远程地址只暴露是否启用。"""
     from ...config import get_config, get_config_file_path, get_config_source
+    from .device_state import cached_runtime_device
 
     config = get_config()
+    runtime = cached_runtime_device()
     fields = {
         "model.small_backend": config.model.small_backend,
         "model.onnx_device": config.model.onnx_device,
@@ -89,6 +91,11 @@ def config_summary() -> dict[str, Any]:
         "settings": {key: {"value": value, "source": get_config_source(key)} for key, value in fields.items()},
         "remote_vlm": {"enabled": bool(config.model.vlm.server_url), "source": get_config_source("model.vlm.server_url")},
         "environment": {key: os.environ[key] for key in DEVICE_ENVIRONMENT if key in os.environ},
+        "process_runtime": {
+            "pid": os.getpid(),
+            "device": runtime.device if runtime is not None else None,
+            "small_backend": runtime.backend if runtime is not None else None,
+        },
     }
 
 

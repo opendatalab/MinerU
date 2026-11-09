@@ -13,11 +13,12 @@ from bs4 import BeautifulSoup
 
 from mineru.backend.analysis.contracts import AnalysisResult
 from mineru.backend.postprocess.llm_client import LLMAidedClient
-from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
+from mineru.backend.postprocess.llm_aided import aio_apply_llm_aided_postprocess, apply_llm_aided_postprocess
 from mineru.backend.postprocess.table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
 from mineru.backend.postprocess.title_leveling import apply_llm_title_leveling
 from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig
 from docvortex.render._internal.common.planner import build_render_plan
+from mineru.render import render_html
 from mineru.render.contracts import RenderMode
 from mineru.types import (
     BlockType,
@@ -498,6 +499,105 @@ def test_cell_merge_expands_rendered_colspan_segment_to_visual_columns() -> None
     assert current_table.cell_merge == [1, 1]
 
 
+@pytest.mark.parametrize("model_flags,expected", [([0, 0, 0], [0, 0, 0]), ([0, 1, 0], [1, 1, 1])])
+def test_blank_merge_rule_requires_a_model_continuation(model_flags: list[int], expected: list[int]) -> None:
+    """模型至少确认一列后才补空白延续，其余零标记均为双空格时补齐。"""
+    original_flags = list(model_flags)
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>Group</td><td>sentence</td><td></td></tr></table>",
+        current_html="<table><tr><td> </td><td>continues</td><td></td></tr></table>",
+    )
+    client = _QueuedValidatedClient([model_flags])
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, client))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == expected
+    assert model_flags == original_flags
+
+
+@pytest.mark.parametrize("content", ['<img src="image.png"/>', '<math alttext="x+y"></math>', '<eq data-latex="x"></eq>'])
+def test_blank_merge_rule_preserves_non_text_cells(content: str) -> None:
+    """无可提取文字的图片或公式格具有实际内容，不作为空白规则的补合并对象。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>Previous</td><td>sentence</td></tr></table>",
+        current_html=f"<table><tr><td>{content}</td><td>continues</td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[0, 1]])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [0, 1]
+
+
+def test_blank_merge_rule_expands_colspan_after_completing_segments() -> None:
+    """规则先在渲染单元格上补标记，再展开跨列范围，避免错用视觉列下标。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td colspan='2'>Group</td><td>sentence</td></tr></table>",
+        current_html="<table><tr><td colspan='2'></td><td>continues</td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[0, 1]])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1, 1]
+
+
+def test_blank_merge_rule_uses_inherited_nonempty_cell() -> None:
+    """上页末行继承的共享单元格仍按其实际内容参与空白续接规则。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td rowspan='2'>Group</td><td>First</td></tr><tr><td>sentence</td></tr></table>",
+        current_html="<table><tr><td rowspan='2'></td><td>continues</td></tr><tr><td>Next</td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[0, 1]])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1]
+
+
+def test_blank_merge_rule_recognizes_nonempty_image_source() -> None:
+    """上页图片格作为非空来源，在其他列确认续接后可连接下页空白区域。"""
+    pages = _cross_page_table_pages(
+        previous_html='<table><tr><td><img src="image.png"/></td><td>sentence</td></tr></table>',
+        current_html="<table><tr><td></td><td>continues</td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[0, 1]])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1]
+
+
+@pytest.mark.parametrize("flags", [[1, 1, 0, 0], [1, 1, 1, 0]])
+def test_both_blank_merge_accepts_half_or_more_confirmed_cells(flags: list[int]) -> None:
+    """其余零标记全部为双空格时，恰好一半和超过半数的续接均可补齐。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>A</td><td>B</td><td></td><td></td></tr></table>",
+        current_html="<table><tr><td>C</td><td>D</td><td></td><td></td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([flags])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1, 1, 1]
+
+
+@pytest.mark.parametrize("flags,expected", [([0, 0, 0, 0], [0, 0, 0, 0]), ([1, 0, 0, 0], [1, 1, 1, 1])])
+def test_both_blank_merge_accepts_one_confirmed_cell(flags: list[int], expected: list[int]) -> None:
+    """一列文字确认续接时补齐另外三列双空格，全零响应保持原结果。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>Continued</td><td></td><td></td><td></td></tr></table>",
+        current_html="<table><tr><td>text</td><td></td><td></td><td></td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([flags])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == expected
+
+
+@pytest.mark.parametrize("separate", ["New item", '<img src="image.png"/>', '<eq data-latex="x"></eq>'])
+def test_both_blank_merge_stops_when_an_independent_cell_remains(separate: str) -> None:
+    """已有合并时，只要零标记中还有非空或媒体单元格，就保留其余双空格边界。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td>A</td><td>B</td><td>C</td><td></td><td></td></tr></table>",
+        current_html=f"<table><tr><td>D</td><td>E</td><td>F</td><td>{separate}</td><td></td></tr></table>",
+    )
+    flags = [1, 1, 1, 0, 0]
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([flags])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == flags
+
+
+def test_both_blank_merge_expands_colspan_after_completing_segments() -> None:
+    """跨列单元格确认续接后补齐剩余双空格，并正确展开所有视觉列。"""
+    pages = _cross_page_table_pages(
+        previous_html="<table><tr><td colspan='4'>A</td><td></td><td></td></tr></table>",
+        current_html="<table><tr><td colspan='4'>B</td><td></td><td></td></tr></table>",
+    )
+    asyncio.run(apply_llm_cross_page_cell_merge(pages, _QueuedValidatedClient([[1, 0, 0]])))  # type: ignore[arg-type]
+    assert pages[1].blocks[0].cell_merge == [1, 1, 1, 1, 1, 1]
+
+
 @pytest.mark.parametrize("response", [[], [1], [1, 2], [True, False], "[1, 0]"])
 def test_invalid_cell_merge_response_leaves_field_absent(response: Any) -> None:
     """验证非法列表不会在后表新增 cell_merge。"""
@@ -537,7 +637,9 @@ def test_mixed_cell_merge_flows_through_strict_middle_json_and_renderer() -> Non
         ),
     )
 
-    assert _merged_row_texts(middle_json) == [["H1", "H2"], ["AB", "X"], ["", "Y"]]
+    assert _merged_row_texts(middle_json) == [["H1", "H2"], ["A B", "X"], ["Y"]]
+    soup = BeautifulSoup(render_html(middle_json), "html.parser")
+    assert soup.find_all("tr")[1].td["rowspan"] == "2"
 
 
 def test_postprocess_reuses_one_client_for_both_features() -> None:
@@ -691,6 +793,58 @@ def test_partial_input_skips_title_but_keeps_table_cell_merge() -> None:
     assert client.operations == ["cross_page_table_cell_merge"]
     assert title.level == 2
     assert pages[1].blocks[0].cell_merge == [0, 1]  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("configured,explicit", [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("indices", [tuple(range(20)), (4, 5, 6), (0, 4, 19)])
+def test_partial_title_scope_preserves_document_identity(
+    asynchronous: bool, configured: bool, explicit: bool, indices: tuple[int, ...]
+) -> None:
+    """同步和异步分级按配置或显式参数放行，覆盖截断、中间片段和非连续原页号。"""
+    titles = [
+        ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline(f"Section {index}"), level=2)
+        for index in indices
+    ]
+    middle = _middle_json(
+        [PageInfo(page_idx=index, blocks=[title]) for index, title in zip(indices, titles)], is_full_document=False
+    )
+    metadata = middle.metadata.model_dump()
+    config = _llm_config(title=True).model_copy(update={"allow_partial_title_leveling": configured})
+    client = _QueuedValidatedClient([{str(index): 3 for index in range(len(titles))}])
+    if asynchronous:
+        asyncio.run(aio_apply_llm_aided_postprocess(
+            middle, config, client=client, allow_partial_title_leveling=explicit  # type: ignore[arg-type]
+        ))
+    else:
+        apply_llm_aided_postprocess(
+            middle, config, client=client, allow_partial_title_leveling=explicit  # type: ignore[arg-type]
+        )
+    enabled = configured or explicit
+    assert client.operations == (["title_leveling"] if enabled else [])
+    assert [title.level for title in titles] == [3 if enabled else 2] * len(titles)
+    assert middle.is_full_document is False
+    assert [page.page_idx for page in middle.pages] == list(indices)
+    assert middle.metadata.model_dump() == metadata
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("title_enabled", [False, True])
+def test_partial_title_policy_respects_main_switch_and_empty_titles(asynchronous: bool, title_enabled: bool) -> None:
+    """放行部分文档仍由标题总开关控制，空标题集合不发送模型请求。"""
+    pages = []
+    if not title_enabled:
+        title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline("Section"), level=2)
+        pages = [PageInfo(page_idx=4, blocks=[title])]
+    middle = _middle_json(pages, is_full_document=False)
+    config = _llm_config(title=title_enabled).model_copy(update={"allow_partial_title_leveling": True})
+    client = _QueuedValidatedClient([])
+    if asynchronous:
+        asyncio.run(aio_apply_llm_aided_postprocess(middle, config, client=client))  # type: ignore[arg-type]
+    else:
+        apply_llm_aided_postprocess(middle, config, client=client)  # type: ignore[arg-type]
+    assert client.operations == []
+    assert middle.is_full_document is False
 
 
 def test_front_vlm_cell_merge_detection_remains_disabled() -> None:

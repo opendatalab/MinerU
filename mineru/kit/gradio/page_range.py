@@ -25,9 +25,11 @@ def validate_max_pages(max_pages: int | None) -> None:
 
 def read_pdf_page_count(path: str | Path) -> int:
     """在共享 PDFium 锁内读取页数，并在成功或异常时及时释放文档。"""
-    import pypdfium2 as pdfium
-
+    # 先加载公共 PDF 包，再导入公开锁函数；与图片准备的首次导入保持同一锁顺序。
+    import docvortex.document.pdf  # noqa: F401
     from docvortex.document.pdf.pdfium import pdfium_guard
+
+    import pypdfium2 as pdfium
 
     try:
         with pdfium_guard():

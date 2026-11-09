@@ -12,6 +12,7 @@
 
 ONNX 小模型新增 `model.onnx_device: auto | cpu | gpu`，环境变量为
 `MINERU_MODEL_ONNX_DEVICE`。首次实际使用时自动选择并保存，独显优先；
+该字段只作为 ONNX 选型输入和持久化偏好；模块间运行设备通过进程快照共享，修改默认设备需重启进程。
 集显测速、重新选择及 DirectML 厂商预设见 [ONNX 设备选择](onnx-device.md)。
 
 配置体系定义 MinerU 如何在不同启动阶段得到最终行为。
@@ -119,17 +120,21 @@ PDF 的 LLM 辅助后处理同样读取启动前 `config.yaml`：
 llm_aided:
   api_key: ${MINERU_LLM_API_KEY:-}
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.5-plus
+  model: qwen3.8-flash
   enable_thinking: false
   max_concurrency: 16
+  allow_partial_title_leveling: false
   features:
     title_leveling: false
     cross_page_table_cell_merge: false
 ```
 
 两个功能默认关闭并共享同一套 OpenAI-compatible 连接参数。`title_leveling` 在严格
-`MiddleJson.pages` 上优化标题层级，但只在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中运行；
-抽页结果会跳过标题优化。`cross_page_table_cell_merge` 不受整本输入限制，只消费确定性后处理
+`MiddleJson.pages` 上优化标题层级，默认仅对 `MiddleJson.is_full_document=true` 的整本 PDF 执行。
+设置 `allow_partial_title_leveling: true` 后，抽页结果也可根据本次选中的标题建立局部层级，
+包括 Demo 默认截取的前 20 页、中间片段和非连续选页。抽页结果的 `is_full_document` 为 `false`，
+页码对应原文件。`features.title_leveling` 是标题分级的总开关。
+`cross_page_table_cell_merge` 只消费确定性后处理
 已经写入的 `continues_prev`，再把逐单元格的 `0/1` 结果写入后表根块 `cell_merge`。两个功能
 通过同一个异步客户端并发请求，`max_concurrency` 是不小于 1 的共享请求上限，默认值为 16。
 标题分级结果允许 1 到 6，段落标题的 1 会归一为 2，最终严格标题层级范围为 2 到 6。前置
@@ -138,6 +143,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 
 环境变量可覆盖任意强类型字段，例如 `MINERU_LLM_AIDED_API_KEY`、
 `MINERU_LLM_AIDED_MAX_CONCURRENCY`、
+`MINERU_LLM_AIDED_ALLOW_PARTIAL_TITLE_LEVELING`、
 `MINERU_LLM_AIDED_FEATURES_TITLE_LEVELING` 和
 `MINERU_LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE`。
 

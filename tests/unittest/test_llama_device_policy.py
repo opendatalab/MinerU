@@ -62,7 +62,7 @@ def test_automatic_route_consumes_onnx_result(
     select = onnx(monkeypatch, OnnxSelection(decision, reason=reason))
     result = policy.resolve_llama_device()
     assert result == policy.LlamaSelection(decision, reason=f"onnx_{reason}")
-    select.assert_called_once_with()
+    select.assert_called_once_with(allow_download=True, intra_op_num_threads=0, inter_op_num_threads=0)
 
 
 def test_repeated_resolution_reuses_onnx_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,7 +76,7 @@ def test_repeated_resolution_reuses_onnx_cache(monkeypatch: pytest.MonkeyPatch) 
 def test_offline_resolution_preserves_download_constraint(monkeypatch: pytest.MonkeyPatch) -> None:
     select = onnx(monkeypatch, OnnxSelection(reason="selection_failed"))
     assert policy.resolve_llama_device(allow_download=False).device == "cpu"
-    select.assert_called_once_with(allow_download=False)
+    select.assert_called_once_with(allow_download=False, intra_op_num_threads=0, inter_op_num_threads=0)
 
 
 @pytest.mark.parametrize("accelerated", [False, True])

@@ -28,7 +28,7 @@ CPU 计数沿用进程亲和性和 Linux cgroup 配额限制。读取失败回�
 
 Torch（包括 `small_backend=auto` 最终选择 Torch）使用经过可用性验证的加速设备结论，包括 CUDA/ROCm、MPS、XPU 等。显式 CPU、设备不可用或探测失败时按 CPU 规则推荐，并保留原因与警告。该分支不调用 ONNX 选型、不下载 OCR 校准权重，也不修改 ONNX 配置或校准记录。
 
-ONNX 分支在所有 CPU 核数下调用现有 `resolve_onnx_device()`，复用进程缓存、兼容策略、显式配置和校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，保留免 OCR 校准路径。`onnx_device=auto` 下需要测速的候选沿用 0.8 阈值；首次可能准备或下载 OCR rec 模型。下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定时使用本次 CPU 结果推荐。
+统一 `resolve_runtime_device()` 在 ONNX 分支的所有 CPU 核数下完成选型，复用进程快照、兼容策略、显式配置和校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，保留免 OCR 校准路径。`onnx_device=auto` 下需要测速的候选沿用 0.8 阈值；首次可能准备或下载 OCR rec 模型。下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定时使用本次 CPU 结果推荐。
 
 `onnx_device=gpu` 无论来自用户配置还是先前自动选型，都不强制测速。实际选中 GPU 就开放全部四档；校准记录缺失、损坏、过期或记录 GPU 较慢均不额外阻止开放。此时推荐原因是 `configured_gpu`，校准状态为 `status=skipped, reason=configured_gpu`。记录摘要仅供诊断，读取失败附带警告，不改变设备和档位结论。`onnx_device=cpu` 及不受支持平台的 ONNX CPU 回退均遵循 CPU 规则；ONNX 分支不额外探测 Apple Metal。
 
@@ -39,6 +39,8 @@ JSON 报告保持 `schema_version=1`，包含 `ceiling`、`pdf_image_tiers`、`d
 每个服务在启动阶段形成一次最终开放集合，运行中不动态升降档位。选型落在 CPU 或失败时按 CPU 核数推荐，不凭静态显卡库存升级。显式启动上限和 Python 精确集合跳过自动推荐；依赖预检、可选预加载和原生文档固定 Flash 的行为保持不变。开放全部四档时请求默认仍为 Standard。
 
 ## 环境报告
+
+`effective_config.process_runtime` 只展示报告进程自身已初始化的快照（含 PID）；未初始化时 device 和 small_backend 为 null。隔离子进程的 selected_device 是只读候选，不代表正在运行的 API Server 的设备。
 
 `info` 不调用自动推荐或 OCR 校准，不下载、加载模型权重或写配置。运行时导入和原生 GPU 探测使用独立子进程，最多并发 4 项，并与系统信息采集重叠进行；每项子进程启动后最多等待 15 秒。某项失败时继续报告其他信息，并区分未安装、导入失败和超时。
 

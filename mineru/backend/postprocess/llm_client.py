@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import uuid
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -22,10 +23,22 @@ _MAX_LLM_RETRIES = 3
 class LLMAidedClient:
     """复用单个异步 OpenAI-compatible 客户端并提供带校验的 JSON 请求。"""
 
-    def __init__(self, config: LLMAidedConfig, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: LLMAidedConfig,
+        client: Any | None = None,
+        *,
+        request_timeout: float | None = None,
+        transport_retries: int | None = None,
+    ) -> None:
         """保存强类型配置，并按需创建带共享并发限制的异步客户端。"""
         self._config = config
-        self._client = client or AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+        client_options: dict[str, Any] = {}
+        if request_timeout is not None:
+            client_options["timeout"] = request_timeout
+        if transport_retries is not None:
+            client_options["max_retries"] = transport_retries
+        self._client = client or AsyncOpenAI(api_key=config.api_key, base_url=config.base_url, **client_options)
         self._owns_client = client is None
         self._semaphore = asyncio.Semaphore(config.max_concurrency)
 
@@ -46,10 +59,28 @@ class LLMAidedClient:
         if self._config.enable_thinking is not None:
             request_params["extra_body"] = {"enable_thinking": self._config.enable_thinking}
 
+        # 同一候选的重试复用请求标识，便于关联并发执行的完整请求和原始返回。
+        request_id = uuid.uuid4().hex
         for attempt in range(1, _MAX_LLM_RETRIES + 1):
             try:
                 async with self._semaphore:
+                    logger.debug(
+                        "LLM {} request id={} attempt={}/{} params={}",
+                        operation,
+                        request_id,
+                        attempt,
+                        _MAX_LLM_RETRIES,
+                        request_params,
+                    )
                     completion = await self._client.chat.completions.create(**request_params)
+                logger.debug(
+                    "LLM {} response id={} attempt={}/{} completion={}",
+                    operation,
+                    request_id,
+                    attempt,
+                    _MAX_LLM_RETRIES,
+                    completion,
+                )
                 content = self._extract_message_content(completion)
                 parsed = json_repair.loads(content)
                 validated = validator(parsed)

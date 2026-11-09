@@ -69,3 +69,6 @@ output/
 
 htmlcov/
 .zcode/
+
+# Playwright 浏览器验证产生的临时快照与日志
+.playwright-cli/

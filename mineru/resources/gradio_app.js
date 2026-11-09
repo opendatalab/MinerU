@@ -1,24 +1,18 @@
-() => {
-    const APP_SCRIPT_VERSION = "v6-local-status-clock";
+(viewerEntry) => {
+    const preview = __MINERU_PDF_PREVIEW__;
+    const APP_SCRIPT_VERSION = "v10-page-gestures";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
+        preview("setup", viewerEntry);
         return;
     }
     window.__mineruGradioAppInstalled = APP_SCRIPT_VERSION;
 
     const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
-    const CLIPBOARD_MIME_EXTENSIONS = {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/webp": "webp",
-        "image/gif": "gif",
-        "image/bmp": "bmp",
-        "image/tiff": "tiff",
-        "application/pdf": "pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    };
     const i18n = window.__mineruI18n = __MINERU_I18N__;
+    preview("setup", viewerEntry);
+    window.__mineruUpload?.localize();
+    window.__mineruTier?.localize();
+    (__MINERU_TRACE__)();
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
     window.__mineruStatusPanel = statusTimer;
     // HTML 回调和前端事件使用同一份词典与首选语言规则。
@@ -56,156 +50,12 @@
         });
     };
 
-    // 原生 range 的值更新后重画共用轨道，不修改组件值或触发额外事件。
-    const refreshPageRangeTrack = () => {
-        const track = document.querySelector(".mineru-page-sliders");
-        const handleA = track?.querySelector('.mineru-page-handle-a input[type="range"]');
-        const handleB = track?.querySelector('.mineru-page-handle-b input[type="range"]');
-        if (!handleA || !handleB) {
-            return;
-        }
-        const span = Math.max(1, Number(handleA.max) - 1);
-        const start = Math.min(Number(handleA.value), Number(handleB.value));
-        const end = Math.max(Number(handleA.value), Number(handleB.value));
-        track.style.setProperty("--range-start", `${(start - 1) / span * 100}%`);
-        track.style.setProperty("--range-end", `${(end - 1) / span * 100}%`);
-    };
-
     // 自定义 HTML 由 Gradio 动态重绘，统一在 DOM 变更后补本地化和忽略状态。
     const refreshMineruCustomHtml = () => {
         statusTimer.sync();
         localizeMineruCustomText();
         applyOfficePreviewNoticePreference();
-        refreshPageRangeTrack();
-    };
-
-    const findUploadFileInput = () => {
-        const uploadRoot = document.querySelector(".mineru-upload-file");
-        if (!uploadRoot) {
-            return null;
-        }
-        return uploadRoot.querySelector('input[type="file"]');
-    };
-
-    // 读取上传控件 accept 规则，后续粘贴文件仍复用 gr.File 的支持格式边界。
-    const getUploadAcceptedTypes = (uploadInput) => {
-        const accept = uploadInput?.getAttribute("accept") || "";
-        return accept.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-    };
-
-    // 判断剪贴板文件是否匹配 gr.File 当前支持的扩展名或 MIME 类型。
-    const fileMatchesAcceptedType = (file, acceptedTypes) => {
-        if (!acceptedTypes.length) {
-            return true;
-        }
-        const name = (file.name || "").toLowerCase();
-        const type = (file.type || "").toLowerCase();
-        return acceptedTypes.some((accepted) => {
-            if (accepted.startsWith(".")) {
-                return name.endsWith(accepted);
-            }
-            if (accepted.endsWith("/*")) {
-                return type.startsWith(accepted.slice(0, -1));
-            }
-            return type === accepted;
-        });
-    };
-
-    // 为截图等无文件名剪贴板图片补一个扩展名，确保后端按普通图片文件解析。
-    const buildClipboardFileName = (file) => {
-        const type = (file.type || "").toLowerCase();
-        const extension = CLIPBOARD_MIME_EXTENSIONS[type];
-        if (!extension) {
-            return "";
-        }
-        const timestamp = new Date().toISOString()
-            .replace(/[-:]/g, "")
-            .replace(/[.].+/, "")
-            .replace("T", "-");
-        const prefix = type.startsWith("image/") ? "clipboard-image" : "clipboard-file";
-        return `${prefix}-${timestamp}.${extension}`;
-    };
-
-    // 保留浏览器暴露的原始文件；仅在文件名缺少扩展名时复制一份并补齐名称。
-    const normalizeClipboardFile = (file) => {
-        if (/[.][^.]+$/.test(file.name || "")) {
-            return file;
-        }
-        const fileName = buildClipboardFileName(file);
-        if (!fileName || typeof File === "undefined") {
-            return file;
-        }
-        return new File([file], fileName, {
-            type: file.type,
-            lastModified: file.lastModified || Date.now(),
-        });
-    };
-
-    // 同时兼容剪贴板 files 与 items，两种入口在不同浏览器里暴露情况不一致。
-    const collectClipboardFiles = (clipboardData) => {
-        const files = Array.from(clipboardData.files || []);
-        if (files.length) {
-            return files;
-        }
-        return Array.from(clipboardData.items || [])
-            .filter((item) => item.kind === "file")
-            .map((item) => item.getAsFile())
-            .filter(Boolean);
-    };
-
-    // 构造只包含目标文件的 FileList；部分浏览器不允许构造 DataTransfer，需要降级处理。
-    const createUploadFileList = (file) => {
-        try {
-            const transfer = new DataTransfer();
-            transfer.items.add(file);
-            return transfer.files;
-        } catch (error) {
-            return null;
-        }
-    };
-
-    // 把文件列表赋值给 gr.File 的原生 input，并触发 Gradio 监听的变更事件。
-    const assignClipboardFileToUpload = (uploadInput, uploadFiles) => {
-        if (!uploadFiles) {
-            return false;
-        }
-        try {
-            uploadInput.files = uploadFiles;
-        } catch (error) {
-            return false;
-        }
-        uploadInput.dispatchEvent(new Event("input", { bubbles: true }));
-        uploadInput.dispatchEvent(new Event("change", { bubbles: true }));
-        return true;
-    };
-
-    // 将剪贴板文件注入现有 gr.File input，避免为图片、PDF、Office 维护第二套上传链路。
-    const uploadClipboardFile = (event) => {
-        const clipboardData = event.clipboardData;
-        const uploadInput = findUploadFileInput();
-        if (!clipboardData || !uploadInput) {
-            return false;
-        }
-
-        const acceptedTypes = getUploadAcceptedTypes(uploadInput);
-        const rawClipboardFiles = clipboardData.files || null;
-        const clipboardFiles = collectClipboardFiles(clipboardData)
-            .map((rawFile) => ({ rawFile, uploadFile: normalizeClipboardFile(rawFile) }))
-            .filter(({ uploadFile }) => fileMatchesAcceptedType(uploadFile, acceptedTypes));
-        if (!clipboardFiles.length) {
-            return false;
-        }
-
-        const { rawFile, uploadFile } = clipboardFiles[0];
-        const uploadFiles = createUploadFileList(uploadFile)
-            || (
-                rawClipboardFiles?.length === 1
-                && rawClipboardFiles[0] === rawFile
-                && rawFile === uploadFile
-                    ? rawClipboardFiles
-                    : null
-            );
-        return assignClipboardFileToUpload(uploadInput, uploadFiles);
+        window.__mineruPageRange?.localize();
     };
 
     refreshMineruCustomHtml();
@@ -219,10 +69,10 @@
             attributeFilter: ["title", "aria-label", "data-mineru-i18n-en", "data-mineru-i18n-zh"],
         };
         const uiObserver = new MutationObserver((mutations) => {
-            // 本地计时与排队动画的文字变化无需重新扫描整页，避免递归本地化。
+            // 本地计时、选页预览与排队动画无需重新扫描整页，避免递归本地化。
             if (mutations.every(({ target }) => {
                 const element = target.nodeType === 1 ? target : target.parentElement;
-                return element?.closest?.("[data-mineru-local-timer], [data-mineru-local-animation]");
+                return element?.closest?.("[data-mineru-local-timer], [data-mineru-local-animation], [data-mineru-page-live]");
             })) {
                 return;
             }
@@ -266,44 +116,5 @@
             target.closest(".office-preview-notice")?.classList.add("is-dismissed");
             return;
         }
-    });
-
-    document.addEventListener("paste", (event) => {
-        if (uploadClipboardFile(event)) {
-            event.preventDefault();
-        }
-    });
-
-    // 拖动时下一帧读取 Gradio 已同步的值；键盘输入也走同一条路径。
-    document.addEventListener("input", (event) => {
-        if (event.target instanceof Element && event.target.closest(".mineru-page-sliders")) {
-            requestAnimationFrame(refreshPageRangeTrack);
-        }
-    });
-
-    // 优先命中离指针最近的物理滑块；重合时按当前起止角色决定左右半边的命中目标。
-    document.addEventListener("pointermove", (event) => {
-        if (event.buttons || !(event.target instanceof Element)) {
-            return;
-        }
-        const track = event.target.closest(".mineru-page-sliders");
-        const rootA = track?.querySelector(".mineru-page-handle-a");
-        const rootB = track?.querySelector(".mineru-page-handle-b");
-        const handleA = rootA?.querySelector('input[type="range"]');
-        const handleB = rootB?.querySelector('input[type="range"]');
-        if (!handleA || !handleB) {
-            return;
-        }
-        const bounds = handleA.getBoundingClientRect();
-        const span = Math.max(1, Number(handleA.max) - 1);
-        const centerA = bounds.left + 8 + (Number(handleA.value) - 1) / span * (bounds.width - 16);
-        const centerB = bounds.left + 8 + (Number(handleB.value) - 1) / span * (bounds.width - 16);
-        const startHandle = track.closest(".mineru-kit-page-range")
-            ?.querySelector("[data-start-handle]")?.getAttribute("data-start-handle") || "a";
-        const preferA = handleA.value === handleB.value
-            ? (event.clientX < centerA ? startHandle === "a" : startHandle !== "a")
-            : Math.abs(event.clientX - centerA) < Math.abs(event.clientX - centerB);
-        rootA.style.zIndex = preferA ? "5" : "2";
-        rootB.style.zIndex = preferA ? "2" : "5";
     });
 }

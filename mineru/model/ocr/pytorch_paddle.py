@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 from loguru import logger
 
 from ..registry import MINERU_4_MODELS_TORCH
-from ..runtime.device import get_device
+from ..runtime.device_state import resolve_model_device
 from .._internal.pytorchocr.infer import pytorchocr_utility as utility
 from .._internal.pytorchocr.infer.predict_system import TextSystem
 from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
@@ -53,7 +53,7 @@ class PytorchPaddleOCR(TextSystem):
         self.is_seal = requested_lang in ['seal', 'seal_lite']
         self.enable_merge_det_boxes = kwargs.get("enable_merge_det_boxes", True)
 
-        device = kwargs.get("device") or get_device()
+        device = resolve_model_device("torch", kwargs.get("device")).model_device
         models_config_path = PYTORCHOCR_RESOURCE_DIR / "models_config.yml"
         with open(models_config_path, encoding='utf-8') as file:
             config = yaml.safe_load(file)

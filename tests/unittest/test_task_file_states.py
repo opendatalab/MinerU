@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,14 +21,14 @@ from mineru.parser import api_server
 from mineru.parser.base import ParseResult
 
 
-def _install_downloads(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
+def _install_downloads(monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]) -> None:
     """只隔离源站下载，保留客户端到 API 的真实协议和任务调度。"""
 
-    def client(**kwargs: Any) -> httpx.AsyncClient:
-        """为每次源下载创建独立 HTTPX 客户端，不修改全局 HTTPX 对象。"""
-        return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    def download_transport() -> httpx.MockTransport:
+        """每次下载仅替换源站传输，继续使用真实 HTTPX 客户端。"""
+        return httpx.MockTransport(handler)
 
-    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=client))
+    monkeypatch.setattr(api_server, "UrlSourceTransport", download_transport)
 
 
 def _url_task(client: TestClient, name: str = "remote") -> dict[str, Any]:

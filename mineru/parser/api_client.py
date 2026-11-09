@@ -31,7 +31,7 @@ from typing import Any, Literal, cast
 from urllib.parse import unquote, urlparse, urljoin
 
 import httpx
-from docvortex.assets import validate_image_sidecar_path
+from docvortex.assets import validate_image_payload, validate_image_sidecar_path
 from pydantic import ValidationError
 
 from ..task_types import TaskStatus, task_status_url
@@ -1007,6 +1007,10 @@ def _encode_image_data_uri(image_bytes: bytes, image_path: str) -> str:
     subtype = _IMAGE_DATA_URI_SUBTYPES.get(ext)
     if subtype is None:
         raise _V1APIError("invalid_image_sidecar", f"Unsupported image sidecar extension: {image_path}")
+    try:
+        validate_image_payload(image_bytes, ext)
+    except ValueError as exc:
+        raise _V1APIError("invalid_image_sidecar", f"Invalid image sidecar {image_path}: {exc}") from exc
     return f"data:image/{subtype};base64,{base64.b64encode(image_bytes).decode('ascii')}"
 
 

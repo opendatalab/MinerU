@@ -10,7 +10,18 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     })[char]);
 
+    if (action === "source") {
+        // 只接受当前选择的票据，重复文件事件保留已完成结果及其在途下载。
+        let source;
+        try { source = JSON.parse(args[0] || "null"); } catch {}
+        const preview = window.__mineruPdfPreview;
+        if (!source?.id || source.id !== preview?.sourceId || source.path !== preview.source || source.id === state.sourceId) {
+            return Array.from({ length: formats.length * 4 + 2 }, skip);
+        }
+        action = "reset";
+    }
     if (action === "reset") {
+        state.sourceId = window.__mineruPdfPreview?.sourceId || "";
         state.runId = "";
         state.pending.clear();
         return [

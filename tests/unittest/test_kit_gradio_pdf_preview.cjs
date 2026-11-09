@@ -1,71 +1,115 @@
-// 运行真实预览适配脚本，验证文件编码、事件乱序和清除失效，不模拟 Gradio 内部组件。
+// 执行生产预览控制器，验证本地文件、服务器准备及结果更新共享唯一 iframe。
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const path = require("node:path");
-const script = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_pdf_preview.js"), "utf8");
-const window = { location: new URL("https://mineru.test/prefix/"), __mineruI18n: { text: (key) => `中文 ${key}` } };
-let currentFrame = null;
+const crypto = require("node:crypto").webcrypto;
+const script = fs.readFileSync(require("node:path").join(__dirname, "../../mineru/resources/gradio_pdf_preview.js"), "utf8");
+const location = new URL("https://mineru.test/prefix/");
 let disposed = 0;
-const document = { querySelector: () => currentFrame };
-const invoke = vm.runInNewContext(`(${script})`, { window, document, URL, URLSearchParams });
-// 使用原始文件路径构造典型 FileData，模拟框架回传的未编码 URL。
-const file = (name) => ({ path: `/cache/${name}`, url: `/prefix/gradio_api/file=/cache/${name}`, orig_name: name });
-// 提取真正传给 iframe 的地址，后续断言同时覆盖两层 URL 编码。
-const iframe = (update) => new URL(update.value.match(/src="([^"]+)"/)[1].replaceAll("&amp;", "&"));
-const first = file('中文 空格#?%&".pdf');
-const second = file("second.pdf");
+let revoked = 0;
+let blobs = 0;
+const activations = [];
+const events = {};
+const host = { children: [], replaceChildren(...nodes) { this.children = nodes; } };
+// 最小 DOM 替身只观察真实创建、释放和 URL，不模拟 Gradio 内部状态。
+const document = {
+    querySelector: selector => selector === ".mineru-pdf-host" ? host : null,
+    createElement: tag => ({
+        tag, attributes: {},
+        setAttribute(name, value) { this.attributes[name] = value; },
+        remove() { host.children = host.children.filter(node => node !== this); },
+        contentWindow: { __mineruPdfDisposePreview() { disposed++; } },
+    })
+};
+class LocalURL extends URL {
+    // 使用浏览器同源 Blob URL，记录释放次数。
+    static createObjectURL() { return `blob:${location.origin}/${++blobs}`; }
+    static revokeObjectURL() { revoked++; }
+}
+const window = {
+    addEventListener: (name, fn) => events[name] = fn,
+    __mineruI18n: { text: key => key },
+    __mineruTrace: { reset() {}, activate(...values) { activations.push(values); } },
+    __mineruUpload: { isImage: name => name.endsWith(".png"), invalidate() {}, sync() {}, prepared(error) { this.error = error; } },
+};
+const invoke = vm.runInNewContext(`(${script})`, { window, document, location, crypto, URL: LocalURL, URLSearchParams });
+// 使用真实文件路径而非编码后的 URL 判断文件身份。
+const file = name => ({ path: `/cache/${name}`, url: `/prefix/gradio_api/file=/cache/${name}`, orig_name: name });
+const first = file('中文 #?%&".pdf');
 const viewer = file("assets/viewer.html");
-assert.equal(invoke("reset", first).value, "");
-const initial = invoke("source", first, first, viewer);
-assert.equal(initial.visible, true);
-const initialUrl = iframe(initial);
-currentFrame = { contentWindow: { __mineruPdfDisposePreview: () => { disposed += 1; } } };
-assert.equal(initialUrl.pathname, "/prefix/gradio_api/file=/cache/assets/viewer.html");
-assert.ok(initialUrl.searchParams.has("document"));
-const parameters = new URLSearchParams(initialUrl.hash.slice(1));
-const pdfUrl = new URL(parameters.get("file"));
-assert.equal(decodeURIComponent(pdfUrl.pathname), `/prefix/gradio_api/file=${first.path}`);
-assert.equal(pdfUrl.search, "");
-assert.equal(pdfUrl.hash, "");
-assert.ok(initial.value.includes('sandbox="allow-scripts allow-same-origin"'));
-assert.equal(JSON.parse(parameters.get("messages")).pdf_page, "中文 pdf_page");
-// Gradio 的事件 FileData 可能缺少挂载前缀，静态入口的基址必须用于结果 PDF。
-const relative = { ...first, url: first.url.replace("/prefix", "") };
-const relativeParams = new URLSearchParams(iframe(invoke("source", relative, first, viewer)).hash.slice(1));
-assert.equal(new URL(relativeParams.get("file")).pathname, pdfUrl.pathname);
-
-invoke("begin");
-const layout = file("run/layout.pdf");
-assert.equal(invoke("result", layout, first, viewer, "run-1").visible, true);
-assert.equal(invoke("source", first, first, viewer).value, undefined);
-const beforeReset = disposed;
-invoke("reset", second);
-assert.equal(disposed, beforeReset + 1);
-assert.equal(invoke("result", layout, first, viewer, "run-1").value, undefined);
-assert.equal(invoke("source", first, second, viewer).value, undefined);
-assert.equal(disposed, beforeReset + 1);
-assert.equal(invoke("source", second, second, viewer).visible, true);
-assert.equal(disposed, beforeReset + 2);
-invoke("begin");
-assert.equal(invoke("result", layout, second, viewer, "").value, undefined);
-assert.equal(invoke("clear").value, "");
-assert.equal(disposed, beforeReset + 3);
-assert.equal(invoke("result", layout, second, viewer, "run-2").value, undefined);
-assert.equal(invoke("source", second, second, viewer).value, undefined);
+invoke("setup", viewer);
+const state = window.__mineruPdfPreview;
+state.local({ name: first.orig_name }, "local-one");
+const originalFrame = state.frame;
+assert.ok(originalFrame && state.uploading);
+assert.equal(new URLSearchParams(new URL(originalFrame.src).hash.slice(1)).get("file"), `blob:${location.origin}/1`);
+invoke("reset", null);
+assert.equal(state.frame, originalFrame);
+// 上传开始的空 FileData 仍须产生本次选择票据，让后端立即清除旧结果。
+const selectedTicket = JSON.parse(invoke("prepare", null));
+assert.equal(selectedTicket.id, "local-one");
+assert.equal(selectedTicket.path, "");
+assert.equal(selectedTicket.revision, state.revision);
+assert.equal(state.frame, originalFrame);
+// 失效旧源的空路径回执不能清空已经显示的上传失败信息。
+window.__mineruUpload.error = "upload failed";
+assert.equal(invoke("prepared", JSON.stringify({ ...selectedTicket, error: "" })), "");
+assert.equal(window.__mineruUpload.error, "upload failed");
+const uploadingRevision = state.revision;
+assert.equal(state.bind(first, "local-one"), true);
+assert.ok(state.revision > uploadingRevision);
 invoke("reset", first);
-assert.notEqual(iframe(invoke("source", first, first, viewer)).search, initialUrl.search);
+const ticket = JSON.parse(invoke("prepare", first));
+assert.equal(invoke("prepared", JSON.stringify({ ...ticket, pdf: first })), first.path);
+invoke("source", first, first, viewer);
+for (const id of ["run-one", "run-two"]) {
+    invoke("begin");
+    invoke("result", file(`${id}/preview.pdf`), first, viewer, id);
+    assert.equal(state.frame, originalFrame);
+}
+assert.deepEqual(activations.map(values => [...values]), [["run-one", "local-one"], ["run-two", "local-one"]]);
+assert.equal(disposed, 0);
+invoke("prepared", JSON.stringify({ ...ticket, error: "copy failed" }));
+assert.equal(host.children[0], originalFrame);
+invoke("clear");
+assert.equal(disposed, 1);
+assert.equal(revoked, 1);
+assert.equal(invoke("prepared", JSON.stringify({ ...ticket, pdf: first })).value, undefined);
+assert.equal(state.frame, null);
 
-const image = file("photo.png");
-invoke("reset", image);
-assert.equal(invoke("source", null, image, viewer).value, "");
+// 图片上传后就加载准备好的 PDF，转换结果不得再次创建查看器。
+const picture = file("photo.png");
+state.local({ name: "photo.png" }, "image-one");
+assert.equal(state.frame, null);
+state.bind(picture, "image-one");
+invoke("reset", picture);
+const imageTicket = JSON.parse(invoke("prepare", picture));
+invoke("prepared", JSON.stringify({ ...imageTicket, pdf: file("sources/photo.pdf") }));
+const imageFrame = state.frame;
+assert.ok(imageFrame);
 invoke("begin");
-assert.equal(invoke("result", layout, image, viewer, "image-run").visible, true);
+invoke("result", file("sources/photo.pdf"), picture, viewer, "image-run");
+assert.equal(state.frame, imageFrame);
+state.local({ name: "photo.png" }, "image-two");
+assert.equal(state.bind(picture, "image-one"), false);
+invoke("prepared", JSON.stringify({ ...imageTicket, pdf: file("old.pdf") }));
+assert.equal(state.frame, null);
+
+// 示例及 Windows 路径继续正确编码，并拒绝跨源文件。
+invoke("clear");
+invoke("reset", first);
+invoke("source", first, first, viewer);
+let params = new URLSearchParams(new URL(state.frame.src).hash.slice(1));
+assert.equal(decodeURIComponent(new URL(params.get("file")).pathname), `/prefix/gradio_api/file=${first.path}`);
 const win = { path: "C:\\cache\\中文 #1.pdf", url: "/prefix/gradio_api/file=C:/cache/中文 #1.pdf" };
 invoke("reset", win);
-const windowsUrl = new URL(new URLSearchParams(iframe(invoke("source", win, win, viewer)).hash.slice(1)).get("file"));
-assert.equal(decodeURIComponent(windowsUrl.pathname), "/prefix/gradio_api/file=C:/cache/中文 #1.pdf");
-const external = { path: first.path, url: `https://other.test/gradio_api/file=${first.path}` };
+invoke("source", win, win, viewer);
+params = new URLSearchParams(new URL(state.frame.src).hash.slice(1));
+assert.equal(decodeURIComponent(new URL(params.get("file")).pathname), "/prefix/gradio_api/file=C:/cache/中文 #1.pdf");
+const external = { path: "/cache/external.pdf", url: "https://other.test/gradio_api/file=/cache/external.pdf" };
 invoke("reset", external);
-assert.ok(invoke("source", external, external, viewer).value.includes('role="alert"'));
-console.log("PDF preview lifecycle and URL checks passed");
+invoke("source", external, external, viewer);
+assert.equal(state.frame, null);
+assert.equal(host.children[0].attributes.role, "alert");
+events.pagehide();
+console.log("Persistent PDF, local upload identity, image preparation and URL checks passed");

@@ -28,6 +28,7 @@ from mineru.errors import InvalidRequestError, MineruError
 from mineru.kit.gradio.page_range import effective_page_range as _effective_page_range
 from mineru.kit.gradio.artifacts import persist_parse_result
 from mineru.kit.gradio.client import V1ArtifactClient
+from mineru.kit.gradio.sources import prepare_source
 from mineru.kit.main import app as kit_app
 from mineru.parser import MinerUParser, api_server
 from mineru.parser.api_client import MinerUApiParser
@@ -40,6 +41,7 @@ from mineru.parser.page_range import (
     parse_page_range,
     parse_page_range_set,
 )
+from mineru.types import MiddleJson
 
 VALID_RANGES = [
     ("5", [5], "5"),
@@ -237,7 +239,7 @@ def _numbered_pdf(path: Path, page_count: int = 5) -> None:
 
 
 def test_real_pdf_selection_preserves_original_indices_and_artifact_order(tmp_path: Path) -> None:
-    """实测非连续选页与末页组合，同时核对解析页号、原始 PDF 和 layout PDF。"""
+    """实测非连续选页与末页组合，核对产物原始页号并保留完整原文预览。"""
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
     parser = MinerUParser(tier="flash")
@@ -247,11 +249,18 @@ def test_real_pdf_selection_preserves_original_indices_and_artifact_order(tmp_pa
     assert "Source page 3" in result.markdown()
     assert "Source page 2" not in result.markdown()
     artifacts = persist_parse_result(result, source, output_root=tmp_path / "review", page_range="r1,3,1,3")
-    assert artifacts.page_indices == (0, 2, 4)
-    assert artifacts.origin_pdf_path is not None and artifacts.layout_pdf_path is not None
-    reader = PdfReader(str(artifacts.origin_pdf_path))
-    assert [page.extract_text().strip() for page in reader.pages] == ["Source page 1", "Source page 3", "Source page 5"]
-    assert len(PdfReader(str(artifacts.layout_pdf_path)).pages) == 3
+    stored = MiddleJson.model_validate_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
+    assert [page.page_idx for page in stored.pages] == [0, 2, 4]
+    assert artifacts.initial_page_idx == 0
+    markdown = artifacts.markdown_path.read_text(encoding="utf-8")
+    assert markdown.index("Source page 1") < markdown.index("Source page 3") < markdown.index("Source page 5")
+    assert "Source page 2" not in markdown and "Source page 4" not in markdown
+    preview = prepare_source(source, source_id="a" * 32, output_root=tmp_path / "review")
+    assert preview.preview_pdf_path is not None
+    assert preview.preview_pdf_path.read_bytes() == source.read_bytes()
+    reader = PdfReader(str(preview.preview_pdf_path))
+    assert [page.extract_text().strip() for page in reader.pages] == [f"Source page {index}" for index in range(1, 6)]
+    assert not list(artifacts.root.glob("*.pdf"))
     prepared = parser._prepare_input(source, "r1")
     assert prepared.retained_page_indices == [4]
     assert PdfReader(io.BytesIO(prepared.file_bytes)).pages[0].extract_text().strip() == "Source page 5"

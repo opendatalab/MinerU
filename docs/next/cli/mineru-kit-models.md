@@ -89,6 +89,7 @@ mineru-kit models download --tier <basic|standard> [flags]
 - `--source` 不支持 `local`
 - 如果当前配置为 `model.source: local`，显式 download 会临时按 `auto` 解析远端源，不改写配置
 - 下载目标固定为 `config.model.base_dir` 下的 repo local dir
+- ModelScope 使用 `modelscope>=1.39.1`；先把默认分支解析为固定 commit，再按同一 commit 查询清单和下载，避免分支更新导致清单与文件版本不一致
 
 支持的 repo 名:
 
@@ -158,7 +159,14 @@ mineru-kit models verify --small-backend <auto|onnx|torch> --vlm-engine <auto|ll
 - repo 位置参数与 `--tier` 互斥
 - `--tier` 只接受 `basic` 和 `standard`；按 `--tier` 校验时使用独立后端选项解析出的资源组合
 - 不是单纯目录存在性检查，还会检查 registry 中声明的关键路径
-- 第一阶段不做 hash 级完整性校验
+- 整仓和目录资源会读取 `.mineru_complete` 文件清单，检查预期文件是否存在、是否为有效文件，以及大小是否一致；正常校验无需联网，不读取大权重计算 hash
+- 单文件下载把预期大小保存到仓库根目录的 `.mineru_files.json`，后续复用同样检查缺失、截断和失效链接；这份局部记录不会把父目录或整仓标为已完成
+- 完整目录重新下载后，由目录清单接管该范围的旧文件记录；文件记录损坏时需执行 `mineru-kit models download <repo>` 重建，不能只确认一个文件就丢弃其他文件的校验约束
+- 兼容旧版本的零字节完成标记：检查本地非空权重、registry 声明的必需路径以及权重索引引用的分片，通过后可直接离线复用
+- 首次使用旧模型时后台尝试升级标记，包括 `model.source: local`：按缓存中的旧版本查询远端文件清单，存在性和大小全部匹配后原子发布新版清单；只查询元数据，不下载、更新或删除模型文件，也不改写来源配置
+- 无网、源不可达、旧版本无法确定、核验不匹配或目录不可写时保留旧标记，不阻塞当前使用；失败后冷却 5 分钟，下次使用可重试。`models show/verify` 保持只读，不启动迁移
+- 后续实际下载或显式执行 `mineru-kit models download <repo>` 时，由 provider 确认请求范围并生成新版清单；旧标记的兼容检查不具备新版清单的逐文件大小校验能力
+- 文件缺失、被截断或完成清单无效时，校验失败并列出未通过检查的路径
 
 示例:
 

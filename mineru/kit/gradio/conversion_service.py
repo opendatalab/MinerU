@@ -39,6 +39,7 @@ from .conversion import (
 )
 from .document_io import GradioDocumentIO, LocalGradioDocumentIO
 from .page_range import validate_max_pages
+from .sources import PreparedSource, SessionSources
 from .status import (
     STATUS_COMPLETED,
     STATUS_PREPARING_REQUEST,
@@ -94,6 +95,7 @@ class ConversionService:
         self.max_pages = max_pages
         self.slot = slot
         self.document_io = document_io if document_io is not None else LocalGradioDocumentIO()
+        self.sources = SessionSources(self.document_io, output_root)
 
     async def execute(
         self,
@@ -163,16 +165,43 @@ class ConversionService:
         *,
         public_base_url: str,
     ) -> ConversionOutput:
+        """PDF 和图片在解析排队前获取输入租期，重复解析复用上传阶段的 PDF。"""
+        if validated.suffix not in PDF_EXTENSIONS | IMAGE_EXTENSIONS:
+            return await self._convert_ready(run, inputs, validated, emit, public_base_url=public_base_url)
+        prepared, lease = await self.sources.acquire(
+            inputs.session_id or run.run_id, validated.source_path, source_id=inputs.source_id
+        )
+        retained = False
+        try:
+            output = await self._convert_ready(run, inputs, validated, emit, public_base_url=public_base_url, prepared=prepared)
+            retained = not run.cancelled
+            return output
+        finally:
+            await self.sources.release(lease, retain=retained)
+
+    async def _convert_ready(
+        self,
+        run: ConversionRun,
+        inputs: ConversionInput,
+        validated: _ValidatedInput,
+        emit: Callable[[str | ParseStatusUpdate], None],
+        *,
+        public_base_url: str,
+        prepared: PreparedSource | None = None,
+    ) -> ConversionOutput:
         """同步工作退出前始终持有执行槽，输出完成后只缓存素材路径。"""
         if self.slot.locked():
             run.publish(STATUS_QUEUED_LOCALLY)
         async with self.slot:
             run.publish(STATUS_PREPARING_REQUEST)
             page_text = await run_sync_output(
-                self.document_io.effective_page_range, validated.source_path, inputs.page_range, max_pages=self.max_pages
+                self.document_io.effective_page_range,
+                prepared.source_path if prepared else validated.source_path,
+                inputs.page_range,
+                max_pages=self.max_pages,
             )
             result = await self.client.parse_file(
-                validated.source_path,
+                prepared.parse_path if prepared else validated.source_path,
                 tier=validated.tier,
                 page_range=page_text,
                 ocr_mode="ocr" if validated.suffix in PDF_EXTENSIONS and inputs.force_ocr else "auto",
@@ -189,6 +218,7 @@ class ConversionService:
                 output_root=self.output_root,
                 page_range=page_text,
             )
+            artifacts.prepared_source = prepared
             rendered_html = await run_sync_output(render_html_preview, artifacts, public_base_url=public_base_url)
             structured_json = await run_sync_output(artifacts.structured_content_path.read_text, encoding="utf-8")
             run.artifacts = artifacts.as_state()
@@ -219,11 +249,11 @@ def _prepare_preview(suffix: str, artifacts: RunArtifacts) -> PreviewPlan:
     """仅描述结果预览数据，保留已有 Office、OFD、EPUB 和网页源预览。"""
     if suffix in OFFICE_EXTENSIONS | HTML_EXTENSIONS | MHTML_EXTENSIONS | {"ofd", "epub"}:
         return PreviewPlan(preserve_source=True)
-    preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
+    preview_path = artifacts.prepared_source.preview_pdf_path if artifacts.prepared_source else None
     return PreviewPlan(
         preserve_source=False,
         pdf_path=preview_path,
-        image_path=artifacts.source_path if suffix in IMAGE_EXTENSIONS and preview_path is None else None,
+        image_path=None,
         show_ready_placeholder=preview_path is None,
     )
 
