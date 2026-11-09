@@ -89,7 +89,7 @@ mineru-kit models download --tier <basic|standard> [flags]
 - `--source` 不支持 `local`
 - 如果当前配置为 `model.source: local`，显式 download 会临时按 `auto` 解析远端源，不改写配置
 - 下载目标固定为 `config.model.base_dir` 下的 repo local dir
-- ModelScope 使用 `modelscope>=1.40.3`；先把默认分支解析为固定 commit，再按同一 commit 查询清单和下载，避免分支更新导致清单与文件版本不一致
+- ModelScope 使用 `modelscope>=1.39.1`；先把默认分支解析为固定 commit，再按同一 commit 查询清单和下载，避免分支更新导致清单与文件版本不一致
 
 支持的 repo 名:
 

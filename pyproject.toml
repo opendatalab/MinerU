@@ -53,7 +53,7 @@ dependencies = [
     "pypdfium2>=5.13.0,<6",
     "PyYAML>=6.0.1,<7",
     "packaging",
-    "modelscope>=1.40.3",
+    "modelscope>=1.39.1",
     "huggingface-hub[hf_xet]>=0.32.4",
     "filelock>=3.0.0",
     "json-repair>=0.46.2",
