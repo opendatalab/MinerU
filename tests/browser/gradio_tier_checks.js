@@ -15,10 +15,13 @@ async (page) => {
         if (request.method() === "POST" && /gradio_api\/(queue|run|call)/.test(request.url())) requests.push(request.url());
     };
     page.on("request", onRequest);
-    // 等待现有 CSS 吸附动画完成，仅在测试需要稳定起点时使用。
+    // 只等待圆点和填充条的 CSS 吸附过渡，跳过无限循环的星点动画。
     const settle = async () => {
         await capsule.evaluate(async node => {
-            await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+            const transitions = node.getAnimations({ subtree: true }).filter(animation =>
+                animation instanceof CSSTransition
+                && animation.effect.target.matches(".mineru-tier-thumb, .mineru-tier-fill"));
+            await Promise.all(transitions.map(animation => animation.finished.catch(() => {})));
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         });
     };

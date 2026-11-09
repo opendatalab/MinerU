@@ -6,10 +6,13 @@ async (page) => {
     const rail = capsule.locator(".mineru-tier-rail");
     const range = capsule.locator(".mineru-tier-range");
     const thumb = capsule.locator(".mineru-tier-thumb");
-    // 等待吸附及 Gradio 回执，最终状态不能被迟到的取消或捕获丢失覆盖。
+    // 只等待圆点和填充条的吸附过渡，跳过无限星点；最终状态不能被迟到的取消或捕获丢失覆盖。
     const settled = async expected => {
         await capsule.evaluate(async node => {
-            await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+            const transitions = node.getAnimations({ subtree: true }).filter(animation =>
+                animation instanceof CSSTransition
+                && animation.effect.target.matches(".mineru-tier-thumb, .mineru-tier-fill"));
+            await Promise.all(transitions.map(animation => animation.finished.catch(() => {})));
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         });
         if (Number(await range.inputValue()) !== expected) throw new Error(`Tier bounced back; expected ${expected}`);
