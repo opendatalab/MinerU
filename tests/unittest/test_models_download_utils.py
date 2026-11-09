@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn
@@ -429,6 +430,72 @@ def test_download_does_not_mark_metadata_only_directory(
         models_download_utils.download_model_repo(repo, source="modelscope")
 
     assert (weights_dir / MODEL_COMPLETE_MARKER).exists() is False
+
+
+@pytest.mark.parametrize("legacy_types", [False, True], ids=["sdk-without-type", "legacy-sdk"])
+@pytest.mark.parametrize("weight_state", ["complete", "missing", "truncated"])
+def test_modelscope_snapshot_excludes_directories_and_checks_real_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    legacy_types: bool,
+    weight_state: str,
+) -> None:
+    """兼容新旧 SDK 的目录清单，同时保留空文件并拒绝缺失或截断的权重。"""
+    repo = ModelRepo(name="repo", repos={"modelscope": "Owner/repo"}, paths={"layout": "Layout/PP-DocLayoutV2"})
+    monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
+    layout = "Layout/PP-DocLayoutV2"
+    fixed_revision = "a" * 40
+    monkeypatch.setattr(models_download_utils, "ms_model_revision", lambda repo_id: fixed_revision)
+    payloads = {f"{layout}/config.json": b"{}", f"{layout}/model.safetensors": b"weights", f"{layout}/empty.txt": b""}
+    directories = ["Layout", layout, "Unused"]
+    # 目录项故意排在文件之后，确保过滤逻辑不依赖 SDK 返回顺序。
+    entries = [{"Path": name, "Size": len(content)} for name, content in payloads.items()]
+    entries.extend({"Path": name, "Size": 0} for name in directories)
+    entries.append({"Path": "Unused/model.bin", "Size": 7})
+    if legacy_types:
+        for entry in entries:
+            entry["Type"] = "tree" if entry["Path"] in directories else "blob"
+
+    class FakeApi:
+        def get_model_files(self, repo_id: str, *, revision: str, recursive: bool) -> list[dict[str, Any]]:
+            """返回真实接口形状的递归清单，覆盖不再包含 Type 的新版 SDK。"""
+            assert repo_id == "Owner/repo"
+            assert revision == fixed_revision
+            assert recursive
+            return entries
+
+    monkeypatch.setitem(sys.modules, "modelscope.hub.api", SimpleNamespace(HubApi=FakeApi))
+    monkeypatch.setitem(sys.modules, "modelscope.utils.constant", SimpleNamespace(DEFAULT_MODEL_REVISION="master"))
+    requested: list[str] = []
+
+    def fake_ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str], revision: str) -> str:
+        """模拟下载真实文件，目录项由 SDK 忽略，缺失和截断按测试参数注入。"""
+        assert repo_id == "Owner/repo"
+        assert revision == fixed_revision
+        requested.extend(allow_patterns)
+        for name, content in payloads.items():
+            target = Path(local_dir) / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if name.endswith("model.safetensors"):
+                if weight_state == "missing":
+                    continue
+                if weight_state == "truncated":
+                    content = content[:-1]
+            target.write_bytes(content)
+        return local_dir
+
+    monkeypatch.setattr(models_download_utils, "ms_snapshot_download", fake_ms_snapshot_download)
+
+    if weight_state != "complete":
+        with pytest.raises(FileNotFoundError, match=r"missing or invalid: Layout/PP-DocLayoutV2/model\.safetensors$"):
+            repo.layout.ensure(source="modelscope")
+        assert not (repo.layout.local_path() / MODEL_COMPLETE_MARKER).exists()
+    else:
+        assert repo.layout.ensure(source="modelscope") == repo.layout.local_path()
+        assert json.loads((repo.layout.local_path() / MODEL_COMPLETE_MARKER).read_text())["files"] == {
+            name.removeprefix(f"{layout}/"): len(content) for name, content in payloads.items()
+        }
+    assert requested == list(payloads)
 
 
 def test_huggingface_snapshot_rejects_missing_expected_files(

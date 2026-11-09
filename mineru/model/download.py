@@ -4,8 +4,9 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import quote
 
 import requests
 from filelock import FileLock
@@ -17,6 +18,7 @@ from loguru import logger
 from ..config import get_config, get_config_source, update_config_file
 from ._download_manifest import (
     MODEL_COMPLETE_MARKER,
+    MODEL_FILES_MANIFEST,
     is_legacy_marker,
     is_payload_path,
     legacy_payload_missing,
@@ -133,20 +135,58 @@ ResolvedRemoteModelSource = Literal["huggingface", "modelscope"]
 ResolvedModelSource = Literal["huggingface", "modelscope", "local"]
 
 
-def ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str] | None = None) -> str:
+def ms_snapshot_download(repo_id: str, *, local_dir: str, revision: str, allow_patterns: list[str] | None = None) -> str:
     """仅在实际使用 ModelScope 时导入 SDK，避免 HF/本地路径触发其 Torch 探测。"""
     from modelscope import snapshot_download
 
-    return snapshot_download(repo_id, local_dir=local_dir, allow_patterns=allow_patterns)
+    return snapshot_download(repo_id, local_dir=local_dir, revision=revision, allow_patterns=allow_patterns)
 
 
-def ms_model_files(repo_id: str) -> dict[str, int]:
-    """按下载器默认版本读取 ModelScope 预期文件，仅在使用该来源时加载 SDK。"""
+def ms_model_revision(repo_id: str) -> str:
+    """把默认分支解析为固定 commit，保留 SDK 的自定义端点与已配置认证。"""
     from modelscope.hub.api import HubApi
     from modelscope.utils.constant import DEFAULT_MODEL_REVISION
 
-    files = HubApi().get_model_files(repo_id, revision=DEFAULT_MODEL_REVISION, recursive=True)
-    return {item["Path"]: item["Size"] for item in files if item.get("Type") != "tree"}
+    api = HubApi()
+    url = f"{api.endpoint.rstrip('/')}/api/v1/models/{quote(repo_id, safe='/')}/repo/files"
+    with requests.get(
+        url,
+        params={"Revision": DEFAULT_MODEL_REVISION, "Recursive": "False"},
+        headers=api.headers,
+        cookies=api.get_cookies(),
+        timeout=(5, 30),
+    ) as response:
+        response.raise_for_status()
+        value = response.json()
+    data = value.get("Data") if isinstance(value, dict) and value.get("Code") == 200 else None
+    commit = data.get("LatestCommitter") if isinstance(data, dict) else None
+    revision = (commit.get("Id") or commit.get("ShortId")) if isinstance(commit, dict) else None
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{7,64}", revision) is None:
+        raise ValueError(f"ModelScope did not return a fixed commit for {repo_id}.")
+    # 部分响应只给出短 commit；同次列表若含完整值则展开，否则保留 Git 支持的固定短 commit。
+    entries = data.get("Files")
+    full_revisions: set[str] = set()
+    for item in entries if isinstance(entries, list) else ():
+        full_revision = item.get("Revision") if isinstance(item, dict) else None
+        if (
+            isinstance(full_revision, str)
+            and re.fullmatch(r"[0-9a-f]{40,64}", full_revision)
+            and full_revision.startswith(revision)
+        ):
+            full_revisions.add(full_revision)
+    if len(full_revisions) > 1:
+        raise ValueError(f"ModelScope returned an ambiguous commit for {repo_id}.")
+    return next(iter(full_revisions)) if full_revisions else revision
+
+
+def ms_model_files(repo_id: str, *, revision: str) -> dict[str, int]:
+    """读取已固定 commit 的 ModelScope 文件清单，仅在使用该来源时加载 SDK。"""
+    from modelscope.hub.api import HubApi
+
+    files = HubApi().get_model_files(repo_id, revision=revision, recursive=True)
+    # 新版 SDK 的兼容接口不再返回 Type；递归清单中的父路径仍能确定目录，且不会误删零字节文件。
+    directories = {parent.as_posix() for item in files for parent in PurePosixPath(item["Path"]).parents}
+    return {item["Path"]: item["Size"] for item in files if item.get("Type") != "tree" and item["Path"] not in directories}
 
 
 @dataclass(frozen=True)
@@ -249,8 +289,10 @@ def _snapshot_download(model_source: ResolvedRemoteModelSource, repo: ModelRepo,
     if model_source == "huggingface":
         info = HfApi().model_info(repo_id, files_metadata=True)
         files = {item.rfilename: item.size for item in info.siblings or ()}
+        revision = info.sha
     else:
-        files = ms_model_files(repo_id)
+        revision = ms_model_revision(repo_id)
+        files = ms_model_files(repo_id, revision=revision)
     expected_files: dict[str, int] = {}
     for name in filter_repo_objects(files, allow_patterns=patterns):
         if not is_payload_path(name):
@@ -268,9 +310,9 @@ def _snapshot_download(model_source: ResolvedRemoteModelSource, repo: ModelRepo,
             target.unlink()
     requested_files = list(expected_files)
     if model_source == "huggingface":
-        hf_snapshot_download(repo_id, local_dir=str(local_dir), allow_patterns=requested_files, revision=info.sha)
+        hf_snapshot_download(repo_id, local_dir=str(local_dir), allow_patterns=requested_files, revision=revision)
     else:
-        ms_snapshot_download(repo_id, local_dir=str(local_dir), allow_patterns=requested_files)
+        ms_snapshot_download(repo_id, local_dir=str(local_dir), allow_patterns=requested_files, revision=revision)
     missing_files = missing_manifest_files(local_dir, expected_files)
     if missing_files:
         missing = ", ".join(missing_files)
@@ -318,6 +360,16 @@ def _model_path_missing(path: ModelPath) -> list[str]:
         local_path.relative_to(repo_root)
     except ValueError:
         return [path.relative_path]
+    # 单文件下载记录独立于目录完成标记，局部下载不能据此宣称整个目录已完整。
+    file_marker = repo_root / MODEL_FILES_MANIFEST
+    if file_marker.exists() or file_marker.is_symlink():
+        file_manifest = read_manifest(file_marker)
+        if file_manifest is None:
+            return [MODEL_FILES_MANIFEST]
+        selected_files = manifest_files_for_path(file_manifest, path.relative_path)
+        missing_files = missing_manifest_files(repo_root, selected_files)
+        if missing_files or path.relative_path in file_manifest:
+            return missing_files
     is_file = local_path.is_file()
     if local_path == repo_root and is_file:
         return [MODEL_COMPLETE_MARKER]
@@ -489,6 +541,26 @@ def _restore_directory_markers(
             write_manifest(marker, updated)
 
 
+def _record_downloaded_files(repo: ModelRepo, paths: Sequence[ModelPath], files: dict[str, int]) -> None:
+    """持久化单文件预期大小；完整目录刷新后由目录清单接管其覆盖的旧文件记录。"""
+    marker = repo.local_dir() / MODEL_FILES_MANIFEST
+    previous = read_manifest(marker)
+    if (marker.exists() or marker.is_symlink()) and previous is None:
+        if {path.relative_path for path in paths} != {path.relative_path for path in _repo_completion_paths(repo)}:
+            # 记录损坏时无法知道其他受管文件；不能仅确认一个文件就丢弃其余文件的校验约束。
+            raise ValueError(f"Invalid {marker}; run mineru-kit models download {repo.name} to rebuild file records.")
+    recorded = previous or {}
+    for path in paths:
+        for name in manifest_files_for_path(recorded, path.relative_path):
+            del recorded[name]
+        if path.relative_path in files:
+            recorded[path.relative_path] = files[path.relative_path]
+    if recorded:
+        write_manifest(marker, recorded)
+    else:
+        marker.unlink(missing_ok=True)
+
+
 def _raise_not_ready(repo: ModelRepo, result: ModelReadyResult) -> None:
     """离线校验失败时报告真实路径，并提示修复文件或完成标记。"""
     missing = ", ".join(result.missing_paths)
@@ -530,6 +602,7 @@ def download_model_repo(
         if not downloaded_result.ready:
             _raise_not_ready(repo, downloaded_result)
         _mark_directories_complete(completion_paths, files)
+        _record_downloaded_files(repo, completion_paths, files)
         _restore_directory_markers(repo, removed_markers, completion_paths, files)
         return downloaded_result.root
 
@@ -570,6 +643,7 @@ def download_model_files(
         if not downloaded_result.ready:
             _raise_not_ready(repo, downloaded_result)
         _mark_directories_complete(model_paths, files)
+        _record_downloaded_files(repo, model_paths, files)
         _restore_directory_markers(repo, removed_markers, model_paths, files)
         return downloaded_result.root
 
