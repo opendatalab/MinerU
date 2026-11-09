@@ -11,9 +11,10 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 MODEL_COMPLETE_MARKER = ".mineru_complete"
+MODEL_FILES_MANIFEST = ".mineru_files.json"
 _MANIFEST_VERSION = 1
 _PROVIDER_METADATA_DIR_NAMES = {".cache", "._____temp"}
-_PROVIDER_METADATA_FILE_NAMES = {MODEL_COMPLETE_MARKER, ".msc", ".mdl", ".mv"}
+_PROVIDER_METADATA_FILE_NAMES = {MODEL_COMPLETE_MARKER, MODEL_FILES_MANIFEST, ".msc", ".mdl", ".mv"}
 _WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pth", ".pt", ".onnx", ".gguf", ".pdiparams"}
 
 
@@ -166,6 +167,7 @@ def write_manifest(marker: Path, files: Mapping[str, int]) -> None:
 
 __all__ = [
     "MODEL_COMPLETE_MARKER",
+    "MODEL_FILES_MANIFEST",
     "is_legacy_marker",
     "is_payload_path",
     "legacy_payload_missing",

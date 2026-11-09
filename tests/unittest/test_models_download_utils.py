@@ -444,6 +444,8 @@ def test_modelscope_snapshot_excludes_directories_and_checks_real_files(
     repo = ModelRepo(name="repo", repos={"modelscope": "Owner/repo"}, paths={"layout": "Layout/PP-DocLayoutV2"})
     monkeypatch.setattr(models_download_utils.get_config().model, "base_dir", str(tmp_path / "models"))
     layout = "Layout/PP-DocLayoutV2"
+    fixed_revision = "a" * 40
+    monkeypatch.setattr(models_download_utils, "ms_model_revision", lambda repo_id: fixed_revision)
     payloads = {f"{layout}/config.json": b"{}", f"{layout}/model.safetensors": b"weights", f"{layout}/empty.txt": b""}
     directories = ["Layout", layout, "Unused"]
     # 目录项故意排在文件之后，确保过滤逻辑不依赖 SDK 返回顺序。
@@ -458,7 +460,7 @@ def test_modelscope_snapshot_excludes_directories_and_checks_real_files(
         def get_model_files(self, repo_id: str, *, revision: str, recursive: bool) -> list[dict[str, Any]]:
             """返回真实接口形状的递归清单，覆盖不再包含 Type 的新版 SDK。"""
             assert repo_id == "Owner/repo"
-            assert revision == "master"
+            assert revision == fixed_revision
             assert recursive
             return entries
 
@@ -466,9 +468,10 @@ def test_modelscope_snapshot_excludes_directories_and_checks_real_files(
     monkeypatch.setitem(sys.modules, "modelscope.utils.constant", SimpleNamespace(DEFAULT_MODEL_REVISION="master"))
     requested: list[str] = []
 
-    def fake_ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str]) -> str:
+    def fake_ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str], revision: str) -> str:
         """模拟下载真实文件，目录项由 SDK 忽略，缺失和截断按测试参数注入。"""
         assert repo_id == "Owner/repo"
+        assert revision == fixed_revision
         requested.extend(allow_patterns)
         for name, content in payloads.items():
             target = Path(local_dir) / name

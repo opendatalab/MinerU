@@ -466,6 +466,7 @@ def test_provider_repair_replaces_wrong_size_cached_payload(
     )
     monkeypatch.setattr(download, "HfApi", Mock(return_value=api))
     monkeypatch.setattr(download, "ms_model_files", Mock(return_value=expected))
+    monkeypatch.setattr(download, "ms_model_revision", Mock(return_value="a" * 40))
 
     def snapshot(repo_id: str, **kwargs: object) -> str:
         """模拟增量下载只补齐缺失文件，保留已验证的配置。"""
@@ -500,6 +501,7 @@ def test_provider_manifest_checks_expected_payload_before_marking_complete(
     )
     monkeypatch.setattr(download, "HfApi", Mock(return_value=api))
     monkeypatch.setattr(download, "ms_model_files", Mock(return_value=expected))
+    monkeypatch.setattr(download, "ms_model_revision", Mock(return_value="a" * 40))
 
     def snapshot(repo_id: str, **kwargs: object) -> str:
         """模拟 SDK 返回成功但权重可能缺失或未完整落盘。"""
