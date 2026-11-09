@@ -27,7 +27,7 @@ from mineru.types import TIERS
 @pytest.fixture(autouse=True)
 def onnx_recommendation_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """本文件验证 ONNX 既有推荐规则，隔离宿主可能自动选择的 Torch 后端。"""
-    from mineru.model.runtime import gpu_memory, llama_probe
+    from mineru.model.runtime import llama_probe
     import subprocess
 
     forbidden = Mock(side_effect=AssertionError("recommendation must not probe llama devices"))
@@ -46,11 +46,7 @@ def onnx_recommendation_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
     monkeypatch.setattr(get_config().model, "onnx_device", "auto")
     monkeypatch.setattr(get_config().model.vlm, "engine", "llama-cpp")
     monkeypatch.setattr(device_state, "_states", {})
-    memory_probe = Mock(side_effect=AssertionError("recommendation must not query GPU memory"))
-    monkeypatch.setattr(gpu_memory, "native_gpu_memory", memory_probe)
-    monkeypatch.setattr(gpu_memory, "torch_gpu_memory", memory_probe)
     yield
-    memory_probe.assert_not_called()
     forbidden.assert_not_called()
 
 
@@ -110,7 +106,10 @@ def evidence_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _adapter() -> GpuAdapter:
     """构造具有稳定物理身份的集显。"""
-    return with_gpu_classification(GpuAdapter(0, "physical-id", "integrated", 0x8086, 0x7D51, 0), classify_d3d12_gpu(True))
+    return with_gpu_classification(
+        GpuAdapter(0, "physical-id", "integrated", 0x8086, 0x7D51, 0, dedicated_memory_bytes=8 * 1024**3),
+        classify_d3d12_gpu(True),
+    )
 
 
 def _measurement(**overrides: Any) -> dict[str, Any]:
@@ -230,7 +229,7 @@ def startup_calibration(
     monkeypatch.setattr(
         vulkan,
         "enumerate_vulkan_devices",
-        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "test"), classify_vulkan_gpu(1)),),
+        lambda **_: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "test"), classify_vulkan_gpu(1)),),
     )
     monkeypatch.setattr(recommendation, "effective_cpu_count", lambda: 8)
     monkeypatch.setattr(device_state, "_states", {})
@@ -350,7 +349,11 @@ def test_low_cpu_advanced_recommendation_still_selects_device(
     monkeypatch.setattr(
         vulkan,
         "enumerate_vulkan_devices",
-        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "test"), classify_vulkan_gpu(2)),),
+        lambda **_: (
+            with_gpu_classification(
+                vulkan.VulkanDevice(0x8086, 0x7D51, "test", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(2)
+            ),
+        ),
     )
     report = recommendation.recommend_tiers()
     assert frozenset(report.pdf_image_tiers) == frozenset(TIERS)
@@ -564,26 +567,22 @@ def test_cpu_count_failure_does_not_disable_selected_gpu(
     configured_gpu[1].assert_not_called()
 
 
-@pytest.mark.parametrize("amount", [None, 1024**3, "error"])
-def test_onnx_recommendation_without_torch_or_memory_queries(
-    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch, amount: int | str | None
+def test_onnx_configured_gpu_recommendation_without_torch(
+    configured_gpu: tuple[Path, Mock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """未安装 Torch 时自动选择 ONNX，显存偏小、未知或查询异常均不参与推荐。"""
+    """未安装 Torch 时采用已配置的 ONNX GPU，不增加第二次设备探测。"""
     from mineru.config import get_config
-    from mineru.model.runtime import device, gpu_memory
+    from mineru.model.runtime import device
 
     monkeypatch.setattr(get_config().model, "small_backend", "auto")
     monkeypatch.setitem(sys.modules, "torch", None)
     monkeypatch.setitem(sys.modules, "torchvision", None)
     torch_probe = Mock(side_effect=AssertionError("ONNX recommendation must not probe Torch"))
     monkeypatch.setattr(device, "resolve_torch_device", torch_probe)
-    memory = Mock(return_value=amount, side_effect=RuntimeError("memory unavailable") if amount == "error" else None)
-    monkeypatch.setattr(gpu_memory, "native_gpu_memory", memory)
     report = recommendation.recommend_tiers()
     assert report.small_backend == "onnx" and report.device.endswith(":gpu")
     assert report.pdf_image_tiers == TIERS and report.gpu_memory is None
     assert not report.warnings
-    memory.assert_not_called()
     torch_probe.assert_not_called()
     configured_gpu[1].assert_not_called()
 
@@ -600,6 +599,7 @@ def test_shared_classification_preserves_existing_calibration_fingerprint(eviden
         else {"vendor_id", "device_id", "metadata", "vulkan_device"}
     )
     assert cache.calibrated_gpu_is_faster(replace(adapter, kind="unknown", kind_source="new_probe"), 0.8)
+    assert cache.calibrated_gpu_is_faster(replace(adapter, dedicated_memory_bytes=4 * 1024**3), 0.8)
     assert not cache.calibrated_gpu_is_faster(replace(adapter, device_id=1), 0.8)
     if backend == "webgpu":
         assert not cache.calibrated_gpu_is_faster(replace(adapter, vulkan_device=(0x8086, 0x7D51)), 0.8)

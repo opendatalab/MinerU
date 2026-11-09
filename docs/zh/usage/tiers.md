@@ -66,7 +66,7 @@ mineru-kit hardware info --json
 
 detect 与 API 自动启动共用推荐逻辑，可能执行适用的 ONNX 校准；info 只读采集硬件、已安装运行时、有效配置和校准记录，不测速、不下载权重、不写配置。
 
-API/WebUI 的自动 tier 采用小模型后端的设备结论：GPU 开放全部四档；CPU 可用逻辑核至少 12 时开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。自动推荐不查询显存容量。开放 Standard 时默认请求 Standard，CPU 不自动开放 Advanced。显式启动上限跳过自动推荐。
+API/WebUI 的自动 tier 采用小模型后端的设备结论：GPU 开放全部四档；CPU 可用逻辑核至少 12 时开放到 Standard，4–11 核开放到 Basic，不足 4 核只开放 Flash。自动推荐不增加独立显存检查；Windows/Linux 的 ONNX 自动选型仅在独显总显存四舍五入后至少为 6 GB 时直接选择 GPU，不足或读取失败直接选择 CPU。同型号多卡取最小容量，GB 按 `1024³` 字节换算；已配置的 `cpu/gpu` 和 Torch 选型保持原有行为。开放 Standard 时默认请求 Standard，CPU 不自动开放 Advanced。显式启动上限跳过自动推荐。
 
 ## 资源与平台边界
 

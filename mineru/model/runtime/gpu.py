@@ -53,6 +53,12 @@ class GpuIdentity:
 _Gpu = TypeVar("_Gpu", bound=GpuClassification)
 
 
+def minimum_gpu_memory_bytes(capacities: Sequence[int | None]) -> int | None:
+    """同型号多卡采用最小有效总容量；实际读取失败时保留未知，不累加显存。"""
+    valid = [value for value in capacities if type(value) is int and value > 0]
+    return min(valid) if valid and len(valid) == len(capacities) else None
+
+
 def with_gpu_classification(device: _Gpu, classification: GpuClassification) -> _Gpu:
     """替换统一分类字段，保留后端的设备索引、注册描述和绑定约束。"""
     return replace(
@@ -178,5 +184,6 @@ __all__ = [
     "gpu_kind_rank",
     "is_discrete_gpu",
     "match_gpu_identities",
+    "minimum_gpu_memory_bytes",
     "with_gpu_classification",
 ]

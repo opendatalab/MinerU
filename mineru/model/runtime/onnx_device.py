@@ -60,12 +60,21 @@ def inspect_onnx_candidate(
         return OnnxSelection(reason="webgpu_architecture_policy", backend=backend)
     if adapter is None:
         return OnnxSelection(reason="no_hardware_gpu")
-    # Linux 只有唯一确认的 Vulkan 独显且会话带物理约束，才与 DML 独显一样免校准。
+    # Linux 需由 Vulkan 确认独显并约束到相同型号，容量达标后才免校准。
     discrete = is_discrete_gpu(adapter) and (
         not isinstance(adapter, WebGPUDevice) or adapter.vulkan_device == (adapter.vendor_id, adapter.device_id)
     )
-    if requested == "gpu" or discrete:
-        return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu", backend)
+    if requested == "gpu":
+        return OnnxSelection("gpu", adapter, "configured_gpu", backend)
+    if discrete:
+        memory = adapter.dedicated_memory_bytes
+        if type(memory) is not int or memory <= 0:
+            return OnnxSelection(reason="discrete_gpu_memory_unavailable", backend=backend)
+        # GB 沿用 1024**3 字节口径，使用整数运算实现四舍五入。
+        rounded_gb = (memory + 1024**3 // 2) // 1024**3
+        if rounded_gb < 6:
+            return OnnxSelection(reason="discrete_gpu_memory_insufficient", backend=backend)
+        return OnnxSelection("gpu", adapter, "discrete_gpu", backend)
     if ONNX_GPU_TIME_RATIO_THRESHOLDS[backend] is None:
         return OnnxSelection(reason="calibration_pending")
     return OnnxSelection(reason="calibration_required", backend=backend)
@@ -86,7 +95,7 @@ def _select(
     if backend == "webgpu":
         devices = discover_webgpu_devices()
         has_devices = bool(devices)
-        adapter = select_webgpu_device(devices)
+        adapter = select_webgpu_device(devices, check_memory=True) if requested == "auto" else select_webgpu_device(devices)
         if devices and adapter is None:
             logger.info("Linux WebGPU device policy selected CPU; no eligible visible GPU")
     else:
@@ -97,6 +106,14 @@ def _select(
             return inspect_onnx_candidate(requested, backend=backend, provider_available=False), False
         adapter = preferred_gpu(discover_gpus(classify=requested == "auto"))
     selection = inspect_onnx_candidate(requested, backend=backend, adapter=adapter, has_devices=has_devices)
+    if selection.reason in {"discrete_gpu_memory_unavailable", "discrete_gpu_memory_insufficient"}:
+        logger.warning(
+            "ONNX {} discrete GPU total memory {} bytes does not meet the rounded 6 GB requirement; "
+            "using CPU without calibration ({})",
+            backend,
+            adapter.dedicated_memory_bytes,
+            selection.reason,
+        )
     if selection.reason != "calibration_required":
         if selection.reason == "calibration_pending":
             logger.warning("ONNX {} threshold has not completed calibration; using CPU without saving", backend)
