@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal
 
 import requests
@@ -146,7 +146,9 @@ def ms_model_files(repo_id: str) -> dict[str, int]:
     from modelscope.utils.constant import DEFAULT_MODEL_REVISION
 
     files = HubApi().get_model_files(repo_id, revision=DEFAULT_MODEL_REVISION, recursive=True)
-    return {item["Path"]: item["Size"] for item in files if item.get("Type") != "tree"}
+    # 新版 SDK 的兼容接口不再返回 Type；递归清单中的父路径仍能确定目录，且不会误删零字节文件。
+    directories = {parent.as_posix() for item in files for parent in PurePosixPath(item["Path"]).parents}
+    return {item["Path"]: item["Size"] for item in files if item.get("Type") != "tree" and item["Path"] not in directories}
 
 
 @dataclass(frozen=True)
