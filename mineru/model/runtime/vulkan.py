@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """No-compute Vulkan enumeration and scoped physical-device restrictions for Dawn.
 
-Uses Vulkan 1.0 properties and Vulkan 1.1 identity/budget queries.
+Uses Vulkan 1.0 memory properties and Vulkan 1.1 identity queries.
 No logical device, shader or GPU work is created.
 Callers must serialize scopes with the WebGPU runtime lock.
 """
@@ -32,7 +32,6 @@ class VulkanDevice(GpuClassification):
     name: str
     index: int = -1
     dedicated_memory_bytes: int | None = None
-    memory_budget_bytes: int | None = None
     memory_error: str | None = None
     luid: str | None = None
 
@@ -131,52 +130,14 @@ class _MemoryProperties(ct.Structure):
     ]
 
 
-class _MemoryProperties2(ct.Structure):
-    _fields_ = [("sType", ct.c_uint32), ("pNext", ct.c_void_p), ("memory", _MemoryProperties)]
-
-
-class _MemoryBudget(ct.Structure):
-    _fields_ = [
-        ("sType", ct.c_uint32),
-        ("pNext", ct.c_void_p),
-        ("budget", ct.c_uint64 * 16),
-        ("usage", ct.c_uint64 * 16),
-    ]
-
-
-class _ExtensionProperties(ct.Structure):
-    _fields_ = [("name", ct.c_char * 256), ("version", ct.c_uint32)]
-
-
-def _device_memory(library: Any, handle: ct.c_void_p, *, discrete: bool) -> tuple[int | None, int | None]:
-    """按唯一设备的本地堆读取容量和预算；共享内存无预算扩展时保持未知。"""
+def _device_memory(library: Any, handle: ct.c_void_p) -> int | None:
+    """读取独显本地堆总容量，每个物理堆只计一次，不查询预算或共享内存。"""
     properties = library.vkGetPhysicalDeviceMemoryProperties
     properties.argtypes, properties.restype = [ct.c_void_p, ct.POINTER(_MemoryProperties)], None
     memory = _MemoryProperties()
     properties(handle, ct.byref(memory))
     local = [index for index in range(min(memory.heap_count, 16)) if memory.heaps[index].flags & 1]
-    total = sum(memory.heaps[index].size for index in local) or None
-    if discrete:
-        return total, None
-    extensions = library.vkEnumerateDeviceExtensionProperties
-    extensions.argtypes = [ct.c_void_p, ct.c_char_p, ct.POINTER(ct.c_uint32), ct.POINTER(_ExtensionProperties)]
-    extensions.restype = ct.c_int32
-    count = ct.c_uint32()
-    _check(extensions(handle, None, ct.byref(count), None), "count memory extensions")
-    rows = (_ExtensionProperties * count.value)()
-    _check(extensions(handle, None, ct.byref(count), rows), "read memory extensions")
-    if not any(row.name == b"VK_EXT_memory_budget" for row in rows):
-        return None, None
-    budget = _MemoryBudget(sType=1000237000)
-    info = _MemoryProperties2(sType=1000059006, pNext=ct.cast(ct.pointer(budget), ct.c_void_p))
-    properties2 = library.vkGetPhysicalDeviceMemoryProperties2
-    properties2.argtypes, properties2.restype = [ct.c_void_p, ct.POINTER(_MemoryProperties2)], None
-    properties2(handle, ct.byref(info))
-    # 预算为进程可用上限，不减去当前用量；每个物理堆只计一次。
-    local = [index for index in range(min(info.memory.heap_count, 16)) if info.memory.heaps[index].flags & 1]
-    if not local or any(budget.budget[index] == 0 for index in local):
-        return None, None
-    return None, sum(min(budget.budget[index], info.memory.heaps[index].size) for index in local)
+    return sum(memory.heaps[index].size for index in local) or None
 
 
 def _check(result: int, operation: str) -> None:
@@ -185,7 +146,7 @@ def _check(result: int, operation: str) -> None:
 
 
 def enumerate_vulkan_devices(*, include_memory: bool = False) -> tuple[VulkanDevice, ...]:
-    """遵守 ICD 和设备过滤枚举 GPU；仅推荐容量时额外读取本地堆或共享预算。"""
+    """遵守 ICD 和设备过滤枚举 GPU；按需只为独显读取本地堆总容量。"""
     library = ct.WinDLL("vulkan-1.dll") if sys.platform == "win32" else ct.CDLL("libvulkan.so.1")
     create = library.vkCreateInstance
     create.argtypes = [ct.POINTER(_InstanceCreateInfo), ct.c_void_p, ct.POINTER(ct.c_void_p)]
@@ -218,10 +179,10 @@ def enumerate_vulkan_devices(*, include_memory: bool = False) -> tuple[VulkanDev
                 properties(handle, ct.byref(storage))
                 value = storage.prefix
                 if value.deviceType in (0, 1, 2, 3):  # 保留未知原生类型，由运行后端过滤可用性；排除软件 CPU。
-                    total, budget, memory_error = None, None, None
-                    if include_memory:
+                    total, memory_error = None, None
+                    if include_memory and value.deviceType == 2:
                         try:
-                            total, budget = _device_memory(library, handle, discrete=value.deviceType == 2)
+                            total = _device_memory(library, handle)
                         except Exception as error:
                             memory_error = str(error)
                     result.append(
@@ -232,7 +193,6 @@ def enumerate_vulkan_devices(*, include_memory: bool = False) -> tuple[VulkanDev
                                 value.deviceName.decode("utf-8", errors="replace"),
                                 index,
                                 total,
-                                budget,
                                 memory_error,
                                 luid=_device_luid(library, handle) if sys.platform == "win32" else None,
                             ),

@@ -15,7 +15,7 @@ mineru-kit hardware info --json > hardware-info.json
 
 ## 自动推荐
 
-命令与 API、WebUI 的自动启动共享结构化推荐结果。先解析有效小模型后端，再直接采用其 GPU/CPU 设备结论，不查询显存容量：
+命令与 API、WebUI 的自动启动共享结构化推荐结果。先解析有效小模型后端，再直接采用其 GPU/CPU 设备结论，不增加独立显存查询：
 
 | 设备结论 | 进程可用逻辑核数 | PDF/图片开放档位 | 请求默认档位 |
 |----------|------------------|------------------|--------------|
@@ -28,7 +28,7 @@ CPU 计数沿用进程亲和性和 Linux cgroup 配额限制。读取失败回�
 
 Torch（包括 `small_backend=auto` 最终选择 Torch）使用经过可用性验证的加速设备结论，包括 CUDA/ROCm、MPS、XPU 等。显式 CPU、设备不可用或探测失败时按 CPU 规则推荐，并保留原因与警告。该分支不调用 ONNX 选型、不下载 OCR 校准权重，也不修改 ONNX 配置或校准记录。
 
-统一 `resolve_runtime_device()` 在 ONNX 分支的所有 CPU 核数下完成选型，复用进程快照、兼容策略、显式配置和校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 唯一识别并配置物理绑定的独显，保留免 OCR 校准路径。`onnx_device=auto` 下需要测速的候选沿用 0.8 阈值；首次可能准备或下载 OCR rec 模型。下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定时使用本次 CPU 结果推荐。
+统一 `resolve_runtime_device()` 在 ONNX 分支的所有 CPU 核数下完成选型，复用进程快照、兼容策略、显式配置和校准。Windows 确认的独显，以及 Linux 通过兼容检查、由 Vulkan 确认并限制到相同型号的独显，在 auto 下总显存四舍五入后至少 6 GB 才保留免 OCR 校准路径；不足或未知直接 CPU，不下载校准模型、不尝试集显或校准，且不写回配置。同型号多张独显采用最小总容量，GB 按 `1024**3` 字节换算。显式或已保存的 `gpu` 不增加容量检查。`onnx_device=auto` 下需要测速的候选沿用 0.8 阈值；首次可能准备或下载 OCR rec 模型。下载和派生图准备不计入 15 秒校准 worker 超时。校准失败、超时或不稳定时使用本次 CPU 结果推荐。
 
 `onnx_device=gpu` 无论来自用户配置还是先前自动选型，都不强制测速。实际选中 GPU 就开放全部四档；校准记录缺失、损坏、过期或记录 GPU 较慢均不额外阻止开放。此时推荐原因是 `configured_gpu`，校准状态为 `status=skipped, reason=configured_gpu`。记录摘要仅供诊断，读取失败附带警告，不改变设备和档位结论。`onnx_device=cpu` 及不受支持平台的 ONNX CPU 回退均遵循 CPU 规则；ONNX 分支不额外探测 Apple Metal。
 
@@ -64,7 +64,7 @@ Windows DXGI 和 Linux Vulkan 的原生库存用于补充“System GPUs”，不
 
 未知值为 JSON `null`，文本显示“unknown”。例如 Apple Silicon 通常不报告可可靠读取的 CPU 主频，统一内存也不作为独立显存。系统或容器限制导致库存不完整时保留错误说明；不从型号名称猜测设备类型或频率。
 
-独立显存采集能力和 Windows PCI 身份修复继续保留，其结果不参与自动 tier。Windows 原生查询不依赖 Torch：DXGI 库存通过 `D3DKMTOpenAdapterFromLuid` / `D3DKMTQueryAdapterInfo(KMTQAITYPE_ADAPTERADDRESS)` 补充物理 PCI 位置，内存仍由对应适配器的 DXGI 接口读取。身份匹配优先使用 LUID 和已知 PCI 坐标，不猜测缺失字段；查询失败或多个同等匹配保留未知。读取预算成功不代表模型推理已验证。
+独立显存采集能力和 Windows PCI 诊断身份继续保留。自动 tier 不独立查询显存；ONNX auto 的独显容量检查在设备发现和选型时完成。Windows 原生查询不依赖 Torch：DXGI 库存通过 `D3DKMTOpenAdapterFromLuid` / `D3DKMTQueryAdapterInfo(KMTQAITYPE_ADAPTERADDRESS)` 补充物理 PCI 位置，内存仍由对应适配器的 DXGI 接口读取。身份匹配优先使用 LUID 和已知 PCI 坐标，不猜测缺失字段；查询失败或多个同等匹配保留未知。总容量或型号分组通过检查不代表模型推理已验证。
 
 配置报告使用明确白名单，不输出认证信息、完整远程服务地址或整个环境变量集合。文本隐藏解释器、模块和软件安装路径，保留配置文件及校准记录路径；JSON 中的完整本地路径仍可用于确认解释器和实际加载位置。
 

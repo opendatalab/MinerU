@@ -636,7 +636,7 @@ def test_onnx_info_probe_reuses_policy_without_calibrating(
             get_available_providers=lambda: ["DmlExecutionProvider"] if provider else ["CPUExecutionProvider"],
         ),
     )
-    gpu = windows_gpu.GpuAdapter(0, "luid-0", "test", 0x10DE, 1, 0, kind=kind)
+    gpu = windows_gpu.GpuAdapter(0, "luid-0", "test", 0x10DE, 1, 0, kind=kind, dedicated_memory_bytes=8 * 1024**3)
     discovery = Mock(return_value=(gpu,))
     monkeypatch.setattr(windows_gpu, "discover_gpus", discovery)
     forbidden = Mock(side_effect=AssertionError("info cannot calibrate, download or save"))

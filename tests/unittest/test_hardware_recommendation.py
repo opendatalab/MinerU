@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from mineru.config import VlmConfig, get_config
 from mineru.kit.commands import hardware as hardware_cmd
 from mineru.kit.main import app as kit_app
-from mineru.model.runtime import device, gpu_memory, llama_device, onnx_calibration_cache, onnx_device, tier_recommendation
+from mineru.model.runtime import device, llama_device, onnx_calibration_cache, onnx_device, tier_recommendation
 from mineru.parser import api_server
 from mineru.types import TIERS
 
@@ -34,8 +34,6 @@ def torch_environment(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(onnx_device, "resolve_onnx_device", forbidden)
     monkeypatch.setattr(onnx_calibration_cache, "save_calibration_record", forbidden)
     monkeypatch.setattr(onnx_calibration_cache, "invalidate_calibration_record", forbidden)
-    monkeypatch.setattr(gpu_memory, "native_gpu_memory", forbidden)
-    monkeypatch.setattr(gpu_memory, "torch_gpu_memory", forbidden)
     return forbidden
 
 
