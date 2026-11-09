@@ -186,11 +186,19 @@ class HealthFeatures(BaseModel):
     sources: list[Literal["upload", "url"]] = Field(default_factory=lambda: ["upload", "url"])
 
 
+class HealthRuntime(BaseModel):
+    """只展示服务进程已确定的默认模式，不代表每个模型的实际 provider。"""
+
+    model_config = _PYDANTIC_CONFIG
+    device: Literal["cpu", "gpu"]
+
+
 class HealthResponse(BaseModel):
     model_config = _PYDANTIC_CONFIG
     status: str = "ok"
     version: str
     features: HealthFeatures = Field(default_factory=HealthFeatures)
+    runtime: HealthRuntime | None = None
 
 
 # ── Models API ───────────────────────────────────────────────────────
@@ -1368,16 +1376,21 @@ def _require_model_preload_ready(request: Request) -> None:
 @_router.get(
     "/health",
     response_model=HealthResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_200_OK,
     responses={503: {"model": ErrorResponse}},
     tags=["Health"],
 )
 async def get_health(request: Request) -> HealthResponse:
-    """Health check endpoint."""
+    """只读健康状态与已发布设备快照，不在请求中触发选型或模型初始化。"""
+    from ..model.runtime.device_state import cached_runtime_device
+
     _require_model_preload_ready(request)
+    runtime = cached_runtime_device()
     return HealthResponse(
         version=__version__,
         features=HealthFeatures(),
+        runtime=HealthRuntime(device=runtime.device) if runtime is not None else None,
     )
 
 

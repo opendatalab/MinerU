@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
 import os
 from typing import Literal
+
+from .device_types import TorchDeviceSelection
 
 
 # 通过 getattr(torch, name) 探测可用性的附加加速后端，按优先级排列；xpu 为 Intel GPU 原生后端。
@@ -52,20 +53,6 @@ def get_device() -> str:
 
 
 TORCH_REQUIRED_MODULES: tuple[str, ...] = ("torch", "torchvision", "transformers", "accelerate", "safetensors")
-
-
-@dataclass(frozen=True)
-class TorchDeviceSelection:
-    """记录经过可用性检查的 Torch 设备，不包含模型性能结论。"""
-
-    device: str = "cpu"
-    reason: str = "torch_cpu"
-    warning: str | None = None
-
-    @property
-    def accelerated(self) -> bool:
-        """只有验证成功的非 CPU 设备才允许按加速设备推荐。"""
-        return self.device.split(":", 1)[0] != "cpu"
 
 
 def resolve_torch_device() -> TorchDeviceSelection:

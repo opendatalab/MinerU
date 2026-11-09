@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from mineru.model.runtime import device_state
 import pytest
 
 from mineru.model.runtime.gpu import classify_d3d12_gpu, classify_vulkan_gpu, with_gpu_classification
@@ -111,17 +112,18 @@ def test_blocked_policy_never_downloads_measures_or_saves(
     monkeypatch.setattr(settings.get_config().model, "onnx_device", requested)
     monkeypatch.setattr(settings, "get_config_file_path", lambda: str(path))
     monkeypatch.setattr(settings, "get_config_source", lambda _: "file")
-    monkeypatch.setattr(onnx_device, "_selections", {})
+    monkeypatch.setattr(device_state, "_states", {})
+    monkeypatch.setattr(settings.get_config().model, "small_backend", "onnx")
     monkeypatch.setattr(onnx_device, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(onnx_device, "discover_webgpu_devices", lambda: (webgpu.WebGPUDevice(0x8086, device_id),))
     download = Mock(side_effect=AssertionError("download"))
     monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=download)))
     measure = Mock(side_effect=AssertionError("calibration"))
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
-    selected = onnx_device.resolve_onnx_device()
+    selected = device_state.resolve_runtime_device().selection
     assert selected.device == "cpu" and selected.reason == "webgpu_architecture_policy"
     assert path.read_bytes() == before
-    assert onnx_device.resolve_onnx_device() is selected
+    assert device_state.resolve_runtime_device().selection is selected
     download.assert_not_called()
     measure.assert_not_called()
 

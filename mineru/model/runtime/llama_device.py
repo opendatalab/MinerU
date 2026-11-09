@@ -13,6 +13,8 @@ from typing import Literal
 
 from loguru import logger
 
+from .device_state import resolve_runtime_device
+from .device_types import OnnxSelection, TorchDeviceSelection
 from .intel_gpu import INTEL_VENDOR_ID, intel_architecture
 from .vulkan import vulkan_environment_lock
 
@@ -71,21 +73,18 @@ def _resolve(*, n_gpu_layers: int | None, device_names: tuple[str, ...] | None, 
     if requested != "auto" or n_gpu_layers is not None or device_names is not None:
         return LlamaSelection(reason="explicit_gpu")
 
-    from .device import resolve_small_model_backend, resolve_torch_device
-
-    if resolve_small_model_backend() == "torch":
-        choice = resolve_torch_device()
+    runtime = resolve_runtime_device(allow_download=allow_download)
+    choice = runtime.selection
+    if isinstance(choice, TorchDeviceSelection):
         if choice.warning:
             logger.warning("llama.cpp follows Torch device decision: {}", choice.warning)
-        return LlamaSelection("gpu" if choice.accelerated else "cpu", reason=choice.reason)
+        return LlamaSelection(runtime.device, reason=choice.reason)
 
-    from .onnx_device import resolve_onnx_device
-
-    choice = resolve_onnx_device() if allow_download else resolve_onnx_device(allow_download=False)
+    assert isinstance(choice, OnnxSelection)
     adapter = choice.adapter
     environment = ()
     if (
-        choice.device == "gpu"
+        not runtime.is_cpu
         and sys.platform == "linux"
         and choice.backend == "webgpu"
         and adapter is not None
@@ -94,7 +93,7 @@ def _resolve(*, n_gpu_layers: int | None, device_names: tuple[str, ...] | None, 
         and SERIALIZE_ENV not in os.environ
     ):
         environment = ((SERIALIZE_ENV, "1"),)
-    return LlamaSelection(choice.device, reason=f"onnx_{choice.reason}", environment=environment)
+    return LlamaSelection(runtime.device, reason=f"onnx_{choice.reason}", environment=environment)
 
 
 @contextmanager

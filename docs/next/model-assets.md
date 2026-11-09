@@ -30,11 +30,11 @@ mineru-kit parse input.pdf --tier basic -o output.md
 ```
 
 `MINERU_MODEL_BASE_DIR` 可指定独立模型根目录。`--small-backend`、`--vlm-engine` 只覆盖当前模型管理命令；解析和服务运行时读取环境变量或配置文件。
-Layout、OCR-det/rec、公式主批次和 UNet 通过 `model.onnx_device=auto/cpu/gpu` 共享 Windows DirectML／Linux WebGPU 设备选择。
+Layout、OCR-det/rec、公式主批次和 UNet 通过统一进程快照共享 Windows DirectML／Linux WebGPU 设备选择；`model.onnx_device=auto/cpu/gpu` 仅作为 ONNX 选型输入和持久化偏好。
 环境变量为 `MINERU_MODEL_ONNX_DEVICE`。自动模式复用六图 rec 校准与输出检查；Linux 还执行 Intel 架构策略。
 其他 ONNX 会话及规定的公式尾批次保持 CPU 路线，具体以日志中的实际 provider 为准。
 CPU 算子线程读取 `MINERU_INTRA_OP_NUM_THREADS` 和 `MINERU_INTER_OP_NUM_THREADS`，默认 4/1。
-llama.cpp 自动模式直接复用小模型后端的 CPU/GPU 结论：ONNX 使用现有 DirectML/WebGPU 选型与缓存，
+llama.cpp 自动模式直接复用小模型后端的 CPU/GPU 结论：ONNX 使用进程快照中的 DirectML/WebGPU 具体选型，
 Torch 使用已验证的加速器可用性。兼容独显优先和集显 OCR 校准由 ONNX 统一处理；不增加 VLM 测速。
 MinerU 不再枚举 ggml、匹配跨后端身份、过滤显卡或重映射设备名；GPU 模式下由原生引擎选择具体显卡，
 不要求与 ONNX 同卡。显式后端、GPU 层数、server 设备和投影参数优先，支持主模型 CPU、投影 GPU 的组合。

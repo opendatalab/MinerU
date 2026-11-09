@@ -12,6 +12,16 @@ Python Server 的 features 包含 `webhook=false`、`task_output_formats=["defau
 `sources=["upload","url"]`。Router 从健康 worker 合并格式和输入类型，没有健康 worker 时返回 503。
 健康检查不执行完整推理；成功不代表任意输入必定解析成功。
 
+Python Server 已完成设备选型时，附加 `runtime: {"device": "cpu"}` 或
+`runtime: {"device": "gpu"}`。该值来自不可变进程快照，表示默认本地推理模式；
+gpu 包含 MPS、XPU、NPU 等非 CPU 加速器，不代表每个模型、显式覆盖或远程 VLM 的实际设备。
+模型局部 CPU 回退不会改写该模式。
+
+尚未选型时省略 `runtime`，不填充 CPU 占位。显式 tier 的惰性启动可能没有此字段；
+自动 tier 在启动时完成选型后即能返回。health 请求本身不探测设备、下载模型或执行校准。
+客户端应接受字段缺失，并将其解释为未提供设备信息；旧服务同样可能缺少该字段。
+Router 不返回单一 `runtime.device`，因为其健康 worker 可能混合 CPU/GPU，Router 自身设备也不能代表 worker。
+
 模型预加载失败使用 `model_preload_dependency_missing/model_preload_files_missing/model_preload_device_unavailable/model_preload_failed` 等错误码。
 
 ## GET `/v1/models` 与 `/v1/models/{model}`

@@ -285,7 +285,10 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
     manager = _RecordingAtomManager()
     context.device = "cpu"
     context.small_backend = "onnx"
+    from mineru.model.runtime.device_types import OnnxSelection, RuntimeDevice
+
     context._resource = None
+    context._device_decision = RuntimeDevice(OnnxSelection())
     context.atom_model_manager = manager  # type: ignore[assignment]
 
     with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):

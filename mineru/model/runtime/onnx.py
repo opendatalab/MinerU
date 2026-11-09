@@ -11,7 +11,9 @@ from typing import Any
 import onnxruntime as ort
 from loguru import logger
 
-from .onnx_device import OnnxSelection, confirm_gpu_session, metacommands_enabled, resolve_onnx_device
+from .onnx_device import confirm_gpu_session, metacommands_enabled
+from .device_types import OnnxSelection
+from .device_state import resolve_model_backend, resolve_model_device
 from .windows_gpu import GpuAdapter
 from .webgpu import WEBGPU_PROVIDER, WebGPUDevice, attach_webgpu_provider, execution_lock, webgpu_session_scope
 
@@ -180,10 +182,15 @@ def ort_session(
         selection_threads = sess_options.intra_op_num_threads
     route = OnnxSelection()
     if eligible:
-        route = selection or resolve_onnx_device(
-            intra_op_num_threads=selection_threads,
-            inter_op_num_threads=sess_options.inter_op_num_threads if sess_options is not None else 0,
+        route = (
+            selection
+            or resolve_model_device(
+                "onnx",
+                intra_op_num_threads=selection_threads,
+                inter_op_num_threads=sess_options.inter_op_num_threads if sess_options is not None else 0,
+            ).selection
         )
+        assert isinstance(route, OnnxSelection)
     adapter = route.adapter if route.device == "gpu" else None
     if model_kind == "ocr_det" and not isinstance(adapter, WebGPUDevice):
         adapter = None
@@ -225,9 +232,7 @@ def table_ort_session(
     model_kind: str = "",
 ) -> ort.InferenceSession | DirectMLSession | WebGPUSession:
     """ONNX 栈的 UNet 复用统一设备选择；其他表格保留原有 CPU/CUDA 策略。"""
-    from .device import resolve_small_model_backend
-
-    onnx_backend = resolve_small_model_backend(small_backend) == "onnx"
+    onnx_backend = resolve_model_backend(small_backend) == "onnx"
     unified_unet = onnx_backend and model_kind == "unet"
     device = "cpu"
     if not unified_unet:
