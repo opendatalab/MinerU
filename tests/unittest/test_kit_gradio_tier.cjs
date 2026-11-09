@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const script = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_tier.js"), "utf8");
+const template = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_tier.html"), "utf8");
 
 // 最小 DOM 保留输入值、属性和事件；不替代生产状态转换算法。
 function node() {
@@ -58,9 +59,11 @@ function node() {
 // 每个控件独立持有 props 和提交记录，模拟 Gradio watch 的输出回执。
 function setup(tiers, position = 0, defaultIndex = position) {
     const nodes = Object.fromEntries(["capsule", "rail", "thumb", "range", "reset", "dots", "title", "current", "options", "announcement",
-        "label", "device", "device-tooltip"]
+        "label", "device", "device-tooltip", "fill", "stars"]
         .map(name => [name, node()]));
     nodes["device-tooltip"].hidden = true;
+    nodes.capsule.isConnected = true;
+    const stars = Array.from({ length: (template.match(/class="mineru-tier-star"/g) || []).length }, node);
     const props = { value: position, selected_tier: tiers[position], locked: false };
     const submissions = [];
     // 保留目标档位参数，验证动态按钮说明没有使用当前档位替代默认值。
@@ -82,19 +85,36 @@ function setup(tiers, position = 0, defaultIndex = position) {
             return new Promise((resolve, reject) => { receiveRuntime = resolve; rejectRuntime = reject; });
         },
     };
-    const ownerDocument = { ...node(), body: node(), createElement: node };
-    // 不模拟浏览器布局，只提供生产脚本所需的尺寸观察接口。
+    const ownerDocument = { ...node(), body: node(), createElement: node, hidden: false };
+    const observers = [];
+    // 重放尺寸通知和离屏通知，不替浏览器计算几何与可见性。
     class ResizeObserver {
-        // 控件在本测试中不会改变布局，无需触发异步尺寸回调。
-        observe() {}
+        // 保存生产回调以验证填充尺寸变化后更新运动端点。
+        constructor(callback) { this.callback = callback; this.targets = []; observers.push(this); }
+        // 记录被观察元素，允许按真实目标派发通知。
+        observe(target) { this.targets.push(target); }
+        // 卸载后观察器必须释放控件。
+        disconnect() { this.targets = []; }
     }
-    vm.runInNewContext(`(${script})`, { window, document: ownerDocument, ResizeObserver })({
-        element: { ownerDocument, querySelector: selector => nodes[selector.replace(".mineru-tier-", "")] },
+    // 两种观察器共享最小注册接口，但通知内容由调用方明确给出。
+    class IntersectionObserver extends ResizeObserver {}
+    vm.runInNewContext(`(${script})`, { window, document: ownerDocument, ResizeObserver, IntersectionObserver })({
+        element: {
+            ownerDocument, querySelector: selector => nodes[selector.replace(".mineru-tier-", "")],
+            // 使用真实模板中的节点数，确保增加档位星点时同步扩展了固定节点池。
+            querySelectorAll: selector => selector === ".mineru-tier-star" ? stars : [],
+        },
         props, tiers, defaultIndex, server,
         trigger: event => { submissions.push([event, props.value]); },
         watch: (_keys, callback) => { watcher = callback; },
     });
-    return { nodes, props, submissions, window, document: ownerDocument,
+    return { nodes, stars, observers, props, submissions, window, document: ownerDocument,
+        // 复现 CSS 吸附或窗口变化产生的尺寸通知，不调用额外的 render。
+        fillWidth(width) { observers[0].callback([{ target: nodes.fill, contentRect: { width } }]); },
+        // 可见性只控制动画播放，不能改写档位或触发设备查询。
+        intersect(isIntersecting) { observers[1].callback([{ target: nodes.capsule, isIntersecting }]); },
+        // 页面后台独立于控件是否在可视区域。
+        pageHidden(hidden) { ownerDocument.hidden = hidden; ownerDocument.events.visibilitychange(); },
         // 排空设备响应微任务后检查真实前端处理结果。
         async runtime(value) { receiveRuntime(value); await Promise.resolve(); },
         // 失败时等待 catch 完成，确保未知状态不影响其余控件。
@@ -240,7 +260,7 @@ for (const reason of ["escape", "pointercancel"]) {
     assert.equal(fast.submissions.length, count);
     assert.equal(fast.nodes.rail.capture, null);
     assert.equal(fast.document.body.children.length, 0);
-    assert.deepEqual(Object.keys(fast.document.events).sort(), ["keydown", "pointerdown"]);
+    assert.deepEqual(Object.keys(fast.document.events).sort(), ["keydown", "pointerdown", "visibilitychange"]);
 }
 
 // 按住时失去捕获仍由页面事件跟踪，在胶囊外松手也只提交一次最终位置。
@@ -256,7 +276,7 @@ outside.pointer("pointerup", outside.x(1.1));
 assert.equal(outside.props.value, 1);
 assert.deepEqual(outside.submissions, [["input", 1]]);
 assert.equal(outside.document.body.children.length, 0);
-assert.deepEqual(Object.keys(outside.document.events).sort(), ["keydown", "pointerdown"]);
+assert.deepEqual(Object.keys(outside.document.events).sort(), ["keydown", "pointerdown", "visibilitychange"]);
 
 // 已松手的捕获丢失、输入或窗口失焦均保留最后位置，不能退回起点。
 for (const reason of ["released-capture", "input-blur", "window-blur", "missed-up"]) {
@@ -276,7 +296,7 @@ for (const reason of ["released-capture", "input-blur", "window-blur", "missed-u
     assert.equal(interrupted.props.value, 1);
     assert.deepEqual(interrupted.submissions, [["input", 1]]);
     assert.equal(interrupted.document.body.children.length, 0);
-    assert.deepEqual(Object.keys(interrupted.document.events).sort(), ["keydown", "pointerdown"]);
+    assert.deepEqual(Object.keys(interrupted.document.events).sort(), ["keydown", "pointerdown", "visibilitychange"]);
 }
 
 // 辅助技术的 input/change 仍生效，重复通知不能产生两次业务提交。
@@ -328,12 +348,22 @@ async function testRuntimeDevice() {
     for (const device of ["gpu", "cpu", null, "mps"]) {
         for (const [position, tier] of ["flash", "basic", "standard", "advanced"].entries()) {
             const runtimeUi = setup(["flash", "basic", "standard", "advanced"], position);
+            const originalStars = [...runtimeUi.stars];
+            const expectedCount = [0, 4, 8, 12][position];
             assert.equal(runtimeUi.runtimeReads(), 1);
             await runtimeUi.runtime(device);
             const expectedDevice = ["cpu", "gpu"].includes(device) ? device : "unknown";
             const expectedEffect = device === "gpu" ? "fast" : tier === "advanced" ? "slow" : "none";
             assert.equal(runtimeUi.nodes.capsule.dataset.runtime, expectedDevice);
             assert.equal(runtimeUi.nodes.capsule.dataset.stars, expectedEffect);
+            const visibleStars = runtimeUi.stars.filter(star => !star.hidden);
+            assert.equal(visibleStars.length, expectedCount);
+            // 减少动态效果或慢速星光时，当前可见星点仍应分布到整段填充区域。
+            for (const [index, star] of visibleStars.entries()) {
+                const x = parseFloat(star.style["--star-x"]);
+                assert(Math.abs(x - (index + 0.5) * 100 / expectedCount) < 1e-9);
+                assert(x > 0 && x < 100);
+            }
             assert.equal(runtimeUi.nodes.device.attributes["aria-label"], `runtime_device_${expectedDevice}`);
             assert.equal(runtimeUi.nodes["device-tooltip"].hidden, true);
             runtimeUi.nodes.device.events.pointerenter();
@@ -353,9 +383,13 @@ async function testRuntimeDevice() {
             assert.equal(runtimeUi.props.value, position);
             assert.deepEqual(runtimeUi.submissions, []);
             runtimeUi.update({ locked: true, selected_tier: "flash" });
+            assert.equal(runtimeUi.stars.filter(star => !star.hidden).length, 0);
             assert.equal(runtimeUi.nodes.capsule.dataset.runtime, expectedDevice);
             assert.equal(runtimeUi.nodes.capsule.dataset.stars, device === "gpu" ? "fast" : "none");
             runtimeUi.update({ locked: false, selected_tier: tier });
+            assert.equal(runtimeUi.stars.filter(star => !star.hidden).length, expectedCount);
+            // 切档、文件锁定及设备响应都复用同一批节点，不重建已运行的动画。
+            assert(runtimeUi.stars.every((star, index) => star === originalStars[index]));
             assert.equal(runtimeUi.nodes.capsule.dataset.stars, expectedEffect);
             // 语言变化只重绘提示，设备快照不能被清空或重新读取。
             runtimeUi.window.__mineruI18n.text = key => `en:${key}`;
@@ -368,6 +402,7 @@ async function testRuntimeDevice() {
     late.pointer("pointerdown", late.x(1));
     late.pointer("pointermove", late.x(1.8));
     await late.runtime("gpu");
+    assert.equal(late.stars.filter(star => !star.hidden).length, 8);
     assert(Math.abs(late.visual() - 1.8) < 1e-9);
     assert(late.nodes.capsule.classList.contains("is-dragging"));
     assert.equal(late.props.value, 1);
@@ -380,6 +415,37 @@ async function testRuntimeDevice() {
     assert.equal(failed.nodes.capsule.dataset.runtime, "unknown");
     assert.equal(failed.nodes.capsule.dataset.stars, "slow");
     assert.equal(failed.nodes.options.hidden, true);
+
+    // GPU 动画距离必须跟随真实填充宽度，切档或缩放后不能保留上一档端点。
+    const playback = setup(["flash", "basic", "standard", "advanced"], 2);
+    await playback.runtime("gpu");
+    playback.fillWidth(195);
+    assert.equal(playback.nodes.stars.style["--star-start"], "204.75px");
+    playback.key("End");
+    playback.fillWidth(285);
+    assert.equal(playback.nodes.stars.style["--star-start"], "299.25px");
+    assert.equal(playback.nodes.stars.style["--star-end"], "-14.25px");
+    playback.fillWidth(100);
+    assert.equal(playback.nodes.stars.style["--star-start"], "105px");
+
+    // 离屏与后台暂停条件取并集，重新进入视口时也不能唤醒后台动画。
+    assert.equal(playback.nodes.capsule.dataset.starsPaused, "true");
+    playback.intersect(true);
+    assert.equal(playback.nodes.capsule.dataset.starsPaused, "false");
+    playback.pageHidden(true);
+    assert.equal(playback.nodes.capsule.dataset.starsPaused, "true");
+    playback.intersect(false);
+    playback.pageHidden(false);
+    assert.equal(playback.nodes.capsule.dataset.starsPaused, "true");
+    playback.intersect(true);
+    assert.equal(playback.nodes.capsule.dataset.starsPaused, "false");
+    assert.equal(playback.nodes.capsule.dataset.stars, "fast");
+    assert.equal(playback.props.value, 3);
+    assert.equal(playback.runtimeReads(), 1);
+    playback.nodes.capsule.isConnected = false;
+    playback.intersect(false);
+    assert(playback.observers.every(observer => observer.targets.length === 0));
+    assert.equal(playback.document.events.visibilitychange, undefined);
 }
 // 异步断言失败必须使 Node 及调用它的 pytest 返回失败。
 testRuntimeDevice().catch(error => { console.error(error); process.exitCode = 1; });

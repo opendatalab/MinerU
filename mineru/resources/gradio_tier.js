@@ -11,6 +11,12 @@
     const current = element.querySelector(".mineru-tier-current");
     const deviceButton = element.querySelector(".mineru-tier-device");
     const deviceTooltip = element.querySelector(".mineru-tier-device-tooltip");
+    const fill = element.querySelector(".mineru-tier-fill");
+    const starLayer = element.querySelector(".mineru-tier-stars");
+    // 各档位的星点数量集中配置；Flash 的填充位于圆点下方，不显示星点。
+    const starCounts = { flash: 0, basic: 4, standard: 8, advanced: 12 };
+    const stars = [...element.querySelectorAll(".mineru-tier-star")];
+    let starCount = -1;
     let runtimeDevice = null;
     let drag = null;
     let committed = Number(props.value);
@@ -39,14 +45,54 @@
             + current.getBoundingClientRect().width + 54);
         capsule.classList.toggle("is-wide", capsule.getBoundingClientRect().width >= minimumWidth);
     };
-    const resizeObserver = new ResizeObserver(resize);
+    // 只在填充宽度变化时更新像素端点；固定尺寸星点不依赖 Safari 缓存的百分比变换距离。
+    const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            if (entry.target === capsule) resize();
+            if (entry.target === fill) {
+                const width = entry.contentRect.width;
+                starLayer.style.setProperty("--star-start", `${width * 1.05}px`);
+                starLayer.style.setProperty("--star-end", `${width * -.05}px`);
+            }
+        }
+    });
     resizeObserver.observe(capsule);
+    resizeObserver.observe(fill);
     resize();
+
+    let inViewport = false;
+    // 页面后台和控件离屏时停止合成动画，恢复可见后从原有进度继续。
+    const syncStarPlayback = () => {
+        capsule.dataset.starsPaused = String(ownerDocument.hidden || !inViewport);
+    };
+    // 卸载时释放新增观察器及文档监听，避免后台持有旧控件。
+    const intersectionObserver = new IntersectionObserver(entries => {
+        if (!capsule.isConnected) {
+            resizeObserver.disconnect();
+            intersectionObserver.disconnect();
+            ownerDocument.removeEventListener("visibilitychange", syncStarPlayback);
+            return;
+        }
+        inViewport = entries[entries.length - 1].isIntersecting;
+        syncStarPlayback();
+    });
+    intersectionObserver.observe(capsule);
+    ownerDocument.addEventListener("visibilitychange", syncStarPlayback);
+    syncStarPlayback();
 
     // 设备信息独立于档位偏好；提示、颜色和动效只消费当前页面的只读快照。
     const renderDevice = () => {
         capsule.dataset.runtime = runtimeDevice || "unknown";
         capsule.dataset.stars = runtimeDevice === "gpu" ? "fast" : capsule.dataset.tier === "advanced" ? "slow" : "none";
+        const count = starCounts[capsule.dataset.tier];
+        if (count !== starCount) {
+            starCount = count;
+            // 仅在跨档位时调整现有节点，保留已显示星点的动画进度；静态星点按当前数量均匀分布。
+            for (const [index, star] of stars.entries()) {
+                star.hidden = index >= count;
+                if (index < count) star.style.setProperty("--star-x", `${(index + 0.5) * 100 / count}%`);
+            }
+        }
         const message = text(`runtime_device_${runtimeDevice || "unknown"}`) || "设备状态未知";
         setText(".mineru-tier-device-tooltip", message);
         setAttribute(deviceButton, "aria-label", message);

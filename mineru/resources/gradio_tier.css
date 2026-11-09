@@ -35,12 +35,15 @@
 .mineru-tier-track { position: absolute; inset: 15px 0; overflow: hidden; border-radius: 99px; background: var(--tier-track); pointer-events: none; }
 .mineru-tier-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--tier-position) * (100% - var(--tier-knob)) + var(--tier-knob) / 2); background: var(--tier-accent); transition: width 180ms cubic-bezier(.2,.85,.25,1); }
 .mineru-tier-capsule[data-tier="advanced"] .mineru-tier-fill { background: linear-gradient(105deg, #3d56d8, #9574ed 55%, #9b66e5); }
-/* 两种动效复用八个星点，GPU 优先采用单向快速流动；星光始终由填充区域裁切。 */
+/* 两种动效复用最多十二个星点，按档位显隐；GPU 优先采用单向快速流动。 */
 .mineru-tier-stars { position: absolute; inset: 0; display: none; overflow: hidden; pointer-events: none; }
 .mineru-tier-capsule[data-stars="slow"] .mineru-tier-stars,
 .mineru-tier-capsule[data-stars="fast"] .mineru-tier-stars { display: block; }
-.mineru-tier-star { position: absolute; top: var(--star-y); left: 0; width: 100%; height: var(--star-size, 2px); opacity: .55; animation: mineru-tier-twinkle var(--star-period) var(--star-delay) ease-in-out infinite alternate; }
-.mineru-tier-star::before { content: ""; position: absolute; top: 0; left: var(--star-x); width: var(--star-size, 2px); height: 100%; border-radius: 50%; background: #fff; box-shadow: 0 0 3px #ffffff45; }
+.mineru-tier-star { position: absolute; top: var(--star-y); left: var(--star-x); width: var(--star-size, 2px); height: var(--star-size, 2px); opacity: .55; animation: mineru-tier-twinkle var(--star-period) var(--star-delay) ease-in-out infinite alternate; }
+.mineru-tier-star[hidden] { display: none !important; }
+.mineru-tier-star::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 3px #ffffff45; }
+/* 仅为可见且正在播放的微小星点保留合成层；离屏暂停时允许浏览器回收。 */
+.mineru-tier-capsule[data-stars-paused="false"] .mineru-tier-star { will-change: transform, opacity; }
 .mineru-tier-star:nth-child(1) { --star-x: 8%; --star-y: 25%; --star-size: 2px; --star-period: 4.2s; --star-delay: -2.2s; }
 .mineru-tier-star:nth-child(2) { --star-x: 20%; --star-y: 65%; --star-size: 3px; --star-period: 5.1s; --star-delay: -1.6s; }
 .mineru-tier-star:nth-child(3) { --star-x: 32%; --star-y: 42%; --star-size: 2px; --star-period: 3.7s; --star-delay: -3s; }
@@ -49,19 +52,24 @@
 .mineru-tier-star:nth-child(6) { --star-x: 68%; --star-y: 60%; --star-size: 2px; --star-period: 4.6s; --star-delay: -2.8s; }
 .mineru-tier-star:nth-child(7) { --star-x: 80%; --star-y: 28%; --star-size: 2px; --star-period: 5s; --star-delay: -1s; }
 .mineru-tier-star:nth-child(8) { --star-x: 92%; --star-y: 68%; --star-size: 2px; --star-period: 3.9s; --star-delay: -2.5s; }
-.mineru-tier-capsule[data-stars="fast"] .mineru-tier-star { animation: mineru-tier-flow-left calc(var(--star-period) * .35) var(--star-delay) linear infinite; }
-.mineru-tier-capsule[data-stars="fast"] .mineru-tier-star::before { left: 0; }
+.mineru-tier-star:nth-child(9) { --star-y: 18%; --star-size: 2px; --star-period: 4.4s; --star-delay: -.3s; }
+.mineru-tier-star:nth-child(10) { --star-y: 80%; --star-size: 3px; --star-period: 5.3s; --star-delay: -4.2s; }
+.mineru-tier-star:nth-child(11) { --star-y: 50%; --star-size: 2px; --star-period: 4s; --star-delay: -1.2s; }
+.mineru-tier-star:nth-child(12) { --star-y: 38%; --star-size: 2px; --star-period: 4.9s; --star-delay: -3.7s; }
+/* 像素端点仅随填充尺寸更新，循环播放只改变 transform 和透明度，不逐帧布局。 */
+.mineru-tier-capsule[data-stars="fast"] .mineru-tier-star { left: 0; animation: mineru-tier-flow-left calc(var(--star-period) * .35) var(--star-delay) linear infinite; }
+.mineru-tier-capsule[data-stars-paused="true"] .mineru-tier-star { animation-play-state: paused; }
 @keyframes mineru-tier-twinkle {
     0% { opacity: .12; transform: translate(-7px, 2px); }
     48% { opacity: .8; }
     100% { opacity: .25; transform: translate(8px, -3px); }
 }
 @keyframes mineru-tier-flow-left {
-    0% { opacity: 0; transform: translateX(105%); }
+    0% { opacity: 0; transform: translate3d(var(--star-start, 0px), 0, 0); }
     12% { opacity: .7; }
     52% { opacity: .9; }
     88% { opacity: .5; }
-    100% { opacity: 0; transform: translateX(-5%); }
+    100% { opacity: 0; transform: translate3d(var(--star-end, 0px), 0, 0); }
 }
 .mineru-tier-dots { position: absolute; inset: 0 calc(var(--tier-knob) / 2); display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .mineru-tier-dot { width: 6px; height: 6px; margin-inline: -3px; border-radius: 50%; background: var(--tier-dot); }
@@ -99,6 +107,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
     .mineru-tier-fill, .mineru-tier-thumb { transition: none; }
-    .mineru-tier-star { animation: none !important; }
-    .mineru-tier-capsule[data-stars="fast"] .mineru-tier-star::before { left: var(--star-x); }
+    .mineru-tier-capsule[data-stars-paused] .mineru-tier-star { animation: none !important; will-change: auto; }
+    .mineru-tier-capsule[data-stars="fast"] .mineru-tier-star { left: var(--star-x); }
 }
