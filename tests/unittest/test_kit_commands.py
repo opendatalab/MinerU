@@ -23,7 +23,7 @@ from mineru.kit.commands import api_server, models, parse, router, vlm_server, w
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
-from mineru.model.registry import MODEL_COMPLETE_MARKER
+from mineru.model.registry import MODEL_COMPLETE_MARKER, ModelRepo
 from mineru.types import Tier
 from mineru.version import __version__
 
@@ -31,6 +31,36 @@ runner = CliRunner()
 
 _REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
 _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
+
+
+def _prepare_model_directory(directory: Path, files: list[str], *, legacy: bool = False) -> None:
+    """为命令行测试准备真实文件，以及旧空标记或独立构造的新版完成清单。"""
+    for name in files:
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"x")
+    if legacy:
+        (directory / MODEL_COMPLETE_MARKER).touch()
+        return
+    (directory / MODEL_COMPLETE_MARKER).write_text(
+        json.dumps({"version": 1, "files": dict.fromkeys(files, 1)}), encoding="utf-8"
+    )
+
+
+def _prepare_model_repo(repo: ModelRepo, *, legacy: bool = False) -> None:
+    """按实际仓库的下载范围准备就绪资源，目录均需有效完成清单。"""
+    if repo.download_mode == "full":
+        _prepare_model_directory(
+            repo.local_dir(), list(repo.paths.values()) or ["config.json", "model.safetensors"], legacy=legacy
+        )
+        return
+    for model_path in repo.required_paths():
+        target = model_path.local_path()
+        if Path(model_path.relative_path).suffix:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"x")
+        else:
+            _prepare_model_directory(target, ["model.bin"], legacy=legacy)
 
 
 def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -590,18 +620,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
     monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
     for repo in models.MODEL_REPOS:
-        if repo.download_mode == "full":
-            repo.local_dir().mkdir(parents=True, exist_ok=True)
-            (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
-            continue
-        for model_path in repo.required_paths():
-            target = repo.local_dir() / model_path.relative_path
-            if Path(model_path.relative_path).suffix:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("x", encoding="utf-8")
-                continue
-            target.mkdir(parents=True, exist_ok=True)
-            (target / MODEL_COMPLETE_MARKER).touch()
+        _prepare_model_repo(repo)
 
     show_result = runner.invoke(app, ["models", "show"])
     verify_result = runner.invoke(app, ["models", "verify"])
@@ -618,6 +637,39 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert verify_result.exit_code == 0
     assert "MinerU-4_models_torch: ok" in verify_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output
+
+
+def test_models_commands_accept_complete_legacy_markers_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """原有模型的旧空标记可通过查看、校验和 Doclib 托管能力检查，且无需联网迁移。"""
+    from mineru.doclib import server
+    from mineru.model import download
+
+    monkeypatch.setattr(models.get_config().model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models.get_config().model, "small_backend", "torch")
+    monkeypatch.setattr(models.get_config().model, "source", "local")
+    monkeypatch.setattr(models.get_config().model.vlm, "engine", "vllm")
+    monkeypatch.setattr(models.get_config().model.vlm, "server_url", "")
+    for repo in models.MODEL_REPOS:
+        _prepare_model_repo(repo, legacy=True)
+
+    def fail_resolve(*args: object, **kwargs: object) -> str:
+        """任何尝试联网解析来源的行为均说明旧标记兼容失败。"""
+        raise AssertionError("legacy readiness checks must stay offline")
+
+    monkeypatch.setattr(download, "resolve_model_source", fail_resolve)
+
+    show = runner.invoke(app, ["models", "show"])
+    verify = runner.invoke(app, ["models", "verify"])
+    server._ensure_managed_parse_server_models_ready("standard", "parse_server.local.managed_tier")
+
+    assert show.exit_code == 0
+    assert "MinerU-4_models_torch: ready" in show.output
+    assert "MinerU2.5-Pro-2605-1.2B: ready" in show.output
+    assert verify.exit_code == 0
+    assert "MinerU-4_models_torch: ok" in verify.output
+    assert "MinerU2.5-Pro-2605-1.2B: ok" in verify.output
+    for repo in models.MODEL_REPOS:
+        assert all(marker.read_bytes() == b"" for marker in repo.local_dir().rglob(MODEL_COMPLETE_MARKER))
 
 
 def test_api_server_rejects_backend_and_effort_options() -> None:
@@ -1349,18 +1401,7 @@ def test_models_verify_filters_by_effective_backends(tmp_path: Path, monkeypatch
     # 仅准备当前后端所需仓库，其余仓库保持缺失。
     for repo in models.MODEL_REPOS:
         if repo in models.model_repos_for_tier("standard"):
-            if repo.download_mode == "full":
-                repo.local_dir().mkdir(parents=True, exist_ok=True)
-                (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
-                continue
-            for model_path in repo.required_paths():
-                target = repo.local_dir() / model_path.relative_path
-                if Path(model_path.relative_path).suffix:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text("x", encoding="utf-8")
-                else:
-                    target.mkdir(parents=True, exist_ok=True)
-                    (target / MODEL_COMPLETE_MARKER).touch()
+            _prepare_model_repo(repo)
 
     result = runner.invoke(app, ["models", "verify"])
 
