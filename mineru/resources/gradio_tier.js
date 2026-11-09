@@ -47,7 +47,7 @@
     const renderDevice = () => {
         capsule.dataset.runtime = runtimeDevice || "unknown";
         capsule.dataset.stars = runtimeDevice === "gpu" ? "fast" : capsule.dataset.tier === "advanced" ? "slow" : "none";
-        const message = text(`runtime_device_${runtimeDevice || "unknown"}`) || "未提供设备信息";
+        const message = text(`runtime_device_${runtimeDevice || "unknown"}`) || "设备状态未知";
         setText(".mineru-tier-device-tooltip", message);
         setAttribute(deviceButton, "aria-label", message);
     };
