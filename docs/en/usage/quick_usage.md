@@ -37,6 +37,21 @@ The output reports `Effective small backend` and `Effective VLM engine` together
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
+### Check a scanned PDF before batch conversion
+
+Pick a few representative source pages, including both sides of a question or table that continues across a page break. Export the sample as a ZIP so that the Markdown, structured results, and image assets stay together.
+
+```bash
+mineru-kit parse "scanned document.pdf" --pages "2-3,8" --tier standard --ocr-mode ocr --format zip -o "scan-review.zip"
+```
+
+Use the physical PDF page numbers in `--pages`. The structured result retains zero-based source `page_idx` values (1, 2, and 7 in this example). Record printed page labels separately when the PDF includes front matter or excerpts.
+
+- Open the source pages beside the extracted Markdown and structured output. Check reading order, duplicate choices, and whether each answer belongs to the right question. An answer label misclassified as a formula can leave a math block where a downstream importer expects an answer.
+- Check table headers, units, and the first and last rows at page boundaries. Inspect the neighboring pages before deciding whether a block is missing or continued.
+- Check headers and footers before removing recurring strings. Use block type and position as review cues and preserve matching strings in the body, such as fractions or formula variables.
+- Keep the source PDF and original ZIP. Record the source checksum, parser version, tier, OCR mode, and page range. Store corrections separately and apply the same checks to the same pages when evaluating an upgrade.
+
 ## Library, search, and continuation
 
 `mineru` keeps file identity, parsing caches, and indexes in a local document library. Responses include locators; replace the example document ID below with an actual returned ID:
