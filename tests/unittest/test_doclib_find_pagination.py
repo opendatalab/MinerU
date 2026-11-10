@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 from mineru.cli.commands import search as search_commands
 from mineru.cli.main import app
 from mineru.doclib.client import DoclibClient
+from mineru.doclib.core import fts as fts_module
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager, tokenize_for_index
 
@@ -80,6 +81,7 @@ def test_doclib_search_accepts_punctuation_in_queries(tmp_path: Path) -> None:
     """使用真实 SQLite 索引验证普通标点不会使文件名或正文查询失效。"""
 
     async def run() -> None:
+        """分别检验文件名前缀和正文显式前缀查询能容纳普通标点。"""
         db, fts, _ = await _filename_library(tmp_path, ["C++ guide.pdf", "Python guide.pdf"])
         try:
             await fts.replace(sha256="a" * 64, tier="standard", text="C++ guide to AT&T services", title="", author="")
@@ -89,6 +91,72 @@ def test_doclib_search_accepts_punctuation_in_queries(tmp_path: Path) -> None:
             for query in ("C++: guide", "AT&T", "(AT&T) serv*"):
                 assert [row["sha256"] for row in await fts.search(query)] == ["a" * 64]
             assert await fts.search("!()++") == []
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("use_jieba", [True, False], ids=["jieba", "no-jieba"])
+def test_doclib_search_keeps_operator_words_as_terms(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_jieba: bool) -> None:
+    """英文操作符同名词参与查询，单词和多词检索均不能被静默删除或解释为操作符。"""
+    if not use_jieba:
+        monkeypatch.setattr(fts_module, "jieba", None)
+
+    async def run() -> None:
+        """以真实索引和对照文档检查词项保留、大小写及显式前缀语义。"""
+        texts = ["near field", "far field", "OR logic", "logic", "rock and roll", "rock roll", "not included", "included"]
+        db, fts, _ = await _filename_library(tmp_path, [f"{text}.pdf" for text in texts])
+        try:
+            for file_id, text in enumerate(texts, start=1):
+                await fts.replace(sha256=f"{file_id:064x}", tier="standard", text=text, title="", author="")
+            queries = {
+                "AND": {5},
+                "and": {5},
+                "and*": {5},
+                "OR": {3},
+                "or": {3},
+                "or*": {3},
+                "NOT": {7},
+                "not": {7},
+                "not*": {7},
+                "NEAR": {1},
+                "near": {1},
+                "near*": {1},
+                "near field": {1},
+                "OR logic": {3},
+                "rock AND roll": {5},
+                "not included": {7},
+                "field OR logic": set(),
+                "near NOT field": set(),
+            }
+            for query, file_ids in queries.items():
+                assert {row["file_id"] for row in await fts.search_filenames(query)} == file_ids, query
+                assert {row["sha256"] for row in await fts.search(query)} == {f"{file_id:064x}" for file_id in file_ids}, query
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("use_jieba", [True, False], ids=["jieba", "no-jieba"])
+def test_doclib_search_keeps_unicode61_punctuation_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_jieba: bool
+) -> None:
+    """查询转义只消除语法错误，现有索引仍不通过加号或井号区分 C、C++ 和 C#。"""
+    if not use_jieba:
+        monkeypatch.setattr(fts_module, "jieba", None)
+
+    async def run() -> None:
+        """加入相同词项的标点对照样本，明确文件名和正文搜索的匹配边界。"""
+        texts = ["C++ guide", "C guide", "C# guide", "Python guide"]
+        db, fts, _ = await _filename_library(tmp_path, [f"{text}.pdf" for text in texts])
+        try:
+            for file_id, text in enumerate(texts, start=1):
+                await fts.replace(sha256=f"{file_id:064x}", tier="standard", text=text, title="", author="")
+            for query in ("C++ guide", "C# guide", "C guide"):
+                assert {row["file_id"] for row in await fts.search_filenames(query)} == {1, 2, 3}, query
+                assert {row["sha256"] for row in await fts.search(query)} == {f"{file_id:064x}" for file_id in (1, 2, 3)}, query
         finally:
             await db.close()
 
