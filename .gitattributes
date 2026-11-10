@@ -3,3 +3,7 @@
 *.html linguist-documentation
 *.css linguist-vendored
 *.scss linguist-vendored
+
+# Preserve the exact bytes of the native-text rotation regression PDFs.
+tests/fixtures/native_rotation_wrap.pdf binary
+tests/fixtures/native_rotation_short_labels.pdf binary

@@ -205,9 +205,11 @@ def txt_spans_extract(
 
 
 def _is_supported_rotation(rotation: float) -> bool:
-    """判断 原生字符旋转角是否属于当前可回填的四个标准方向。"""
+    """按最短圆周距离判断标准方向，保持严格小于 0.1 度的容差。"""
     rotation_degrees = math.degrees(rotation)
-    return any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270])
+    # 0 度与 360 度相邻；先取绝对差，避免平移角度改变临界值附近的浮点舍入。
+    distances = (abs(rotation_degrees - angle) % 360 for angle in (0, 90, 180, 270))
+    return any(min(distance, 360 - distance) < 0.1 for distance in distances)
 
 
 def _rotation_distance_degrees(first: float, second: float) -> float:
