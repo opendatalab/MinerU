@@ -76,6 +76,25 @@ def test_filename_prefix_is_applied_only_to_final_token(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
+def test_doclib_search_accepts_punctuation_in_queries(tmp_path: Path) -> None:
+    """使用真实 SQLite 索引验证普通标点不会使文件名或正文查询失效。"""
+
+    async def run() -> None:
+        db, fts, _ = await _filename_library(tmp_path, ["C++ guide.pdf", "Python guide.pdf"])
+        try:
+            await fts.replace(sha256="a" * 64, tier="standard", text="C++ guide to AT&T services", title="", author="")
+            await fts.replace(sha256="b" * 64, tier="standard", text="Python guide to other services", title="", author="")
+            for query in ("C++ guide", "(C++) gui", "C++ gui*"):
+                assert [row["file_id"] for row in await fts.search_filenames(query)] == [1]
+            for query in ("C++: guide", "AT&T", "(AT&T) serv*"):
+                assert [row["sha256"] for row in await fts.search(query)] == ["a" * 64]
+            assert await fts.search("!()++") == []
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
 def test_find_paginates_all_candidates_in_stable_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """六百余条同分候选跨过旧上限与元信息批次，每页无遗漏且总数不随 limit 变化。"""
 

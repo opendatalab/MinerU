@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from typing import cast
 
 try:
@@ -70,7 +71,7 @@ class FTSManager:
         )
 
     async def search(self, query: str, limit: int = 200) -> list[FtsContentSearchRow]:
-        tokens = _sanitize_query_tokens(tokenize_for_query(query))
+        tokens = _literal_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
         fts_query = " ".join(tokens)
@@ -110,10 +111,10 @@ class FTSManager:
 
     async def search_filenames(self, query: str, limit: int | None = 50) -> list[FtsFilenameSearchRow]:
         """仅对文件名查询的最后一个词默认启用前缀匹配；None 获取完整候选快照。"""
-        tokens = _sanitize_query_tokens(tokenize_for_query(query))
+        tokens = _literal_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
-        if not query.rstrip().endswith("*"):
+        if not tokens[-1].endswith("*"):
             tokens[-1] += "*"
         fts_query = " ".join(tokens)
         sql = (
@@ -140,14 +141,26 @@ class FTSManager:
 # ── helpers ────────────────────────────────────────────────────────
 
 
-def _sanitize_query_tokens(tokenized: str) -> list[str]:
-    """Remove special characters and FTS5 operators from query tokens."""
-    safe: list[str] = []
-    for t in tokenized.split():
-        t = t.strip().replace('"', "").replace(".", "").replace("-", "")
-        if t and t.upper() not in ("AND", "OR", "NOT", "NEAR"):
-            safe.append(t)
-    return safe
+def _literal_query_tokens(tokenized: str) -> list[str]:
+    """Quote search terms for FTS5 and keep prefix markers outside quotes."""
+    terms: list[str] = []
+    for token in tokenized.split():
+        term = token.rstrip("*")
+        prefix = term != token
+        if not term:
+            # Jieba emits a trailing asterisk as a separate token.
+            if terms and not terms[-1].endswith("*"):
+                terms[-1] += "*"
+            continue
+        if term.upper() in ("AND", "OR", "NOT", "NEAR"):
+            continue
+        # The unicode61 index treats letters, numbers, and private-use characters as token text.
+        if not any(char.isalnum() or unicodedata.category(char) == "Co" for char in term):
+            continue
+        escaped = term.replace('"', '""')
+        suffix = "*" if prefix else ""
+        terms.append(f'"{escaped}"{suffix}')
+    return terms
 
 
 MAX_FTS_CHARS = 30_000
