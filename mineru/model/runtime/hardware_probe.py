@@ -97,7 +97,9 @@ def _onnx_probe() -> dict[str, Any]:
         try:
             adapters = discover_webgpu_devices()
             has_devices = bool(adapters)
-            selected = select_webgpu_device(adapters)
+            selected = (
+                select_webgpu_device(adapters, check_memory=True) if requested == "auto" else select_webgpu_device(adapters)
+            )
             result.update(backend="webgpu", adapters=[asdict(adapter) for adapter in adapters])
             result["selected_adapter"] = asdict(selected) if selected is not None else None
         except Exception as error:
@@ -161,7 +163,7 @@ def probe_runtime(name: str) -> RuntimeProbe:
         elif name == "vulkan":
             from .vulkan import enumerate_vulkan_devices
 
-            data = {"devices": [asdict(device) for device in enumerate_vulkan_devices()]}
+            data = {"devices": [asdict(device) for device in enumerate_vulkan_devices(include_memory=True)]}
         elif name == "dxgi":
             from .windows_gpu import inspect_gpus
 

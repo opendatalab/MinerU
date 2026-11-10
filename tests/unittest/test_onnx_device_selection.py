@@ -22,8 +22,13 @@ from mineru.model.runtime.webgpu import WebGPUDevice
 settings = importlib.import_module("mineru.config")
 
 
-def adapter(*, index: int = 0, uma: bool | None = True, vendor: int = 0x8086, rank: int = 0) -> GpuAdapter:
-    return with_gpu_classification(GpuAdapter(index, f"luid-{index}", "test GPU", vendor, 1, rank), classify_d3d12_gpu(uma))
+def adapter(
+    *, index: int = 0, uma: bool | None = True, vendor: int = 0x8086, rank: int = 0, memory: int | None = 8 * 1024**3
+) -> GpuAdapter:
+    """提供可配置容量的原生适配器，默认独显满足自动门槛。"""
+    return with_gpu_classification(
+        GpuAdapter(index, f"luid-{index}", "test GPU", vendor, 1, rank, dedicated_memory_bytes=memory), classify_d3d12_gpu(uma)
+    )
 
 
 @pytest.fixture
@@ -310,7 +315,11 @@ def linux_config(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         vulkan,
         "enumerate_vulkan_devices",
-        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x1002, 1, "integrated"), classify_vulkan_gpu(1)),),
+        lambda **_: (
+            with_gpu_classification(
+                vulkan.VulkanDevice(0x1002, 1, "integrated", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(1)
+            ),
+        ),
     )
     monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(WebGPUDevice(0x1002, 1),)))
     return config_file
@@ -355,7 +364,11 @@ def test_linux_discrete_skips_calibration_and_saves_after_actual_session(
     monkeypatch.setattr(
         vulkan,
         "enumerate_vulkan_devices",
-        lambda: (with_gpu_classification(vulkan.VulkanDevice(*identity, "GPU"), classify_vulkan_gpu(2)),),
+        lambda **_: (
+            with_gpu_classification(
+                vulkan.VulkanDevice(*identity, "GPU", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(2)
+            ),
+        ),
     )
     monkeypatch.setattr(settings, "get_config_source", lambda key: source)
     monkeypatch.setitem(policy.ONNX_GPU_TIME_RATIO_THRESHOLDS, "webgpu", None)
@@ -394,11 +407,15 @@ def test_linux_discrete_session_failure_preserves_auto(
     from mineru.model.runtime import onnx, onnx_calibration, vulkan
 
     descriptor = WebGPUDevice(0x10DE, 0x2489)
-    integrated = with_gpu_classification(vulkan.VulkanDevice(0x1002, 1, "integrated"), classify_vulkan_gpu(1))
-    discrete = with_gpu_classification(vulkan.VulkanDevice(0x10DE, 0x2489, "discrete"), classify_vulkan_gpu(2))
+    integrated = with_gpu_classification(
+        vulkan.VulkanDevice(0x1002, 1, "integrated", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(1)
+    )
+    discrete = with_gpu_classification(
+        vulkan.VulkanDevice(0x10DE, 0x2489, "discrete", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(2)
+    )
     monkeypatch.setattr(policy, "discover_webgpu_devices", lambda: (descriptor,))
     monkeypatch.setattr(
-        vulkan, "enumerate_vulkan_devices", lambda: (integrated, discrete) if failure == "binding" else (discrete,)
+        vulkan, "enumerate_vulkan_devices", lambda **_: (integrated, discrete) if failure == "binding" else (discrete,)
     )
     selected = device_state.resolve_runtime_device().selection
     assert selected.reason == "discrete_gpu"
@@ -412,14 +429,15 @@ def test_linux_discrete_session_failure_preserves_auto(
     onnx_calibration.run_calibration.assert_not_called()
 
 
-@pytest.mark.parametrize("state", ["unavailable", "duplicate", "virtual"])
+@pytest.mark.parametrize("state", ["virtual"])
 def test_linux_unconfirmed_discrete_still_calibrates(linux_config: Path, monkeypatch: pytest.MonkeyPatch, state: str) -> None:
-    """类型未知、同型号多卡及虚拟 GPU 均不能获得独显免校准资格。"""
+    """虚拟 GPU 不因 EP 元数据声称独显而获得免校准资格。"""
     from mineru.model.runtime import onnx_calibration, vulkan
 
     descriptor = WebGPUDevice(0x10DE, 0x2489, (("type", "discrete"),))
     physical = with_gpu_classification(
-        vulkan.VulkanDevice(0x10DE, 0x2489, "GPU"), classify_vulkan_gpu(3 if state == "virtual" else 2)
+        vulkan.VulkanDevice(0x10DE, 0x2489, "GPU", dedicated_memory_bytes=8 * 1024**3),
+        classify_vulkan_gpu(3 if state == "virtual" else 2),
     )
     monkeypatch.setattr(policy, "discover_webgpu_devices", lambda: (descriptor,))
     monkeypatch.setattr(
@@ -515,7 +533,11 @@ def test_unstable_calibration_keeps_auto(config_file: Path, monkeypatch: pytest.
     monkeypatch.setattr(
         vulkan,
         "enumerate_vulkan_devices",
-        lambda: (with_gpu_classification(vulkan.VulkanDevice(0x8086, 0x7D51, "integrated"), classify_vulkan_gpu(1)),),
+        lambda **_: (
+            with_gpu_classification(
+                vulkan.VulkanDevice(0x8086, 0x7D51, "integrated", dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(1)
+            ),
+        ),
     )
     monkeypatch.setattr(policy, "discover_webgpu_devices", lambda: (WebGPUDevice(0x8086, 0x7D51),))
     measure = Mock(return_value={"decision_valid": False, "cpu_elapsed": 2.0, "gpu_elapsed": 1.0})
@@ -530,7 +552,9 @@ def test_unstable_calibration_keeps_auto(config_file: Path, monkeypatch: pytest.
 @pytest.mark.parametrize("binding", [None, (0x8086, 1), (0x8086, 2)])
 def test_readonly_discrete_policy_requires_matching_webgpu_binding(binding: tuple[int, int] | None) -> None:
     """只读诊断与运行时共享独显判断，缺少或错误物理绑定时仍需要校准。"""
-    descriptor = with_gpu_classification(WebGPUDevice(0x8086, 1, vulkan_device=binding), classify_vulkan_gpu(2))
+    descriptor = with_gpu_classification(
+        WebGPUDevice(0x8086, 1, vulkan_device=binding, dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(2)
+    )
     selection = policy.inspect_onnx_candidate("auto", backend="webgpu", adapter=descriptor, has_devices=True)
     assert selection.reason == ("discrete_gpu" if binding == (0x8086, 1) else "calibration_required")
     assert selection.device == ("gpu" if binding == (0x8086, 1) else "cpu")
@@ -549,3 +573,174 @@ def test_readonly_policy_explains_missing_candidate(backend: str | None, has_dev
     """平台不支持、无设备和有库存但无合格候选保持不同原因。"""
     selection = policy.inspect_onnx_candidate("auto", backend=backend, has_devices=has_devices)
     assert selection.device == "cpu" and selection.reason == reason
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+@pytest.mark.parametrize("vendor", [0x10DE, 0x1002, 0x8086])
+@pytest.mark.parametrize(
+    "memory",
+    [
+        None,
+        0,
+        -1,
+        2 * 1024**3,
+        4 * 1024**3,
+        11 * 1024**3 // 2 - 1,
+        11 * 1024**3 // 2,
+        6 * 1024**3 - 1,
+        6 * 1024**3,
+        8 * 1024**3,
+    ],
+)
+def test_auto_discrete_memory_gate_skips_all_calibration(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, platform: str, vendor: int, memory: int | None
+) -> None:
+    """三家独显统一按整数 GB 四舍五入；不足或未知时直接 CPU，不下载或校准。"""
+    from mineru.model import registry
+    from mineru.model.runtime import onnx_calibration, vulkan, webgpu
+
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(webgpu, "sys", SimpleNamespace(platform=platform))
+    chip = 0x56A0 if vendor == 0x8086 else 1
+    integrated = adapter(index=0, uma=True, memory=128 * 1024**3)
+    discrete = adapter(index=1, uma=False, vendor=vendor, memory=memory)
+    monkeypatch.setattr(policy, "discover_gpus", Mock(return_value=(integrated, discrete)))
+    monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(WebGPUDevice(vendor, chip),)))
+    inventory = Mock(
+        return_value=(
+            vulkan.VulkanDevice(0x1002, 2, "integrated", kind="integrated", dedicated_memory_bytes=128 * 1024**3),
+            vulkan.VulkanDevice(vendor, chip, "discrete", kind="discrete", dedicated_memory_bytes=memory),
+        )
+    )
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", inventory)
+    forbidden = Mock(side_effect=AssertionError("独显选型不应准备或执行 OCR 校准"))
+    monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=forbidden)))
+    monkeypatch.setattr(onnx_calibration, "run_calibration", forbidden)
+    monkeypatch.setenv("MINERU_VIRTUAL_VRAM_SIZE", "128")
+    selected = device_state.resolve_runtime_device().selection
+    expected = "gpu" if memory is not None and memory >= 11 * 1024**3 // 2 else "cpu"
+    assert selected.device == expected
+    if expected == "cpu":
+        assert selected.reason == (
+            "discrete_gpu_memory_unavailable" if memory is None or memory <= 0 else "discrete_gpu_memory_insufficient"
+        )
+    assert device_state.resolve_runtime_device().selection is selected
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
+    forbidden.assert_not_called()
+    if platform == "linux":
+        inventory.assert_called_once_with(include_memory=True)
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+@pytest.mark.parametrize("requested", ["cpu", "gpu"])
+@pytest.mark.parametrize("memory", [None, 0, 2 * 1024**3])
+def test_configured_device_bypasses_new_memory_gate(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, platform: str, requested: str, memory: int | None
+) -> None:
+    """显式及历史保存的 CPU/GPU 偏好不增加显存门槛，Linux 不额外读取容量。"""
+    from mineru.model.runtime import onnx_calibration, vulkan, webgpu
+
+    config_file.write_text(f"model:\n  onnx_device: {requested}\n", encoding="utf-8")
+    monkeypatch.setattr(settings.get_config().model, "onnx_device", requested)
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(webgpu, "sys", SimpleNamespace(platform=platform))
+    discover = Mock(return_value=(adapter(uma=False, memory=memory),))
+    monkeypatch.setattr(policy, "discover_gpus", discover)
+    monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(WebGPUDevice(0x8086, 0x56A0),)))
+    inventory = Mock(return_value=(vulkan.VulkanDevice(0x8086, 0x56A0, "GPU", kind="discrete"),))
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", inventory)
+    selected = device_state.resolve_runtime_device().selection
+    assert selected.device == requested
+    onnx_calibration.run_calibration.assert_not_called()
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == requested
+    if requested == "cpu":
+        discover.assert_not_called()
+        inventory.assert_not_called()
+    elif platform == "win32":
+        discover.assert_called_once_with(classify=False)
+    else:
+        inventory.assert_called_once_with()
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+@pytest.mark.parametrize("duplicate_ep", [False, True])
+@pytest.mark.parametrize(
+    "capacities, expected",
+    [
+        ((8 * 1024**3, 8 * 1024**3), "gpu"),
+        ((8 * 1024**3, 16 * 1024**3), "gpu"),
+        ((4 * 1024**3, 8 * 1024**3), "cpu"),
+        ((None, 8 * 1024**3), "cpu"),
+    ],
+)
+def test_same_model_discrete_group_uses_minimum_memory(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    duplicate_ep: bool,
+    capacities: tuple[int | None, int | None],
+    expected: str,
+) -> None:
+    """同型号多卡可按组确认独显，取最小容量；其他型号大卡不能替代。"""
+    from mineru.model.runtime import onnx_calibration, vulkan, webgpu
+
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(webgpu, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(
+        policy,
+        "discover_gpus",
+        Mock(
+            return_value=(
+                adapter(index=0, uma=False, memory=capacities[0]),
+                adapter(index=1, uma=False, memory=capacities[1]),
+                adapter(index=2, uma=False, vendor=0x10DE, memory=24 * 1024**3, rank=2),
+            )
+        ),
+    )
+    descriptor = WebGPUDevice(0x8086, 0x56A0)
+    monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(descriptor,) * (2 if duplicate_ep else 1)))
+    monkeypatch.setattr(
+        vulkan,
+        "enumerate_vulkan_devices",
+        Mock(
+            return_value=(
+                vulkan.VulkanDevice(0x8086, 0x56A0, "GPU", kind="discrete", dedicated_memory_bytes=capacities[0]),
+                vulkan.VulkanDevice(0x8086, 0x56A0, "GPU", kind="discrete", dedicated_memory_bytes=capacities[1]),
+                vulkan.VulkanDevice(0x10DE, 2, "other", kind="discrete", dedicated_memory_bytes=24 * 1024**3),
+            )
+        ),
+    )
+    selected = device_state.resolve_runtime_device().selection
+    assert selected.device == expected
+    if expected == "gpu":
+        assert selected.reason == "discrete_gpu"
+        assert selected.adapter.dedicated_memory_bytes == min(capacities)
+    onnx_calibration.run_calibration.assert_not_called()
+
+
+def test_linux_native_discovery_error_returns_cpu_without_calibration(
+    linux_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """自动模式原生探测失败直接选 CPU，不把失败当作待校准候选。"""
+    from mineru.model.runtime import onnx_calibration, vulkan
+
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", Mock(side_effect=OSError("driver unavailable")))
+    assert device_state.resolve_runtime_device().selection.reason == "selection_failed"
+    onnx_calibration.run_calibration.assert_not_called()
+
+
+def test_low_memory_cpu_is_shared_with_llama_and_tiers(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """低显存独显的 CPU 结论由进程缓存共享，llama 和档位不重新选择 GPU。"""
+    from mineru.model.runtime import llama_device, onnx_calibration, tier_recommendation
+
+    monkeypatch.setattr(policy, "discover_gpus", Mock(return_value=(adapter(uma=False, memory=2 * 1024**3),)))
+    monkeypatch.setattr(llama_device, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.delenv("MINERU_LLAMA_CPP_BACKEND", raising=False)
+    monkeypatch.setattr(settings.get_config().model.vlm, "engine", "llama-cpp")
+    monkeypatch.setattr(tier_recommendation, "effective_cpu_count", lambda: 8)
+    selected = device_state.resolve_runtime_device()
+    assert selected.is_cpu
+    assert llama_device.resolve_llama_device().device == "cpu"
+    assert tier_recommendation.recommend_tiers().pdf_image_tiers == ("flash", "basic")
+    policy.discover_gpus.assert_called_once()
+    onnx_calibration.run_calibration.assert_not_called()

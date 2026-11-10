@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 import sys
 import threading
@@ -19,6 +19,7 @@ from .gpu import (
     gpu_kind_rank,
     is_discrete_gpu,
     match_gpu_identities,
+    minimum_gpu_memory_bytes,
     with_gpu_classification,
 )
 
@@ -43,6 +44,8 @@ class WebGPUDevice(GpuClassification):
     metadata: tuple[tuple[str, str], ...] = ()
     # 物理设备约束用于多卡选型及独显免校准；只传递身份，不保存原生句柄。
     vulkan_device: tuple[int, int] | None = None
+    # 容量属于选型证据，不参与 EP 注册句柄的身份比较。
+    dedicated_memory_bytes: int | None = field(default=None, compare=False)
 
     @property
     def identity(self) -> GpuIdentity:
@@ -88,8 +91,8 @@ def discover_webgpu_devices() -> tuple[WebGPUDevice, ...]:
         return tuple(_describe(ep) for ep in _devices())
 
 
-def select_webgpu_device(devices: tuple[WebGPUDevice, ...]) -> WebGPUDevice | None:
-    """按 Vulkan 可见类型优先选择独显，并为免校准和多卡会话绑定实际设备。"""
+def select_webgpu_device(devices: tuple[WebGPUDevice, ...], *, check_memory: bool = False) -> WebGPUDevice | None:
+    """优先选择可见独显；自动模式读取同型号最小容量，显式模式沿用既有选型。"""
     if not devices:
         return None
     if sys.platform != "linux":
@@ -102,9 +105,9 @@ def select_webgpu_device(devices: tuple[WebGPUDevice, ...]) -> WebGPUDevice | No
     # ORT 库存可能包含 ICD 已隐藏的设备；分类必须来自 Vulkan 实际可见的物理设备。
     try:
         with execution_lock(), vulkan_environment_lock():
-            visible = enumerate_vulkan_devices()
+            visible = enumerate_vulkan_devices(include_memory=True) if check_memory else enumerate_vulkan_devices()
     except (OSError, RuntimeError):
-        if len(allowed) != len(devices):
+        if check_memory or len(allowed) != len(devices):
             raise  # 有受限架构时无法确认物理绑定，不允许继续默认选卡。
         return with_gpu_classification(devices[0], GpuClassification())
     matches = match_gpu_identities([d.identity for d in allowed], [d.identity for d in visible])
@@ -115,8 +118,14 @@ def select_webgpu_device(devices: tuple[WebGPUDevice, ...]) -> WebGPUDevice | No
         ]
         if not physical_indices:
             continue
-        # 物理型号存在但无法双向唯一关联时，仍可校准，不允许继承某张卡的独显分类。
         candidate = with_gpu_classification(descriptor, visible[matched] if matched is not None else GpuClassification())
+        if check_memory and all(is_discrete_gpu(visible[i]) for i in physical_indices):
+            # 同型号均为独显即可按组确认；运行时允许在这一组内选择，不必定位某一张卡。
+            candidate = with_gpu_classification(descriptor, visible[physical_indices[0]])
+            candidate = replace(
+                candidate,
+                dedicated_memory_bytes=minimum_gpu_memory_bytes([visible[i].dedicated_memory_bytes for i in physical_indices]),
+            )
         bind = is_discrete_gpu(candidate) or len(visible) > 1 or len(allowed) != len(devices)
         identity = (candidate.vendor_id, candidate.device_id)
         candidates.append((physical_indices[0], replace(candidate, vulkan_device=identity if bind else None)))

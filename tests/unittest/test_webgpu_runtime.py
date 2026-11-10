@@ -53,11 +53,15 @@ def test_registration_is_lazy_once_per_process_and_filters_virtual_devices(monke
 
 
 def test_production_options_resolve_native_handles_locally(monkeypatch: pytest.MonkeyPatch) -> None:
+    """容量证据不影响运行时匹配原生句柄，且可随描述符序列化。"""
     ep = SimpleNamespace(device=SimpleNamespace(vendor_id=0x1002, device_id=1, metadata=dict(device().metadata)))
     monkeypatch.setattr(webgpu, "_devices", lambda: [ep])
     options = SimpleNamespace(add_provider_for_devices=Mock())
     webgpu.attach_webgpu_provider(
-        options, with_gpu_classification(replace(device(), vulkan_device=(0x1002, 1)), classify_vulkan_gpu(2))
+        options,
+        with_gpu_classification(
+            replace(device(), vulkan_device=(0x1002, 1), dedicated_memory_bytes=8 * 1024**3), classify_vulkan_gpu(2)
+        ),
     )
     options.add_provider_for_devices.assert_called_once_with([ep], webgpu.WEBGPU_OPTIONS)
     descriptor = json.loads(json.dumps(asdict(device())))
@@ -66,6 +70,7 @@ def test_production_options_resolve_native_handles_locally(monkeypatch: pytest.M
         "device_id": 1,
         "metadata": [["pci_bus_id", "0000:00:01.0"]],
         "vulkan_device": None,
+        "dedicated_memory_bytes": None,
         "kind": "unknown",
         "kind_source": "unknown",
         "unified_memory": None,

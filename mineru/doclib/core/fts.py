@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from typing import cast
 
 try:
@@ -70,7 +71,7 @@ class FTSManager:
         )
 
     async def search(self, query: str, limit: int = 200) -> list[FtsContentSearchRow]:
-        tokens = _sanitize_query_tokens(tokenize_for_query(query))
+        tokens = _literal_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
         fts_query = " ".join(tokens)
@@ -110,10 +111,10 @@ class FTSManager:
 
     async def search_filenames(self, query: str, limit: int | None = 50) -> list[FtsFilenameSearchRow]:
         """仅对文件名查询的最后一个词默认启用前缀匹配；None 获取完整候选快照。"""
-        tokens = _sanitize_query_tokens(tokenize_for_query(query))
+        tokens = _literal_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
-        if not query.rstrip().endswith("*"):
+        if not tokens[-1].endswith("*"):
             tokens[-1] += "*"
         fts_query = " ".join(tokens)
         sql = (
@@ -140,14 +141,28 @@ class FTSManager:
 # ── helpers ────────────────────────────────────────────────────────
 
 
-def _sanitize_query_tokens(tokenized: str) -> list[str]:
-    """Remove special characters and FTS5 operators from query tokens."""
-    safe: list[str] = []
-    for t in tokenized.split():
-        t = t.strip().replace('"', "").replace(".", "").replace("-", "")
-        if t and t.upper() not in ("AND", "OR", "NOT", "NEAR"):
-            safe.append(t)
-    return safe
+def _literal_query_tokens(tokenized: str) -> list[str]:
+    """将检索词转为 FTS5 引号字面量，前缀星号保留在引号外。
+
+    字面量仍按既有 unicode61 索引分词，标点不保证参与匹配。
+    """
+    terms: list[str] = []
+    for token in tokenized.split():
+        term = token.rstrip("*")
+        prefix = term != token
+        if not term:
+            # Jieba 会把末尾星号分成独立词项，需将其接回前一个有效词项。
+            if terms and not terms[-1].endswith("*"):
+                terms[-1] += "*"
+            continue
+        # unicode61 索引以字母、数字和私用字符组成词项，跳过独立标点。
+        if not any(char.isalnum() or unicodedata.category(char) == "Co" for char in term):
+            continue
+        # 加引号后操作符同名词也只是普通检索词，无需过滤 AND、OR、NOT、NEAR。
+        escaped = term.replace('"', '""')
+        suffix = "*" if prefix else ""
+        terms.append(f'"{escaped}"{suffix}')
+    return terms
 
 
 MAX_FTS_CHARS = 30_000

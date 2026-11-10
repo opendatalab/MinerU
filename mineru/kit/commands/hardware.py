@@ -167,6 +167,8 @@ def _render_device_selection(data: dict[str, Any]) -> list[str]:
         "configured_cpu": "CPU selected by configuration",
         "configured_gpu": "GPU selected by configuration; automatic benchmarking skipped",
         "discrete_gpu": "The confirmed discrete GPU candidate meets the rules for skipping calibration",
+        "discrete_gpu_memory_insufficient": "Discrete GPU total memory rounds to less than 6 GB; using CPU without calibration",
+        "discrete_gpu_memory_unavailable": "Discrete GPU total memory is unavailable; using CPU without calibration",
         "unsupported_platform": "ONNX GPU execution is unsupported on this platform; using CPU",
         "directml_unavailable": "DirectML provider is unavailable; using CPU",
         "no_hardware_gpu": "No usable ONNX GPU found; using CPU",

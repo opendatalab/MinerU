@@ -25,6 +25,8 @@ mineru search "keyword" --min-tier basic --type pdf
 行为：
 
 - 查询 `fts_contents`，未建立内容索引的文件不会命中正文检索。
+- 查询按普通检索词处理，`AND`、`OR`、`NOT`、`NEAR` 也作为检索词参与匹配。
+- 含标点的查询可以正常检索；标点通常不参与词项匹配。例如 `C++ guide` 也可能命中 `C guide` 或 `C# guide`。
 - 按文档 SHA256 去重。
 - 支持按 `file_type`、`tier`、`min_tier` 过滤。
 - 返回文档大小、页数、命中片段、可空的 snippet 来源 tier，以及关联的全部 file aliases。
@@ -61,6 +63,7 @@ mineru find "report" --ext pdf --limit 50 --offset 100
 行为：
 
 - 查询 `fts_filenames` 和文件 metadata。
+- 查询词及标点的处理规则与 `search` 一致。
 - 支持按 `ext` 过滤。
 - 默认对最后一个查询词进行前缀匹配，例如 `bench` 可匹配 `bench1.pdf`；多词查询仅最后一词匹配前缀。显式 `bench*` 等价。
 - 支持 `--limit/-n`（默认 50）和 `--offset`（默认 0）；limit 必须为正，offset 必须非负。

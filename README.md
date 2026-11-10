@@ -47,6 +47,12 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 ## Overview
 
+### MinerU 4.2
+
+- **WebUI interaction upgrades**: Supports bidirectional navigation between source documents and parsed results, outline navigation, and layout visualization, with improved uploads, tier selection, and PDF previews. [Try online](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+- **Improved parsing quality**: More accurate inline formula recognition and complex layout analysis, with improved cross-page table merging. Flash native parsing uses `Tagged PDF` / `PDF/UA` structural semantics to improve reading order and content accuracy.
+- **Dynamic Router management**: Supports dynamic node registration, graceful removal, and multi-level cascading. [Management APIs and cascading examples](https://opendatalab.github.io/MinerU/usage/tasks/#dynamic-router-upstreams-and-cascading)
+
 ### MinerU 4.1
 
 - **Automatic acceleration across major platforms and GPUs:** Windows and Linux gain automatic ONNX acceleration for compatible Intel, AMD, and NVIDIA GPUs, alongside existing MPS/Metal support on macOS. MinerU detects devices, prioritizes discrete GPUs, and selects GPU or CPU execution for integrated graphics based on performance and compatibility. Representative core inference workloads run at approximately **2–3× CPU speed**.

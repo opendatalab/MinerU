@@ -4,12 +4,21 @@
 from __future__ import annotations
 
 import ctypes as C
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 import sys
 from typing import Any
 import uuid
 
-from .gpu import GpuClassification, GpuIdentity, PciAddress, classify_d3d12_gpu, gpu_kind_rank, with_gpu_classification
+from .gpu import (
+    GpuClassification,
+    GpuIdentity,
+    PciAddress,
+    classify_d3d12_gpu,
+    gpu_kind_rank,
+    is_discrete_gpu,
+    minimum_gpu_memory_bytes,
+    with_gpu_classification,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +31,8 @@ class GpuAdapter(GpuClassification):
     vendor_id: int
     device_id: int
     preference: int
+    # 容量只参与自动选型，不改变设备身份、排序或校准证据。
+    dedicated_memory_bytes: int | None = field(default=None, compare=False)
 
     @property
     def identity(self) -> GpuIdentity:
@@ -106,29 +117,6 @@ class _Architecture(C.Structure):
         ("coherent", C.c_int32),
         ("isolated", C.c_int32),
     ]
-
-
-class _VideoMemoryInfo(C.Structure):
-    _fields_ = [
-        ("budget", C.c_uint64),
-        ("usage", C.c_uint64),
-        ("available_for_reservation", C.c_uint64),
-        ("reservation", C.c_uint64),
-    ]
-
-
-def _memory_budget(adapter: C.c_void_p) -> int:
-    """读取同一 UMA 适配器的本地内存预算，查询接口始终成对释放。"""
-    adapter3 = C.c_void_p()
-    query = _method(adapter, 0, C.c_int32, C.POINTER(_Guid), C.POINTER(C.c_void_p))
-    _check(query(adapter, C.byref(_guid("645967a4-1392-4310-a798-8053ce3e93fd")), C.byref(adapter3)))
-    try:
-        memory = _VideoMemoryInfo()
-        read = _method(adapter3, 14, C.c_int32, C.c_uint32, C.c_int32, C.POINTER(_VideoMemoryInfo))
-        _check(read(adapter3, 0, 0, C.byref(memory)))
-        return memory.budget
-    finally:
-        _release(adapter3)
 
 
 def _guid(value: str) -> _Guid:
@@ -233,7 +221,15 @@ def discover_gpus(*, classify: bool = True) -> tuple[GpuAdapter, ...]:
                     luid = _luid(desc)
                     rows.append(
                         with_gpu_classification(
-                            GpuAdapter(index, luid, desc.name, desc.vendor, desc.device, ranks.get(luid, index)),
+                            GpuAdapter(
+                                index,
+                                luid,
+                                desc.name,
+                                desc.vendor,
+                                desc.device,
+                                ranks.get(luid, index),
+                                dedicated_memory_bytes=desc.video_memory,
+                            ),
                             classify_d3d12_gpu(uma),
                         )
                     )
@@ -245,11 +241,19 @@ def discover_gpus(*, classify: bool = True) -> tuple[GpuAdapter, ...]:
 
 
 def preferred_gpu(adapters: tuple[GpuAdapter, ...]) -> GpuAdapter | None:
-    """Prefer a confirmed discrete GPU, then Windows performance preference."""
-    return min(adapters, key=lambda item: (gpu_kind_rank(item.kind), item.preference, item.index), default=None)
+    """优先独显及系统性能排序；同型号独显取最小总容量，无需逐卡身份关联。"""
+    selected = min(adapters, key=lambda item: (gpu_kind_rank(item.kind), item.preference, item.index), default=None)
+    if selected is None or not is_discrete_gpu(selected):
+        return selected
+    capacities = [
+        item.dedicated_memory_bytes
+        for item in adapters
+        if is_discrete_gpu(item) and (item.vendor_id, item.device_id) == (selected.vendor_id, selected.device_id)
+    ]
+    return replace(selected, dedicated_memory_bytes=minimum_gpu_memory_bytes(capacities))
 
 
-def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]:
+def inspect_gpus() -> list[dict[str, Any]]:
     """诊断库存保留不支持 D3D12 的硬件，并读取 DXGI 的 64 位显存容量。"""
     if sys.platform != "win32":
         return []
@@ -282,12 +286,6 @@ def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]
                     pci_address = _pci_address(desc.luid)
                 except Exception as error:
                     pci_error = str(error)
-                budget, memory_error = None, None
-                if include_memory_budget and uma is True:
-                    try:
-                        budget = _memory_budget(adapter)
-                    except Exception as error:
-                        memory_error = str(error)
                 result.append(
                     {
                         "name": desc.name,
@@ -300,8 +298,6 @@ def inspect_gpus(*, include_memory_budget: bool = False) -> list[dict[str, Any]]
                         **asdict(classify_d3d12_gpu(uma)),
                         "dedicated_memory_bytes": desc.video_memory,
                         "shared_memory_bytes": desc.shared_memory,
-                        "memory_budget_bytes": budget,
-                        "memory_error": memory_error,
                     }
                 )
             finally:

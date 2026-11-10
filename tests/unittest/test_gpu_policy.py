@@ -53,7 +53,7 @@ def test_native_classification_agrees_across_runtime_and_report(
     native = with_gpu_classification(
         native, classification if platform == "linux" else classify_vulkan_gpu(2 if classification.kind != "discrete" else 1)
     )
-    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda: (native,))
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda **_: (native,))
     windows = with_gpu_classification(windows_gpu.GpuAdapter(0, "physical", "GPU", 0x1002, 1, 0), classification)
     monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: (windows,))
     monkeypatch.setattr(webgpu, "discover_webgpu_devices", lambda: (webgpu.WebGPUDevice(0x1002, 1),))
@@ -135,7 +135,7 @@ def test_ambiguous_native_mapping_remains_unknown_everywhere(monkeypatch: pytest
     monkeypatch.setattr(webgpu, "sys", SimpleNamespace(platform="linux"))
     physical = tuple(vulkan.VulkanDevice(0x10DE, 1, "GPU", index, kind="discrete", kind_source="vulkan") for index in range(2))
     raw = tuple(llama_probe.LlamaDevice(f"Vulkan{index}", "GPU", "vulkan") for index in range(2))
-    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda: physical)
+    monkeypatch.setattr(vulkan, "enumerate_vulkan_devices", lambda **_: physical)
     monkeypatch.setattr(
         windows_gpu,
         "discover_gpus",
@@ -205,7 +205,7 @@ def test_ggml_gpu_enum_only_controls_inventory(monkeypatch: pytest.MonkeyPatch, 
     physical = with_gpu_classification(vulkan.VulkanDevice(0x1002, 1, "GPU", 0), classify_vulkan_gpu(native_type))
     monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(llama_probe.ct, "CDLL", lambda path: library)
-    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda: (physical,))
+    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda **_: (physical,))
     result = llama_probe._probe_library(tmp_path)
     assert result[0].kind == physical.kind and result[0].kind_source == "vulkan"
     assert not hasattr(result[0], "integrated")
@@ -239,7 +239,7 @@ def test_windows_probe_loads_device_accessors_from_base_dll(
     libraries = {str(registry_path): registry_library, str(base_path): base_library}
     monkeypatch.setattr(llama_probe, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(llama_probe.ct, "CDLL", libraries.__getitem__)
-    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda: ())
+    monkeypatch.setattr(llama_probe, "enumerate_vulkan_devices", lambda **_: ())
     monkeypatch.setattr(windows_gpu, "discover_gpus", lambda: ())
 
     assert llama_probe._probe_library(tmp_path) == (llama_probe.LlamaDevice("Vulkan0", "GPU", "vulkan"),)
@@ -271,29 +271,20 @@ assert match_gpu_identities((GpuIdentity(1, 2),), (GpuIdentity(1, 2),)) == (0,)
     subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)
 
 
-def test_windows_memory_query_without_torch_or_other_inference_dependencies() -> None:
-    """基础安装的 Windows 原生查询和 LUID 匹配无需导入任何推理后端。"""
-    code = """
-import importlib.abc
+def test_native_memory_modules_only_require_standard_library() -> None:
+    """关闭 site-packages 后独立导入原生探测模块，确保不需要任何第三方 Python 包。"""
+    root = Path(windows_gpu.__file__).parent
+    code = f"""
 import sys
-from types import SimpleNamespace
-class BlockRuntime(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'torch', 'torchvision', 'onnxruntime', 'mineru_llama_cpp'}:
-            raise AssertionError(fullname)
-sys.meta_path.insert(0, BlockRuntime())
-from mineru.model.runtime import gpu_memory, windows_gpu
-from mineru.model.runtime.gpu import GpuIdentity
-gpu_memory.sys = SimpleNamespace(platform='win32')
-rows = [
-    {'vendor_id': 4098, 'device_id': 5510, 'name': '8060S', 'luid': luid,
-     'kind': 'integrated', 'memory_budget_bytes': budget, 'pci_address': None}
-    for luid, budget in [('other', 128 * 1024**3), ('selected', 8 * 1024**3)]
-]
-windows_gpu.inspect_gpus = lambda **kwargs: rows
-memory = gpu_memory.native_gpu_memory(GpuIdentity(luid='selected'), device='dml:gpu')
-assert memory.memory_bytes == 8 * 1024**3
-assert memory.source == 'dxgi.local_budget' and memory.identity.luid == 'selected'
-assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
+from types import ModuleType, SimpleNamespace
+package = ModuleType("native_probe")
+package.__path__ = [{str(root)!r}]
+sys.modules[package.__name__] = package
+from native_probe import gpu, windows_gpu, vulkan
+assert gpu.minimum_gpu_memory_bytes([8 * 1024**3, 16 * 1024**3]) == 8 * 1024**3
+assert gpu.minimum_gpu_memory_bytes([None, 16 * 1024**3]) is None
+adapter = windows_gpu.GpuAdapter(0, "id", "GPU", 0x10de, 1, 0, dedicated_memory_bytes=8 * 1024**3)
+assert adapter.dedicated_memory_bytes == 8 * 1024**3
+assert "torch" not in sys.modules and "onnxruntime" not in sys.modules and "loguru" not in sys.modules
 """
-    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True, timeout=15)
+    subprocess.run([sys.executable, "-S", "-c", code], check=True, capture_output=True, text=True, timeout=15)
