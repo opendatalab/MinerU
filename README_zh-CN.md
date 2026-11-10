@@ -47,6 +47,12 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 ## 产品概览
 
+### MinerU 4.2
+
+- **WebUI 交互升级**：支持原文与结果双向定位、目录导航和布局可视化，优化上传、档位选择与 PDF 预览。[在线体验](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+- **解析质量提升**：提升行内公式识别与复杂版面布局分析的准确性，优化跨页表格合并逻辑；Flash 原生解析支持利用 `Tagged PDF` / `PDF/UA` 结构语义，改善阅读顺序与内容准确性。
+- **Router 动态管理**：支持节点动态注册、平滑移除与多层级联。[管理 API 与级联示例](https://opendatalab.github.io/MinerU/zh/usage/tasks/#upstream)
+
 ### MinerU 4.1
 
 - **主流平台与 GPU 自动加速**：Windows、Linux 新增面向 Intel、AMD、NVIDIA 兼容 GPU 的 ONNX 自动加速，结合 macOS 已有的 MPS/Metal 路径，进一步简化跨平台部署。自动识别设备、优先选择独显，并根据集显性能与兼容性选择 GPU 或 CPU；代表性核心推理场景的速度约为 CPU 的 **2～3 倍**。
