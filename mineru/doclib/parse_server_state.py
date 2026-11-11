@@ -48,6 +48,7 @@ class ParseServerHealth:
     managed_tier: ManagedServerTier | None = None
     running_managed_tier: ManagedServerTier | None = None
     restart_count: int = 0
+    managed_restart_exhausted: bool = False  # 运行时熔断独立于配置模式，避免热加载重新开启失败恢复。
     managed_proc: subprocess.Popen | None = None
     managed_control: ManagedProcessControl | None = None
     managed_tier_transition: bool = False

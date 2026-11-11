@@ -78,16 +78,19 @@ def managed_parse_server_url(host: str, port: int) -> str:
 
 
 def select_available_managed_port(host: str, port: int, *, strict_port: bool, port_probe_count: int) -> int:
+    """按配置探测端口，兼容 Windows 独占绑定及保留端口产生的访问拒绝。"""
     last_exc: OSError | None = None
     candidate_ports = (port,) if strict_port else range(port, port + port_probe_count)
     for candidate_port in candidate_ports:
         probe_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
+            # 与子进程 asyncio.create_server 的默认选项一致，避免 Windows 复用已占用端口后误判可用。
+            if os.name == "posix" and sys.platform != "cygwin":
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe_sock.bind((host, candidate_port))
             return int(probe_sock.getsockname()[1])
         except OSError as exc:
-            if exc.errno != errno.EADDRINUSE or strict_port:
+            if strict_port or (exc.errno != errno.EADDRINUSE and getattr(exc, "winerror", None) not in {10013, 10048}):
                 raise
             last_exc = exc
         finally:
@@ -147,6 +150,7 @@ def start_managed_parse_server(
     log_cfg: LogConfig | None,
     marker: str,
 ) -> tuple[subprocess.Popen, str, ManagedProcessControl]:
+    """创建托管子进程，监听线程或子进程启动失败时回收已创建的控制通道。"""
     port = select_available_managed_port(
         managed_cfg.host,
         managed_cfg.port,
@@ -164,8 +168,8 @@ def start_managed_parse_server(
     control = ManagedProcessControl.create()
     env.update(control.child_env())
     logger.info("Starting managed parse-server (%s): %s", marker, " ".join(cmd))
-    control.start_accepting()
     try:
+        control.start_accepting()
         with open_managed_parse_server_logs(marker=marker, log_cfg=log_cfg) as (
             stdout_log_file,
             stderr_log_file,
@@ -185,6 +189,7 @@ def stop_managed_parse_server(
     reason: str,
     startup_in_progress: bool = False,
 ) -> None:
+    """在统一预算内关闭托管进程，最终仍未退出时抛错以保留调用方的进程归属。"""
     if proc is None:
         if control is not None:
             control.close()
@@ -234,6 +239,8 @@ def stop_managed_parse_server(
         logger.info("Managed parse-server killed (PID %d, reason=%s)", pid, reason)
     except Exception as exc:
         logger.error("Failed to kill managed parse-server (PID %d, reason=%s): %s", pid, reason, exc)
+        if proc.poll() is None:
+            raise RuntimeError(f"Managed parse-server did not stop (PID {pid}, reason={reason})") from exc
     finally:
         if control is not None:
             control.close()
@@ -301,19 +308,29 @@ class ParseServerHealthCheck:
             # 读取配置期间若发生切换，重新读取，避免用旧快照覆盖新的目标档位。
             if config_generation != health.local_generation:
                 continue
+            if mode == "managed" and (health.local_mode != mode or health.managed_tier != desired_managed_tier):
+                health.restart_count = 0
+                health.managed_restart_exhausted = False
             health.local_mode = mode
             health.managed_tier = desired_managed_tier
             health.self_hosted_url = self_hosted_url if self_hosted_url else None
 
             # 档位切换先于探测和远程健康检查，旧服务不能在重启前重新变为可用。
             tier_changed = False
-            if health.local_mode == "managed":
+            if health.local_mode == "managed" and not health.managed_restart_exhausted:
                 tier_changed = await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
+            elif health.local_mode != "managed" and (health.managed_proc is not None or health.managed_control is not None):
+                try:
+                    self._stop_managed_process(health, reason="local mode changed")
+                except RuntimeError:
+                    logger.exception("Failed to stop managed parse-server after local mode changed")
 
             # probe local
             probed_local = False
             probe_generation = health.local_generation
-            if health.local_mode != "disabled":
+            if health.local_mode == "managed" and health.managed_restart_exhausted:
+                self._exhaust_managed_restarts(health)
+            elif health.local_mode != "disabled":
                 url = self._local_url(health)
                 if url:
                     probed_local = True
@@ -364,7 +381,7 @@ class ParseServerHealthCheck:
 
             if probe_generation != health.local_generation:
                 continue
-            if health.local_mode == "managed":
+            if health.local_mode == "managed" and not health.managed_restart_exhausted:
                 proc = health.managed_proc
                 now = asyncio.get_event_loop().time()
                 startup_elapsed_sec = now - health.local_started_at
@@ -427,6 +444,9 @@ class ParseServerHealthCheck:
         health: ParseServerHealth,
         desired_managed_tier: ManagedServerTier,
     ) -> bool:
+        """目标档位变化时串行替换托管进程，熔断恢复由配置入口显式触发。"""
+        if health.managed_restart_exhausted:
+            return False
         running_managed_tier = health.running_managed_tier
         if running_managed_tier is None or running_managed_tier == desired_managed_tier:
             return False
@@ -452,9 +472,9 @@ class ParseServerHealthCheck:
         marker: str | None = None,
         count_restart: bool = True,
     ) -> None:
-        if count_restart and health.restart_count >= MAX_RESTART_ATTEMPTS:
-            logger.error("Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS)
-            health.local_mode = "disabled"
+        """先确认旧进程已退出再启动新进程，连续失败达到预算后进入熔断。"""
+        if health.managed_restart_exhausted or (count_restart and health.restart_count >= MAX_RESTART_ATTEMPTS):
+            self._exhaust_managed_restarts(health)
             return
 
         config_generation = health.local_generation
@@ -464,18 +484,8 @@ class ParseServerHealthCheck:
         if count_restart:
             health.restart_count += 1
         health.begin_managed_tier_transition(managed_tier)
-        stop_managed_parse_server(
-            health.managed_proc,
-            control=health.managed_control,
-            timeout_sec=self.stop_timeout_sec,
-            reason=reason,
-            startup_in_progress=health.local_starting,
-        )
-        health.managed_proc = None
-        health.managed_control = None
-        health.running_managed_tier = None
-        health.local_starting = False
         try:
+            self._stop_managed_process(health, reason=reason)
             proc, managed_url, control = start_managed_parse_server(
                 tier=managed_tier,
                 managed_cfg=self.managed_parse_server,
@@ -491,6 +501,47 @@ class ParseServerHealthCheck:
             health.local_started_at = asyncio.get_event_loop().time()
         except Exception as exc:
             logger.error(f"Failed to restart managed parse-server: {exc}")
+            # 配置切换成功不消耗恢复预算，但切换失败仍须受连续失败上限约束。
+            if not count_restart:
+                health.restart_count += 1
+            if health.restart_count >= MAX_RESTART_ATTEMPTS:
+                self._exhaust_managed_restarts(health)
+
+    def _stop_managed_process(self, health: ParseServerHealth, *, reason: str) -> None:
+        """成功回收后释放进程归属，失败时保留引用供下一轮或应用退出重试。"""
+        stop_managed_parse_server(
+            health.managed_proc,
+            control=health.managed_control,
+            timeout_sec=self.stop_timeout_sec,
+            reason=reason,
+            startup_in_progress=health.local_starting,
+        )
+        health.managed_proc = None
+        health.managed_control = None
+        health.running_managed_tier = None
+        health.local_starting = False
+        health.local_started_at = 0.0
+
+    def _exhaust_managed_restarts(self, health: ParseServerHealth) -> None:
+        """锁定失败恢复并回收残留进程，后续轮次只重试未完成的回收。"""
+        if not health.managed_restart_exhausted:
+            logger.error("Managed parse-server failed %d restarts, disabling automatic restarts", MAX_RESTART_ATTEMPTS)
+            health.managed_restart_exhausted = True
+            health.local_generation += 1
+            health.local.probe = ProbeResult(
+                error_code="parse_server_unavailable",
+                error_msg=(
+                    f"Managed parse-server failed {MAX_RESTART_ATTEMPTS} restarts. "
+                    "Set managed mode or tier again, or restart MinerU server to retry."
+                ),
+            )
+        try:
+            if health.managed_proc is not None or health.managed_control is not None:
+                self._stop_managed_process(health, reason="restart budget exhausted")
+        except RuntimeError:
+            logger.exception("Failed to stop managed parse-server after restart budget exhausted")
+        health.local_starting = False
+        health.managed_tier_transition = False
 
     async def _probe(self, base_url: str, *, api_key: str | None = None) -> ProbeResult:
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
@@ -529,18 +580,11 @@ class ParseServerHealthCheck:
         return None
 
     async def stop(self) -> None:
+        """结束健康检查并确认回收当前应用拥有的托管进程。"""
         self.running = False
         self.wakeup()
         health = self.health
-        stop_managed_parse_server(
-            health.managed_proc,
-            control=health.managed_control,
-            timeout_sec=self.stop_timeout_sec,
-            reason="health check stop",
-            startup_in_progress=health.local_starting,
-        )
-        health.managed_proc = None
-        health.managed_control = None
+        self._stop_managed_process(health, reason="health check stop")
 
 
 def _probe_error(resp: httpx.Response) -> tuple[str, str]:

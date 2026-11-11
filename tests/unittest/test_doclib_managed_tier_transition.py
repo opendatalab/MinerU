@@ -377,3 +377,68 @@ def test_transition_stays_unavailable_until_target_tier_is_ready(
         assert exc.value.code == "engine_unavailable"
 
     asyncio.run(_run())
+
+
+@pytest.mark.parametrize("retry", ["mode", "same_tier", "new_tier", "disable_enable"])
+def test_config_api_resets_exhausted_managed_recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retry: str) -> None:
+    """显式重设 managed 模式或档位可恢复熔断，重置预算后才允许新启动。"""
+
+    async def scenario() -> None:
+        """通过真实配置接口恢复故障服务，并验证启动采用当前有效档位。"""
+        _, server, _, health, checker = await _services(tmp_path, monkeypatch)
+        health.restart_count = 3
+        health.managed_restart_exhausted = True
+        health.local.probe = ProbeResult(error_code="parse_server_unavailable")
+        started = _mock_child_lifecycle(monkeypatch, health)
+        if retry == "disable_enable":
+            await server.set_config("parse_server.local.mode", ConfigSetRequest(value="disabled"))
+        if retry in {"mode", "disable_enable"}:
+            await server.set_config("parse_server.local.mode", ConfigSetRequest(value="managed"))
+        else:
+            tier = "standard" if retry == "new_tier" else "basic"
+            await server.set_config("parse_server.local.managed_tier", ConfigSetRequest(value=tier))
+        assert health.managed_restart_exhausted is False
+        assert health.restart_count == 0
+        assert checker._wakeup_event.is_set()
+        assert health.local.probe.healthy is False
+        await checker._try_restart_managed(health)
+        assert started == ["standard" if retry == "new_tier" else "basic"]
+        assert health.local_starting is True
+        assert health.restart_count == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("mode", ["disabled", "self_hosted"])
+def test_leaving_managed_mode_invalidates_probe_and_releases_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """模式切换立即撤销旧结果并唤醒回收，避免关闭 managed 后留下模型进程。"""
+
+    async def scenario() -> None:
+        """经配置 API 切换后运行真实健康循环，验证旧进程只回收一次。"""
+        _, server, _, health, checker = await _services(tmp_path, monkeypatch)
+        old_process = health.managed_proc
+        stopped: list[object] = []
+
+        def stop(process: object, **kwargs: object) -> None:
+            """记录模式切换交给清理入口的旧进程。"""
+            stopped.append(process)
+
+        async def probe(url: str, *, api_key: str | None = None) -> ProbeResult:
+            """探测完成后结束循环，验证停机清理先于后续探测。"""
+            checker.running = False
+            return ProbeResult()
+
+        monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", stop)
+        monkeypatch.setattr(checker, "_probe", probe)
+        await server.set_config("parse_server.local.mode", ConfigSetRequest(value=mode))
+        assert health.local_mode == mode
+        assert health.local.probe.healthy is False
+        assert checker._wakeup_event.is_set()
+        await checker.run()
+        assert stopped == [old_process]
+        assert health.managed_proc is None and health.managed_control is None
+        assert health.running_managed_tier is None
+
+    asyncio.run(scenario())

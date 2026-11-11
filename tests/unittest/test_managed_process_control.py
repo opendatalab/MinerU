@@ -5,6 +5,8 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from types import TracebackType
+from unittest.mock import Mock
 
 import pytest
 
@@ -101,3 +103,43 @@ watcher.close()
             proc.kill()
             proc.wait(timeout=2)
         control.close()
+
+
+def test_managed_control_close_cannot_reinstall_accepted_connection() -> None:
+    """连接安装前关闭通道，监听线程恢复后必须关闭迟到连接并保持资源已释放。"""
+    entered = threading.Event()
+    release = threading.Event()
+    main_thread = threading.current_thread()
+    lock = threading.Lock()
+
+    class PausedWorkerLock:
+        """把监听线程暂停在加锁之前，让主线程确定性地先完成关闭。"""
+
+        def __enter__(self) -> None:
+            """监听线程首次加锁时等待，主线程关闭时可直接取得锁。"""
+            if threading.current_thread() is not main_thread and not entered.is_set():
+                entered.set()
+                assert release.wait(timeout=2)
+            lock.acquire()
+
+        def __exit__(
+            self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None
+        ) -> None:
+            """释放底层锁，让关闭和安装连接继续按既定时序执行。"""
+            lock.release()
+
+    connection = Mock()
+    listener = Mock(accept=Mock(return_value=connection))
+    control = ManagedProcessControl(listener, "AF_PIPE", "test-only", b"test")
+    control._lock = PausedWorkerLock()
+    control.start_accepting()
+    try:
+        assert entered.wait(timeout=2)
+        control.close()
+    finally:
+        release.set()
+        control._accept_thread.join(timeout=2)
+        control.close()
+    assert not control._accept_thread.is_alive()
+    assert control._connection is None
+    connection.close.assert_called_once()
