@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from doclib_test_utils import authenticated_doclib_config
+from doclib_test_utils import DOCLIB_AUTH_HEADERS, authenticated_doclib_config, create_doclib_server
 
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from mineru.config import Config, LogConfig
@@ -241,5 +243,76 @@ def test_teardown_cancellation_waits_for_cleanup(tmp_path: Path, monkeypatch: py
         with pytest.raises(asyncio.CancelledError):
             await shutdown
         assert events == ["watch.done", "db.close"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("complete_tier_restart", [True, False])
+def test_host_shutdown_after_tier_change_cleans_managed_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, complete_tier_restart: bool
+) -> None:
+    """标准宿主在档位切换前后收到停机请求时，均通过生命周期回收所属子进程。"""
+    cfg = authenticated_doclib_config(_configuration(tmp_path))
+    cfg.doclib.endpoint_path = str(tmp_path / "endpoint.json")
+    cfg.doclib.uds.enabled = False
+    cfg.doclib.tcp.enabled = True
+    cfg.doclib.tcp.port = 0
+    asyncio.run(_enable_managed(cfg))
+    processes = [Mock(pid=index) for index in (1, 2)]
+    start = Mock(side_effect=[(proc, "http://127.0.0.1:16580", None) for proc in processes])
+    stop = Mock()
+    kill = Mock()
+    monkeypatch.setattr(probes, "start_managed_parse_server", start)
+    monkeypatch.setattr(probes, "stop_managed_parse_server", stop)
+    monkeypatch.setattr("mineru.doclib.server.os.kill", kill)
+    monkeypatch.setattr("mineru.doclib.server._ensure_managed_parse_server_tier_available", Mock())
+    monkeypatch.setattr(doclib_app, "_create_background_task", Mock())
+
+    class Server:
+        """保留宿主与真实应用的组装路径，用受控循环替代网络服务等待。"""
+
+        def __init__(self, config: Any) -> None:
+            """保存标准入口传入的 ASGI 应用，等待停机回调设置退出标志。"""
+            self.app = config.app
+            self.should_exit = False
+
+        async def serve(self, *, sockets: list[object]) -> None:
+            """通过真实配置和停机路由触发关闭，再执行应用生命周期退出。"""
+            state = self.app.state.doclib_state
+            async with self.app.router.lifespan_context(self.app):
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=self.app), base_url="http://doclib", headers=DOCLIB_AUTH_HEADERS
+                ) as client:
+                    changed = await client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "advanced"})
+                    assert changed.status_code == 200
+                    if complete_tier_restart:
+                        await state.health_check._try_restart_managed_for_tier_change(state.health, "advanced")
+                    response = await client.post("/api/v1/server/shutdown")
+                    assert response.status_code == 200
+                    assert response.json()["accepted"] is True
+                    assert self.should_exit is True
+            assert state.health.managed_proc is None
+            assert state.health.managed_control is None
+
+    monkeypatch.setattr(doclib_app.uvicorn, "Server", Server)
+    doclib_app._run_server(cfg)
+    assert start.call_count == (2 if complete_tier_restart else 1)
+    assert [call.args[0] for call in stop.call_args_list if call.args[0] is not None] == processes[: start.call_count]
+    assert not Path(cfg.doclib.endpoint_path).exists()
+    kill.assert_not_called()
+
+
+def test_embedded_shutdown_without_host_callback_reports_unavailable() -> None:
+    """未提供关闭回调的嵌入式宿主返回明确错误，避免终止承载它的 Python 进程。"""
+
+    async def scenario() -> None:
+        """通过真实 HTTP 路由检查缺少宿主回调时的公开错误响应。"""
+        server = create_doclib_server(SimpleNamespace(shutdown=None))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=server.app), base_url="http://doclib", headers=DOCLIB_AUTH_HEADERS
+        ) as client:
+            response = await client.post("/api/v1/server/shutdown")
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "service_unavailable"
 
     asyncio.run(scenario())

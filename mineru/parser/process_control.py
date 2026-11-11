@@ -149,6 +149,7 @@ class ManagedProcessControl:
         cleanup_control_endpoint(self.family, self.address)
 
     def _accept_connection(self) -> None:
+        """接收连接后在同一把锁内确认关闭状态，避免关闭完成后重新持有连接。"""
         connection: Connection | None = None
         while not self._closed.is_set():
             try:
@@ -163,13 +164,12 @@ class ManagedProcessControl:
 
         if connection is None:
             return
-        if self._closed.is_set():
-            connection.close()
-            return
         with self._lock:
+            if self._closed.is_set():
+                connection.close()
+                return
             self._connection = connection
-        self._connection_ready.set()
-        with self._lock:
+            self._connection_ready.set()
             shutdown_requested = self._shutdown_requested
         if shutdown_requested:
             self._send_shutdown()

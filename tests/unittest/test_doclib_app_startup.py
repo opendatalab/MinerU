@@ -621,6 +621,10 @@ def test_managed_parse_server_startup_ignores_invalid_tier_override(monkeypatch,
         def poll(self) -> None:
             return None
 
+        def terminate(self) -> None:
+            """模拟正常结束，使启动配置测试使用完整的进程生命周期替身。"""
+            return None
+
         def wait(self, timeout: int) -> None:
             return None
 

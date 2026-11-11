@@ -7,6 +7,9 @@ import os
 
 import pytest
 
+# ONNX Runtime 1.30 的 1DS 遥测线程可能在解释器析构时崩溃，普通回归在导入前默认关闭遥测。
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
+
 # Typer 的 help 文案在 import 期求值,必须在任何 mineru 模块导入前固定 CLI 语言,
 # 否则中文 locale 机器上既有的英文输出断言会失败。i18n 专项测试自行 monkeypatch 覆盖。
 os.environ["MINERU_LANG"] = "en"
