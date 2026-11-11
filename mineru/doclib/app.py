@@ -393,6 +393,7 @@ class AppState:
         self.tcp_port: int | None = None
         self.config: Config | None = None
         self.discovery_cleanup: Callable[[], None] | None = None
+        self.shutdown: Callable[[], None] | None = None
 
 
 REQUIRED_SCHEMA_TABLES = {
@@ -566,6 +567,12 @@ def _run_server(cfg: Config, *, log_source: ConfigSource | Literal["provided"] =
             timeout_keep_alive=cfg.doclib.tcp.timeout,
         )
         server = uvicorn.Server(uv_config)
+
+        def request_shutdown() -> None:
+            """通过 Uvicorn 正常退出，确保 Windows 也会执行生命周期清理。"""
+            server.should_exit = True
+
+        app.state.doclib_state.shutdown = request_shutdown
 
         if uds_enabled:
             uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

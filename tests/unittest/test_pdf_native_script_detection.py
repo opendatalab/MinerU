@@ -225,6 +225,37 @@ def _rotated_char(index: int, text: str, rotation_degrees: float) -> Char:
     return char
 
 
+@pytest.mark.parametrize(
+    ("degrees", "expected"),
+    [
+        (0.0, True),
+        (90.0, True),
+        (180.0, True),
+        (270.0, True),
+        (0.05, True),
+        (0.1, False),
+        (359.5, False),
+        (359.899, False),
+        (359.9, False),
+        (359.95, True),
+        (360.0, True),
+        (360.00001001791264, True),
+        (45.0, False),
+        (315.0, False),
+    ],
+)
+def test_supported_pdfium_rotations_include_zero_wrap(degrees: float, expected: bool) -> None:
+    """覆盖 PDFium 的整圈边界及单精度上溢，同时保持严格小于 0.1 度的容差。"""
+    assert native._is_supported_rotation(math.radians(degrees)) is expected
+
+
+@pytest.mark.parametrize("degrees", [0.05, 359.95, 360.00001001791264])
+def test_span_fill_keeps_short_labels_near_zero(degrees: float) -> None:
+    """单字符标签无需借助多字符基线恢复即可通过近零方向筛选。"""
+    char = _rotated_char(0, "A", degrees)
+    assert native._get_chars_for_span_fill([char]) == [char]
+
+
 def test_span_fill_does_not_restore_315_degree_watermark(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

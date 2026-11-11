@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
-import signal
 import sys
 import time
 from typing import Any, cast
@@ -37,7 +35,7 @@ from ..types import (
 from ..version import __version__
 from .auth import DoclibAuthMiddleware
 from .background.parse_server_health import get_managed_parse_server_tier
-from .parse_server_state import ParseServerHealth
+from .parse_server_state import ParseServerHealth, ProbeResult
 from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
@@ -302,12 +300,13 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("POST", "/server/shutdown", tags=("server",))
     async def shutdown_server(self) -> ShutdownResponse:
-        if hasattr(self.state, "shutdown"):
-            result = self.state.shutdown()
-            if hasattr(result, "__await__"):
-                await result
-        else:
-            asyncio.create_task(_signal_shutdown())
+        """通过宿主回调请求优雅关闭，让应用生命周期完成资源回收。"""
+        shutdown = getattr(self.state, "shutdown", None)
+        if shutdown is None:
+            raise MineruError("service_unavailable", "Server shutdown is unavailable for this application host.")
+        result = shutdown()
+        if hasattr(result, "__await__"):
+            await result
         return ShutdownResponse(accepted=True, message="Server shutting down...")
 
     @route("POST", "/parses", tags=("parse",))
@@ -779,12 +778,27 @@ class DoclibServer(AsyncDoclibInterface):
     async def _refresh_managed_tier_transition(self) -> None:
         """按最新有效配置撤销旧托管服务探测结果，并唤醒串行重启任务。"""
         mode = await self.state.config_svc.get("parse_server.local.mode")
+        health = self.health
         if mode != "managed":
+            if health.local_mode != mode:
+                health.local_generation += 1
+                health.local_mode = mode or "disabled"
+                health.local.probe = ProbeResult()
+                health.managed_tier_transition = False
+                health_check = getattr(self.state, "health_check", None)
+                if health_check is not None:
+                    health_check.wakeup()
             return
         tier = await get_managed_parse_server_tier(self.state.config_svc)
-        health = self.health
-        if health.local_mode == "managed" and health.managed_tier == tier and health.running_managed_tier == tier:
+        if (
+            health.local_mode == "managed"
+            and health.managed_tier == tier
+            and health.running_managed_tier == tier
+            and not health.managed_restart_exhausted
+        ):
             return
+        health.restart_count = 0
+        health.managed_restart_exhausted = False
         health.begin_managed_tier_transition(tier)
         health_check = getattr(self.state, "health_check", None)
         if health_check is not None:
@@ -1155,11 +1169,6 @@ async def _mineru_error_handler(_request: Request, exc: Exception) -> JSONRespon
 
 async def _unexpected_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content=error_response(MineruError("internal_error", str(exc))))
-
-
-async def _signal_shutdown() -> None:
-    await asyncio.sleep(0.1)
-    os.kill(os.getpid(), signal.SIGTERM)
 
 
 def _parse_server_status(

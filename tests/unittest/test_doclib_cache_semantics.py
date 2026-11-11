@@ -779,7 +779,11 @@ def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch:
     )
     health = ParseServerHealth()
 
-    asyncio.run(checker._try_restart_managed(health))
+    try:
+        asyncio.run(checker._try_restart_managed(health))
+    finally:
+        if health.managed_control is not None:
+            health.managed_control.close()
 
     assert health.managed_url == "http://127.0.0.2:16582"
     assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse restart stdout\n")
@@ -828,7 +832,11 @@ def test_managed_parse_server_restart_ignores_invalid_tier_override(monkeypatch:
     )
     health = ParseServerHealth()
 
-    asyncio.run(checker._try_restart_managed(health))
+    try:
+        asyncio.run(checker._try_restart_managed(health))
+    finally:
+        if health.managed_control is not None:
+            health.managed_control.close()
 
     assert events == ["start"]
     assert config_svc.value == "ultra"

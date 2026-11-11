@@ -178,6 +178,16 @@ Markdown 响应中的 visual block 图片使用 `doc:.../page:.../block:...` loc
 
 请求定位器的 `page:` 复用输入页范围语法：数字、`rN`、`1-5`、`r3-r1`、`1,3,r1`、`all`。`r1` 表示最后一页，`rN` 和 `all` 需要文档总页数；返回定位器及块引用使用实际页码。带 block/char、图片读取和非零 context 都要求选中单页。
 
+Markdown 文档定位或单点页定位在 `context=0` 时，页内截断的 `next_request` 同时携带文档 `locator` 和已消费位置 `after`。
+调用方应将这两个字段一起传给下一次 `read_content()`，从未完成的当前页继续读取。当前页完成后，服务继续建议下一页。
+块级 `after` 表示该块已完成，字符级 `after` 从对应偏移继续，页级 `after` 从下一页开始。
+
+```python
+result = client.read_content("doc:ab12cd3/tier:flash/page:1", limit=1000)
+if result.next_request is not None:
+    result = client.read_content(result.next_request.locator, after=result.next_request.after, limit=1000)
+```
+
 范围读取结束后 `next_request=null`。范围内截断时，同时返回规范化 `locator` 和实际页码 `after`；两者可直接传给下一次 `read_content()`，不会读入未选择的页面：
 
 ```python
@@ -247,9 +257,40 @@ Doclib client 暴露运行时配置能力:
 | 方法 | 说明 |
 |------|------|
 | `get_server_status()` | 返回 doclib、队列、watch 和 parse-server 状态。 |
-| `shutdown_server()` | 请求 doclib server 关闭。 |
+| `shutdown_server()` | 通过宿主回调请求 doclib server 优雅关闭。 |
 
 `get_server_status()` 是 CLI、MCP 和桌面端判断本地能力的主入口。
+
+`shutdown_server()` 返回 `accepted=True` 表示宿主已接受关闭请求，资源清理和进程退出仍在进行。
+标准 `mineru server` 入口已经绑定 Uvicorn 停机回调，CLI 会等待服务退出并释放文档库目录锁。
+
+嵌入式 `create_app(cfg)` 需要宿主在启动服务前设置 `app.state.doclib_state.shutdown`；
+直接构造 `DoclibServer(state, ...)` 时，在传入的 `state` 上设置 `shutdown` 回调。
+缺少回调时，关闭接口返回 `service_unavailable` 错误，SDK 抛出相应的 `MineruError`。
+回调应发起宿主的优雅退出，由 ASGI lifespan 清理后台任务、托管子进程和数据库；
+回调自身应及时返回，不等待当前 HTTP 请求所属的服务完全退出。
+
+下面示例接收已配置 `doclib.auth.token` 的 `cfg`，为自定义 Uvicorn 宿主绑定回调：
+
+```python
+import uvicorn
+
+from mineru.config import Config
+from mineru.doclib.app import create_app
+
+
+def serve_doclib(cfg: Config) -> None:
+    """为嵌入式 Doclib 绑定宿主停机回调，并启用生命周期清理。"""
+    app = create_app(cfg)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=15980, lifespan="on"))
+
+    def request_shutdown() -> None:
+        """请求 Uvicorn 优雅退出，资源回收由应用生命周期完成。"""
+        server.should_exit = True
+
+    app.state.doclib_state.shutdown = request_shutdown
+    server.run()
+```
 
 ## 错误模型
 

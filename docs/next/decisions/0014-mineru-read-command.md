@@ -176,6 +176,10 @@ class DocContentResponse(DoclibModel):
 - 范围 read 读完后 `next_request=null`，续读不会进入未选择的页面；已有单点 read 的续读行为保持不变。
 - image 输出时 `content=""`，asset 信息写入 `asset`，不把图片路径塞进 `content`。
 
+> 2026-11-11 续读修正。本节单点读取的续读字段约定已调整，`context=0` 的文档或单点页定位在页内截断时，
+> `next_request` 同时携带文档 `locator` 和已消费位置 `after`，当前页完成后继续建议下一页。
+> 现行行为及客户端示例见 [CLI 续读说明](../cli/mineru-read.md#8-continuation) 和 [Doclib SDK](../sdk/doclib-client.md#parse-doc)。
+
 parse read 返回示例:
 
 ```json
