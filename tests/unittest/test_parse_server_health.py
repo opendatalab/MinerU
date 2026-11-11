@@ -6,6 +6,7 @@ from doclib_test_utils import create_health_check
 import asyncio
 import errno
 import logging
+import socket
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -194,6 +195,59 @@ def test_failed_tier_change_cleanup_is_bounded_by_restart_budget(monkeypatch: py
     assert health.managed_proc is process
     assert asyncio.run(checker._try_restart_managed_for_tier_change(health, "advanced")) is False
     start.assert_not_called()
+
+
+def test_windows_managed_port_probe_rejects_reusable_occupied_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    """模拟 Windows 已有监听允许复用的情形，探测必须跳过占用端口而非共享绑定成功。"""
+    sockets: list[Mock] = []
+
+    def create_socket(family: int, kind: int) -> Mock:
+        """为每个候选端口创建独立 socket，按 Winsock 地址复用语义处理绑定。"""
+        sock = Mock()
+        sockets.append(sock)
+
+        def bind(address: tuple[str, int]) -> None:
+            """已占用端口仅允许开启 SO_REUSEADDR 的探测共享绑定。"""
+            reuse_enabled = any(
+                call.args == (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) for call in sock.setsockopt.call_args_list
+            )
+            if address[1] == 16580 and not reuse_enabled:
+                raise OSError(errno.EADDRINUSE, "occupied reusable address")
+            sock.getsockname.return_value = address
+
+        sock.bind.side_effect = bind
+        return sock
+
+    monkeypatch.setattr(health_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(health_module.socket, "socket", create_socket)
+
+    selected = health_module.select_available_managed_port("127.0.0.1", 16580, strict_port=False, port_probe_count=2)
+
+    assert selected == 16581
+    assert len(sockets) == 2
+    for sock in sockets:
+        sock.close.assert_called_once()
+
+
+@pytest.mark.parametrize("strict_port", [True, False])
+def test_managed_port_probe_rejects_real_reusable_listener(strict_port: bool) -> None:
+    """用真实允许复用的监听 socket 验证冲突处理，在 Windows CI 覆盖实际 Winsock 行为。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied:
+        occupied.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen(1)
+        occupied_port = occupied.getsockname()[1]
+        if strict_port:
+            with pytest.raises(OSError):
+                health_module.select_available_managed_port("127.0.0.1", occupied_port, strict_port=True, port_probe_count=1)
+        else:
+            probe_count = min(100, 65536 - occupied_port)
+            if probe_count < 2:
+                pytest.skip("系统分配了最后一个端口，没有后续候选端口")
+            selected = health_module.select_available_managed_port(
+                "127.0.0.1", occupied_port, strict_port=False, port_probe_count=probe_count
+            )
+            assert occupied_port < selected < occupied_port + probe_count
 
 
 @pytest.mark.parametrize("winerror", [10013, 10048, None])

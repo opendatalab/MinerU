@@ -83,8 +83,10 @@ def select_available_managed_port(host: str, port: int, *, strict_port: bool, po
     candidate_ports = (port,) if strict_port else range(port, port + port_probe_count)
     for candidate_port in candidate_ports:
         probe_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
+            # 与子进程 asyncio.create_server 的默认选项一致，避免 Windows 复用已占用端口后误判可用。
+            if os.name == "posix" and sys.platform != "cygwin":
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe_sock.bind((host, candidate_port))
             return int(probe_sock.getsockname()[1])
         except OSError as exc:

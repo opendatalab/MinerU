@@ -247,9 +247,40 @@ Doclib client 暴露运行时配置能力:
 | 方法 | 说明 |
 |------|------|
 | `get_server_status()` | 返回 doclib、队列、watch 和 parse-server 状态。 |
-| `shutdown_server()` | 请求 doclib server 关闭。 |
+| `shutdown_server()` | 通过宿主回调请求 doclib server 优雅关闭。 |
 
 `get_server_status()` 是 CLI、MCP 和桌面端判断本地能力的主入口。
+
+`shutdown_server()` 返回 `accepted=True` 表示宿主已接受关闭请求，资源清理和进程退出仍在进行。
+标准 `mineru server` 入口已经绑定 Uvicorn 停机回调，CLI 会等待服务退出并释放文档库目录锁。
+
+嵌入式 `create_app(cfg)` 需要宿主在启动服务前设置 `app.state.doclib_state.shutdown`；
+直接构造 `DoclibServer(state, ...)` 时，在传入的 `state` 上设置 `shutdown` 回调。
+缺少回调时，关闭接口返回 `service_unavailable` 错误，SDK 抛出相应的 `MineruError`。
+回调应发起宿主的优雅退出，由 ASGI lifespan 清理后台任务、托管子进程和数据库；
+回调自身应及时返回，不等待当前 HTTP 请求所属的服务完全退出。
+
+下面示例接收已配置 `doclib.auth.token` 的 `cfg`，为自定义 Uvicorn 宿主绑定回调：
+
+```python
+import uvicorn
+
+from mineru.config import Config
+from mineru.doclib.app import create_app
+
+
+def serve_doclib(cfg: Config) -> None:
+    """为嵌入式 Doclib 绑定宿主停机回调，并启用生命周期清理。"""
+    app = create_app(cfg)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=15980, lifespan="on"))
+
+    def request_shutdown() -> None:
+        """请求 Uvicorn 优雅退出，资源回收由应用生命周期完成。"""
+        server.should_exit = True
+
+    app.state.doclib_state.shutdown = request_shutdown
+    server.run()
+```
 
 ## 错误模型
 
