@@ -2,6 +2,17 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.2.1
+
+- **Complete Doclib continuation after truncation**. Markdown document and single-page reads with `context=0` use both `next_request.locator` and `next_request.after` to resume the unfinished page after reaching the output limit, then suggest the next page. CLI continuation markers and SDK documentation follow the same contract.
+- **Bound managed parse-server recovery**. Stop automatic retries after repeated startup or restart failures and clean up remaining processes. Setting the managed mode or tier again, or restarting the document library server, allows recovery to resume. Improve process and control-channel cleanup during mode changes, tier changes, and shutdown.
+- **Correct Windows managed-port probing**. Match the server's actual binding behavior and skip occupied or system-reserved ports when strict-port mode is disabled, reducing startup failures after a successful port probe.
+- **Graceful document library shutdown**. Use a host shutdown callback to run lifecycle cleanup, including background tasks, managed parsing processes, and database resources on Windows.
+- **Restore Windows GPU memory information**. Improve PCI-address matching between DXGI and the hardware inventory, and retain consistent memory and device properties when same-model entries have ambiguous identities.
+- **Preserve native PDF body text**. Accept normal text directions close to 360° due to floating-point error, preventing horizontal text from being filtered during native text restoration.
+
+**Integration note**. Embedded Doclib hosts must provide a `shutdown` callback to support the shutdown endpoint. A missing callback returns `service_unavailable`. The standard `mineru server` entry point already provides the callback.
+
 ## 4.2.0
 
 MinerU 4.2.0 upgrades WebUI interaction and source tracing, improves parsing of complex PDFs, formulas, and tables, and strengthens device selection, model caching, service management, and input security. These are cumulative changes since 4.1.0, including improvements released in 4.1.x.
