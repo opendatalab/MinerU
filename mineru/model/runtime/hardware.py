@@ -17,7 +17,7 @@ from .hardware_probe import run_probe
 from .hardware_system import collect_system_hardware
 from .hardware_types import GpuInfo, HardwareInfo, HardwareInfoSection, PackageInfo, RuntimeProbe
 from .onnx_calibration_cache import inspect_calibration_record
-from .gpu import GPU_KIND_ORDER, GpuIdentity, gpu_identities_match, match_gpu_identities
+from .gpu import GPU_KIND_ORDER, GpuIdentity, PciAddress, gpu_identities_match, match_gpu_identities
 
 if TYPE_CHECKING:
     from .webgpu import WebGPUDevice
@@ -99,8 +99,26 @@ def config_summary() -> dict[str, Any]:
     }
 
 
+def _merge_gpu_facts(target: GpuInfo, row: dict[str, Any], *, native_unique: bool = True) -> None:
+    kind = row.get("kind", "unknown")
+    target.kind = kind if kind in GPU_KIND_ORDER and native_unique else "unknown"
+    target.kind_source = row.get("kind_source", "unknown")
+    target.unified_memory = row.get("unified_memory")
+    for attribute in ("dedicated_memory_bytes", "shared_memory_bytes"):
+        if row.get(attribute) is not None:
+            setattr(target, attribute, row[attribute])
+
+
+def _match_dxgi_pci(identities: list[GpuIdentity], targets: list[GpuIdentity]) -> dict[int, int]:
+    """仅比较已知 PCI 地址，避免无地址的同型号条目阻止物理匹配。"""
+    sources = [(index, identity) for index, identity in enumerate(identities) if identity.pci_address is not None]
+    destinations = [(index, identity) for index, identity in enumerate(targets) if identity.bus_id]
+    matches = match_gpu_identities([identity for _, identity in sources], [identity for _, identity in destinations])
+    return {index: destinations[match][0] for (index, _), match in zip(sources, matches) if match is not None}
+
+
 def merge_gpu_inventory(gpus: list[GpuInfo], probe: RuntimeProbe) -> None:
-    """按明确身份补充原生类型和显存；无法唯一匹配的多卡库存不猜测归属。"""
+    """优先按身份补充显卡属性；DXGI 的同型号条目可补充一致的属性。"""
     if probe.status != "ok":
         return
     vendors = {0x8086: "Intel", 0x10DE: "NVIDIA", 0x1002: "AMD"}
@@ -108,18 +126,26 @@ def merge_gpu_inventory(gpus: list[GpuInfo], probe: RuntimeProbe) -> None:
         row for row in probe.data.get("devices", []) if row.get("vendor_id") is not None and row.get("device_id") is not None
     ]
     identities = [
-        GpuIdentity(row["vendor_id"], row["device_id"], luid=row.get("luid"), bus_id=row.get("bus_id"), name=row.get("name"))
+        GpuIdentity(
+            row["vendor_id"],
+            row["device_id"],
+            luid=row.get("luid"),
+            bus_id=row.get("bus_id"),
+            name=row.get("name"),
+            pci_address=PciAddress(**row["pci_address"]) if row.get("pci_address") is not None else None,
+        )
         for row in rows
     ]
     targets = [gpu.identity for gpu in gpus]
     matches = match_gpu_identities(identities, targets)
+    if probe.name == "dxgi":
+        pci_matches = _match_dxgi_pci(identities, targets)
+        pci_targets = set(pci_matches.values())
+        matches = tuple(pci_matches.get(index, None if match in pci_targets else match) for index, match in enumerate(matches))
     native_matches = match_gpu_identities(identities, identities)
     for index, (row, matched) in enumerate(zip(rows, matches)):
         vendor, chip = row["vendor_id"], row["device_id"]
         name = row.get("name")
-        kind = row.get("kind", "unknown")
-        if kind not in GPU_KIND_ORDER or native_matches[index] is None:
-            kind = "unknown"
         if matched is not None:
             target = gpus[matched]
             target.name = target.name or name
@@ -133,12 +159,25 @@ def merge_gpu_inventory(gpus: list[GpuInfo], probe: RuntimeProbe) -> None:
                 source=probe.name,
             )
             gpus.append(target)
-        target.kind = kind
-        target.kind_source = row.get("kind_source", "unknown")
-        target.unified_memory = row.get("unified_memory")
-        for attribute in ("dedicated_memory_bytes", "shared_memory_bytes"):
-            if row.get(attribute) is not None:
-                setattr(target, attribute, row[attribute])
+        _merge_gpu_facts(target, row, native_unique=native_matches[index] is not None)
+
+    if probe.name != "dxgi":
+        return
+    for index, identity in enumerate(targets):
+        model = (identity.vendor_id, identity.device_id)
+        if index in matches or sum((target.vendor_id, target.device_id) == model for target in targets) != 1:
+            continue
+        compatible = [i for i, native in enumerate(identities) if gpu_identities_match(identity, native)]
+        if len(compatible) < 2:
+            continue
+        # 缺少可区分的身份时只报告一致的事实。选型可用的最小容量不能作为单卡的实际容量。
+        first, *others = [rows[i] for i in compatible]
+        facts = {
+            key: first[key]
+            for key in ("kind", "kind_source", "unified_memory", "dedicated_memory_bytes", "shared_memory_bytes")
+            if key in first and all(row.get(key) == first[key] for row in others)
+        }
+        _merge_gpu_facts(gpus[index], facts)
 
 
 def _calibration_adapters(probes: list[RuntimeProbe]) -> tuple[GpuAdapter | WebGPUDevice, ...] | None:
