@@ -237,6 +237,73 @@ def test_windows_cim_and_dxgi_memory() -> None:
     assert len(result.gpus) == 1 and result.gpus[0].dedicated_memory_bytes == 8 * 1024**3
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    ("bus_id", "alias_memory_gib", "expected_memory_gib"),
+    [(None, 8, 8), (None, 16, None), (None, None, None), ("0000:01:00.0", 16, 8)],
+)
+def test_windows_dxgi_duplicate_model_preserves_known_memory(
+    reverse: bool, bus_id: str | None, alias_memory_gib: int | None, expected_memory_gib: int | None
+) -> None:
+    """优先使用可唯一关联的 PCI 条目，否则只补充同型号条目一致的数据。"""
+    gib = 1024**3
+    result = SystemHardware()
+    hardware_system.parse_windows_hardware(
+        {"gpus": {"Name": "Radeon", "PNPDeviceID": "PCI\\VEN_1002&DEV_7550", "DriverVersion": "test"}}, result
+    )
+    result.gpus[0].bus_id = bus_id
+    physical = {
+        "vendor_id": 0x1002,
+        "device_id": 0x7550,
+        "luid": "physical",
+        "pci_address": {"bus": 1, "device": 0, "domain": None, "function": 0},
+        "kind": "discrete",
+        "kind_source": "d3d12",
+        "unified_memory": False,
+        "dedicated_memory_bytes": 8 * gib,
+        "shared_memory_bytes": 16 * gib,
+    }
+    alias = {
+        **physical,
+        "luid": "other",
+        "pci_address": None,
+        "dedicated_memory_bytes": alias_memory_gib * gib if alias_memory_gib is not None else None,
+    }
+    devices = [alias, physical] if reverse else [physical, alias]
+
+    hardware.merge_gpu_inventory(result.gpus, RuntimeProbe("dxgi", "ok", {"devices": devices}))
+
+    (gpu,) = result.gpus
+    assert gpu.name == "Radeon" and gpu.driver == "test" and gpu.source == "cim"
+    assert (gpu.kind, gpu.kind_source, gpu.unified_memory) == ("discrete", "d3d12", False)
+    assert gpu.shared_memory_bytes == 16 * gib
+    assert gpu.dedicated_memory_bytes == (expected_memory_gib * gib if expected_memory_gib is not None else None)
+
+
+@pytest.mark.parametrize("has_bus_id", [False, True])
+def test_windows_dxgi_same_model_physical_cards_use_pci_addresses(has_bus_id: bool) -> None:
+    """同型号多张卡按 PCI 地址保留各自的容量，缺少系统地址时不猜测归属。"""
+    gpus = [
+        GpuInfo(name="Radeon", device_id="0x1002:0x7550", bus_id=f"0000:0{bus}:00.0" if has_bus_id else None) for bus in (1, 2)
+    ]
+    devices = [
+        {
+            "vendor_id": 0x1002,
+            "device_id": 0x7550,
+            "luid": str(bus),
+            "pci_address": {"bus": bus, "device": 0, "domain": None, "function": 0} if bus else None,
+            "kind": "discrete",
+            "dedicated_memory_bytes": capacity * 1024**3,
+        }
+        for bus, capacity in ((2, 16), (0, 4), (1, 8))
+    ]
+
+    hardware.merge_gpu_inventory(gpus, RuntimeProbe("dxgi", "ok", {"devices": devices}))
+
+    expected = [8 * 1024**3, 16 * 1024**3] if has_bus_id else [None, None]
+    assert [gpu.dedicated_memory_bytes for gpu in gpus] == expected
+
+
 def test_windows_cim_partial_failure_keeps_memory_and_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
     """一个 CIM 类不可用时，其余硬件查询仍独立运行并进入报告。"""
     run = Mock(side_effect=[None, '{"TotalVisibleMemorySize": 1024}', '{"Name": "GPU"}'])
