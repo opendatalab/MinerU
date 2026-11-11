@@ -70,7 +70,7 @@ mineru read doc:ab12cd3/tier:flash/page:all
 | `--format`, `-f` | `markdown` / `image` | `markdown` | 输出 content format |
 | `--json` | bool | false | 将整个 CLI 响应包装为 JSON |
 | `--limit` | int | `30000` | 文本输出软字符上限 |
-| `--after` | locator | 不传 | 使用范围读取返回的实际页码游标继续读取；要求 Markdown 页选择且 context=0 |
+| `--after` | locator | 不传 | 使用返回的内容游标续读；要求 Markdown 文档定位或页选择，且 context=0 |
 | `--context` | int | `0` | 按 locator 周围扩展上下文 |
 | `--output`, `-o` | path | 不传 | 将返回内容或 image asset 写入本地路径；image 只支持 `.png`、`.jpg`、`.jpeg`、`.webp` |
 | `--no-marker` | bool | false | 关闭 continuation marker |
@@ -159,7 +159,9 @@ locator-first 读取时：
 
 - `request_scope.locator` 为规范化 locator。
 - `request_scope.context` 为实际生效的 context。
-- 单点读取的 `next_request` 使用 `locator`；范围内截断时同时返回 `locator` 和 `after`。
+- 页或文档读取在页内截断时，`next_request` 使用文档 `locator` 与 `after`；读完当前页后恢复下一页建议。
+- 单块读取保留块/字符定位的续读方式，不自动扩大到同页其他块。
+- 范围内截断时同时返回原范围 `locator` 和 `after`。
 - 多页选择只读取范围内的已缓存内容，读完后 `next_request=null`；不会创建新解析或继续推荐范围外页面。
 
 ## 8. Continuation
@@ -172,7 +174,20 @@ locator-first 读取时：
 <!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->
 ```
 
-`--json` 时，通过 `next_request.locator` 表示下一次建议读取的位置。
+`--json` 时，`next_request` 表示下一次建议读取的请求；续读时应同时传递
+其中的 `locator` 和非空 `after`，而不是只使用 `locator`。
+
+页或文档读取因长度限制在页内停止时，续读使用文档定位符和已消费位置：
+
+```text
+<!-- Next: mineru read doc:ab12cd3/tier:flash --after doc:ab12cd3/tier:flash/page:1/block:2 -->
+```
+
+这会读取第 1 页第 2 块之后的剩余内容；若游标带有 `char`，从对应字符偏移
+继续。当前页读完后，仍按单点阅读规则建议下一页。页级 `after` 游标表示该页
+已经读完，从下一页开始。它不会重新解析文档，也不会扩大直接单块读取的范围。
+
+以上页或文档续读语义适用于 `context=0`。块或字符定位的 `context>0` 上下文窗口在截断续读时存在重复与遗漏，属于待单独修复的已知限制。
 
 范围读取的续读保留原选择，并以实际页码的块/字符游标推进。例如：
 
