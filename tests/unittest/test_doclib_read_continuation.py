@@ -29,12 +29,12 @@ async def _follow(
     locator: str,
     *,
     limit: int,
+    after: str | None = None,
     no_marker: bool = True,
     cli_markers: bool = False,
 ) -> list[DocContentResponse]:
     """只使用服务返回的请求推进，不自行推测下一个块或下一页。"""
     results: list[DocContentResponse] = []
-    after = None
     visited: set[tuple[str, str | None]] = set()
     for _ in range(100):
         state = (locator, after)
@@ -70,12 +70,51 @@ def test_locator_continuation_preserves_all_blocks(tmp_path: Path, suffix: str, 
     """字符内、块间及页间截断后，原样续读必须不重、不漏地到达下一页。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(
             tmp_path, page_count=2, pages=[_page(0, "ALPHA", "BRAVO", "CHARLIE"), _page(1, "DELTA")]
         )
         try:
             results = await _follow(server, _DOC_REF + suffix, limit=limit, no_marker=no_marker)
             assert "".join(_body(result.content) for result in results) == "ALPHABRAVOCHARLIEDELTA"
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+def test_default_budget_continuation_preserves_all_blocks(tmp_path: Path) -> None:
+    """默认三万字符预算截断长页面后，续读必须按顺序消费所有块且没有重复。"""
+
+    async def run() -> None:
+        """省略首个请求的 limit，原样回传其文档定位符和消费游标。"""
+        first_block = "A" * 12000
+        second_block = "B" * 12000
+        third_block = "C" * 12000
+        last_page = "D" * 10
+        db, server = await _cached_library(
+            tmp_path,
+            page_count=2,
+            pages=[_page(0, first_block, second_block, third_block), _page(1, last_page)],
+        )
+        try:
+            first = await server.read_content(f"{_DOC_REF}/page:1", no_marker=True)
+            assert first.request_scope.limit == 30000
+            assert first.truncated
+            assert first.next_request is not None
+            assert first.next_request.locator == _DOC_REF
+            assert first.next_request.after == f"{_DOC_REF}/page:1/block:2"
+            remaining = await _follow(
+                server,
+                first.next_request.locator,
+                after=first.next_request.after,
+                limit=30000,
+            )
+            assert [_body(result.content) for result in [first, *remaining]] == [
+                first_block + second_block,
+                third_block,
+                last_page,
+            ]
         finally:
             await db.close()
 
@@ -97,6 +136,7 @@ def test_direct_block_continuation_does_not_expand_to_neighbours(
     """直接选择一个块时保留块内字符续读，不把同页相邻块纳入读取范围。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(
             tmp_path, page_count=2, pages=[_page(0, "ALPHA", "BRAVO", "CHARLIE"), _page(1, "DELTA")]
         )
@@ -121,6 +161,7 @@ def test_document_after_preserves_page_turning(tmp_path: Path, suffix: str, expe
     """文档续读恢复游标所在页；页游标表示已完成该页，读完后保留下一页建议。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(
             tmp_path,
             page_count=3,
@@ -149,6 +190,7 @@ def test_document_after_rejects_other_documents_and_tiers(tmp_path: Path, after:
     """文档级续读仍必须拒绝跨文档和跨档位游标。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(tmp_path)
         try:
             with pytest.raises(InvalidRequestError) as error:
@@ -164,6 +206,7 @@ def test_locator_continuation_skips_empty_blocks_and_index_gaps(tmp_path: Path) 
     """使用实际消费游标，不假定块号连续或每个块都可渲染。"""
 
     async def run() -> None:
+        """通过空块和不连续块号检查实际消费游标。"""
         page = _page(0, "ALPHA", " ", "CHARLIE")
         page.blocks[-1].index = 7
         db, server = await _cached_library(tmp_path, page_count=2, pages=[page, _page(1, "DELTA")])
@@ -181,6 +224,7 @@ def test_document_continuation_reaches_pages_after_default_window(tmp_path: Path
     """默认十页窗口之后仍能读到后续页面，且每页只出现一次。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(tmp_path)
         try:
             results = await _follow(server, _DOC_REF, limit=limit)
@@ -197,6 +241,7 @@ def test_following_cli_markers_with_default_budget_preserves_content(tmp_path: P
     """CLI 续读命令不携带 --limit；恢复默认预算后仍不能遗漏同页剩余块。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(
             tmp_path, page_count=2, pages=[_page(0, "ALPHA", "BRAVO", "CHARLIE"), _page(1, "DELTA")]
         )
@@ -213,6 +258,7 @@ def test_locator_continuation_http_round_trip(tmp_path: Path) -> None:
     """真实路由返回的续读请求可直接回传，不依赖调用者推测正确起点。"""
 
     async def run() -> None:
+        """通过真实缓存和服务核对当前场景的续读结果。"""
         db, server = await _cached_library(
             tmp_path, page_count=2, pages=[_page(0, "ALPHA", "BRAVO", "CHARLIE"), _page(1, "DELTA")]
         )

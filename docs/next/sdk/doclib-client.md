@@ -178,6 +178,16 @@ Markdown 响应中的 visual block 图片使用 `doc:.../page:.../block:...` loc
 
 请求定位器的 `page:` 复用输入页范围语法：数字、`rN`、`1-5`、`r3-r1`、`1,3,r1`、`all`。`r1` 表示最后一页，`rN` 和 `all` 需要文档总页数；返回定位器及块引用使用实际页码。带 block/char、图片读取和非零 context 都要求选中单页。
 
+Markdown 文档定位或单点页定位在 `context=0` 时，页内截断的 `next_request` 同时携带文档 `locator` 和已消费位置 `after`。
+调用方应将这两个字段一起传给下一次 `read_content()`，从未完成的当前页继续读取。当前页完成后，服务继续建议下一页。
+块级 `after` 表示该块已完成，字符级 `after` 从对应偏移继续，页级 `after` 从下一页开始。
+
+```python
+result = client.read_content("doc:ab12cd3/tier:flash/page:1", limit=1000)
+if result.next_request is not None:
+    result = client.read_content(result.next_request.locator, after=result.next_request.after, limit=1000)
+```
+
 范围读取结束后 `next_request=null`。范围内截断时，同时返回规范化 `locator` 和实际页码 `after`；两者可直接传给下一次 `read_content()`，不会读入未选择的页面：
 
 ```python
