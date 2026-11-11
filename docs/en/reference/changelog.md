@@ -2,6 +2,77 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.2.0
+
+MinerU 4.2.0 upgrades WebUI interaction and source tracing, improves parsing of complex PDFs, formulas, and tables, and strengthens device selection, model caching, service management, and input security. These are cumulative changes since 4.1.0, including improvements released in 4.1.x.
+
+### WebUI interaction and source tracing
+
+- **Bidirectional source navigation:** Click a region in a PDF or image to locate and highlight its parsed content, or click a parsed paragraph, heading, formula, or figure to return to its source. Content merged across pages supports switching source pages.
+- **Improved layout visualization:** Merged paragraphs, lists, and tables can reference multiple source regions, with connecting lines to help inspect reading order, content ownership, and cross-page merges.
+- **Result outline navigation:** A collapsible heading outline provides quick access to document sections.
+- **Redesigned uploads and controls:** File selection, drag and drop, paste, file types, upload progress, and cancellation share one upload area. Compact tier and page-range controls improve selection and dragging, while showing the parsing service's CPU/GPU state.
+- **Faster PDF previews and exports:** Preview local PDFs directly in the browser while uploading, preserve the mounted viewer and zoom after parsing, and overlay layout annotations. Reuse prepared inputs, semantic results, and assets to avoid repeated PDF and preview generation.
+
+### PDF, formula, and table parsing
+
+- **Improved inline formulas:** Standard/Advanced use VLM recognition for inline formula regions outside tables in the native PDF text path, retaining local formula recognition when the result is empty or invalid.
+- **Footnote formulas and page-edge regions:** Preserve formula identity and reduce incorrect ownership between formulas, numbers, and body text.
+- **Nested and overlapping regions:** Reduce duplicate text and excessive merging, correct annotations inside figures, and improve the reading order of merged images.
+- **Consistent layout detection:** Restore per-class output thresholds in both ONNX and Torch.
+- **Native text recovery:** Improve character recovery with empty ToUnicode maps and remove residual Unicode private-use characters after post-OCR processing and fallback restoration.
+- **Sheared body text:** Preserve normal body text when every character in a line has a shear transformation.
+- **Rotated tables:** Account for page rotation when interpreting native text orientation.
+- **Atomic table content:** Keep images and formulas intact during table reconstruction rather than splitting them across cells.
+- **Cross-page tables:** Preserve text boundaries between joined cells and improve blank continuations, sparse blank rows, and shared row spans.
+
+### Native document parsing
+
+- **Tagged PDF semantics:** Flash native PDF text parsing can use Tagged PDF/PDF/UA structure and reading order, with geometric rules handling uncovered or untrusted content.
+- **Paragraph continuation:** Use indentation, sentence endings, and other page evidence to improve uppercase-leading continuations and paragraph merging across pages and columns.
+- **Native tables:** Correct row segmentation affected by unusual glyph bounds and row-span ownership in some numeric tables.
+- **Font weight:** Improve embedded-font weight interpretation to reduce normal body text incorrectly marked as bold.
+- **Office images:** Use placeholders for some images exceeding processing limits so that one image does not fail the whole document.
+
+### Device selection, tier recommendations, and diagnostics
+
+- **Shared process device selection:** Model loading, automatic tier recommendations, and llama.cpp automatic mode reuse the selected runtime device, reducing duplicate probes and differences between entry points.
+- **Multiple GPUs:** Match Windows GPU and memory information by physical PCI address.
+- **Automatic tiers:** Recommend tiers from the actual small-model device. GPUs can enable all tiers; CPUs enable Basic from 4 available logical cores and Standard from 12.
+- **ONNX discrete-GPU selection:** Windows/Linux automatic mode checks total dedicated memory. Direct GPU selection requires a capacity that rounds to at least 6 GiB; insufficient or unconfirmed capacity uses the CPU.
+- **Runtime state:** Service health can report initialized CPU/GPU state without triggering device selection.
+- **Faster diagnostics and CLI startup:** Run isolated runtime probes concurrently, stream reports by section, standardize capacity and device summaries, and retain full diagnostics and candidate reasons in JSON. Help and version commands load their entry points on demand.
+- **Cleaner shutdown:** Improve VLM shutdown and resource release.
+
+### Router and APIs
+
+- **Dynamic upstream management:** Query, register, and remove remote parsing nodes without restarting the Router.
+- **Graceful removal:** Stop assigning new work, then wait for existing tasks, transfers, and result references to finish.
+- **Router cascading:** Connect a downstream Router as an upstream using the existing V1 protocol and result leases.
+- **Separate administration credentials:** Authenticate dynamic node management independently from parsing requests.
+- **Paths and filenames:** Correct CLI detection of relative and hidden-file paths, and consistently reject path-like filenames and control characters in Tasks, Router, and synchronous uploads.
+
+### Model downloads and cache validation
+
+- **File manifests:** Record expected files and sizes for repository, directory, and single-file resources; detect missing or truncated files, broken links, and invalid manifests before reuse.
+- **Offline reuse and incremental repair:** Validate normal caches without network access or hashing large weights. Repair missing or incorrectly sized files while reusing valid files.
+- **Legacy completion markers:** Continue offline reuse after required-file and shard checks. When online, verify remote metadata for the recorded revision and upgrade manifests without updating model weights.
+
+### Local authentication and input security
+
+- **Persistent Doclib bearer tokens:** SDK default local discovery reads credentials automatically; direct HTTP calls require a valid token.
+- **Credential protection:** Set and verify POSIX private permissions and macOS/Windows ACLs.
+- **URL SSRF protection:** Validate all resolved addresses and connect to a validated public IP, rejecting private, loopback, link-local, cloud metadata, and other special addresses.
+- **Direct URL downloads:** Do not follow redirects or use HTTP/HTTPS/ALL proxy environment settings.
+- **Document resource limits:** Stop decompression or structural expansion beyond configured budgets, including OOXML archives and XLSX merged ranges. Return a clear `resource_limit` error and preserve per-file Tasks failures.
+
+### Upgrade notes
+
+- Direct Doclib HTTP clients must provide a bearer token. Default SDK discovery reads it automatically; explicit service addresses or socket paths require an explicit token.
+- Deployments using private URLs, redirects, or environment proxies for input downloads must adjust their input workflow. Upload private documents through the client.
+- Restart the relevant process after changing device configuration. Runtime device selection stays stable within a process; the new ONNX memory threshold applies only to automatic mode.
+- Minimum dependencies are **DocVortex 0.6.21** and **ModelScope 1.39.1**.
+
 ## 4.1.7
 
 - **Local document library authentication:** Doclib requires a persistent bearer token. The SDK reads local credentials automatically, while direct HTTP integrations must send the token. Credential files use private POSIX permissions or native macOS/Windows ACL protection.
