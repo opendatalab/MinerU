@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, TypeAlias
 
-from ..filetypes import PARSEABLE_EXTENSIONS
+from ..filetypes import PARSEABLE_EXTENSIONS, is_office_temp_lock_file
 from ..parser.base import ParseResult
 from ..parser.writer import FileBasedDataWriter
 from ..types import Tier
@@ -26,12 +26,13 @@ OUTPUT_FILE_SUFFIXES = {
 
 
 def expand_input_paths(inputs: list[str]) -> list[Path]:
+    """Expand directories into parseable non-lock files; preserve explicit paths."""
     paths = [Path(raw).expanduser() for raw in inputs]
     expanded: list[Path] = []
     for path in paths:
         if path.is_dir():
             for child in sorted(path.iterdir()):
-                if child.is_file() and child.suffix.lower() in PARSEABLE_SUFFIXES:
+                if child.is_file() and child.suffix.lower() in PARSEABLE_SUFFIXES and not is_office_temp_lock_file(child):
                     expanded.append(child)
         else:
             expanded.append(path)
