@@ -61,23 +61,25 @@ def parse_cmd(
         exit_with_message("invalid_request", t("At least one input path is required."), "inputs")
     api_url = build_remote_api_url(remote, remote_url)
     raw_paths = [Path(raw).expanduser() for raw in inputs]
-    if any(path.is_dir() for path in raw_paths) and Path(output).expanduser().suffix:
-        exit_with_message(
-            "invalid_request",
-            t("When input is multiple files or directories, --output must be a directory path."),
-            "output",
-        )
+    output_path = Path(output).expanduser()
     has_directory_input = any(path.is_dir() for path in raw_paths)
-    if len(raw_paths) > 1 and Path(output).expanduser().suffix:
-        exit_with_message(
-            "invalid_request",
-            t("When input is multiple files or directories, --output must be a directory path."),
-            "output",
-        )
+    is_batch_input = has_directory_input or len(raw_paths) > 1
+    if is_batch_input:
+        # Existing paths have a known type; infer by suffix only for new paths.
+        if output_path.exists():
+            invalid_output = not output_path.is_dir()
+        else:
+            invalid_output = bool(output_path.suffix)
+        if invalid_output:
+            exit_with_message(
+                "invalid_request",
+                t("When input is multiple files or directories, --output must be a directory path."),
+                "output",
+            )
     paths = expand_input_paths(inputs)
     try:
         ensure_supported_inputs(paths)
-        destinations = resolve_batch_output_paths(paths, Path(output).expanduser(), output_format)
+        destinations = resolve_batch_output_paths(paths, output_path, output_format)
     except Exception as exc:
         exit_with_message("invalid_request", str(exc))
 
