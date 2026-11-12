@@ -13,7 +13,7 @@ import pytest
 from mineru_vl_utils.vlm_client.base_client import ClientClosedError, RequestError
 
 from mineru.model.vlm.async_runtime import AsyncVlmPredictor
-from mineru.model.vlm.errors import EngineDeadError
+from mineru.model.vlm.errors import EngineDeadError, is_fatal_engine_error
 from mineru.model.vlm.handles import RuntimeHandle
 from mineru.model.vlm.text_recognition import recognize_text_batch
 
@@ -41,6 +41,30 @@ def test_local_fatal_errors_never_retry(error: Exception) -> None:
     with pytest.raises(type(error)):
         recognize_text_batch(client, [1])
     client.content_extract.assert_not_called()
+
+
+def _backend_engine_unavailable(message: str) -> Exception:
+    """构造与 mineru_vl_utils 同模块同名的异常，不依赖其发布版本。"""
+    cls = type("EngineUnavailableError", (RuntimeError,), {})
+    cls.__module__ = "mineru_vl_utils.vlm_client.base_client"
+    return cls(message)
+
+
+def test_backend_engine_unavailable_is_fatal() -> None:
+    """后端上报的引擎不可用必须终止，不能降级成 MFR 回退。"""
+    error = _backend_engine_unavailable("LMDeploy inference failed.")
+    assert is_fatal_engine_error(error) is True
+    client = SimpleNamespace(batch_content_extract=MagicMock(side_effect=error), content_extract=MagicMock())
+    with pytest.raises(type(error)):
+        recognize_text_batch(client, [1])
+    client.content_extract.assert_not_called()
+
+
+def test_same_name_outside_backend_module_is_not_fatal() -> None:
+    """同名但来源不同的异常不得误判为引擎死亡。"""
+    cls = type("EngineUnavailableError", (RuntimeError,), {})
+    cls.__module__ = "some_other_client.errors"
+    assert is_fatal_engine_error(cls("boom")) is False
 
 
 @pytest.mark.parametrize("outputs", [[], ["x", "y"], [object()]])
