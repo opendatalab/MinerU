@@ -2252,6 +2252,9 @@ def main(
         server.should_exit = True
     try:
         server.run()
+    except KeyboardInterrupt:
+        # Uvicorn 关闭后会重新触发 SIGINT；在服务边界消费正常中断，避免 Click 转为 Abort。
+        pass
     finally:
         if control_watcher is not None:
             control_watcher.close()
