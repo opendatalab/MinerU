@@ -8,7 +8,7 @@ Router 仅聚合健康且管理状态为 active 的节点；draining 节点仍�
 ## GET `/v1/health`
 
 返回 `status="ok"`、服务 `version` 和 `features`。
-Python Server 的 features 包含 `webhook=false`、`task_output_formats=["default","docx","html","latex"]`、
+Python Server 的 features 包含 `task_output_formats=["default","docx","html","latex"]`、
 `sources=["upload","url"]`。Router 从健康 worker 合并格式和输入类型，没有健康 worker 时返回 503。
 健康检查不执行完整推理；成功不代表任意输入必定解析成功。
 

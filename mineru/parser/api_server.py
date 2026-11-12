@@ -181,7 +181,6 @@ def _http_exception_error(exc: HTTPException) -> ErrorDetail:
 
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    webhook: bool = False
     task_output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: list(TASK_OUTPUT_FORMATS))
     sources: list[Literal["upload", "url"]] = Field(default_factory=lambda: ["upload", "url"])
 

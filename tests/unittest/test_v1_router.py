@@ -38,7 +38,6 @@ class _FakeV1Upstream:
                 "status": "ok",
                 "version": "test",
                 "features": {
-                    "webhook": False,
                     "sources": ["upload", "url"],
                     "task_output_formats": ["default", "docx", "html", "latex"],
                 },

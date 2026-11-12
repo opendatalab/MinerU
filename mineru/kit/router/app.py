@@ -307,7 +307,6 @@ def create_app(
                 "status": "ok",
                 "version": __version__,
                 "features": {
-                    "webhook": False,
                     "task_output_formats": task_output_formats,
                     "sources": sources,
                 },
