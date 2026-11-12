@@ -34,7 +34,7 @@ def _invoke_entrypoint(monkeypatch: pytest.MonkeyPatch, entrypoint: str, args: l
 @pytest.mark.parametrize("level", [None, "critical", "ERROR", "Warning", "info", "debug", "TRACE"])
 def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: str, level: str | None) -> None:
     """显式 --log-level 只作用于服务配置，loguru 全局级别始终取全局配置，且不进入应用业务参数。"""
-    application = object()
+    application = SimpleNamespace(openapi_url="/openapi.json")
     create_app = MagicMock(return_value=application)
     config = MagicMock(return_value=object())
     expected_server_level = (level or "debug").lower()
@@ -45,7 +45,7 @@ def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: s
     monkeypatch.setattr(api_server, "configure_global_log_level", configure_global)
     monkeypatch.setattr(kit_api, "configure_global_log_level", MagicMock(return_value="debug"))
     monkeypatch.setattr(api_server.uvicorn, "Config", config)
-    monkeypatch.setattr(api_server.uvicorn, "Server", MagicMock(return_value=server))
+    monkeypatch.setattr(api_server, "ServerWithDocs", MagicMock(return_value=server))
     monkeypatch.setattr(api_server.ManagedProcessControlWatcher, "from_environment", lambda callback: None)
 
     assert _invoke_entrypoint(monkeypatch, entrypoint, [] if level is None else ["--log-level", level]) == 0

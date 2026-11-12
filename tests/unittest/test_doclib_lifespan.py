@@ -271,8 +271,10 @@ def test_host_shutdown_after_tier_change_cleans_managed_process(
     class Server:
         """保留宿主与真实应用的组装路径，用受控循环替代网络服务等待。"""
 
-        def __init__(self, config: Any) -> None:
+        def __init__(self, config: Any, *, docs_path: str, docs_require_auth: bool) -> None:
             """保存标准入口传入的 ASGI 应用，等待停机回调设置退出标志。"""
+            assert docs_path == "/api/docs"
+            assert docs_require_auth
             self.app = config.app
             self.should_exit = False
 
@@ -294,7 +296,7 @@ def test_host_shutdown_after_tier_change_cleans_managed_process(
             assert state.health.managed_proc is None
             assert state.health.managed_control is None
 
-    monkeypatch.setattr(doclib_app.uvicorn, "Server", Server)
+    monkeypatch.setattr(doclib_app, "ServerWithDocs", Server)
     doclib_app._run_server(cfg)
     assert start.call_count == (2 if complete_tier_restart else 1)
     assert [call.args[0] for call in stop.call_args_list if call.args[0] is not None] == processes[: start.call_count]

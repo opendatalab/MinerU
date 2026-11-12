@@ -56,6 +56,7 @@ from ..utils.async_utils import drain_future, run_sync
 from ..model.runtime.ownership import RuntimeOwner, runtime_owner
 from ..model.vlm.errors import is_fatal_engine_error
 from ..utils.logger import configure_global_log_level
+from ..utils.server import ServerWithDocs
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
@@ -2245,7 +2246,7 @@ def main(
         log_level=server_log_level,
         log_config=_build_server_log_config(server_log_level),
     )
-    server = uvicorn.Server(config)
+    server = ServerWithDocs(config, docs_path="/docs" if application.openapi_url is not None else None)
     server_ref[0] = server
     if shutdown_requested.is_set():
         server.should_exit = True

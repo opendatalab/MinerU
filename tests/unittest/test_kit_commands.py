@@ -870,7 +870,7 @@ def test_router_uses_explicit_v1_worker_options_and_rejects_legacy_args(monkeypa
         seen["port"] = port
         seen["reload"] = reload
 
-    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
+    monkeypatch.setattr(router_cli, "run_server", _fake_run)
 
     result = runner.invoke(
         app,
@@ -921,7 +921,7 @@ def test_router_reload_uses_environment_factory(monkeypatch: pytest.MonkeyPatch)
         seen["target"] = target
         seen.update(kwargs)
 
-    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
+    monkeypatch.setattr(router_cli, "run_server", _fake_run)
 
     result = runner.invoke(app, ["router", "--reload", "--local-gpus", "none"])
 
