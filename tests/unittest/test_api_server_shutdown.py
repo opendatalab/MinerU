@@ -61,7 +61,18 @@ def test_api_server_sigint_exits_cleanly(tmp_path: Path, entrypoint: list[str]) 
     log_path = tmp_path / "server.log"
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, *entrypoint, "--host", "127.0.0.1", "--port", "0", "--tier", "flash"],
+            [
+                sys.executable,
+                *entrypoint,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "0",
+                "--tier",
+                "flash",
+                "--upload-dir",
+                str(tmp_path / "uploads"),
+            ],
             cwd=Path(__file__).resolve().parents[2],
             env=env,
             stdout=log,
