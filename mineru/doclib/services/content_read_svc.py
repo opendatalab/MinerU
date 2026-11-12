@@ -272,14 +272,19 @@ class ContentReadService:
 
         page_range = _locator_page_range(cursor, doc, context)
         if after is not None:
-            if cursor.page_range is None or cursor.block_no is not None or context or format != "markdown":
+            if cursor.block_no is not None or context or format != "markdown":
                 raise InvalidRequestError(
-                    "invalid_request", "after requires a Markdown page selection without context.", "after"
+                    "invalid_request", "after requires a Markdown document or page selection without context.", "after"
                 )
             after_cursor = _parse_after_cursor(after)
             if after_cursor is None:
                 raise InvalidRequestError("invalid_locator", "after must be a non-empty content cursor.", "after")
-            _validate_cursor_for_doc(after_cursor, doc, tier, page_range)
+            if cursor.page_range is None:
+                _validate_cursor_for_doc(after_cursor, doc, tier, None)
+                # 文档续读先读完当前页；页级游标表示该页已完成，应从下一页开始。
+                page_range = str(after_cursor.page_no + (after_cursor.block_no is None))
+            else:
+                _validate_cursor_for_doc(after_cursor, doc, tier, page_range)
         return _ReadPlan(
             sha256=doc["sha256"],
             short_id=doc["short_id"],
@@ -302,7 +307,9 @@ class ContentReadService:
             if cursor.page_no is not None
             else None,
             next_mode="range"
-            if (cursor.range_selection and cursor.block_no is None and not context) or after is not None
+            # 页选择携带 after 时仍有界；文档续读读完当前页后保留下一页建议。
+            if (cursor.range_selection and cursor.block_no is None and not context)
+            or (after is not None and cursor.page_range is not None)
             else "read",
         )
 
@@ -409,7 +416,7 @@ class ContentReadService:
         if plan.next_mode == "range":
             next_request = _next_range_read_request(rendered, plan.locator)
         elif plan.next_mode == "read":
-            next_request = _next_read_request(rendered, plan.short_id, plan.tier, page_count)
+            next_request = _next_read_request(rendered, plan.short_id, plan.tier, page_count, target=plan.target)
         else:
             next_request = _next_content_request(
                 rendered=rendered,
@@ -1053,12 +1060,20 @@ def _next_read_request(
     short_id: str,
     tier: Tier,
     page_count: int | None,
+    *,
+    target: ContentCursor | None = None,
 ) -> ContentNextRequest | None:
     """为定位符读取生成后续块或下一页请求。"""
     if not rendered.content_ranges:
         return None
     if rendered.truncated:
-        return ContentNextRequest(locator=rendered.content_ranges[-1].end)
+        # 单块读取保留块内续读；页/文档读取不能把已消费的尾部块变成新的单块目标。
+        if target is not None and target.block_no is not None:
+            return ContentNextRequest(locator=rendered.content_ranges[-1].end)
+        if rendered.cut_inside_page:
+            return ContentNextRequest(locator=f"doc:{short_id}/tier:{tier}", after=rendered.content_ranges[-1].end)
+        next_page_no = rendered.next_page_no or (rendered.last_page_no + 1)
+        return ContentNextRequest(locator=page_ref(short_id, tier, next_page_no))
     total_page_count = page_count or rendered.last_page_no
     next_page_no = rendered.last_page_no + 1
     if next_page_no > total_page_count:
