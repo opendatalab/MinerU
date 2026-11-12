@@ -174,6 +174,10 @@ locator-first 读取时：
 <!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->
 ```
 
+使用 `--output PATH` 保存 Markdown 时，文件只包含返回的正文；CLI 在
+`Written to ...` 消息后显示同样的续读标记。`--no-marker` 关闭该提示，
+不会改变文件内容或原有覆盖写入行为。续读命令不自动携带原输出路径。
+
 `--json` 时，`next_request` 表示下一次建议读取的请求；续读时应同时传递
 其中的 `locator` 和非空 `after`，而不是只使用 `locator`。
 

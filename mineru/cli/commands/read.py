@@ -123,7 +123,13 @@ def _prepare_read_output(
 
     if output_path and output_path != "-":
         Path(output_path).write_text(content.content, encoding="utf-8")
-        return cli_ok(ReadTextOutput(t("Written to {path}", path=output_path)), render=_render_read_text)
+        # Keep continuation guidance in CLI output, not in the saved content.
+        message = t("Written to {path}", path=output_path)
+        if content.next_request and not no_marker:
+            marker = _read_next_marker(content.next_request)
+            if marker:
+                message = _append_next_marker(message, marker)
+        return cli_ok(ReadTextOutput(message), render=_render_read_text)
 
     if not content.content and content.content_ranges:
         message = t("No renderable content in requested pages.")
