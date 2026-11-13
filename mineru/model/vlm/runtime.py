@@ -11,21 +11,19 @@ import time
 from collections.abc import Callable
 from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
-from pathlib import Path
 from functools import partial
+from pathlib import Path
 from typing import Any, Literal
 
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 
 from ..registry import MINERU_2_5_PRO_2605_1_2B, vlm_model_repo
-from ..runtime.device import get_device
-from ..runtime.platform import is_mac_os_version_supported
 from ..runtime.closing import in_runtime_close_scope, runtime_close_scope
+from ..runtime.device import get_device
 from ..runtime.ownership import RuntimeOwner, current_runtime_owner, runtime_initialization_scope
+from ..runtime.platform import is_mac_os_version_supported
 from .async_runtime import AsyncVlmPredictor
-from .handles import RuntimeHandle
-from .errors import EngineNotReadyError
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -33,6 +31,8 @@ from .engine_utils import (
     set_default_gpu_memory_utilization,
     set_lmdeploy_backend,
 )
+from .errors import EngineNotReadyError
+from .handles import RuntimeHandle
 
 
 @dataclass(eq=False)
@@ -101,12 +101,9 @@ class ModelSingleton:
     def _retain(self, predictor: RuntimeHandle | AsyncVlmPredictor) -> None:
         """发布或复用前重新校验应用，防止关闭后的预热结果进入缓存。"""
         owner = current_runtime_owner()
-        if owner is None:
-            predictor.pinned = True
-        else:
-            predictor.owners.add(owner)
-            if isinstance(predictor, RuntimeHandle) and predictor.supports_health_probe:
-                owner.has_engine_health_probe = True
+        predictor.lifecycle.retain(owner)
+        if owner is not None and predictor.supports_health_probe:
+            owner.has_engine_health_probe = True
 
     def _get_or_initialize(
         self,
@@ -141,9 +138,7 @@ class ModelSingleton:
                     detached.append(self._detach(key, cached))
                 elif cached is not None:
                     self._retain(cached)
-                    if isinstance(cached, RuntimeHandle):
-                        # 暂时不可用仍沿原实例重探测；明确死亡必须报错，不能在缓存层悄悄重建。
-                        cached.require_ready(allow_unavailable=True)
+                    cached.require_ready(allow_unavailable=True)
                     return cached
                 else:
                     pending = None
@@ -445,7 +440,8 @@ class ModelSingleton:
             predictor,
             backend=backend,
             close_engine=close_engine,
-            probe_engine=predictor.client.probe_health if backend == "lmdeploy-engine" else None,
+            probe_engine=predictor.client.probe_health if predictor.client.health_probe_mode == "sync" else None,
+            aio_probe_engine=predictor.client.aio_probe_health if predictor.client.health_probe_mode == "async" else None,
             close_health_probe=predictor.client.close_health_probe if backend == "lmdeploy-engine" else None,
         )
 
@@ -455,7 +451,7 @@ class ModelSingleton:
             handles = tuple(
                 predictor
                 for predictor in self._models.values()
-                if isinstance(predictor, RuntimeHandle) and owner in predictor.owners and predictor.supports_health_probe
+                if owner in predictor.owners and predictor.supports_health_probe
             )
         unavailable: EngineNotReadyError | None = None
         for predictor in handles:
@@ -472,7 +468,7 @@ class ModelSingleton:
         with self._lock:
             closing = []
             for key, predictor in tuple(self._models.items()):
-                predictor.owners.discard(owner)
+                predictor.lifecycle.release(owner)
                 if not predictor.owners and not predictor.pinned:
                     closing.append(self._detach(key, predictor))
         self._close_detached(closing)

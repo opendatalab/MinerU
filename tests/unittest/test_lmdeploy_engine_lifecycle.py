@@ -18,6 +18,7 @@ from task_test_utils import submit_task, task_url, wait_task
 from mineru.model.runtime.ownership import RuntimeOwner
 from mineru.model.vlm.errors import EngineDeadError, EngineNotReadyError, is_fatal_engine_error
 from mineru.model.vlm.handles import RuntimeHandle
+from mineru.model.vlm.async_runtime import AsyncVlmPredictor
 from mineru.model.vlm.runtime import ModelSingleton
 from mineru.model.vlm.text_recognition import recognize_text_batch
 from mineru.parser import api_server
@@ -159,7 +160,10 @@ def test_close_waits_for_active_health_probe() -> None:
     assert client.closed and closed.is_set()
 
 
-def test_idle_server_detects_death_and_transient_recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_idle_server_detects_death_and_transient_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool
+) -> None:
     """无需新解析请求，周期探测就能撤销能力；超时恢复后才重新允许接单。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
     monkeypatch.setattr(api_server, "_ENGINE_HEALTH_INTERVAL_SECONDS", 0.01)
@@ -169,14 +173,26 @@ def test_idle_server_detects_death_and_transient_recovery(tmp_path: Path, monkey
         """模拟已加载的引擎健康变化。"""
         return status
 
-    handle = RuntimeHandle(Client(), backend="lmdeploy-engine", probe_engine=probe)
+    async def async_probe(timeout: float) -> EngineHealth:
+        """使用同一健康变化验证异步运行时真实跨循环桥接。"""
+        return probe(timeout)
+
+    if asynchronous:
+        handle = AsyncVlmPredictor(
+            lambda: RuntimeHandle(Client(), backend="vllm-async-engine", aio_probe_engine=async_probe),
+            backend="vllm-async-engine",
+            max_concurrency=1,
+        )
+        handle.wait_ready()
+    else:
+        handle = RuntimeHandle(Client(), backend="lmdeploy-engine", probe_engine=probe)
     monkeypatch.setattr(ModelSingleton, "_models", {("idle-engine",): handle})
     app = api_server.create_app(upload_dir=str(tmp_path), tiers=("flash",))
     try:
         with TestClient(app) as client:
             owner = app.state.execution_store.runtime_owner
             handle.owners.add(owner)
-            handle.pinned = True
+            handle.lifecycle.pinned = True
             owner.has_engine_health_probe = True
 
             async def wait_state(code: str | None) -> None:
@@ -220,7 +236,8 @@ def test_probe_does_not_initialize_lazy_models(monkeypatch: pytest.MonkeyPatch) 
     probe.assert_not_called()
 
 
-def test_monitor_drains_running_and_queued_tasks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_monitor_drains_running_and_queued_tasks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool) -> None:
     """后台健康发现死亡时也必须清理已接纳任务，不能等待某次推理主动报错。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
     monkeypatch.setattr(api_server, "_ENGINE_HEALTH_INTERVAL_SECONDS", 0.01)
@@ -242,8 +259,21 @@ def test_monitor_drains_running_and_queued_tasks(tmp_path: Path, monkeypatch: py
             cleaned.set()
 
     monkeypatch.setattr(api_server, "parse_async", infer)
-    handle = RuntimeHandle(Client(), backend="lmdeploy-engine", probe_engine=probe)
-    handle.pinned = True
+
+    async def async_probe(timeout: float) -> EngineHealth:
+        """使用同一健康变化验证异步运行时真实跨循环桥接。"""
+        return probe(timeout)
+
+    if asynchronous:
+        handle = AsyncVlmPredictor(
+            lambda: RuntimeHandle(Client(), backend="vllm-async-engine", aio_probe_engine=async_probe),
+            backend="vllm-async-engine",
+            max_concurrency=1,
+        )
+        handle.wait_ready()
+    else:
+        handle = RuntimeHandle(Client(), backend="lmdeploy-engine", probe_engine=probe)
+    handle.lifecycle.pinned = True
     monkeypatch.setattr(ModelSingleton, "_models", {("engine",): handle})
     app = api_server.create_app(upload_dir=str(tmp_path / "uploads"), tiers=("flash",), concurrency=1)
     try:
@@ -273,3 +303,27 @@ def test_fatal_engine_chain_keeps_original_backend_signal() -> None:
     error = ValueError("wrapper")
     error.__cause__ = EngineUnavailableError("original")
     assert is_fatal_engine_error(error)
+
+
+def test_probe_lock_timeout_marks_owner_unavailable_and_dead_rejects_immediately() -> None:
+    """等待在途探测也受健康期限约束，明确死亡无需再次等待被占用的探测锁。"""
+    import time
+
+    handle = RuntimeHandle(Client(), backend="lmdeploy-engine", probe_engine=lambda timeout: EngineHealth("healthy"))
+    owner = RuntimeOwner()
+    handle.lifecycle.retain(owner)
+    try:
+        with handle._probe_lock:
+            with pytest.raises(EngineNotReadyError):
+                handle.probe_health(0.01)
+            assert owner.engine_unavailable is not None
+        handle.probe_health()
+        assert owner.engine_unavailable is None
+        handle.lifecycle.mark_fatal(EngineUnavailableError("already dead"))
+        with handle._probe_lock:
+            start = time.monotonic()
+            with pytest.raises(EngineDeadError):
+                handle.probe_health(1)
+            assert time.monotonic() - start < 0.2
+    finally:
+        handle.shutdown()

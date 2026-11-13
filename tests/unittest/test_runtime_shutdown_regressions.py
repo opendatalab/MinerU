@@ -29,6 +29,7 @@ class Client:
     def __init__(self) -> None:
         """初始化关闭计数。"""
         self.close_calls = 0
+        self.client = SimpleNamespace(health_probe_mode="none")
 
     async def aclose(self) -> None:
         """完成一次可观察的连接清理。"""

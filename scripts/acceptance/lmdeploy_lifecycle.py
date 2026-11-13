@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Any
 
 
-def _arguments() -> argparse.Namespace:
+def _arguments(default_engine: str = "lmdeploy") -> argparse.Namespace:
     """声明验收输入及子进程参数，普通运行不隐式安装或更换推理依赖。"""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--engine", choices=("lmdeploy", "vllm"), default=default_engine)
     parser.add_argument("--sample", type=Path, help="包含图像或公式的真实 PDF，建议至少数页")
     parser.add_argument(
         "--backend", choices=("turbomind",), default="turbomind", help="Windows 验收只覆盖受支持的 TurboMind 后端"
@@ -41,10 +42,10 @@ def _arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _versions() -> dict[str, Any]:
+def _versions(engine: str = "lmdeploy") -> dict[str, Any]:
     """收集版本和设备信息，不记录 API Key 或整个配置环境。"""
     versions: dict[str, Any] = {"python": sys.version, "platform": platform.platform()}
-    for name in ("mineru", "mineru-vl-utils", "docvortex", "lmdeploy", "torch", "transformers"):
+    for name in ("mineru", "mineru-vl-utils", "docvortex", engine, "torch", "transformers"):
         versions[name] = importlib.metadata.version(name)
     import mineru
     import mineru_vl_utils
@@ -58,8 +59,10 @@ def _versions() -> dict[str, Any]:
         getattr(LmdeployEngineVlmClient, "close_health_probe", None)
     ):
         raise RuntimeError("The candidate MinerU and mineru-vl-utils wheels are not active in this interpreter")
-    if versions["lmdeploy"] not in SpecifierSet(">=0.17.0,<0.19"):
+    if engine == "lmdeploy" and versions["lmdeploy"] not in SpecifierSet(">=0.17.0,<0.19"):
         raise RuntimeError("This acceptance covers LMDeploy 0.17 and 0.18 only")
+    if engine == "vllm" and versions["vllm"] not in {"0.19.1", "0.30.0"}:
+        raise RuntimeError("This GPU acceptance covers vLLM 0.19.1 and 0.30.0")
     import torch
 
     versions["cuda_available"] = torch.cuda.is_available()
@@ -275,6 +278,8 @@ async def _accept(args: argparse.Namespace, report: dict[str, Any]) -> None:
                 sys.executable,
                 str(Path(__file__).resolve()),
                 "--worker",
+                "--engine",
+                args.engine,
                 "--port",
                 str(port),
                 "--uploads",
@@ -315,7 +320,8 @@ async def _accept(args: argparse.Namespace, report: dict[str, Any]) -> None:
             raise RuntimeError(f"Worker failed startup: {state.last_error}")
         async with httpx.AsyncClient(timeout=120) as client:
             report["runtime"] = (await client.get(state.base_url + "/_acceptance/runtime")).json()
-            assert report["runtime"]["backend_config"] == "TurbomindEngineConfig", report["runtime"]
+            expected = "AsyncLLM" if args.engine == "vllm" else "TurbomindEngineConfig"
+            assert report["runtime"]["backend_config"] == expected, report["runtime"]
             response = await client.post(state.base_url + "/_acceptance/infer")
             response.raise_for_status()
             report["real_inference"] = response.json()
@@ -362,7 +368,7 @@ async def _accept(args: argparse.Namespace, report: dict[str, Any]) -> None:
                         report["tasks_before_inflight_stop"] = [item["status"] for item in snapshots]
                         break
                     if all(item["status"] in {"completed", "partial", "failed", "canceled"} for item in snapshots):
-                        raise RuntimeError("No active LMDeploy sequences observed; use a longer PDF sample")
+                        raise RuntimeError("No active engine sequences observed; use a longer PDF sample")
                     await asyncio.sleep(0.05)
             if args.active_stop == "close":
                 response = await client.post(state.base_url + "/_acceptance/stop-engine")
@@ -400,9 +406,9 @@ async def _accept(args: argparse.Namespace, report: dict[str, Any]) -> None:
         await pool.close()
 
 
-def main() -> int:
+def main(default_engine: str = "lmdeploy") -> int:
     """保存每次验收的完整报告，失败时也保留 traceback 和所有 worker 日志。"""
-    args = _arguments()
+    args = _arguments(default_engine)
     args.evidence = args.evidence.resolve()
     args.evidence.mkdir(parents=True, exist_ok=True)
     os.environ["PYTHONUTF8"] = "1"
@@ -410,20 +416,28 @@ def main() -> int:
     if args.models_dir:
         os.environ["MINERU_MODEL_BASE_DIR"] = str(args.models_dir.resolve())
     if args.worker:
-        _worker(args)
+        if args.engine == "vllm":
+            from vllm_lifecycle import run_worker
+
+            run_worker(args)
+        else:
+            _worker(args)
         return 0
     report: dict[str, Any] = {
         "passed": False,
         "backend": args.backend,
+        "engine": args.engine,
         "recoveries": [],
         "original_incident_root_cause": "not established; lifecycle fault injection only",
     }
     try:
-        if sys.platform != "win32":
+        if args.engine == "lmdeploy" and sys.platform != "win32":
             raise RuntimeError("Run this release acceptance on Windows with a configured CUDA MinerU environment")
+        if args.engine == "vllm" and sys.platform != "linux":
+            raise RuntimeError("Run vLLM release acceptance on Linux/WSL2 with a configured CUDA environment")
         if args.sample is None or not args.sample.is_file() or args.sample.suffix.lower() != ".pdf":
             raise ValueError("--sample must point to an existing PDF")
-        report["versions"] = _versions()
+        report["versions"] = _versions(args.engine)
         report["sample_sha256"] = hashlib.sha256(args.sample.read_bytes()).hexdigest()
         if args.incident_log:
             (args.evidence / "original-incident.log").write_bytes(args.incident_log.read_bytes())
