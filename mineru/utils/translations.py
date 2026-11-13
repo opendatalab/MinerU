@@ -80,6 +80,12 @@ ZH_MESSAGES: dict[str, str] = {
     ),
     "Read N pages/blocks before and after the locator": "在定位符前后各读取 N 页/块",
     "Output format: markdown, image": "输出格式: markdown、image",
+    "Image output path; creates parent directories; Markdown only accepts '-'": (
+        "图片输出路径；自动创建父目录；Markdown 仅接受 '-'"
+    ),
+    "Markdown read does not write files. Use stdout redirection or the SDK to save text.": (
+        "Markdown 阅读不写入文件。请使用 stdout 重定向或 SDK 保存文本。"
+    ),
     "Omit continuation marker from output": "输出中省略续读标记",
     "No image asset returned.": "未返回图片素材。",
     "Image output requires a file path ending with .png, .jpg, .jpeg, or .webp; stdout is not supported.": (
