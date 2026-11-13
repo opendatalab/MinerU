@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """在 Uvicorn 成功监听后展示可直接访问的 API 文档地址。"""
 
 from __future__ import annotations
