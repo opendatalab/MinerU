@@ -97,6 +97,34 @@ if warm_executor:
     assert "Exception in thread" not in completed.stderr
 
 
+def test_lmdeploy_probe_closes_without_new_threads_at_interpreter_exit() -> None:
+    """LMDeploy 自有探测在真实解释器退出时走同步关闭，不能依赖已关闭线程池。"""
+    completed = _run_isolated('''
+        from concurrent.futures import ThreadPoolExecutor
+        from mineru_vl_utils.vlm_client.lmdeploy_health import LmdeployHealthProbe
+
+        probe = LmdeployHealthProbe(SimpleNamespace())
+
+        def close_probe() -> None:
+            """关闭真实探测适配器并记录顺序。"""
+            probe.close()
+            print("probe_closed", flush=True)
+
+        def create(self, backend, model_path, server_url, **kwargs):
+            """沿真实缓存注册 atexit，底层引擎仅替换为可观察关闭动作。"""
+            return RuntimeHandle(Client(), backend=backend, close_health_probe=close_probe,
+                                 close_engine=lambda: print("engine_closed", flush=True))
+
+        runtime.ModelSingleton._create_model = create
+        manager.get_model("lmdeploy-engine", "fake", None)
+        with ThreadPoolExecutor() as executor:
+            executor.submit(lambda: None).result()
+    ''')
+    assert completed.stdout.splitlines() == ["probe_closed", "engine_closed"]
+    assert "Exception ignored in atexit callback" not in completed.stderr
+    assert "cannot schedule new futures" not in completed.stderr
+
+
 def test_sync_close_callback_rejects_another_key_in_its_closing_batch() -> None:
     """A 的关闭回调不能等待同批尚未关闭的 B，同时仍允许另一应用借用未关闭键。"""
     _run_isolated('''

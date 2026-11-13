@@ -25,6 +25,7 @@ from ..runtime.closing import in_runtime_close_scope, runtime_close_scope
 from ..runtime.ownership import RuntimeOwner, current_runtime_owner, runtime_initialization_scope
 from .async_runtime import AsyncVlmPredictor
 from .handles import RuntimeHandle
+from .errors import EngineNotReadyError
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -104,6 +105,8 @@ class ModelSingleton:
             predictor.pinned = True
         else:
             predictor.owners.add(owner)
+            if isinstance(predictor, RuntimeHandle) and predictor.supports_health_probe:
+                owner.has_engine_health_probe = True
 
     def _get_or_initialize(
         self,
@@ -138,6 +141,9 @@ class ModelSingleton:
                     detached.append(self._detach(key, cached))
                 elif cached is not None:
                     self._retain(cached)
+                    if isinstance(cached, RuntimeHandle):
+                        # 暂时不可用仍沿原实例重探测；明确死亡必须报错，不能在缓存层悄悄重建。
+                        cached.require_ready(allow_unavailable=True)
                     return cached
                 else:
                     pending = None
@@ -435,7 +441,30 @@ class ModelSingleton:
             raise
         elapsed = round(time.time() - start_time, 2)
         logger.info(f"get {backend} predictor cost: {elapsed}s")
-        return RuntimeHandle(predictor, backend=backend, close_engine=close_engine)
+        return RuntimeHandle(
+            predictor,
+            backend=backend,
+            close_engine=close_engine,
+            probe_engine=predictor.client.probe_health if backend == "lmdeploy-engine" else None,
+            close_health_probe=predictor.client.close_health_probe if backend == "lmdeploy-engine" else None,
+        )
+
+    def probe_owner_health(self, owner: RuntimeOwner, timeout: float = 5.0) -> None:
+        """只检查该应用已经创建的运行时；快照之后释放缓存锁再等待后端。"""
+        with self._lock:
+            handles = tuple(
+                predictor
+                for predictor in self._models.values()
+                if isinstance(predictor, RuntimeHandle) and owner in predictor.owners and predictor.supports_health_probe
+            )
+        unavailable: EngineNotReadyError | None = None
+        for predictor in handles:
+            try:
+                predictor.probe_health(timeout)
+            except EngineNotReadyError as exc:
+                unavailable = unavailable or exc
+        if unavailable is not None:
+            raise unavailable
 
     def release_owner(self, owner: RuntimeOwner) -> None:
         """排空该应用文档后撤销全部后端租约，保留其它应用和独立解析持有的实例。"""

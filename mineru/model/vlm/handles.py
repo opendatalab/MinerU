@@ -4,20 +4,26 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING
 
 from ...utils.async_utils import drain_future, run_sync
 from ..runtime.closing import runtime_close_scope
-from ..runtime.ownership import RuntimeOwner
+from ..runtime.ownership import RuntimeOwner, current_runtime_owner
+from .errors import EngineDeadError, EngineNotReadyError, is_fatal_engine_error
 from .text_recognition import TextRecognitionResult, recognize_text_batch
 
 if TYPE_CHECKING:
     from mineru_vl_utils import MinerUClient
     from mineru_vl_utils.structs import ContentBlock, ExtractResult
+    from mineru_vl_utils.vlm_client.base_client import EngineHealth
     from PIL.Image import Image
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeHandle:
@@ -29,6 +35,8 @@ class RuntimeHandle:
         *,
         backend: str,
         close_engine: Callable[[], None] | None = None,
+        probe_engine: Callable[[float], EngineHealth] | None = None,
+        close_health_probe: Callable[[], None] | None = None,
     ) -> None:
         """保存已创建资源，不修改第三方客户端的属性或推测其内部结构。"""
         self.backend = backend
@@ -37,6 +45,11 @@ class RuntimeHandle:
         self.execution_lock = threading.Lock() if backend == "mlx-engine" else None
         self._predictor: MinerUClient | None = predictor
         self._close_engine = close_engine
+        self._probe_engine = probe_engine
+        self._close_health_probe = close_health_probe
+        self._probe_lock = threading.Lock()
+        self._fatal_error: BaseException | None = None
+        self._health_unavailable: str | None = None
         self._condition = threading.Condition()
         self._active = 0
         self._closing = False
@@ -54,12 +67,103 @@ class RuntimeHandle:
         """让缓存识别正在关闭或已经关闭的宿主句柄。"""
         return self._closing
 
-    @contextmanager
-    def _use(self, *, acquire_lock: bool = True) -> Iterator[MinerUClient]:
-        """等待同步推理自然返回后才允许关闭引擎，MLX 使用宿主串行锁。"""
+    @property
+    def supports_health_probe(self) -> bool:
+        """缓存管理者据此开启只读探测，不为未加载模型触发初始化。"""
+        return self._probe_engine is not None
+
+    def require_ready(self, *, allow_unavailable: bool = False) -> None:
+        """拒绝已经关闭、明确死亡或探测暂时不可用的运行时。"""
         with self._condition:
+            if self._fatal_error is not None:
+                raise EngineDeadError(str(self._fatal_error)) from self._fatal_error
             if self._closing:
                 raise RuntimeError("VLM runtime is shutting down")
+            if self._health_unavailable is not None and not allow_unavailable:
+                raise EngineNotReadyError(self._health_unavailable)
+
+    def _mark_fatal(self, error: BaseException) -> None:
+        """锁存最早故障并通知全部宿主，记录原始异常链而不重建或降级。"""
+        with self._condition:
+            first_failure = self._fatal_error is None
+            if first_failure:
+                self._fatal_error = error
+            message = str(self._fatal_error)
+            owners = set(self.owners)
+            owner = current_runtime_owner()
+            if owner is not None:
+                owners.add(owner)
+            for owner in owners:
+                if owner.engine_error is None:
+                    owner.engine_error = message
+                owner.set_engine_unavailable(self, None)
+        if first_failure:
+            logger.error(
+                "VLM engine failed: backend=%s error_type=%s",
+                self.backend,
+                type(error).__name__,
+                exc_info=(type(error), error, error.__traceback__),
+            )
+
+    def probe_health(self, timeout: float = 5.0) -> None:
+        """执行至多一个宿主探测；超时状态可恢复，明确死亡永不被健康结果覆盖。"""
+        if self._probe_engine is None:
+            return
+        if timeout <= 0:
+            raise ValueError("Health probe timeout must be positive")
+        started = time.monotonic()
+        if not self._probe_lock.acquire(timeout=timeout):
+            raise EngineNotReadyError("Another engine health probe is still pending")
+        active = False
+        try:
+            with self._condition:
+                if self._closing:
+                    return
+                if self._fatal_error is not None:
+                    raise EngineDeadError(str(self._fatal_error)) from self._fatal_error
+                self._active += 1
+                active = True
+            try:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError("Engine health probe deadline elapsed while waiting")
+                health = self._probe_engine(remaining)
+                if health.state not in {"healthy", "unavailable", "dead"}:
+                    raise ValueError("Invalid engine health state")
+            except Exception as exc:
+                if is_fatal_engine_error(exc):
+                    self._mark_fatal(exc)
+                    raise
+                logger.exception("VLM health probe failed: backend=%s", self.backend)
+                message = f"VLM health probe failed: {type(exc).__name__}: {exc}"
+            else:
+                if health.state == "dead":
+                    error = EngineDeadError(health.message or "VLM engine is unavailable")
+                    self._mark_fatal(error)
+                    raise error
+                message = health.message or "VLM engine health is unavailable" if health.state == "unavailable" else None
+            with self._condition:
+                if self._fatal_error is not None:
+                    raise EngineDeadError(str(self._fatal_error)) from self._fatal_error
+                self._health_unavailable = message
+                for owner in tuple(self.owners):
+                    owner.set_engine_unavailable(self, message)
+            if message is not None:
+                raise EngineNotReadyError(message)
+        finally:
+            if active:
+                with self._condition:
+                    self._active -= 1
+                    self._condition.notify_all()
+            self._probe_lock.release()
+
+    @contextmanager
+    def _use(self, *, acquire_lock: bool = True, probe: bool = True) -> Iterator[MinerUClient]:
+        """等待同步推理自然返回后才允许关闭引擎，MLX 使用宿主串行锁。"""
+        if probe:
+            self.probe_health()
+        with self._condition:
+            self.require_ready()
             self._active += 1
             predictor = self.predictor
         try:
@@ -68,6 +172,13 @@ class RuntimeHandle:
             else:
                 with self.execution_lock:
                     yield predictor
+            with self._condition:
+                if self._fatal_error is not None:
+                    raise EngineDeadError(str(self._fatal_error)) from self._fatal_error
+        except Exception as exc:
+            if is_fatal_engine_error(exc):
+                self._mark_fatal(exc)
+            raise
         finally:
             with self._condition:
                 self._active -= 1
@@ -76,6 +187,8 @@ class RuntimeHandle:
     @asynccontextmanager
     async def _async_use(self) -> AsyncIterator[MinerUClient]:
         """可取消地等待串行锁，排队期间取消不得让迟到工作线程开始推理。"""
+        if self._probe_engine is not None:
+            await run_sync(self.probe_health)
         lock = self.execution_lock
         if lock is not None:
             while True:
@@ -86,7 +199,7 @@ class RuntimeHandle:
                         break
                 await asyncio.sleep(0.01)
         try:
-            with self._use(acquire_lock=False) as predictor:
+            with self._use(acquire_lock=False, probe=False) as predictor:
                 yield predictor
         finally:
             if lock is not None:
@@ -183,7 +296,11 @@ class RuntimeHandle:
             if first_error is None:
                 first_error = exc
         finally:
+            for owner in tuple(self.owners):
+                owner.set_engine_unavailable(self, None)
             self._predictor = None
+            self._probe_engine = None
+            self._close_health_probe = None
             self._closed.set()
         if first_error is not None:
             raise first_error
@@ -197,7 +314,9 @@ class RuntimeHandle:
         try:
             with runtime_close_scope():
                 self._wait_for_calls()
-                if self.backend == "http-client":
+                if self._close_health_probe is not None:
+                    self._close_health_probe()
+                elif self.backend in {"http-client", "lmdeploy-engine"}:
                     asyncio.run(self.predictor.aclose())
         except BaseException as exc:
             error = exc

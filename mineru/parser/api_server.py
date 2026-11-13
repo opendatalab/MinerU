@@ -54,7 +54,7 @@ from ..filetypes import (
 from ..types import DeploymentTier, PageInfo, Tier, select_default_task_tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.runtime.ownership import RuntimeOwner, runtime_owner
-from ..model.vlm.errors import is_fatal_engine_error
+from ..model.vlm.errors import EngineNotReadyError, is_fatal_engine_error
 from ..utils.logger import configure_global_log_level
 from ..utils.server import ServerWithDocs
 from ..utils.stdio import configure_standard_streams
@@ -834,6 +834,9 @@ class ExecutionStore:
         if message is not None:
             self.fail_engine(message)
             raise_api_error(503, code="engine_dead", message=message)
+        unavailable = self.runtime_owner.engine_unavailable
+        if unavailable is not None:
+            raise_api_error(503, code="engine_unavailable", message=unavailable)
 
     def start_task(
         self,
@@ -1771,6 +1774,50 @@ def _preload_server_models(tier: DeploymentTier, *, vlm_config: VlmConfig | None
 _SHUTDOWN_FORCE_EXIT_SEC = 30.0
 
 
+_ENGINE_HEALTH_INTERVAL_SECONDS = 5.0
+_ENGINE_HEALTH_TIMEOUT_SECONDS = 5.0
+_ENGINE_HEALTH_MONITOR = "api-engine-health-monitor"
+
+
+def _probe_initialized_engines(owner: RuntimeOwner) -> None:
+    """只在应用已有可探测运行时后访问缓存，Flash 和惰性模型不因探测加载。"""
+    if not owner.has_engine_health_probe or owner.closed:
+        return
+    from ..model.vlm.runtime import ModelSingleton
+
+    ModelSingleton().probe_owner_health(owner, _ENGINE_HEALTH_TIMEOUT_SECONDS)
+
+
+async def _refresh_engine_health(store: ExecutionStore) -> bool:
+    """刷新一次健康并返回是否仍可继续探测；未加载 VLM 时不创建工作线程。"""
+    owner = store.runtime_owner
+    try:
+        if owner.has_engine_health_probe:
+            await run_sync(_probe_initialized_engines, owner)
+    except EngineNotReadyError:
+        owner.set_engine_unavailable(_ENGINE_HEALTH_MONITOR, None)
+    except Exception as exc:
+        if is_fatal_engine_error(exc):
+            store.fail_engine(str(exc))
+            return False
+        logger.exception("Runtime health monitoring failed")
+        owner.set_engine_unavailable(_ENGINE_HEALTH_MONITOR, str(exc) or type(exc).__name__)
+    else:
+        owner.set_engine_unavailable(_ENGINE_HEALTH_MONITOR, None)
+    if owner.engine_error is not None:
+        store.fail_engine(owner.engine_error)
+        return False
+    return True
+
+
+async def _monitor_engine_health(store: ExecutionStore) -> None:
+    """周期检查已加载引擎，暂时不可用不取消在途任务，死亡沿既有边界排空。"""
+    while True:
+        await asyncio.sleep(_ENGINE_HEALTH_INTERVAL_SECONDS)
+        if not await _refresh_engine_health(store):
+            return
+
+
 def _start_force_exit_timer(
     seconds: float = _SHUTDOWN_FORCE_EXIT_SEC,
     *,
@@ -1875,6 +1922,7 @@ def create_app(
         file_store.claim_directory()
         application.state.task_store.start()
         collection_task: asyncio.Task[None] | None = None
+        engine_health_task: asyncio.Task[None] | None = None
 
         async def collect_loop() -> None:
             """每五分钟扫描，先清理终态元数据，再释放无引用文件。"""
@@ -1911,9 +1959,15 @@ def create_app(
                         _preload_tier,
                         preload_result.engine,
                     )
+            # 预加载后先发布真实健康状态，不能在首次后台探测完成前短暂宣称可用。
+            if await _refresh_engine_health(execution_store):
+                engine_health_task = asyncio.create_task(_monitor_engine_health(execution_store), name="mineru-engine-health")
             yield
         finally:
             runtime_owner.reset(token)
+            if engine_health_task is not None:
+                engine_health_task.cancel()
+                await drain_future(asyncio.gather(engine_health_task, return_exceptions=True))
             if collection_task is not None:
                 collection_task.cancel()
                 await asyncio.gather(collection_task, return_exceptions=True)

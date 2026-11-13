@@ -78,6 +78,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     # engine_error
     "no_engine": "engine_error",
     "engine_unavailable": "engine_error",
+    "engine_dead": "engine_error",
     "parse_empty": "engine_error",
     "parse_failed": "engine_error",
     "parse_page_remap_failed": "engine_error",
