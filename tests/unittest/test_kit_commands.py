@@ -932,9 +932,11 @@ def test_router_reload_uses_environment_factory(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:
+    """目录输入拒绝实际存在的普通文件，不能由路径名称判断类型。"""
     source_dir = tmp_path / "docs"
     source_dir.mkdir()
     (source_dir / "a.pdf").write_bytes(b"%PDF-1.7\n")
+    (tmp_path / "out.md").write_text("keep", encoding="utf-8")
 
     result = runner.invoke(app, ["parse", str(source_dir), "-o", str(tmp_path / "out.md")])
 

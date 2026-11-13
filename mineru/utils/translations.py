@@ -12,6 +12,12 @@ ZH_MESSAGES: dict[str, str] = {
     # ------------------------------------------------------------------ 共享
     "JSON output": "JSON 输出",
     "Verbose output": "详细输出",
+    "Batch finished: succeeded={succeeded}, skipped={skipped}, failed={failed}, unprocessed={unprocessed}.": (
+        "批次完成：成功={succeeded}，跳过={skipped}，失败={failed}，未处理={unprocessed}。"
+    ),
+    "Skipped {path}: [{code}] {error}": "已跳过 {path}：[{code}] {error}",
+    "Failed to write {path}: {error}": "写入 {path} 失败：{error}",
+    "Unsupported OCR mode: {mode}": "不支持的 OCR 模式：{mode}",
     "Max rows": "最大行数",
     "Result offset": "结果偏移量",
     "yes": "是",

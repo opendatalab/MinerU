@@ -16,7 +16,7 @@ from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..config import VlmConfig, get_config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
-from ..integrations.docvortex import read_source_properties, translate_resource_limit
+from ..integrations.docvortex import read_source_properties, translate_document_errors
 from ..utils.async_utils import run_sync
 from ..utils.logger import configure_global_log_level
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
@@ -77,8 +77,9 @@ class MinerUParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        with translate_resource_limit():
+        with translate_document_errors(native_input=True):
             prepared = self._prepare_input(path, page_range, source_context)
+        with translate_document_errors(native_input=prepared.file_suffix != "pdf"):
             middle_json, _ = self._run_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
@@ -101,8 +102,9 @@ class MinerUParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        with translate_resource_limit():
+        with translate_document_errors(native_input=True):
             prepared = await run_sync(self._prepare_input, path, page_range, source_context)
+        with translate_document_errors(native_input=prepared.file_suffix != "pdf"):
             middle_json, _ = await self._arun_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
@@ -153,8 +155,13 @@ class MinerUParser(DocumentParser):
         page_range = normalize_page_range_input(page_range)
 
         file_name = path.stem
-        file_bytes = path.read_bytes()
-        suffix = guess_suffix_by_path(path)
+        try:
+            file_bytes = path.read_bytes()
+            suffix = guess_suffix_by_path(path)
+        except FileNotFoundError as exc:
+            raise InvalidRequestError("file_not_found", str(exc), "input") from exc
+        except PermissionError as exc:
+            raise InvalidRequestError("file_permission_denied", str(exc), "input") from exc
         source_suffix = suffix
 
         if suffix in IMAGE_EXTENSIONS:
@@ -180,7 +187,9 @@ class MinerUParser(DocumentParser):
             suffix = "pdf"
 
         if suffix not in FILE_SUFFIXES:
-            raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
+            raise InvalidRequestError(
+                "file_type_unsupported", f"Unsupported file type: {suffix or path.suffix or 'unknown'}", "input"
+            )
         if source_suffix not in PAGE_RANGE_PARSE_EXTENSIONS and page_range.strip():
             raise InvalidRequestError(
                 "page_range_invalid",
@@ -227,11 +236,21 @@ class MinerUParser(DocumentParser):
             return file_bytes, None, None
 
         from docvortex.document.pdf import PDFDocument
+        from pypdfium2 import PdfiumError
+        from pypdfium2 import raw as pdfium_raw
 
         from .page_range import parse_page_range
 
-        with PDFDocument(file_bytes) as doc:
-            page_count = doc.page_count
+        try:
+            with PDFDocument(file_bytes) as doc:
+                page_count = doc.page_count
+        except PdfiumError as exc:
+            # 只在打开输入文档的边界解释 PDFium 错误码，不掩盖后续算法或引擎错误。
+            if exc.err_code == pdfium_raw.FPDF_ERR_PASSWORD:
+                raise InvalidRequestError("file_encrypted", str(exc), "input") from exc
+            if exc.err_code == pdfium_raw.FPDF_ERR_FORMAT:
+                raise InvalidRequestError("file_corrupted", str(exc), "input") from exc
+            raise
         page_indices = parse_page_range(page_range, page_count)
 
         if page_indices == list(range(page_count)):
