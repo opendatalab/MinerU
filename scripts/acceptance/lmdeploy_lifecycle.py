@@ -443,6 +443,7 @@ def main(default_engine: str = "lmdeploy") -> int:
             (args.evidence / "original-incident.log").write_bytes(args.incident_log.read_bytes())
         asyncio.run(_accept(args, report))
     except Exception:
+        report["passed"] = False
         report["error"] = traceback.format_exc()
         print(report["error"], file=sys.stderr)
     finally:
