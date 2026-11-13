@@ -32,7 +32,9 @@ def read_cmd(
     context: int = typer.Option(0, "--context", help=t("Read N pages/blocks before and after the locator")),
     limit: int = typer.Option(30000, "--limit", help=t("Soft character limit for printed content")),
     format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help=t("Output format: markdown, image")),
-    output: str = typer.Option(None, "-o", "--output", help=t("Output path; creates parent directories")),
+    output: str = typer.Option(
+        None, "-o", "--output", help=t("Image output path; creates parent directories; Markdown only accepts '-'")
+    ),
     no_marker: bool = typer.Option(False, "--no-marker", help=t("Omit continuation marker from output")),
     json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
@@ -65,6 +67,7 @@ def _read(
     after: str | None = None,
 ) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
     """调用内容服务；只有显式续读时才传入 after，保持普通调用参数兼容。"""
+    _validate_read_output(format, output)
     image_format = _image_format_for_output(format=format, output=output) if format == "image" else "jpeg"
     client = DoclibClient(timeout=60)
     if format == "image":
@@ -96,15 +99,14 @@ def _prepare_read_output(
     output: str | None,
     no_marker: bool,
 ) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
-    output_path = _ensure_output_parent(output)
+    """只将图片素材写入路径；文本保持渐进阅读和原有 JSON 响应。"""
+    _validate_read_output(content.format, output)
+    output_path = _ensure_output_parent(output) if content.format == "image" else None
     if json_mode and output_path and output_path != "-":
         payload: dict[str, object] = content.model_dump(mode="json")
-        if content.format == "image":
-            if content.asset is None:
-                raise MineruError("asset_not_available", t("No image asset returned."), "format")
-            shutil.copyfile(content.asset.path, output_path)
-        else:
-            Path(output_path).write_text(content.content, encoding="utf-8")
+        if content.asset is None:
+            raise MineruError("asset_not_available", t("No image asset returned."), "format")
+        shutil.copyfile(content.asset.path, output_path)
         payload["content"] = None
         payload["output"] = _output_info(output_path)
         return payload
@@ -121,10 +123,6 @@ def _prepare_read_output(
             return cli_ok(ReadTextOutput(t("Written to {path}", path=output_path)), render=_render_read_text)
         return cli_ok(ReadTextOutput(asset_path), render=_render_read_text)
 
-    if output_path and output_path != "-":
-        Path(output_path).write_text(content.content, encoding="utf-8")
-        return cli_ok(ReadTextOutput(t("Written to {path}", path=output_path)), render=_render_read_text)
-
     if not content.content and content.content_ranges:
         message = t("No renderable content in requested pages.")
         if content.next_request and not no_marker:
@@ -139,6 +137,16 @@ def _prepare_read_output(
             return cli_ok(ReadTextOutput(_append_next_marker(content.content, marker)), render=_render_read_text)
 
     return cli_ok(ReadTextOutput(content.content), render=_render_read_text)
+
+
+def _validate_read_output(format: str, output: str | None) -> None:
+    """在连接服务或创建目录前拒绝文本落盘，保留 stdout 的显式等价写法。"""
+    if format == "markdown" and output not in {None, "-"}:
+        raise MineruError(
+            "invalid_request",
+            t("Markdown read does not write files. Use stdout redirection or the SDK to save text."),
+            "output",
+        )
 
 
 def _render_read_text(data: ReadTextOutput) -> str:

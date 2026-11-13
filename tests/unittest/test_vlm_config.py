@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from click.testing import CliRunner
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from typer.testing import CliRunner as TyperRunner
@@ -136,13 +137,13 @@ def test_api_cli_merges_vlm_without_mutating_global(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(api_server.get_config().model, "vlm", settings)
     seen: dict[str, Any] = {}
 
-    def capture_app(**kwargs: Any) -> object:
+    def capture_app(**kwargs: Any) -> FastAPI:
         """记录应用构造参数，用于核验 CLI 覆盖而不创建文件。"""
         seen.update(kwargs)
-        return object()
+        return FastAPI()
 
     monkeypatch.setattr(api_server, "create_app", capture_app)
-    monkeypatch.setattr(api_server.uvicorn.Server, "run", lambda self: None)
+    monkeypatch.setattr(api_server.ServerWithDocs, "run", lambda self: None)
     previous_env = dict(os.environ)
     result = CliRunner().invoke(
         api_server.main, ["--vlm-server-url", url, "--vlm-api-key", "", "--vlm-http-timeout", "9", "--api-key", "inbound-key"]

@@ -16,9 +16,25 @@ class RuntimeOwner:
         """初始化关闭状态、引擎错误及受保护的在途文档计数。"""
         self.closed = False
         self.engine_error: str | None = None
+        self.has_engine_health_probe = False
+        self._unavailable_engines: dict[object, str] = {}
         self._documents = 0
         self._initializations = 0
         self._condition = threading.Condition()
+
+    def set_engine_unavailable(self, engine: object, message: str | None) -> None:
+        """独立记录各引擎的暂时健康状态，某个恢复不能清除另一引擎的故障。"""
+        with self._condition:
+            if message is None:
+                self._unavailable_engines.pop(engine, None)
+            else:
+                self._unavailable_engines[engine] = message
+
+    @property
+    def engine_unavailable(self) -> str | None:
+        """线程安全地向服务接单和健康入口提供暂时不可用原因。"""
+        with self._condition:
+            return next(iter(self._unavailable_engines.values()), None)
 
     def acquire_document(self) -> None:
         """接纳新文档；关闭开始后不允许新的模型使用范围进入。"""

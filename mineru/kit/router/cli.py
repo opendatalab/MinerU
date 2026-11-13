@@ -6,11 +6,11 @@ from __future__ import annotations
 from typing import cast
 
 import typer
-import uvicorn
 
 from ...types import SERVER_TIERS, ServerTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
+from ...utils.server import run_server
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from .app import create_app
@@ -73,7 +73,7 @@ def router_cmd(
         exit_with_message("invalid_request", str(exc))
     settings.apply_to_env()
     if reload:
-        uvicorn.run(
+        run_server(
             "mineru.kit.router.app:create_app_from_env",
             host=host,
             port=port,
@@ -81,7 +81,7 @@ def router_cmd(
             factory=True,
         )
         return
-    uvicorn.run(create_app(settings), host=host, port=port, reload=False)
+    run_server(create_app(settings), host=host, port=port, reload=False)
 
 
 def main() -> None:

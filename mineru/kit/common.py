@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import zipfile
+import stat
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, TypeAlias
 
+from ..errors import InvalidRequestError
 from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
 from ..parser.writer import FileBasedDataWriter
@@ -31,29 +33,19 @@ def expand_input_paths(inputs: list[str]) -> list[Path]:
     for path in paths:
         if path.is_dir():
             for child in sorted(path.iterdir()):
-                if child.is_file() and child.suffix.lower() in PARSEABLE_SUFFIXES:
+                if child.suffix.lower() not in PARSEABLE_SUFFIXES:
+                    continue
+                try:
+                    is_file = stat.S_ISREG(child.stat().st_mode)
+                except (FileNotFoundError, PermissionError):
+                    # 保留发现后消失或无法读取的候选，交给逐项校验报告，不能静默遗漏。
+                    expanded.append(child)
+                    continue
+                if is_file:
                     expanded.append(child)
         else:
             expanded.append(path)
     return expanded
-
-
-def ensure_supported_inputs(paths: list[Path]) -> None:
-    if not paths:
-        raise ValueError(t("No input files found."))
-    for path in paths:
-        if not path.exists():
-            raise FileNotFoundError(path)
-        if path.is_dir():
-            raise ValueError(t("Directory input must be expanded before validation: {path}", path=path))
-        if path.suffix.lower() not in PARSEABLE_SUFFIXES:
-            raise ValueError(t("Unsupported file type: {path}", path=path))
-
-
-def is_output_path_file_like(path: Path) -> bool:
-    if path.exists():
-        return path.is_file()
-    return path.suffix.lower() in OUTPUT_FILE_SUFFIXES.values()
 
 
 def resolve_single_output_path(source: Path, output: Path, format: KitFormat) -> Path:
@@ -64,23 +56,28 @@ def resolve_single_output_path(source: Path, output: Path, format: KitFormat) ->
     return output
 
 
-def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitFormat) -> dict[Path, Path]:
+def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitFormat, *, batch: bool) -> dict[Path, Path]:
+    """按原始输入模式统一验证和映射输出；批量目录名称不受后缀限制。"""
+    if format not in OUTPUT_FILE_SUFFIXES:
+        raise InvalidRequestError("unsupported_output_format", t("Unsupported format: {format}", format=format), "format")
     if any(path.parent == path for path in paths):
         raise ValueError(t("Invalid input path."))
-    if len(paths) > 1 and is_output_path_file_like(output):
+    if batch and output.exists() and not output.is_dir():
         raise ValueError(t("When input is multiple files or directories, --output must be a directory path."))
 
     destinations: dict[Path, Path] = {}
     seen: dict[Path, Path] = {}
+    sources = {source.resolve() for source in paths}
     for source in paths:
         dest = (
             resolve_single_output_path(source, output, format)
-            if len(paths) == 1
+            if not batch
             else output / f"{source.stem}{OUTPUT_FILE_SUFFIXES[format]}"
         )
-        if dest.resolve() == source.resolve():
+        resolved_dest = dest.resolve()
+        if resolved_dest in sources:
             raise ValueError(t("Output path must not be the same as the input file: {path}", path=source))
-        existing = seen.get(dest)
+        existing = seen.get(resolved_dest)
         if existing is not None:
             raise ValueError(
                 t(
@@ -90,7 +87,7 @@ def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitForma
                     dest=dest,
                 )
             )
-        seen[dest] = source
+        seen[resolved_dest] = source
         destinations[source] = dest
     return destinations
 

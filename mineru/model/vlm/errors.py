@@ -3,32 +3,26 @@
 
 from __future__ import annotations
 
+from mineru_vl_utils.vlm_client.base_client import EngineUnavailableError
 
-class EngineDeadError(RuntimeError):
+from ...errors import MineruError
+
+
+class EngineNotReadyError(MineruError):
+    """健康探测暂时不可用，拒绝新推理但不把实例永久标记为死亡。"""
+
+    def __init__(self, message: str) -> None:
+        """保留现有 API 错误码供本地、远程和批处理一致处理。"""
+        super().__init__("engine_unavailable", message)
+
+
+class EngineDeadError(EngineUnavailableError):
     """表示本地引擎已死亡，当前进程不能继续接受推理。"""
 
 
 def is_fatal_engine_error(error: BaseException) -> bool:
-    """遍历异常链和异常组，优先匹配 vLLM 的明确死亡类型。"""
-    pending = [error]
-    visited: set[int] = set()
-    while pending:
-        current = pending.pop()
-        if id(current) in visited:
-            continue
-        visited.add(id(current))
-        if isinstance(current, EngineDeadError):
-            return True
-        for cls in type(current).__mro__:
-            if cls.__module__.startswith("vllm.") and cls.__name__ in {"EngineDeadError", "AsyncEngineDeadError"}:
-                return True
-        if any(cls.__name__ == "BaseExceptionGroup" for cls in type(current).__mro__):
-            pending.extend(item for item in getattr(current, "exceptions", ()) if isinstance(item, BaseException))
-        if current.__cause__ is not None:
-            pending.append(current.__cause__)
-        elif current.__context__ is not None and not current.__suppress_context__:
-            pending.append(current.__context__)
-    return False
+    """只消费依赖库公共故障契约，不维护第二份后端类型识别规则。"""
+    return EngineUnavailableError.find_in(error) is not None
 
 
-__all__ = ["EngineDeadError", "is_fatal_engine_error"]
+__all__ = ["EngineDeadError", "EngineNotReadyError", "is_fatal_engine_error"]

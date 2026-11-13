@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Literal
+from zipfile import BadZipFile
+from xml.etree.ElementTree import ParseError
 
 from docvortex.errors import DocumentError
 from pydantic import BaseModel, ConfigDict, JsonValue
@@ -12,6 +14,24 @@ from docvortex.schema import DocumentProperties, FileSuffix, MiddleJson, ModelJs
 from docvortex.document.contracts import HtmlSourceContext
 
 from ..errors import InvalidRequestError
+
+
+@contextmanager
+def translate_document_errors(*, native_input: bool = False) -> Iterator[None]:
+    """只映射共享引擎已确认的输入错误，不将程序错误或模型失败泛化成坏文件。"""
+    from lxml.etree import XMLSyntaxError
+
+    try:
+        yield
+    except DocumentError as exc:
+        code = "file_corrupted" if exc.code == "open_failed" else exc.code
+        if code in {"resource_limit", "file_corrupted", "file_encrypted", "file_type_unsupported", "file_too_large"}:
+            raise InvalidRequestError(code, exc.message, exc.param) from exc
+        raise
+    except (BadZipFile, ParseError, XMLSyntaxError) as exc:
+        if not native_input:
+            raise
+        raise InvalidRequestError("file_corrupted", str(exc), "input") from exc
 
 
 @contextmanager
@@ -76,6 +96,7 @@ def validate_mineru_metadata(document: ModelJson | MiddleJson) -> None:
 __all__ = [
     "read_source_properties",
     "translate_resource_limit",
+    "translate_document_errors",
     "MinerUMetadata",
     "build_metadata",
     "with_mineru_metadata",

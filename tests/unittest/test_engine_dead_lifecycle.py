@@ -15,6 +15,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from mineru_vl_utils.vlm_client.base_client import EngineUnavailableError
+
 from mineru.model.vlm.errors import EngineDeadError, is_fatal_engine_error
 from mineru.parser import api_server
 from mineru.kit.router import workers
@@ -24,7 +26,7 @@ def test_fatal_classifier_uses_types_and_exception_chain() -> None:
     """普通 EngineCore 文本和网络超时不是死亡；明确类型及 cause 是死亡。"""
     assert not is_fatal_engine_error(RuntimeError("EngineCore request invalid"))
     assert not is_fatal_engine_error(httpx.ReadTimeout("enginecore timeout"))
-    fatal_type = type("EngineDeadError", (RuntimeError,), {"__module__": "vllm.v1.engine.exceptions"})
+    fatal_type = EngineUnavailableError
     wrapper = ValueError("wrapped")
     wrapper.__cause__ = fatal_type("dead")
     assert is_fatal_engine_error(wrapper)

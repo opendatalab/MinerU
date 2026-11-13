@@ -23,6 +23,7 @@ from ..config import Config, ConfigSource, LogConfig, LogLevel, _mineru_home, ge
 from ..errors import MineruError, error_response, http_status_for
 from ..utils.async_utils import drain_future
 from ..utils.logger import configure_global_log_level
+from ..utils.server import ServerWithDocs
 from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
@@ -566,7 +567,7 @@ def _run_server(cfg: Config, *, log_source: ConfigSource | Literal["provided"] =
             lifespan="on",
             timeout_keep_alive=cfg.doclib.tcp.timeout,
         )
-        server = uvicorn.Server(uv_config)
+        server = ServerWithDocs(uv_config, docs_path="/api/docs", docs_require_auth=True)
 
         def request_shutdown() -> None:
             """通过 Uvicorn 正常退出，确保 Windows 也会执行生命周期清理。"""

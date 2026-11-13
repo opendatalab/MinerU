@@ -72,7 +72,7 @@ mineru read doc:ab12cd3/tier:flash/page:all
 | `--limit` | int | `30000` | 文本输出软字符上限 |
 | `--after` | locator | 不传 | 使用返回的内容游标续读；要求 Markdown 文档定位或页选择，且 context=0 |
 | `--context` | int | `0` | 按 locator 周围扩展上下文 |
-| `--output`, `-o` | path | 不传 | 将返回内容或 image asset 写入本地路径；image 只支持 `.png`、`.jpg`、`.jpeg`、`.webp` |
+| `--output`, `-o` | path | 不传 | 仅将 image asset 写入本地路径；Markdown 仅接受 `-` 表示 stdout；image 只支持 `.png`、`.jpg`、`.jpeg`、`.webp` |
 | `--no-marker` | bool | false | 关闭 continuation marker |
 
 语义区分：
@@ -103,7 +103,7 @@ Markdown 继续优先输出 table、chart 和 formula 的结构化内容。需�
 ![Table block]()
 ```
 
-非空 locator 表示该 block 当前可通过 `mineru read <locator> --format image` 读取；空 locator 表示没有可用图片。`--output` 只写 Markdown 文件，保留这些虚拟引用，不创建 `images/` 目录。
+非空 locator 表示该 block 当前可通过 `mineru read <locator> --format image` 读取；空 locator 表示没有可用图片。Markdown 阅读仅返回 stdout／JSON；保存当前片段请使用重定向或 SDK，不支持 `--output PATH`。返回的文本保留这些虚拟引用。
 
 ### `--context`
 
@@ -153,7 +153,7 @@ image 输出路径必须带上述后缀。无后缀、其它后缀以及 `--outp
 
 `--json` 时，CLI 输出 `DocContentResponse`。
 
-同时指定 `--output`（且不为 `-`）时，CLI 仍输出 `DocContentResponse`，但内容写入文件：`content` 字段为 `null`，并额外增加 `output` 字段（`{"status": "written", "path": "..."}`）指向已写入的文件；`--format image` 时写入的是 server 返回的 asset。
+仅 `--format image --output PATH --json` 会保存 server 返回的 asset，并返回 `content=null` 和额外的 `output` 字段（`{"status": "written", "path": "..."}`）。Markdown 携带实际输出路径时，在读取服务或创建目录之前返回 `invalid_request`（`param=output`）；`--output -` 与省略此参数等价。
 
 locator-first 读取时：
 
@@ -205,3 +205,9 @@ locator-first 读取时：
 2. 需要继续阅读时，切换到 `mineru read <locator>`。
 
 `parse` 适合“把文件纳入 MinerU 并读默认内容”。`read` 适合“基于已有定位继续读指定位置或导出 page/block 图像”。
+
+## 10. 阅读与保存
+
+`read` 返回受字符预算约束的阅读片段。保存当前片段可使用 `mineru read <locator> --no-marker > part.md`，或通过 SDK 保存返回文本。这里不会自动续读、追加或拼接。
+
+需要导出已解析的完整指定页范围时使用 `mineru parse <path> --pages <range> -o result.md`；该入口复用缓存并执行完整内容导出，不受阅读字符预算限制。图片读取与图片路径输出继续保留。

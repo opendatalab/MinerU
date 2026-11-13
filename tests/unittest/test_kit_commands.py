@@ -870,7 +870,7 @@ def test_router_uses_explicit_v1_worker_options_and_rejects_legacy_args(monkeypa
         seen["port"] = port
         seen["reload"] = reload
 
-    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
+    monkeypatch.setattr(router_cli, "run_server", _fake_run)
 
     result = runner.invoke(
         app,
@@ -921,7 +921,7 @@ def test_router_reload_uses_environment_factory(monkeypatch: pytest.MonkeyPatch)
         seen["target"] = target
         seen.update(kwargs)
 
-    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
+    monkeypatch.setattr(router_cli, "run_server", _fake_run)
 
     result = runner.invoke(app, ["router", "--reload", "--local-gpus", "none"])
 
@@ -932,9 +932,11 @@ def test_router_reload_uses_environment_factory(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:
+    """目录输入拒绝实际存在的普通文件，不能由路径名称判断类型。"""
     source_dir = tmp_path / "docs"
     source_dir.mkdir()
     (source_dir / "a.pdf").write_bytes(b"%PDF-1.7\n")
+    (tmp_path / "out.md").write_text("keep", encoding="utf-8")
 
     result = runner.invoke(app, ["parse", str(source_dir), "-o", str(tmp_path / "out.md")])
 

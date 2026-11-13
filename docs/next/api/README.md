@@ -91,7 +91,6 @@ Local Parse Server 默认监听 loopback 且不启用鉴权。启用 `--api-key`
 
 Local Parse Server 的目标是复用客户端协议，而不是完整模拟公网平台。它可以简化以下能力:
 
-- 不支持 Webhook。
 - 上传 URL 可以指向本地 server 的临时上传 endpoint，而不是 OSS。
 - 文件产物下载可以直接返回 `200 + body`，不必返回 CDN 重定向。
 

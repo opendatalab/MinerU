@@ -1,5 +1,7 @@
 # ADR-0027: Doclib 视觉 Block Locator 图片引用
 
+> 2026-11-13 更新：Markdown 的 `read --output PATH` 已移除，文本保存由 stdout 重定向或 SDK 完成；`--output -` 和图片输出保留。`parse -o` 继续完整导出指定范围。以下文本落盘描述仅保留为历史决策，现行行为见 [read 规范](../cli/mineru-read.md)。
+
 > 历史决策记录：保留当时的背景、状态和设计。当前接口与实现归属以 [开发入口](../README.md) 和现行规范为准；文中的历史模块路径不保证仍存在。
 
 状态: Accepted，已实现

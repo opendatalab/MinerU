@@ -77,7 +77,7 @@ ID:
 | `mineru/types.py` | `Tier`、`TIER_ORDER` 与 Middle JSON typed dataclass 在此定义；尚无 Middle JSON normalize / validator。 |
 | `mineru/errors.py` | 已有 `MineruError`、`engine_error` 映射和错误 envelope helper，但部分新 code 仍未补齐。 |
 | `mineru/cli/main.py` | `mineru parse/scan/watch/search/find/list/show/server/config/invalidate/forget/cleanup/usage/telemetry` 已按 NEXT 入口组织。 |
-| `mineru/parser/api_server.py`、`mineru/parser/api_client.py` | v1 parse API、uploads/files、tiers、usage 和 API-backed parser 已有基础；callback/webhook 本地差异和 chat/responses 仍需明确边界。 |
+| `mineru/parser/api_server.py`、`mineru/parser/api_client.py` | v1 parse API、uploads/files、tiers、usage 和 API-backed parser 已有基础；chat/responses 仍需明确边界。 |
 
 因此，任务分成三类:
 
@@ -1197,8 +1197,7 @@ API-backed parser、Doclib SDK、本地 parser 的错误都能被统一捕获，
 1. 测试 `GET /v1/health`。
 2. 测试 `GET /v1/tiers`。
 3. 测试 `POST /v1/tasks` 的最小本地路径 source。
-5. 未实现 webhook 时 health features 应标记 false。
-6. 使用同一个 `MinerUApiParser` 调用本地 server。
+4. 使用同一个 `MinerUApiParser` 调用本地 server。
 
 完成边界:
 
@@ -1214,7 +1213,7 @@ API-backed parser、Doclib SDK、本地 parser 的错误都能被统一捕获，
 
 禁止范围:
 
-- 不实现公网计费、CDN、Webhook 完整能力。
+- 不实现公网计费、CDN 完整能力。
 
 ## 9. M5: Agent-native 输出
 

@@ -11,6 +11,7 @@ import pytest
 from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
+from mineru.errors import InvalidRequestError
 from mineru.parser import api_server, parse, parse_async
 from mineru.parser.api_server import FileStore
 from mineru.render.html import render_html
@@ -55,8 +56,10 @@ def test_csv_path_parsing_and_signatureless_detection(tmp_path: Path) -> None:
     async_result = asyncio.run(parse_async(csv_path))
     assert result.middle_json.metadata.file_suffix == async_result.middle_json.metadata.file_suffix == "csv"
     assert result.markdown() == async_result.markdown()
-    with pytest.raises(ValueError, match="Unsupported file type: txt"):
+    with pytest.raises(InvalidRequestError, match="Unsupported file type: txt") as caught:
         parse(text_path)
+    assert caught.value.code == "file_type_unsupported"
+    assert caught.value.param == "input"
 
 
 def test_tsv_doc_analyze_records_independent_suffix_and_reuses_csv_engine() -> None:

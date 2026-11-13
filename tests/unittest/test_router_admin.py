@@ -616,7 +616,7 @@ def test_cli_admin_key_precedence_and_reload(monkeypatch: pytest.MonkeyPatch) ->
         seen.append(settings)
         assert kwargs["reload"] is True
 
-    monkeypatch.setattr(cli.uvicorn, "run", run)
+    monkeypatch.setattr(cli, "run_server", run)
     runner = CliRunner()
     result = runner.invoke(cli_app, ["router", "--reload", "--local-gpus", "none"])
     assert result.exit_code == 0, result.output

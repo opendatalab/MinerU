@@ -3,3 +3,5 @@
 *.html linguist-documentation
 *.css linguist-vendored
 *.scss linguist-vendored
+# PDF 回归样例按二进制保存，保留交叉引用表的定长字节。
+tests/fixtures/kit/*.pdf binary
