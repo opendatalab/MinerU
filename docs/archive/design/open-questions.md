@@ -88,7 +88,7 @@
 |----|------|----------|
 | OQ-A-001 | `content_list` 与 `structured_content` 在 v1 API 中并存多久，是否需要下线计划，或改由 `schema_version` 表达结构版本。 | Unified API / structured content |
 | OQ-A-002 | 官方 API 计量与计费规则如何定义，是按页、按 token、按文件，还是组合计量。 | Unified API / billing |
-| OQ-A-003 | v1 API 时间字段是否保持当前混合策略：Job/Webhook 使用 ISO-8601，File/Model/Chat 使用 Unix 秒级时间戳；是否需要统一。 | Unified API |
+| OQ-A-003 | v1 API 时间字段是否保持当前混合策略：Job 使用 ISO-8601，File/Model/Chat 使用 Unix 秒级时间戳；是否需要统一。 | Unified API |
 
 ## 5. CLI 与 Agent 协议
 

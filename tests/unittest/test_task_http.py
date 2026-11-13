@@ -733,7 +733,7 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         return {
             "status": "ok",
             "version": "test",
-            "features": {"webhook": False, "task_output_formats": ["default"], "sources": ["upload"]},
+            "features": {"task_output_formats": ["default"], "sources": ["upload"]},
         }
 
     @gateway.get("/v1/tiers")

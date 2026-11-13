@@ -27,7 +27,7 @@ from mineru.filetypes import (
     normalize_parse_extension,
     validate_parse_filename,
 )
-from mineru.kit.common import ensure_supported_inputs, expand_input_paths
+from mineru.kit.common import expand_input_paths
 from mineru.parser import parse
 
 
@@ -244,4 +244,3 @@ def test_mineru_kit_discovers_and_accepts_csv_inputs(tmp_path: Path) -> None:
     expanded = expand_input_paths([str(tmp_path)])
 
     assert expanded == [csv_path]
-    ensure_supported_inputs(expanded)

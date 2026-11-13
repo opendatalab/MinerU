@@ -4,20 +4,27 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING
 
 from ...utils.async_utils import drain_future, run_sync
 from ..runtime.closing import runtime_close_scope
 from ..runtime.ownership import RuntimeOwner
+from .errors import is_fatal_engine_error
+from .lifecycle import RuntimeLifecycle
 from .text_recognition import TextRecognitionResult, recognize_text_batch
 
 if TYPE_CHECKING:
     from mineru_vl_utils import MinerUClient
     from mineru_vl_utils.structs import ContentBlock, ExtractResult
+    from mineru_vl_utils.vlm_client.base_client import EngineHealth
     from PIL.Image import Image
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeHandle:
@@ -29,17 +36,23 @@ class RuntimeHandle:
         *,
         backend: str,
         close_engine: Callable[[], None] | None = None,
+        probe_engine: Callable[[float], EngineHealth] | None = None,
+        aio_probe_engine: Callable[[float], Awaitable[EngineHealth]] | None = None,
+        close_health_probe: Callable[[], None] | None = None,
     ) -> None:
         """保存已创建资源，不修改第三方客户端的属性或推测其内部结构。"""
         self.backend = backend
-        self.owners: set[RuntimeOwner] = set()
-        self.pinned = False
+        self.lifecycle = RuntimeLifecycle(backend)
         self.execution_lock = threading.Lock() if backend == "mlx-engine" else None
         self._predictor: MinerUClient | None = predictor
         self._close_engine = close_engine
-        self._condition = threading.Condition()
+        self._probe_engine = probe_engine
+        self._aio_probe_engine = aio_probe_engine
+        self._close_health_probe = close_health_probe
+        self._probe_lock = threading.Lock()
+        self._condition = self.lifecycle.condition
         self._active = 0
-        self._closing = False
+        self._close_started = False
         self._closed = threading.Event()
 
     @property
@@ -52,14 +65,94 @@ class RuntimeHandle:
     @property
     def is_closed(self) -> bool:
         """让缓存识别正在关闭或已经关闭的宿主句柄。"""
-        return self._closing
+        return self.lifecycle.closing
+
+    @property
+    def supports_health_probe(self) -> bool:
+        """缓存管理者据此开启只读探测，不为未加载模型触发初始化。"""
+        return self._probe_engine is not None or self._aio_probe_engine is not None
+
+    @property
+    def owners(self) -> set[RuntimeOwner]:
+        """向缓存暴露唯一状态中的宿主集合。"""
+        return self.lifecycle.owners
+
+    @property
+    def pinned(self) -> bool:
+        """独立 SDK 或 CLI 固定租约同样属于共享状态。"""
+        return self.lifecycle.pinned
+
+    def require_ready(self, *, allow_unavailable: bool = False) -> None:
+        """同步和异步运行时共用同一就绪规则。"""
+        self.lifecycle.require_ready(allow_unavailable=allow_unavailable)
+
+    async def aio_probe_health(self, timeout: float = 5.0) -> None:
+        """由异步代理在所属循环调用，期限由外层跨线程等待同时保障。"""
+        if self._aio_probe_engine is None:
+            return
+        try:
+            health = await self._aio_probe_engine(timeout)
+        except Exception as error:
+            if is_fatal_engine_error(error):
+                self.lifecycle.mark_fatal(error)
+                raise
+            from mineru_vl_utils.vlm_client.base_client import EngineHealth
+
+            health = EngineHealth("unavailable", f"VLM health probe failed: {type(error).__name__}: {error}")
+        self.lifecycle.apply_health(health)
+
+    def probe_health(self, timeout: float = 5.0) -> None:
+        """执行至多一个宿主探测；超时状态可恢复，明确死亡永不被健康结果覆盖。"""
+        from mineru_vl_utils.vlm_client.base_client import EngineHealth
+
+        if self._probe_engine is None:
+            return
+        if timeout <= 0:
+            raise ValueError("Health probe timeout must be positive")
+        self.lifecycle.raise_if_dead()
+        started = time.monotonic()
+        if not self._probe_lock.acquire(timeout=timeout):
+            self.lifecycle.apply_health(EngineHealth("unavailable", "Another engine health probe is still pending"))
+            return
+        active = False
+        try:
+            with self._condition:
+                if self.lifecycle.closing:
+                    return
+                self.lifecycle.raise_if_dead()
+                self._active += 1
+                active = True
+            try:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError("Engine health probe deadline elapsed while waiting")
+                health = self._probe_engine(remaining)
+                if health.state not in {"healthy", "unavailable", "dead"}:
+                    raise ValueError("Invalid engine health state")
+            except Exception as exc:
+                if is_fatal_engine_error(exc):
+                    self.lifecycle.mark_fatal(exc)
+                    raise
+                logger.exception("VLM health probe failed: backend=%s", self.backend)
+                message = f"VLM health probe failed: {type(exc).__name__}: {exc}"
+            else:
+                self.lifecycle.apply_health(health)
+                return
+            self.lifecycle.apply_health(EngineHealth("unavailable", message))
+        finally:
+            if active:
+                with self._condition:
+                    self._active -= 1
+                    self._condition.notify_all()
+            self._probe_lock.release()
 
     @contextmanager
-    def _use(self, *, acquire_lock: bool = True) -> Iterator[MinerUClient]:
+    def _use(self, *, acquire_lock: bool = True, probe: bool = True) -> Iterator[MinerUClient]:
         """等待同步推理自然返回后才允许关闭引擎，MLX 使用宿主串行锁。"""
+        if probe:
+            self.probe_health()
         with self._condition:
-            if self._closing:
-                raise RuntimeError("VLM runtime is shutting down")
+            self.require_ready()
             self._active += 1
             predictor = self.predictor
         try:
@@ -68,6 +161,12 @@ class RuntimeHandle:
             else:
                 with self.execution_lock:
                     yield predictor
+            with self._condition:
+                self.lifecycle.raise_if_dead()
+        except Exception as exc:
+            if is_fatal_engine_error(exc):
+                self.lifecycle.mark_fatal(exc)
+            raise
         finally:
             with self._condition:
                 self._active -= 1
@@ -76,17 +175,19 @@ class RuntimeHandle:
     @asynccontextmanager
     async def _async_use(self) -> AsyncIterator[MinerUClient]:
         """可取消地等待串行锁，排队期间取消不得让迟到工作线程开始推理。"""
+        if self._probe_engine is not None:
+            await run_sync(self.probe_health)
         lock = self.execution_lock
         if lock is not None:
             while True:
                 with self._condition:
-                    if self._closing:
+                    if self.lifecycle.closing:
                         raise RuntimeError("VLM runtime is shutting down")
                     if lock.acquire(blocking=False):
                         break
                 await asyncio.sleep(0.01)
         try:
-            with self._use(acquire_lock=False) as predictor:
+            with self._use(acquire_lock=False, probe=False) as predictor:
                 yield predictor
         finally:
             if lock is not None:
@@ -161,9 +262,10 @@ class RuntimeHandle:
     def _begin_close(self) -> bool:
         """只让一个调用方执行关闭，其余调用方等待同一个完成信号。"""
         with self._condition:
-            if self._closing:
+            if self._close_started:
                 return False
-            self._closing = True
+            self._close_started = True
+            self.lifecycle.begin_close()
             return True
 
     def _wait_for_calls(self) -> None:
@@ -183,7 +285,11 @@ class RuntimeHandle:
             if first_error is None:
                 first_error = exc
         finally:
+            self.lifecycle.finish_close()
             self._predictor = None
+            self._probe_engine = None
+            self._aio_probe_engine = None
+            self._close_health_probe = None
             self._closed.set()
         if first_error is not None:
             raise first_error
@@ -197,7 +303,9 @@ class RuntimeHandle:
         try:
             with runtime_close_scope():
                 self._wait_for_calls()
-                if self.backend == "http-client":
+                if self._close_health_probe is not None:
+                    self._close_health_probe()
+                elif self.backend in {"http-client", "lmdeploy-engine"}:
                     asyncio.run(self.predictor.aclose())
         except BaseException as exc:
             error = exc
@@ -216,7 +324,11 @@ class RuntimeHandle:
             except BaseException as exc:
                 error = exc
             try:
-                await self.predictor.aclose()
+                if self._close_health_probe is not None:
+                    # 与同步关闭使用相同的排空回调，避免客户端局部超时后仍释放 Pipeline。
+                    await run_sync(self._close_health_probe)
+                else:
+                    await self.predictor.aclose()
             except BaseException as exc:
                 if error is None:
                     error = exc
@@ -232,7 +344,8 @@ class RuntimeHandle:
         work = asyncio.create_task(self._close_client())
         error: BaseException | None = None
         try:
-            await asyncio.shield(work)
+            await asyncio.wait([work])
+            work.result()
         except BaseException as exc:
             error = exc
             try:

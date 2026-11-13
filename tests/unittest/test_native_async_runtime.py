@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -21,6 +22,7 @@ class _AsyncClient:
     def __init__(self) -> None:
         """在运行时线程内创建同步观测信号和异步阻塞门。"""
         self.loop = asyncio.get_running_loop()
+        self.client = SimpleNamespace(health_probe_mode="none")
         self.active = 0
         self.peak = 0
         self.closed = False
@@ -391,6 +393,12 @@ def test_vllm_runtime_uses_standard_progress_label(
 
     backend = object.__new__(VllmAsyncEngineVlmClient)
     backend.max_concurrency = 2
+    from mineru_vl_utils.vlm_client.vllm_health import VllmHealthProbe
+
+    async def check_health() -> None:
+        """本测试只验证进度与清理，声明替身引擎健康可用。"""
+
+    backend._health_probe = VllmHealthProbe(check_health)
 
     async def predict(image: Any, prompt: str = "", **kwargs: Any) -> str:
         """仅替换 GPU 单请求，保持真实异步批处理和布局回填。"""

@@ -888,7 +888,7 @@ def test_cli_configuration_and_environment(tmp_path: Path, monkeypatch: pytest.M
             assert application.state.service.settings.api_url == "https://explicit.test/api"
             assert application.state.service.settings.api_key == "environment-key"
 
-    monkeypatch.setattr("uvicorn.run", run)
+    monkeypatch.setattr("mineru.kit.commands.file_parse_server.run_server", run)
     monkeypatch.setenv("MINERU_API_URL", "https://environment.test")
     monkeypatch.setenv("MINERU_API_KEY", "environment-key")
     result = CliRunner().invoke(

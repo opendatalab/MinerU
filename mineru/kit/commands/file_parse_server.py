@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from ...utils.i18n import t
+from ...utils.server import run_server
 from ..errors import exit_with_message
 
 
@@ -21,7 +22,6 @@ def file_parse_server_cmd(
     ),
 ) -> None:
     """惰性加载包装应用，不启动本地解析模型或继承调用者的认证头。"""
-    import uvicorn
     from filelock import Timeout
 
     from ..file_parse import FileParseSettings, create_app
@@ -31,7 +31,7 @@ def file_parse_server_cmd(
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc))
     try:
-        uvicorn.run(create_app(settings), host=host, port=port)
+        run_server(create_app(settings), host=host, port=port)
     except Timeout:
         exit_with_message("invalid_request", "Another file-parse-server is using this state directory")
 

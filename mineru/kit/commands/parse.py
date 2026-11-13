@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
+from tempfile import TemporaryFile
 from typing import Literal, cast
 
 import typer
@@ -11,19 +12,21 @@ from ...filetypes import ensure_tier_supported_for_parse_extension, is_flash_onl
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
 from ...parser.api_client import _V1APIError
+from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...types import Tier, validate_tier
 from ...utils.i18n import t
+from ..batch_parse import BatchParseSummary, classify_parse_error, validate_parse_input
 from ..common import (
     build_remote_api_url,
-    ensure_supported_inputs,
+    OUTPUT_FILE_SUFFIXES,
     expand_input_paths,
     parse_result_payload,
     resolve_batch_output_paths,
     save_parse_result,
 )
 from ..errors import exit_with_message
-from ..output import print_info, print_success
+from ..output import print_error, print_info, print_success
 
 
 def parse_cmd(
@@ -52,32 +55,32 @@ def parse_cmd(
     """Parse files or directories into markdown, middle JSON, or zip outputs."""
     try:
         pages = normalize_page_range_input(pages)
-    except MineruError as exc:
-        exit_with_message(exc.code, str(exc), "pages")
+        if tier is not None:
+            validate_tier(tier)
+        if ocr_mode not in {"auto", "txt", "ocr"}:
+            raise ValueError(t("Unsupported OCR mode: {mode}", mode=ocr_mode))
+        if format not in OUTPUT_FILE_SUFFIXES:
+            raise ValueError(t("Unsupported format: {format}", format=format))
+        api_url = build_remote_api_url(remote, remote_url)
+    except (MineruError, ValueError) as exc:
+        exit_with_message("invalid_request", str(exc))
     output_format = cast(Literal["markdown", "middle_json", "zip"], format)
     parse_tier = cast(Tier | None, tier)
     parse_ocr_mode = cast(Literal["auto", "txt", "ocr"], ocr_mode)
     if not inputs:
         exit_with_message("invalid_request", t("At least one input path is required."), "inputs")
-    api_url = build_remote_api_url(remote, remote_url)
     raw_paths = [Path(raw).expanduser() for raw in inputs]
-    if any(path.is_dir() for path in raw_paths) and Path(output).expanduser().suffix:
-        exit_with_message(
-            "invalid_request",
-            t("When input is multiple files or directories, --output must be a directory path."),
-            "output",
-        )
-    has_directory_input = any(path.is_dir() for path in raw_paths)
-    if len(raw_paths) > 1 and Path(output).expanduser().suffix:
-        exit_with_message(
-            "invalid_request",
-            t("When input is multiple files or directories, --output must be a directory path."),
-            "output",
-        )
-    paths = expand_input_paths(inputs)
+    is_batch = any(path.is_dir() for path in raw_paths) or len(raw_paths) > 1
     try:
-        ensure_supported_inputs(paths)
-        destinations = resolve_batch_output_paths(paths, Path(output).expanduser(), output_format)
+        paths = expand_input_paths(inputs)
+        if not paths:
+            raise ValueError(t("No input files found."))
+        destinations = resolve_batch_output_paths(paths, Path(output).expanduser(), output_format, batch=is_batch)
+        # 在模型加载或远程请求前验证输出根可写；不截断已有结果文件。
+        output_parent = next(iter(destinations.values())).parent
+        output_parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryFile(prefix=".mineru-write-", dir=output_parent):
+            pass
     except Exception as exc:
         exit_with_message("invalid_request", str(exc))
 
@@ -87,9 +90,9 @@ def parse_cmd(
         )
         parse_one = partial(parser.parse, page_range=pages or "")
     else:
-        is_batch = has_directory_input or len(paths) > 1
 
-        def parse_one(path: Path) -> object:
+        def parse_one(path: Path) -> ParseResult:
+            """保持单文件显式 tier 校验，批量原生格式始终使用 Flash。"""
             path_tier: Tier = validate_tier(parse_tier) if parse_tier is not None else "standard"
             if is_flash_only_parse_extension(path):
                 if not is_batch and parse_tier is not None:
@@ -103,15 +106,45 @@ def parse_cmd(
                 page_range=pages or "",
             )
 
+    summary = BatchParseSummary()
     for path in paths:
         try:
+            if not is_batch and not api_url and parse_tier is not None and is_flash_only_parse_extension(path):
+                ensure_tier_supported_for_parse_extension(parse_tier, path)
+            validate_parse_input(path)
             result = parse_one(path)
-            dest = destinations[path]
-            save_parse_result(result, dest, output_format)
-            if verbose:
-                print_info(str(parse_result_payload(path, dest, output_format)))
-        except (MineruError, _V1APIError) as exc:
-            exit_with_message(exc.code, str(exc), exc.param)
         except Exception as exc:
-            exit_with_message("parse_failed", t("Failed to parse {path}: {error}", path=path, error=exc))
-    print_success(t("Parsed {count} input(s).", count=len(paths)))
+            disposition, code, message = classify_parse_error(exc)
+            if not is_batch:
+                # 单文件错误保留本地或远程协议中的参数定位，方便调用方修正请求。
+                param = exc.param if isinstance(exc, (MineruError, _V1APIError)) else None
+                exit_with_message(code, t("Failed to parse {path}: {error}", path=path, error=message), param)
+            if disposition == "skipped":
+                summary.skipped += 1
+                print_info(t("Skipped {path}: [{code}] {error}", path=path, code=code, error=message))
+            else:
+                summary.failed += 1
+                print_error(t("Failed to parse {path}: {error}", path=path, error=f"[{code}] {message}"))
+            if disposition == "abort":
+                summary.aborted = True
+                break
+            continue
+        dest = destinations[path]
+        try:
+            save_parse_result(result, dest, output_format)
+        except Exception as exc:
+            if not is_batch:
+                exit_with_message("result_packaging_failed", str(exc), "output")
+            summary.failed += 1
+            summary.aborted = True
+            print_error(t("Failed to write {path}: {error}", path=dest, error=exc))
+            break
+        summary.succeeded += 1
+        if verbose:
+            print_info(str(parse_result_payload(path, dest, output_format)))
+    if is_batch:
+        print_info(summary.message(len(paths)))
+        if summary.exit_code:
+            raise typer.Exit(summary.exit_code)
+    else:
+        print_success(t("Parsed {count} input(s).", count=summary.succeeded))

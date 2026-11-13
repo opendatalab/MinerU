@@ -29,6 +29,7 @@ class Client:
     def __init__(self) -> None:
         """初始化关闭计数。"""
         self.close_calls = 0
+        self.client = SimpleNamespace(health_probe_mode="none")
 
     async def aclose(self) -> None:
         """完成一次可观察的连接清理。"""
@@ -95,6 +96,157 @@ if warm_executor:
     assert "Exception ignored in atexit callback" not in completed.stderr
     assert "cannot schedule new futures" not in completed.stderr
     assert "Exception in thread" not in completed.stderr
+
+
+def test_lmdeploy_probe_closes_without_new_threads_at_interpreter_exit() -> None:
+    """LMDeploy 自有探测在真实解释器退出时走同步关闭，不能依赖已关闭线程池。"""
+    completed = _run_isolated('''
+        from concurrent.futures import ThreadPoolExecutor
+        from mineru_vl_utils.vlm_client.lmdeploy_health import LmdeployHealthProbe
+
+        probe = LmdeployHealthProbe(SimpleNamespace())
+
+        def close_probe() -> None:
+            """关闭真实探测适配器并记录顺序。"""
+            probe.close()
+            print("probe_closed", flush=True)
+
+        def create(self, backend, model_path, server_url, **kwargs):
+            """沿真实缓存注册 atexit，底层引擎仅替换为可观察关闭动作。"""
+            return RuntimeHandle(Client(), backend=backend, close_health_probe=close_probe,
+                                 close_engine=lambda: print("engine_closed", flush=True))
+
+        runtime.ModelSingleton._create_model = create
+        manager.get_model("lmdeploy-engine", "fake", None)
+        with ThreadPoolExecutor() as executor:
+            executor.submit(lambda: None).result()
+    ''')
+    assert completed.stdout.splitlines() == ["probe_closed", "engine_closed"]
+    assert "Exception ignored in atexit callback" not in completed.stderr
+    assert "cannot schedule new futures" not in completed.stderr
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "cancel"])
+def test_lmdeploy_factory_close_drains_real_health_worker(mode: str) -> None:
+    """真实工厂创建的同步／异步句柄都必须排空健康线程，取消也不能提前销毁引擎。"""
+    _run_isolated(f"mode = {mode!r}\n" + '''
+import sys
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from mineru_vl_utils.vlm_client.lmdeploy_engine_client import LmdeployEngineVlmClient
+from mineru_vl_utils.vlm_client.lmdeploy_health import LmdeployHealthProbe
+from mineru.model.vlm.errors import EngineNotReadyError
+
+loop = asyncio.new_event_loop()
+ready, entered, release, finished = (threading.Event() for _ in range(4))
+close_entered, engine_closed = threading.Event(), threading.Event()
+close_deadlines = []
+
+def run_loop() -> None:
+    """为健康探测提供独立循环，退出前验证没有遗留任务。"""
+    asyncio.set_event_loop(loop)
+    loop.call_soon(ready.set)
+    loop.run_forever()
+    assert not asyncio.all_tasks(loop)
+    loop.close()
+
+def native_health():
+    """持续占用通信器，直到测试允许健康工作完成。"""
+    entered.set()
+    assert release.wait(5)
+    finished.set()
+    return {"alive": True}
+
+def close_engine() -> None:
+    """用真实工作线程的完成状态检查引擎释放顺序。"""
+    engine_closed.set()
+    assert finished.is_set(), "Pipeline closed before its health worker finished"
+
+class ShortDeadlineProbe(LmdeployHealthProbe):
+    """缩短客户端默认等待期限，使错误的异步关闭分支能快速暴露。"""
+    def close(self, timeout=0.02):
+        """记录宿主是否把整体关闭期限留给进程管理器。"""
+        close_deadlines.append(timeout)
+        close_entered.set()
+        super().close(timeout)
+
+thread = threading.Thread(target=run_loop, daemon=True)
+thread.start()
+assert ready.wait(2)
+with ThreadPoolExecutor(1) as health_executor, ThreadPoolExecutor(1) as callers:
+    async def get_health_status():
+        """与 TurboMind 一样将工作交给独立执行器。"""
+        return await asyncio.get_running_loop().run_in_executor(health_executor, native_health)
+
+    pipeline = SimpleNamespace(
+        internal_thread=SimpleNamespace(loop=loop, thread=thread, closed=False),
+        async_engine=SimpleNamespace(is_sleeping=False, engine=SimpleNamespace(get_health_status=get_health_status)),
+        close=close_engine,
+    )
+    adapter = object.__new__(LmdeployEngineVlmClient)
+    adapter._health_probe = ShortDeadlineProbe(pipeline)
+    sys.modules["lmdeploy"] = SimpleNamespace(
+        PytorchEngineConfig=lambda **kwargs: SimpleNamespace(),
+        TurbomindEngineConfig=lambda **kwargs: SimpleNamespace(),
+        pipeline=lambda *args, **kwargs: pipeline,
+    )
+    sys.modules["lmdeploy.utils"] = SimpleNamespace(get_logger=lambda name: SimpleNamespace(setLevel=lambda level: None))
+    runtime.MinerUClient = lambda **kwargs: SimpleNamespace(client=adapter, aclose=adapter.aclose)
+    handle = manager._create_model(
+        "lmdeploy-engine", "fake-model", None,
+        lmdeploy_device="cuda", lmdeploy_backend="turbomind", cache_max_entry_count=0.5,
+    )
+
+    async def close_async() -> None:
+        """取消只影响调用方结果，不提前结束后台资源清理。"""
+        work = asyncio.create_task(handle.aclose())
+        if mode == "cancel":
+            assert await asyncio.to_thread(close_entered.wait, 2)
+            work.cancel()
+            try:
+                await work
+            except asyncio.CancelledError:
+                return
+            raise AssertionError("Cancellation was not propagated")
+        await work
+
+    def close_handle() -> None:
+        """走真实句柄的两种关闭入口。"""
+        if mode == "sync":
+            handle.shutdown()
+        else:
+            asyncio.run(close_async())
+
+    try:
+        try:
+            handle.probe_health(0.01)
+        except EngineNotReadyError:
+            pass
+        else:
+            raise AssertionError("Blocked health work was reported healthy")
+        assert entered.wait(2)
+        closing = callers.submit(close_handle)
+        assert close_entered.wait(2)
+        try:
+            with_timeout = False
+            try:
+                closing.result(0.06)
+            except TimeoutError:
+                with_timeout = True
+            assert with_timeout, "Host released a Pipeline with unfinished health work"
+            assert not engine_closed.is_set()
+            assert close_deadlines == [None]
+        finally:
+            release.set()
+            closing.result(2)
+        assert finished.is_set() and engine_closed.is_set()
+        assert handle.is_closed
+    finally:
+        release.set()
+        adapter._health_probe.close(2)
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(2)
+        assert not thread.is_alive()
+''')
 
 
 def test_sync_close_callback_rejects_another_key_in_its_closing_batch() -> None:

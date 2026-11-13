@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from mineru.errors import InvalidRequestError, error_type_for, http_status_for
-from mineru.integrations.docvortex import read_source_properties
+from mineru.integrations.docvortex import read_source_properties, translate_document_errors
 from mineru.parser import MinerUParser, mineru_parser
 
 import test_task_api
@@ -91,11 +91,34 @@ def test_metadata_other_document_errors_stay_optional(monkeypatch: pytest.Monkey
     assert read_source_properties(test_task_api.HTML, "html") == DocumentProperties()
 
 
-def test_parser_preserves_other_document_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """新增转换只接管资源限制，其他共享异常的身份保持原样。"""
+def test_parser_preserves_recognized_document_error_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """明确输入错误转换为产品异常，保留代码、消息与原始异常链。"""
     source = tmp_path / "document.html"
     source.write_bytes(test_task_api.HTML)
     shared_error = DocumentError("file_corrupted", "Document is malformed")
+    _reject_stage(monkeypatch, "analysis", shared_error)
+    with pytest.raises(InvalidRequestError) as raised:
+        MinerUParser(tier="flash").parse(source)
+    assert raised.value.code == "file_corrupted"
+    assert raised.value.__cause__ is shared_error
+
+
+def test_xml_failure_outside_native_input_is_not_reclassified() -> None:
+    """同类底层异常若发生在模型阶段，不得归入可跳过的输入错误。"""
+    from lxml.etree import XMLSyntaxError
+
+    original = XMLSyntaxError("model configuration", 201, 1, 1)
+    with pytest.raises(XMLSyntaxError) as raised:
+        with translate_document_errors():
+            raise original
+    assert raised.value is original
+
+
+def test_parser_does_not_reclassify_unknown_document_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """未约定的共享错误不能被猜测为可跳过的单文档失败。"""
+    source = tmp_path / "document.html"
+    source.write_bytes(test_task_api.HTML)
+    shared_error = DocumentError("unknown_runtime_contract", "Unexpected state")
     _reject_stage(monkeypatch, "analysis", shared_error)
     with pytest.raises(DocumentError) as raised:
         MinerUParser(tier="flash").parse(source)
