@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-22",
+  "input": "demo/pdfs/demo1.pdf",
+  "page_range": "1",
+  "ocr_mode": "ocr",
+  "cpu": "Intel Core i7-12700",
+  "gpu": "Intel UHD Graphics770,8086:4680,0000:00:02.0",
+  "measurement": "Exactly one fresh-process parse per tier/device, serial, no explicit warm-up. parse_wall_s includes initialization and parsing, excludes output serialization; stopped attempts have only process wall time, not completion time.",
+  "settings": {
+    "vlm_engine": "llama-cpp",
+    "small_models": "ONNX CPU for all attempts",
+    "n_threads": "Engine default auto",
+    "n_parallel": 4,
+    "n_ctx_seq": 0,
+    "max_concurrency": 100,
+    "ld_preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+    "vk_driver_files": "/usr/share/vulkan/icd.d/intel_icd.json",
+    "ggml_vk_visible_devices": "0",
+    "llm_title_leveling": false,
+    "llm_cross_page_table_merge": false
+  },
+  "attempts": [
+    {
+      "device": "cpu",
+      "returncode": 0,
+      "process_wall_s": 39.17168468900127,
+      "stopped_reason": null,
+      "new_gpu_hang": false,
+      "drm_devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1762\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "model_inference_log": [
+        "2026-10-22 01:14:53.728 | INFO     | mineru.backend.analyze:_log_infer_performance:26 - model_list infer finished, file_suffix=pdf, pages=1, cost=36.471319s, speed=0.027 page/s"
+      ],
+      "result": {
+        "llama_device": "cpu",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 38.42927981200046,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "tier": "standard",
+      "log": "demo/output/llama-demo1-page1-20261022/cpu.log",
+      "model_inference_s": 36.471319,
+      "output_directory": "demo/output/llama-demo1-page1-20261022/cpu",
+      "completed": true,
+      "valid_gpu_cpu_ratio": null,
+      "content_spot_check": true
+    },
+    {
+      "device": "vulkan",
+      "returncode": -15,
+      "process_wall_s": 209.2926409440006,
+      "stopped_reason": "Manual stop after209s; stalled at15/18 VLM requests with i915 fence-expiration warnings.",
+      "new_gpu_hang": false,
+      "drm_devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1764\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t2150336 KiB\ndrm-shared-system0:\t0\ndrm-active-system0:\t2141364 KiB\ndrm-resident-system0:\t2150336 KiB\ndrm-purgeable-system0:\t4300 KiB\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t193364553162 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "model_inference_log": [],
+      "tier": "standard",
+      "log": "demo/output/llama-demo1-page1-20261022/vulkan.log",
+      "model_inference_s": null,
+      "output_directory": "demo/output/llama-demo1-page1-20261022/vulkan",
+      "completed": false,
+      "valid_gpu_cpu_ratio": null
+    },
+    {
+      "device": "cpu",
+      "returncode": 0,
+      "process_wall_s": 72.33940670700031,
+      "stopped_reason": null,
+      "new_gpu_hang": false,
+      "drm_devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1765\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "model_inference_log": [
+        "2026-10-22 01:19:35.252 | INFO     | mineru.backend.analyze:_log_infer_performance:26 - model_list infer finished, file_suffix=pdf, pages=1, cost=69.441370s, speed=0.014 page/s"
+      ],
+      "result": {
+        "llama_device": "cpu",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 71.38070512299964,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3653,
+        "markdown_sha256": "c82d0247514aacdad383aa5e3f30a11802cf37275b248326b21984d111b4609f",
+        "title_present": true,
+        "completed": true
+      },
+      "tier": "advanced",
+      "log": "demo/output/llama-demo1-page1-20261022/advanced/cpu.log",
+      "model_inference_s": 69.44137,
+      "output_directory": "demo/output/llama-demo1-page1-20261022/advanced/cpu",
+      "completed": true,
+      "valid_gpu_cpu_ratio": null,
+      "content_spot_check": true
+    },
+    {
+      "device": "vulkan",
+      "returncode": -9,
+      "process_wall_s": 180.25440990099742,
+      "stopped_reason": "180-second timeout",
+      "new_gpu_hang": false,
+      "drm_devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1767\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t2155296 KiB\ndrm-shared-system0:\t0\ndrm-active-system0:\t2150408 KiB\ndrm-resident-system0:\t2155296 KiB\ndrm-purgeable-system0:\t4312 KiB\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t172016606659 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "model_inference_log": [],
+      "tier": "advanced",
+      "log": "demo/output/llama-demo1-page1-20261022/advanced/vulkan.log",
+      "model_inference_s": null,
+      "output_directory": "demo/output/llama-demo1-page1-20261022/advanced/vulkan",
+      "completed": false,
+      "valid_gpu_cpu_ratio": null
+    }
+  ],
+  "kernel_warnings": "2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:193a!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1938!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1936!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1934!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1932!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1930!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:192e!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:192c!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:192a!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1928!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1926!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1958!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1956!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1954!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1952!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1950!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:194e!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:194c!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:194a!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1948!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1946!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1944!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1942!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:1940!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:193e!\n2026-10-22T01:15:36+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[77621]:193c!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:630!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:62e!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:62c!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:634!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:632!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:63a!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:638!\n2026-10-22T01:20:01+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[78226]:636!\n",
+  "interpretation": "CPU completed both tiers; Intel Vulkan did not finish either bounded attempt. No valid GPU/CPU completion-time ratio. Fence timeout warnings are recorded; no new literal GPU HANG was detected during these attempts.",
+  "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "production_code_modified": false,
+  "evidence_directory": "demo/output/llama-demo1-page1-20261022"
+}
