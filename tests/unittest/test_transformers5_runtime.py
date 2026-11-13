@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
+from mineru_vl_utils.vlm_client.base_client import EngineHealth
 
 
 def test_public_imports_keep_optional_model_dependencies_lazy() -> None:
@@ -40,6 +42,12 @@ def test_runtime_constructs_caches_and_closes_pipeline(monkeypatch: pytest.Monke
     from mineru.model.vlm import runtime
 
     calls: list[dict[str, Any]] = []
+    # 保留已发布客户端的健康探测接口，验证探测排空先于 Pipeline 释放。
+    backend_client = SimpleNamespace(
+        health_probe_mode="sync",
+        probe_health=Mock(return_value=EngineHealth("healthy")),
+        close_health_probe=Mock(),
+    )
 
     class Pipeline:
         """记录工厂参数和关闭次数的引擎替身。"""
@@ -51,6 +59,7 @@ def test_runtime_constructs_caches_and_closes_pipeline(monkeypatch: pytest.Monke
 
         def close(self) -> None:
             """模拟公开的资源释放接口。"""
+            backend_client.close_health_probe.assert_called_once_with(timeout=None)
             self.closed += 1
 
     module = ModuleType("lmdeploy")
@@ -61,7 +70,7 @@ def test_runtime_constructs_caches_and_closes_pipeline(monkeypatch: pytest.Monke
     utilities.get_logger = logging.getLogger
     monkeypatch.setitem(sys.modules, "lmdeploy", module)
     monkeypatch.setitem(sys.modules, "lmdeploy.utils", utilities)
-    monkeypatch.setattr(runtime, "MinerUClient", lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr(runtime, "MinerUClient", lambda **kwargs: SimpleNamespace(client=backend_client, **kwargs))
     monkeypatch.setattr(runtime.ModelSingleton, "_models", {})
     singleton = runtime.ModelSingleton()
     kwargs = {"lmdeploy_backend": "pytorch", "lmdeploy_device": "cuda", "cache_max_entry_count": 0.2}
@@ -71,6 +80,9 @@ def test_runtime_constructs_caches_and_closes_pipeline(monkeypatch: pytest.Monke
     assert calls[0]["backend_config"].device_type == "cuda"
     assert calls[0]["backend_config"].cache_max_entry_count == 0.2
     assert calls[0]["log_level"] == "ERROR"
+    assert client.supports_health_probe
+    client.probe_health()
+    backend_client.probe_health.assert_called_once()
     engine = client.predictor.lmdeploy_engine
     singleton.shutdown()
     assert engine.closed == 1

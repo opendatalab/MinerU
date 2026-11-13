@@ -139,8 +139,10 @@ def test_epub_content_detection_precedes_extension_and_rejects_fake_packages(tmp
     fake = tmp_path / "fake.epub"
     fake.write_text("not an epub", encoding="utf-8")
     assert guess_suffix_by_path(fake) != "epub"
-    with pytest.raises(ValueError, match="Unsupported file type"):
+    with pytest.raises(InvalidRequestError, match="Unsupported file type") as caught:
         parse(fake)
+    assert caught.value.code == "file_type_unsupported"
+    assert caught.value.param == "input"
 
 
 def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:
