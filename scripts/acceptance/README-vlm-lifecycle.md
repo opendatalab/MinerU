@@ -37,6 +37,22 @@ python scripts/acceptance/mlx_lifecycle.py \
 保存真实解析产物，验证同步生成开始后的取消等待、未知错误向上传播、同实例后续真实推理成功及缓存释放。
 未知错误是显式测试注入，不是对 MLX 原生崩溃的宣称。
 
+## llama.cpp（本轮仅 macOS）
+
+本轮按用户决定只执行本机 macOS 验收，不将 Windows/WSL 作为发布阻塞项。
+需要同一批次的 `mineru-llama-cpp>=0.2.1`、`mineru-vl-utils>=2.0.9` 和 MinerU 候选包。
+
+```bash
+python scripts/acceptance/llama_cpp_lifecycle.py \
+  --sample demo/pdfs/demo2.pdf --models-dir /path/to/models --evidence output/llama-lifecycle
+```
+
+覆盖实际 Standard/Advanced 文档产物、直接 SDK 取消排空、普通错误后同实例可用、真实引擎空闲显式关闭、
+全部 owner 通知、死亡缓存拒绝和宿主显式重建。原生库的 C++ 回归另验证后台线程抛错及真实响应队列退出等待，
+二者不能冒充事故崩溃复现。原生 abort/整个 worker 退出仍属于进程管理器职责。
+`check_health()` 是循环终止快照，不提供生成进度心跳，也不会将无进度直接判死。
+新版本未发布前通过本地候选包联合安装；必须先发布原生依赖再发布要求它的适配库，当前仍按用户要求暂停发布。
+
 ## 检查报告
 
 同时检查 `report.json`、worker 完整日志与结果 ZIP/Markdown。出现未处理异常、重复异常日志、错误档位或空产物均需调查。

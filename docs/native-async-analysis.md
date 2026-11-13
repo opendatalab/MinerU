@@ -38,6 +38,7 @@ HTTP 连接与健康探测清理接口，不关闭调用方提供的引擎或 ex
 
 | 后端 | `health_probe_mode` | 健康入口 |
 | --- | --- | --- |
+| llama.cpp | `sync` | `probe_health(timeout)`，读取原生循环终止状态 |
 | LMDeploy | `sync` | `probe_health(timeout)`，在 Pipeline 循环查询 |
 | vLLM AsyncLLM | `async` | `aio_probe_health(timeout)`，在运行时所属循环查询 |
 | vLLM 离线 LLM、MLX | `none` | 不提供探测；不通过私有对象伪造健康 |
@@ -85,3 +86,5 @@ high 等待外部布局抽取，xhigh 等待两阶段抽取；后置 LLM 增强�
 本次依赖 mineru-vl-utils 新增的 `MinerUClient.aclose()` 与取消清理能力。
 开发验证使用配套的本地 editable 源码。正式交付必须先发布包含这些改动的 mineru-vl-utils 版本，
 确认包索引可解析后，再提高 MinerU 的依赖下限；未完成设备验收前保留发布门槛。
+
+llama.cpp 要求 `mineru-llama-cpp>=0.2.1`。只有明确循环退出或显式关闭映射为公共致命异常，普通 `EngineError` 仍按请求处理。底层保留原始错误类型、错误码和详情；取消后的原生线程排空由底层负责，运行时沿用共享 owner 通知与缓存拒绝规则。健康快照不提供解码进度心跳，也不将无进度推断为死亡；进程级 abort 仍由宿主管理恢复。

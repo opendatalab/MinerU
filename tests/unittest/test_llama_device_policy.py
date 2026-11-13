@@ -223,7 +223,9 @@ def test_real_model_factory_applies_plan_at_engine_construction(
     monkeypatch.setattr(
         runtime, "vlm_model_repo", lambda name: SimpleNamespace(paths={"main": "main.gguf", "mmproj": "mmproj.gguf"})
     )
-    monkeypatch.setattr(runtime, "MinerUClient", lambda **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        runtime, "MinerUClient", lambda **kwargs: SimpleNamespace(client=SimpleNamespace(health_probe_mode="none"))
+    )
     options = {"n_gpu_layers": 99} if forced else {}
     if threads is not None:
         options["n_threads"] = threads
