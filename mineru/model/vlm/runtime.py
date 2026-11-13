@@ -442,7 +442,10 @@ class ModelSingleton:
             close_engine=close_engine,
             probe_engine=predictor.client.probe_health if predictor.client.health_probe_mode == "sync" else None,
             aio_probe_engine=predictor.client.aio_probe_health if predictor.client.health_probe_mode == "async" else None,
-            close_health_probe=predictor.client.close_health_probe if backend == "lmdeploy-engine" else None,
+            # 托管进程的关闭期限由外部管理器控制；释放 Pipeline 前必须真正排空健康工作。
+            close_health_probe=(
+                partial(predictor.client.close_health_probe, timeout=None) if backend == "lmdeploy-engine" else None
+            ),
         )
 
     def probe_owner_health(self, owner: RuntimeOwner, timeout: float = 5.0) -> None:

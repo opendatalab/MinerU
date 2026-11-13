@@ -324,7 +324,11 @@ class RuntimeHandle:
             except BaseException as exc:
                 error = exc
             try:
-                await self.predictor.aclose()
+                if self._close_health_probe is not None:
+                    # 与同步关闭使用相同的排空回调，避免客户端局部超时后仍释放 Pipeline。
+                    await run_sync(self._close_health_probe)
+                else:
+                    await self.predictor.aclose()
             except BaseException as exc:
                 if error is None:
                     error = exc
