@@ -11,20 +11,19 @@ import time
 from collections.abc import Callable
 from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
-from pathlib import Path
 from functools import partial
+from pathlib import Path
 from typing import Any, Literal
 
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 
 from ..registry import MINERU_2_5_PRO_2605_1_2B, vlm_model_repo
-from ..runtime.device import get_device
-from ..runtime.platform import is_mac_os_version_supported
 from ..runtime.closing import in_runtime_close_scope, runtime_close_scope
+from ..runtime.device import get_device
 from ..runtime.ownership import RuntimeOwner, current_runtime_owner, runtime_initialization_scope
+from ..runtime.platform import is_mac_os_version_supported
 from .async_runtime import AsyncVlmPredictor
-from .handles import RuntimeHandle
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -32,6 +31,8 @@ from .engine_utils import (
     set_default_gpu_memory_utilization,
     set_lmdeploy_backend,
 )
+from .errors import EngineNotReadyError
+from .handles import RuntimeHandle
 
 
 @dataclass(eq=False)
@@ -100,10 +101,9 @@ class ModelSingleton:
     def _retain(self, predictor: RuntimeHandle | AsyncVlmPredictor) -> None:
         """发布或复用前重新校验应用，防止关闭后的预热结果进入缓存。"""
         owner = current_runtime_owner()
-        if owner is None:
-            predictor.pinned = True
-        else:
-            predictor.owners.add(owner)
+        predictor.lifecycle.retain(owner)
+        if owner is not None and predictor.supports_health_probe:
+            owner.has_engine_health_probe = True
 
     def _get_or_initialize(
         self,
@@ -138,6 +138,7 @@ class ModelSingleton:
                     detached.append(self._detach(key, cached))
                 elif cached is not None:
                     self._retain(cached)
+                    cached.require_ready(allow_unavailable=True)
                     return cached
                 else:
                     pending = None
@@ -435,7 +436,34 @@ class ModelSingleton:
             raise
         elapsed = round(time.time() - start_time, 2)
         logger.info(f"get {backend} predictor cost: {elapsed}s")
-        return RuntimeHandle(predictor, backend=backend, close_engine=close_engine)
+        return RuntimeHandle(
+            predictor,
+            backend=backend,
+            close_engine=close_engine,
+            probe_engine=predictor.client.probe_health if predictor.client.health_probe_mode == "sync" else None,
+            aio_probe_engine=predictor.client.aio_probe_health if predictor.client.health_probe_mode == "async" else None,
+            # 托管进程的关闭期限由外部管理器控制；释放 Pipeline 前必须真正排空健康工作。
+            close_health_probe=(
+                partial(predictor.client.close_health_probe, timeout=None) if backend == "lmdeploy-engine" else None
+            ),
+        )
+
+    def probe_owner_health(self, owner: RuntimeOwner, timeout: float = 5.0) -> None:
+        """只检查该应用已经创建的运行时；快照之后释放缓存锁再等待后端。"""
+        with self._lock:
+            handles = tuple(
+                predictor
+                for predictor in self._models.values()
+                if owner in predictor.owners and predictor.supports_health_probe
+            )
+        unavailable: EngineNotReadyError | None = None
+        for predictor in handles:
+            try:
+                predictor.probe_health(timeout)
+            except EngineNotReadyError as exc:
+                unavailable = unavailable or exc
+        if unavailable is not None:
+            raise unavailable
 
     def release_owner(self, owner: RuntimeOwner) -> None:
         """排空该应用文档后撤销全部后端租约，保留其它应用和独立解析持有的实例。"""
@@ -443,7 +471,7 @@ class ModelSingleton:
         with self._lock:
             closing = []
             for key, predictor in tuple(self._models.items()):
-                predictor.owners.discard(owner)
+                predictor.lifecycle.release(owner)
                 if not predictor.owners and not predictor.pinned:
                     closing.append(self._detach(key, predictor))
         self._close_detached(closing)

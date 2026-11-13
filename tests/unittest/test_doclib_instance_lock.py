@@ -110,7 +110,7 @@ def test_run_server_writes_owner_endpoint_before_binding_transport(monkeypatch: 
 
     monkeypatch.setattr(doclib_app, "create_app", lambda cfg: app)
     monkeypatch.setattr(doclib_app.uvicorn, "Config", lambda *args, **kwargs: object())
-    monkeypatch.setattr(doclib_app.uvicorn, "Server", lambda cfg: object())
+    monkeypatch.setattr(doclib_app, "ServerWithDocs", lambda cfg, **kwargs: object())
 
     def _write_endpoint(path: str, *, pid: int, server_id: str, transports: list[object]) -> None:
         writes.append({"path": path, "pid": pid, "server_id": server_id, "transports": transports})

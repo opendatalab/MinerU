@@ -15,7 +15,8 @@ async def drain_future(future: asyncio.Future[T]) -> T:
     """即使重复取消也等待已有任务结束；仅用于必须完成的资源清理。"""
     while not future.done():
         try:
-            await asyncio.shield(future)
+            # wait 不向工作任务传播取消，也不会在取消后附加 shield 的异常日志回调。
+            await asyncio.wait((future,))
         except asyncio.CancelledError:
             continue
         except BaseException:
@@ -27,7 +28,9 @@ async def run_sync(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) 
     """在线程中执行同步阶段，取消后等待线程完成再允许调用方释放资源。"""
     work = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
     try:
-        return await asyncio.shield(work)
+        # 工作线程必须自行结束；异常只由当前等待者收集，避免 Python 3.14 重复报告。
+        await asyncio.wait((work,))
+        return work.result()
     except asyncio.CancelledError:
         try:
             await drain_future(work)

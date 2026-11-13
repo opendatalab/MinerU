@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from mineru_vl_utils.vlm_client.base_client import ClientClosedError, ServerError
 
-from .errors import is_fatal_engine_error
+from .errors import EngineNotReadyError, is_fatal_engine_error
 
 if TYPE_CHECKING:
     from mineru_vl_utils import MinerUClient
@@ -19,6 +19,7 @@ def raise_unrecoverable_text_error(error: Exception) -> None:
     """关闭、引擎死亡及程序契约错误必须传播，不能降级成单片识别失败。"""
     if (
         is_fatal_engine_error(error)
+        or isinstance(error, EngineNotReadyError)
         or isinstance(
             error,
             (ClientClosedError, MemoryError, AssertionError, AttributeError, TypeError, LookupError, NotImplementedError),

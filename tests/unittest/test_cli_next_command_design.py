@@ -2553,32 +2553,39 @@ def test_read_text_locator_reports_parse_not_required(monkeypatch: Any, json_mod
         assert "('parse_not_required'" not in result.output
 
 
-def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeypatch: Any, tmp_path: Path) -> None:
+@pytest.mark.parametrize("json_mode", [False, True])
+@pytest.mark.parametrize("existing", [False, True])
+def test_read_rejects_markdown_file_before_client_or_filesystem_changes(
+    monkeypatch: Any, tmp_path: Path, json_mode: bool, existing: bool
+) -> None:
+    """文本落盘请求在构造客户端之前失败，已有文件和不存在的父目录均不受影响。"""
     output = tmp_path / "nested" / "read.md"
+    if existing:
+        output.parent.mkdir()
+        output.write_text("keep", encoding="utf-8")
 
     class _Client:
         def __init__(self, *, timeout: int) -> None:
-            assert timeout == 60
-
-        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
-            return DocContentResponse(
-                sha256="a" * 64,
-                short_id="ab12cd3",
-                tier="basic",
-                format="markdown",
-                content="hello",
-                request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
-            )
+            """非法文本落盘请求不得连接或启动 Doclib。"""
+            pytest.fail("Doclib client must not be constructed")
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
+    args = ["read", "doc:ab12cd3/tier:basic/page:4", "--output", str(output)]
+    if json_mode:
+        args.append("--json")
+    result = runner.invoke(app, args)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--output", str(output), "--json"])
-
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["content"] is None
-    assert payload["output"] == {"status": "written", "path": str(output.resolve())}
-    assert output.read_text(encoding="utf-8") == "hello"
+    assert result.exit_code == 1
+    if json_mode:
+        payload = json.loads(result.output)
+        assert payload["error"]["code"] == "invalid_request"
+        assert payload["error"]["param"] == "output"
+    else:
+        assert "stdout redirection or the SDK" in result.output
+    if existing:
+        assert output.read_text(encoding="utf-8") == "keep"
+    else:
+        assert not output.parent.exists()
     assert "Written to" not in result.output
 
 

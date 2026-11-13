@@ -1176,8 +1176,8 @@ def test_tasks_only_routes_and_health(service: tuple[TestClient, FastAPI]) -> No
     ]:
         assert client.request(method, path).status_code == 404
     features = client.get("/v1/health").json()["features"]
+    assert set(features) == {"sources", "task_output_formats"}
     assert set(features["sources"]) == {"upload", "url"}
-    assert "output_formats" not in features and "task_model_output" not in features
     assert set(features["task_output_formats"]) == {"default", "html", "docx", "latex"}
     assert "get" not in schema["paths"]["/v1/tasks"]
     assert "/v1/files" not in schema["paths"]
