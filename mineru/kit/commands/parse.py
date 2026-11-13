@@ -11,6 +11,7 @@ from ...errors import MineruError
 from ...filetypes import ensure_tier_supported_for_parse_extension, is_flash_only_parse_extension
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
+from ...parser.api_client import _V1APIError
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...types import Tier, validate_tier
@@ -115,7 +116,9 @@ def parse_cmd(
         except Exception as exc:
             disposition, code, message = classify_parse_error(exc)
             if not is_batch:
-                exit_with_message(code, t("Failed to parse {path}: {error}", path=path, error=message))
+                # 单文件错误保留本地或远程协议中的参数定位，方便调用方修正请求。
+                param = exc.param if isinstance(exc, (MineruError, _V1APIError)) else None
+                exit_with_message(code, t("Failed to parse {path}: {error}", path=path, error=message), param)
             if disposition == "skipped":
                 summary.skipped += 1
                 print_info(t("Skipped {path}: [{code}] {error}", path=path, code=code, error=message))

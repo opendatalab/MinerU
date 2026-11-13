@@ -63,8 +63,10 @@ def test_plain_text_renamed_to_odf_is_not_accepted(tmp_path: Path) -> None:
     source = tmp_path / "fake.odt"
     source.write_text("a,b\n1,2\n", encoding="utf-8")
     assert guess_suffix_by_path(source) not in {"odt", "ods", "odp"}
-    with pytest.raises(ValueError, match="Unsupported file type"):
+    with pytest.raises(InvalidRequestError, match="Unsupported file type") as caught:
         parse(source)
+    assert caught.value.code == "file_type_unsupported"
+    assert caught.value.param == "input"
 
 
 @pytest.mark.parametrize(
