@@ -4,15 +4,22 @@ import sys
 
 from ...model.vlm.engine_utils import (
     enable_custom_logits_processors,
+    ensure_vllm_transformers_compatibility,
     mod_kwargs_by_device_type,
     set_default_gpu_memory_utilization,
 )
 from ...model.registry import MINERU_2_5_PRO_2605_1_2B
 
-from vllm.entrypoints.cli.main import main as vllm_main
-
 
 def main() -> None:
+    """先检查依赖兼容性，再下载模型并启动独立 vLLM 服务。"""
+    try:
+        ensure_vllm_transformers_compatibility()
+    except RuntimeError:
+        raise SystemExit(1) from None
+
+    from vllm.entrypoints.cli.main import main as vllm_main
+
     args = sys.argv[1:]
 
     has_port_arg = False
@@ -60,7 +67,7 @@ def main() -> None:
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", model_path] + args
 
-    if os.getenv('OMP_NUM_THREADS') is None:
+    if os.getenv("OMP_NUM_THREADS") is None:
         os.environ["OMP_NUM_THREADS"] = "1"
 
     # 启动vllm服务器
