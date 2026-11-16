@@ -13,11 +13,11 @@ from .process_control import ManagedProcessControl
 from .windows_process_job import WindowsProcessJob
 
 
-def process_group_options() -> dict[str, bool | int]:
-    """为托管服务创建独立进程组，强制回收不能波及 WebUI 或开发者终端。"""
+def process_group_options(*, new_session: bool = True) -> dict[str, bool | int]:
+    """隔离进程组；嵌套 worker 保留 Router 会话归属，父进程退出后仍可定位。"""
     if os.name == "nt":
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
+    return {"start_new_session": True} if new_session else {"process_group": 0}
 
 
 def _process_rows() -> list[tuple[int, int, int, str]]:
@@ -55,9 +55,17 @@ def _group_running(pid: int) -> bool:
 
 
 def _descendant_groups(pid: int) -> set[int]:
-    """记录嵌套 Router/worker 的独立会话，父进程退出后仍可回收这些模型进程组。"""
+    """同时按父子关系和所属会话收集进程组，覆盖 Router 先退出后被重新托管的 worker。"""
     records = _process_rows()
     descendants = {pid}
+    for child, _, group, _ in records:
+        try:
+            # 会话由 WebUI 启动 Router 时创建，其身份不会因 Router 退出和子进程重挂而改变。
+            # worker 只拥有自己的进程组，不能通过共享会话反向终止 Router 或其它 worker。
+            if group == pid or os.getsid(child) == pid:
+                descendants.add(child)
+        except (ProcessLookupError, PermissionError):
+            continue
     while True:
         children = {child for child, parent, _, _ in records if parent in descendants}
         if children.issubset(descendants):

@@ -308,7 +308,7 @@ class ManagedLocalWorker:
                 cwd=os.getcwd(),
                 env=env,
                 stdin=subprocess.DEVNULL,
-                **process_group_options(),
+                **process_group_options(new_session=not self.settings.managed_webui),
             )
             self.process_group = True
             self.process_job = create_process_job(self.process)
@@ -454,7 +454,11 @@ class WorkerPool:
     ) -> None:
         """按显式 upstream 与本地 GPU 配置创建 worker 状态。"""
         self.settings = settings
-        self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), transport=transport)
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0, connect=10.0),
+            transport=transport,
+            trust_env=not settings.managed_webui,
+        )
         self._on_local_worker_replaced = on_local_worker_replaced
         self._workers: dict[str, WorkerState] = {}
         self._remote_urls: dict[str, WorkerState] = {}
@@ -685,6 +689,7 @@ class WorkerPool:
                     await worker.local_worker.start(self.client)
                     worker.base_url = worker.local_worker.base_url
                     worker.generation = max(worker.generation, 1)
+                    worker.restart_requested = False
                     worker.restart_failures = 0
                     worker.retry_at = 0.0
                     logger.info("Router worker {} generation {} ready after {:.2f}s", worker.worker_id,
