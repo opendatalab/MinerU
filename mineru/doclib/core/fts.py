@@ -67,6 +67,7 @@ class FTSManager:
                     "INSERT INTO fts_contents (sha256, tier, text, title, author) VALUES (?, ?, ?, ?, ?)",
                     (sha256, tier, tokenized, title or "", author or ""),
                 ),
+                ("DELETE FROM fts_rebuild_queue WHERE sha256=?", (sha256,)),
             ]
         )
 
@@ -82,6 +83,7 @@ class FTSManager:
                     "SELECT sha256, title, author, tier, "
                     "snippet(fts_contents, 2, '<mark>', '</mark>', '...', 40) AS snippet, rank "
                     "FROM fts_contents WHERE fts_contents MATCH ? "
+                    "AND sha256 NOT IN (SELECT sha256 FROM fts_rebuild_queue) "
                     "ORDER BY rank LIMIT ?",
                     (fts_query, limit),
                 ),
@@ -94,7 +96,13 @@ class FTSManager:
         return cast(Tier | None, row["tier"]) if row else None
 
     async def delete(self, sha256: str) -> None:
-        await self.db.execute("DELETE FROM fts_contents WHERE sha256=?", (sha256,))
+        """同时移除正文索引和待迁移标记，防止已失效文档被重新索引。"""
+        await self.db.execute_atomic(
+            [
+                ("DELETE FROM fts_contents WHERE sha256=?", (sha256,)),
+                ("DELETE FROM fts_rebuild_queue WHERE sha256=?", (sha256,)),
+            ]
+        )
 
     # ── fts_filenames ────────────────────────────────────────────
 

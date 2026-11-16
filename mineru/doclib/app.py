@@ -69,6 +69,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.watch import WatchLoop
         from .core.db import DatabaseManager
         from .core.fts import FTSManager
+        from .core.fts_content import migrate_fts_contents
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
         from .services.ingest_svc import IngestService
@@ -90,6 +91,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.db_ready.set()
 
         state.fts = FTSManager(state.db)
+        await migrate_fts_contents(state.db, state.fts, data_dir=data_dir, latex_delimiters=cfg.render.latex_delimiters)
         state.config_svc = ConfigService(state.db)
         state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
         await state.telemetry_svc.initialize()
@@ -107,7 +109,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             telemetry_svc=state.telemetry_svc,
         )
         state.parse_execution_svc = ParseExecutionService(
-            state.db, state.fts, state.config_svc, data_dir, health=state.health, telemetry_svc=state.telemetry_svc
+            state.db,
+            state.fts,
+            state.config_svc,
+            data_dir,
+            health=state.health,
+            latex_delimiters=cfg.render.latex_delimiters,
+            telemetry_svc=state.telemetry_svc,
         )
         state.scan_svc = ScanService(
             state.db,
@@ -404,6 +412,7 @@ REQUIRED_SCHEMA_TABLES = {
     "exclude_rules",
     "files",
     "fts_contents",
+    "fts_rebuild_queue",
     "fts_filenames",
     "parses",
     "parsing_rules",

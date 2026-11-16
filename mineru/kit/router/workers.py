@@ -22,13 +22,37 @@ from loguru import logger
 
 from ...model.runtime.device import get_device
 from ...parser.process_control import ManagedProcessControl
-from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
+from ...parser.managed_temp import create_managed_temp_dir
+from ...parser.process_tree import process_group_options, stop_process_tree
+from ...parser.windows_process_job import WindowsProcessJob, create_process_job
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, validate_timeout
+from ...tasks.contracts import ErrorDetail
+from ...tasks.errors import ApiServerError
+from ...types import SERVER_STARTUP_TIERS, TIERS, ServerStartupTier, Tier
 from ...utils.stdio import utf8_subprocess_env
 from ...utils.retention import resolve_retention_seconds
+from ...utils.async_utils import run_sync
 
 DEFAULT_WORKER_REFRESH_INTERVAL_SECONDS = 2.0
 DEFAULT_WORKER_STARTUP_TIMEOUT_SECONDS = 300.0
 DEFAULT_WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
+
+
+def _preload_error(response: httpx.Response) -> ErrorDetail | None:
+    """只识别已完成初始化后公开的预加载失败，普通 503 和非结构化响应继续等待。"""
+    if response.status_code != 503:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return None
+    code, message = error.get("code"), error.get("message")
+    if isinstance(code, str) and code.startswith("model_preload_") and isinstance(message, str) and message:
+        return ErrorDetail(code=code, message=message)
+    return None
 
 
 def normalize_base_url(url: str) -> str:
@@ -118,10 +142,12 @@ def parse_local_gpus(value: str) -> list[str | None]:
     normalized = str(value).strip().lower()
     if normalized == "none":
         return []
+    if normalized == "inherit":
+        return [None]
     if normalized != "auto":
         devices = [item.strip() for item in value.split(",") if item.strip()]
         if not devices:
-            raise ValueError("--local-gpus must be auto, none, or a non-empty CSV")
+            raise ValueError("--local-gpus must be auto, inherit, none, or a non-empty CSV")
         return devices
 
     device = get_device().split(":", 1)[0]
@@ -160,24 +186,33 @@ class RouterSettings:
     upstream_urls: tuple[str, ...] = ()
     local_gpus: str = "auto"
     worker_host: str = "127.0.0.1"
-    worker_tier: ServerTier = "standard"
+    worker_tier: ServerStartupTier = "auto"
     worker_concurrency: int = 1
     preload_models: bool = False
     retention_seconds: int | None = None
     worker_refresh_interval_seconds: float = DEFAULT_WORKER_REFRESH_INTERVAL_SECONDS
     admin_api_key: str | None = field(default=None, repr=False)
+    task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS
+    worker_startup_timeout_seconds: float = DEFAULT_WORKER_STARTUP_TIMEOUT_SECONDS
+    disable_image_analysis: bool = False
+    managed_webui: bool = False
+    worker_api_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """校验 worker tier、并发数和刷新间隔。"""
         object.__setattr__(self, "retention_seconds", resolve_retention_seconds(self.retention_seconds))
         object.__setattr__(self, "upstream_urls", tuple(dict.fromkeys(normalize_base_url(url) for url in self.upstream_urls)))
         object.__setattr__(self, "admin_api_key", (self.admin_api_key or "").strip() or None)
-        if self.worker_tier not in SERVER_TIERS:
+        if self.worker_tier not in SERVER_STARTUP_TIERS:
             raise ValueError(f"Unsupported worker tier: {self.worker_tier}")
         if self.worker_concurrency <= 0:
             raise ValueError("worker_concurrency must be a positive integer")
         if self.worker_refresh_interval_seconds < 0:
             raise ValueError("worker_refresh_interval_seconds must be non-negative")
+        validate_timeout(self.task_timeout_seconds, "task_timeout_seconds")
+        if not float(self.task_timeout_seconds).is_integer():
+            raise ValueError("task_timeout_seconds must be a positive integer")
+        validate_timeout(self.worker_startup_timeout_seconds, "worker_startup_timeout_seconds")
 
     @classmethod
     def from_env(cls) -> "RouterSettings":
@@ -189,15 +224,20 @@ class RouterSettings:
             raise ValueError("MINERU_ROUTER_UPSTREAM_URLS_JSON must be valid JSON") from exc
         if not isinstance(urls, list) or not all(isinstance(item, str) for item in urls):
             raise ValueError("MINERU_ROUTER_UPSTREAM_URLS_JSON must be a JSON string array")
-        tier = os.getenv("MINERU_ROUTER_WORKER_TIER", "standard")
+        tier = os.getenv("MINERU_ROUTER_WORKER_TIER", "auto")
         return cls(
             upstream_urls=tuple(urls),
             local_gpus=os.getenv("MINERU_ROUTER_LOCAL_GPUS", "auto"),
             worker_host=os.getenv("MINERU_ROUTER_WORKER_HOST", "127.0.0.1"),
-            worker_tier=cast(ServerTier, tier),
+            worker_tier=cast(ServerStartupTier, tier),
             worker_concurrency=int(os.getenv("MINERU_ROUTER_WORKER_CONCURRENCY", "1")),
             preload_models=os.getenv("MINERU_ROUTER_PRELOAD_MODELS", "0").lower() in {"1", "true", "yes"},
             admin_api_key=os.getenv("MINERU_ROUTER_ADMIN_API_KEY"),
+            task_timeout_seconds=float(os.getenv("MINERU_ROUTER_TASK_TIMEOUT_SECONDS", "3600")),
+            worker_startup_timeout_seconds=float(os.getenv("MINERU_ROUTER_WORKER_STARTUP_TIMEOUT_SECONDS", "300")),
+            disable_image_analysis=os.getenv("MINERU_ROUTER_DISABLE_IMAGE_ANALYSIS") == "1",
+            managed_webui=os.getenv("MINERU_ROUTER_MANAGED_WEBUI") == "1",
+            worker_api_key=os.getenv("MINERU_ROUTER_WORKER_API_KEY") or None,
         )
 
     def apply_to_env(self) -> None:
@@ -209,6 +249,11 @@ class RouterSettings:
         os.environ["MINERU_ROUTER_WORKER_TIER"] = self.worker_tier
         os.environ["MINERU_ROUTER_WORKER_CONCURRENCY"] = str(self.worker_concurrency)
         os.environ["MINERU_ROUTER_PRELOAD_MODELS"] = "1" if self.preload_models else "0"
+        os.environ["MINERU_ROUTER_TASK_TIMEOUT_SECONDS"] = str(self.task_timeout_seconds)
+        os.environ["MINERU_ROUTER_WORKER_STARTUP_TIMEOUT_SECONDS"] = str(self.worker_startup_timeout_seconds)
+        os.environ["MINERU_ROUTER_DISABLE_IMAGE_ANALYSIS"] = "1" if self.disable_image_analysis else "0"
+        os.environ["MINERU_ROUTER_MANAGED_WEBUI"] = "1" if self.managed_webui else "0"
+        os.environ["MINERU_ROUTER_WORKER_API_KEY"] = self.worker_api_key or ""
         if self.admin_api_key:
             os.environ["MINERU_ROUTER_ADMIN_API_KEY"] = self.admin_api_key
         else:
@@ -227,6 +272,8 @@ class ManagedLocalWorker:
     process: subprocess.Popen[bytes] | None = None
     control: ManagedProcessControl | None = None
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
+    process_group: bool = False
+    process_job: WindowsProcessJob | None = None
 
     def command(self, port: int, upload_dir: Path) -> list[str]:
         """构造正式 `mineru-kit api-server` worker 命令。"""
@@ -245,26 +292,34 @@ class ManagedLocalWorker:
             self.settings.worker_tier,
             "--concurrency",
             str(self.settings.worker_concurrency),
+            "--task-timeout",
+            str(int(self.settings.task_timeout_seconds)),
             "--retention-seconds",
             str(self.settings.retention_seconds),
             "--log-level",
             "warning",
             *(["--preload-models"] if self.settings.preload_models else []),
+            *(["--disable-image-analysis"] if self.settings.disable_image_analysis else []),
+            *(["--api-key", self.settings.worker_api_key] if self.settings.worker_api_key else []),
         ]
 
     async def start(self, client: httpx.AsyncClient) -> None:
         """启动 worker 子进程并等待 V1 health 就绪。"""
         if self.process is not None and self.process.poll() is None:
             return
-        self.temp_dir = tempfile.TemporaryDirectory(prefix=f"mineru-router-{self.worker_id}-")
+        self.temp_dir = create_managed_temp_dir()
         upload_dir = Path(self.temp_dir.name) / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         port = reserve_local_port(self.host)
         self.base_url = worker_base_url(self.host, port)
         env = utf8_subprocess_env()
+        temporary_root = Path(self.temp_dir.name) / "tmp"
+        temporary_root.mkdir()
+        # 强制退出时 Python 的 TemporaryDirectory 来不及收尾，由父进程统一回收本实例临时文件。
+        env.update({name: str(temporary_root) for name in ("TMPDIR", "TEMP", "TMP")})
         if self.gpu is not None:
             env[visible_device_env_name()] = self.gpu
-        control = ManagedProcessControl.create()
+        control = ManagedProcessControl.create(execution_reports=True)
         env.update(control.child_env())
         control.start_accepting()
         try:
@@ -273,15 +328,20 @@ class ManagedLocalWorker:
                 cwd=os.getcwd(),
                 env=env,
                 stdin=subprocess.DEVNULL,
+                **process_group_options(new_session=not self.settings.managed_webui),
             )
+            self.process_group = True
+            self.process_job = create_process_job(self.process)
         except Exception:
             control.close()
             self.temp_dir.cleanup()
             self.temp_dir = None
             raise
         self.control = control
+        logger.info("Started router worker {} pid={} task_timeout={}s startup_timeout={}s", self.worker_id,
+                    self.process.pid, self.settings.task_timeout_seconds, self.settings.worker_startup_timeout_seconds)
         try:
-            await self.wait_until_ready(client)
+            await self.wait_until_ready(client, self.settings.worker_startup_timeout_seconds)
         except Exception:
             await self.stop()
             raise
@@ -298,9 +358,14 @@ class ManagedLocalWorker:
             if self.process is not None and self.process.poll() is not None:
                 raise RuntimeError(f"Local worker {self.worker_id} exited before becoming healthy")
             try:
-                response = await client.get(f"{self.base_url}/v1/health")
+                response = await client.get(
+                    f"{self.base_url}/v1/health", timeout=min(3, max(0.01, deadline - time.monotonic()))
+                )
                 if response.status_code == 200:
                     return
+                preload_error = _preload_error(response)
+                if preload_error is not None:
+                    raise ApiServerError(503, preload_error)
                 last_error = response.text
             except httpx.HTTPError as exc:
                 last_error = str(exc)
@@ -309,33 +374,24 @@ class ManagedLocalWorker:
         raise TimeoutError(f"Timed out waiting for local worker {self.worker_id}{suffix}")
 
     async def stop(self, timeout_seconds: float = DEFAULT_WORKER_SHUTDOWN_TIMEOUT_SECONDS) -> None:
-        """通过控制通道优雅关闭 worker，并在超时后 terminate/kill。"""
+        """有限预算回收整个进程组；失败时保留所有权，不能创建重叠模型实例。"""
         process = self.process
         control = self.control
+        if process is not None:
+            await run_sync(
+                stop_process_tree, process, control, timeout_seconds=timeout_seconds, grouped=self.process_group,
+                process_job=self.process_job,
+            )
         self.process = None
         self.control = None
-        try:
-            if process is not None and process.poll() is None:
-                shutdown_sent = control.request_shutdown(timeout_seconds * 0.4) if control is not None else False
-                if shutdown_sent:
-                    try:
-                        await asyncio.to_thread(process.wait, timeout=timeout_seconds * 0.4)
-                    except subprocess.TimeoutExpired:
-                        pass
-                if process.poll() is None:
-                    process.terminate()
-                    try:
-                        await asyncio.to_thread(process.wait, timeout=timeout_seconds * 0.4)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        await asyncio.to_thread(process.wait)
-        finally:
-            if control is not None:
-                control.close()
-            if self.temp_dir is not None:
-                self.temp_dir.cleanup()
-                self.temp_dir = None
-            self.base_url = ""
+        self.process_group = False
+        self.process_job = None
+        if control is not None:
+            control.close()
+        if self.temp_dir is not None:
+            self.temp_dir.cleanup()
+            self.temp_dir = None
+        self.base_url = ""
 
 
 @dataclass
@@ -353,6 +409,7 @@ class WorkerState:
     active_jobs: int = 0
     max_concurrent_jobs: int = 1
     last_error: str | None = None
+    startup_error: ErrorDetail | None = None
     generation: int = 0
     restart_requested: bool = False
     restart_failures: int = 0
@@ -360,6 +417,13 @@ class WorkerState:
     refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     state: Literal["active", "draining"] = "active"
     active_requests: int = 0
+    runtime: dict[str, Any] | None = None
+    timed_out_file_ids: set[str] = field(default_factory=set)
+    invalidated_generation: int = -1
+    recovery_exhausted: bool = False
+    probe_task: asyncio.Task[None] | None = None
+    recovery_task: asyncio.Task[None] | None = None
+    expired_observed_at: dict[str, float] = field(default_factory=dict)
 
     @property
     def tiers(self) -> set[Tier]:
@@ -414,14 +478,20 @@ class WorkerPool:
     ) -> None:
         """按显式 upstream 与本地 GPU 配置创建 worker 状态。"""
         self.settings = settings
-        self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), transport=transport)
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0, connect=10.0),
+            transport=transport,
+            trust_env=not settings.managed_webui,
+        )
         self._on_local_worker_replaced = on_local_worker_replaced
         self._workers: dict[str, WorkerState] = {}
         self._remote_urls: dict[str, WorkerState] = {}
         self._next_remote_id = 1
         self._monitor_task: asyncio.Task[None] | None = None
+        self._supervisor_task: asyncio.Task[None] | None = None
         self._built = False
         self._selection_cursors: dict[str, str] = {}
+        self._closing = False
 
     def _build_workers(self) -> None:
         """在 lifespan 启动阶段解析设备并创建 remote/local worker 状态。"""
@@ -430,7 +500,8 @@ class WorkerPool:
         for url in self.settings.upstream_urls:
             self.register_remote(url)
         for index, gpu in enumerate(parse_local_gpus(self.settings.local_gpus), start=1):
-            worker_id = f"local-{gpu if gpu is not None else 'cpu'}-{index}"
+            device_label = "inherit" if self.settings.local_gpus == "inherit" else (gpu if gpu is not None else "cpu")
+            worker_id = f"local-{device_label}-{index}"
             local_worker = ManagedLocalWorker(worker_id, self.settings.worker_host, gpu, self.settings)
             self._workers[worker_id] = WorkerState(
                 worker_id=worker_id,
@@ -495,16 +566,32 @@ class WorkerPool:
                 await worker.local_worker.start(self.client)
                 worker.base_url = worker.local_worker.base_url
                 worker.generation = 1
+                worker.startup_error = None
             except Exception as exc:
                 worker.healthy = False
                 worker.last_error = str(exc)
+                worker.startup_error = exc.error if isinstance(exc, ApiServerError) else None
+                worker.restart_failures = 1
+                worker.retry_at = time.monotonic() + 5
+                worker.restart_requested = True
                 logger.exception("Failed to start router worker %s", worker.worker_id)
         await self.refresh_all()
         if self.settings.worker_refresh_interval_seconds > 0:
             self._monitor_task = asyncio.create_task(self._monitor_loop(), name="mineru-v1-router-worker-monitor")
+        if any(worker.local_worker is not None for worker in self.workers):
+            self._supervisor_task = asyncio.create_task(self._supervise_loop(), name="mineru-router-execution-supervisor")
 
     async def close(self) -> None:
         """停止健康任务、本地 worker 和共享 HTTP client。"""
+        self._closing = True
+        if self._supervisor_task is not None:
+            self._supervisor_task.cancel()
+            await asyncio.gather(self._supervisor_task, return_exceptions=True)
+            self._supervisor_task = None
+        recoveries = [worker.recovery_task for worker in self.workers if worker.recovery_task is not None]
+        for task in recoveries:
+            task.cancel()
+        await asyncio.gather(*recoveries, return_exceptions=True)
         if self._monitor_task is not None:
             self._monitor_task.cancel()
             try:
@@ -527,6 +614,60 @@ class WorkerPool:
         """并发刷新全部 worker 的 V1 health、tiers 与 models。"""
         await asyncio.gather(*(self.refresh(worker) for worker in self.workers))
 
+    async def _invalidate_worker(self, worker: WorkerState) -> None:
+        """同代只发布一次丢失通知，任务失败不能等待旧进程退出或 HTTP 查询。"""
+        if worker.invalidated_generation == worker.generation:
+            return
+        worker.invalidated_generation = worker.generation
+        if self._on_local_worker_replaced is not None:
+            await self._on_local_worker_replaced(worker)
+
+    async def _supervise_loop(self) -> None:
+        """独立检查私有执行期限，HTTP 健康成功或事件循环挂起均不能绕过硬期限。"""
+        while True:
+            await self.supervise_once()
+            await asyncio.sleep(0.25)
+
+    async def supervise_once(self) -> None:
+        """发现超期或退出即终结旧任务，并将慢速回收放入独立单代恢复任务。"""
+        if self._closing:
+            return
+        for worker in self.workers:
+            local = worker.local_worker
+            if local is None or worker.recovery_exhausted:
+                continue
+            control = getattr(local, "control", None)
+            now = time.monotonic()
+            candidates = control.expired_executions(now) if control is not None else ()
+            active_ids = {lease.execution_id for lease in candidates}
+            worker.expired_observed_at = {
+                key: at for key, at in worker.expired_observed_at.items() if key in active_ids
+            }
+            # 为控制线程送达完成通知留一个刷新周期；第二次确认仍未退出才替换，避免边界误判。
+            expired = tuple(
+                lease for lease in candidates
+                if now - worker.expired_observed_at.setdefault(lease.execution_id, now) >= 0.25
+            )
+            if expired:
+                newly_expired = {lease.file_id for lease in expired} - worker.timed_out_file_ids
+                worker.timed_out_file_ids.update(lease.file_id for lease in expired)
+                worker.last_error = "task_timeout"
+                worker.restart_requested = True
+                if newly_expired:
+                    logger.error("Worker {} generation {} execution timeout: {}", worker.worker_id, worker.generation,
+                                 [lease.execution_id for lease in expired])
+            process = local.process
+            if worker.restart_requested or process is None or process.poll() is not None:
+                worker.healthy = False
+                worker.restart_requested = True
+                if worker.probe_task is not None:
+                    worker.probe_task.cancel()
+                await self._invalidate_worker(worker)
+                if worker.recovery_task is None or worker.recovery_task.done():
+                    if worker.recovery_task is not None and not worker.recovery_task.cancelled():
+                        worker.recovery_task.result()
+                    worker.recovery_task = asyncio.create_task(self.refresh(worker))
+
     def notify_engine_dead(self, worker: WorkerState) -> None:
         """收到明确 engine_dead 后立即剔除；仅托管进程由 Router 负责恢复。"""
         worker.healthy = False
@@ -535,7 +676,7 @@ class WorkerPool:
 
     async def refresh(self, worker: WorkerState) -> None:
         """序列化单 worker 的健康刷新，确保同一 generation 只替换一次。"""
-        if self._workers.get(worker.worker_id) is not worker:
+        if self._closing or self._workers.get(worker.worker_id) is not worker:
             return
         reference = worker.acquire_request()
         try:
@@ -547,43 +688,73 @@ class WorkerPool:
     async def _refresh_worker(self, worker: WorkerState) -> None:
         """复用启停超时重建死亡进程，启动失败按 5/10/20/30 秒退避。"""
         if worker.local_worker is not None:
+            if worker.recovery_exhausted:
+                return
             process = worker.local_worker.process
             if worker.restart_requested or process is None or process.poll() is not None:
                 worker.healthy = False
                 if time.monotonic() < worker.retry_at:
                     return
                 try:
-                    replacing = worker.generation > 0 and (process is not None or worker.restart_requested)
+                    recovery_started = time.monotonic()
+                    replacing = process is not None or (worker.generation > 0 and worker.restart_requested)
                     if replacing:
+                        await self._invalidate_worker(worker)
                         worker.base_url = ""
                         worker.tier_metadata.clear()
                         worker.models.clear()
                         worker.features.clear()
                         await worker.local_worker.stop()
-                        if self._on_local_worker_replaced is not None:
-                            await self._on_local_worker_replaced(worker)
                         worker.active_jobs = 0
                         worker.generation += 1
                         worker.restart_requested = False
+                        worker.timed_out_file_ids.clear()
+                        worker.expired_observed_at.clear()
+                    if self._closing:
+                        return
                     await worker.local_worker.start(self.client)
                     worker.base_url = worker.local_worker.base_url
                     worker.generation = max(worker.generation, 1)
+                    worker.restart_requested = False
+                    worker.startup_error = None
                     worker.restart_failures = 0
                     worker.retry_at = 0.0
+                    logger.info("Router worker {} generation {} ready after {:.2f}s", worker.worker_id,
+                                worker.generation, time.monotonic() - recovery_started)
                 except Exception as exc:
                     worker.last_error = str(exc)
+                    worker.startup_error = exc.error if isinstance(exc, ApiServerError) else None
                     delay = (5, 10, 20, 30)[min(worker.restart_failures, 3)]
                     worker.restart_failures += 1
                     worker.retry_at = time.monotonic() + delay
+                    if worker.restart_failures >= 3:
+                        worker.recovery_exhausted = True
+                        logger.error("Worker {} recovery failed after three attempts: {}", worker.worker_id, exc)
                     return
+        worker.probe_task = asyncio.create_task(self._probe_worker(worker))
+        try:
+            await worker.probe_task
+        except asyncio.CancelledError:
+            if not worker.restart_requested:
+                raise
+        finally:
+            worker.probe_task = None
+
+    async def _probe_worker(self, worker: WorkerState) -> None:
+        """探测使用短 HTTP 超时，与执行监督及模型启动预算分别管理。"""
         try:
             health, tiers, models = await asyncio.gather(
-                self.client.get(f"{worker.base_url}/v1/health"),
-                self.client.get(f"{worker.base_url}/v1/tiers"),
-                self.client.get(f"{worker.base_url}/v1/models"),
+                self.client.get(f"{worker.base_url}/v1/health", timeout=5),
+                self.client.get(f"{worker.base_url}/v1/tiers", timeout=5),
+                self.client.get(f"{worker.base_url}/v1/models", timeout=5),
             )
-            if health.status_code == 503 and (health.json().get("error") or {}).get("code") == "engine_dead":
-                self.notify_engine_dead(worker)
+            code = (health.json().get("error") or {}).get("code") if health.status_code == 503 else None
+            if code in {"engine_dead", "task_timeout"}:
+                worker.healthy = False
+                worker.last_error = code
+                # 托管超时由私有执行报告触发，保留超时文件身份，避免先收到 health 503 而误标其它错误。
+                if code != "task_timeout" or getattr(worker.local_worker, "control", None) is None:
+                    worker.restart_requested = worker.local_worker is not None
                 return
             health.raise_for_status()
             tiers.raise_for_status()
@@ -594,6 +765,7 @@ class WorkerPool:
             features = dict(health_payload.get("features") or {})
             model_metadata = [dict(item) for item in model_payload.get("data", [])]
             worker.features = features
+            worker.runtime = health_payload.get("runtime") if isinstance(health_payload.get("runtime"), dict) else None
             worker.tier_metadata = tier_metadata
             worker.models = model_metadata
             worker.healthy = health_payload.get("status") == "ok"

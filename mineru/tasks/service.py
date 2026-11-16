@@ -136,6 +136,8 @@ class TaskRecord:
     created_at: str = field(default_factory=execution_timestamp)
     status: TaskStatus = "waiting-file"
     refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    refresh_operation: asyncio.Future[list[TaskExecution | BaseException]] | None = None
+    refresh_invalidated: bool = False
     changed: asyncio.Event = field(default_factory=asyncio.Event)
     operation: asyncio.Task[None] | None = None
     finished_at: str | None = None
@@ -315,8 +317,26 @@ class TaskStore:
             file.lease_refresh_at = time.monotonic() + 30
         self._aggregate(record)
 
+    def invalidate_executions(self, executions: dict[str, TaskExecution]) -> None:
+        """父进程监督失败直接发布终态，不依赖可能正在等待旧 worker 的 HTTP 刷新。"""
+        for record in self._records.values():
+            affected = False
+            for file in record.file_states:
+                execution = executions.get(file.execution_id)
+                if execution is None or file.status in TERMINAL_TASK_STATUSES:
+                    continue
+                self._apply_execution(record, file, execution)
+                affected = True
+                if not file.submitted and file.operation is not None and not file.operation.done():
+                    file.operation.cancel()
+            if affected and record.refresh_operation is not None and not record.refresh_operation.done():
+                record.refresh_invalidated = True
+                record.refresh_operation.cancel()
+
     async def refresh(self, record: TaskRecord) -> None:
         """并发刷新独立文件；成功文件仍续租 worker 结果直到父任务收尾。"""
+        if record.status in TERMINAL_TASK_STATUSES:
+            return
         async with record.refresh_lock:
             self._expire_uploads(record)
             if record.status in TERMINAL_TASK_STATUSES:
@@ -328,7 +348,18 @@ class TaskStore:
                 and file.status not in {"failed", "canceled"}
                 and (file.status != "completed" or file.lease_refresh_at <= time.monotonic())
             ]
-            results = await asyncio.gather(*(file.backend.get(file.execution_id) for file in targets), return_exceptions=True)
+            record.refresh_operation = asyncio.gather(
+                *(file.backend.get(file.execution_id) for file in targets), return_exceptions=True
+            )
+            try:
+                results = await record.refresh_operation
+            except asyncio.CancelledError:
+                if record.refresh_invalidated:
+                    return
+                raise
+            finally:
+                record.refresh_operation = None
+                record.refresh_invalidated = False
             for file, result in zip(targets, results):
                 if isinstance(result, BaseException):
                     if (

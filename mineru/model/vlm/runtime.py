@@ -26,6 +26,7 @@ from ..runtime.platform import is_mac_os_version_supported
 from .async_runtime import AsyncVlmPredictor
 from .engine_utils import (
     enable_custom_logits_processors,
+    ensure_vllm_transformers_compatibility,
     mod_kwargs_by_device_type,
     set_default_batch_size,
     set_default_gpu_memory_utilization,
@@ -83,6 +84,7 @@ class ModelSingleton:
             native_async = backend in {"http-client", "vllm-async-engine"}
             options = {"model_name": model_name, **kwargs}
             if backend == "vllm-async-engine":
+                ensure_vllm_transformers_compatibility()
                 options["device"] = get_device()
                 model_path = (
                     str(Path(model_path).expanduser().resolve()) if model_path else str(MINERU_2_5_PRO_2605_1_2B.ensure())

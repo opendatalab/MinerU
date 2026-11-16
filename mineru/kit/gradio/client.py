@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import asyncio
 import os
 import socket
 import subprocess
@@ -20,6 +21,10 @@ from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_en
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
+from ...parser.managed_temp import create_managed_temp_dir
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, validate_timeout
+from ...parser.process_tree import stop_process_tree
+from ...parser.windows_process_job import WindowsProcessJob, create_process_job
 from ...types import SERVER_STARTUP_TIERS, TIERS, ServerStartupTier, Tier
 from ...filetypes import is_flash_only_parse_extension
 from ...utils.stdio import utf8_subprocess_env
@@ -111,12 +116,39 @@ class V1ArtifactClient:
         api_url: str,
         api_key: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        managed: bool = False,
+        recovery_timeout_seconds: float = 300,
     ) -> None:
         """创建不保存文档内容的 V1 client；API Key 只保存在当前进程内存。"""
         self.base_url = normalize_v1_base_url(api_url)
         self.api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
         self._transport = transport
+        self.managed = managed
+        self.recovery_timeout_seconds = recovery_timeout_seconds
         self._capabilities: V1ServerCapabilities | None = None
+
+    async def wait_for_ready(self, emit: Callable[[str | ParseStatusUpdate], None]) -> None:
+        """本地未提交请求在恢复期间等待，恢复失败或启动超预算则明确结束。"""
+        deadline = time.monotonic() + self.recovery_timeout_seconds
+        async with httpx.AsyncClient(timeout=3, trust_env=False, transport=self._transport) as client:
+            while True:
+                try:
+                    response = await client.get(f"{self.base_url}/v1/health", headers=self._headers())
+                    if response.status_code == 200:
+                        return
+                    code, message = _error_detail(response)
+                    if code.startswith("model_preload_"):
+                        raise V1ArtifactError(message, code=code)
+                    if code == "recovery_failed":
+                        raise V1ArtifactError("Parse service recovery failed", code=code)
+                    if response.status_code < 500:
+                        raise V1ArtifactError(message, code=code)
+                except httpx.HTTPError as exc:
+                    raise V1ArtifactError("Parse service is unavailable", code="server_unreachable") from exc
+                emit("Parse service is recovering...")
+                if time.monotonic() >= deadline:
+                    raise V1ArtifactError("Parse service recovery failed", code="recovery_failed")
+                await asyncio.sleep(0.5)
 
     @property
     def capabilities(self) -> V1ServerCapabilities | None:
@@ -216,6 +248,8 @@ class V1ArtifactClient:
             raise V1ArtifactError(f"Unsupported parse tier: {tier}", code="invalid_request")
 
         emit = status_callback or (lambda _message: None)
+        if self.managed:
+            await self.wait_for_ready(emit)
         emit(STATUS_PREPARING_REQUEST)
         if self._capabilities is None:
             emit(STATUS_CHECKING_SERVER)
@@ -231,6 +265,7 @@ class V1ArtifactClient:
             tier=None if native_document else cast(Tier, tier),
             ocr_mode=ocr_mode,
             include_images=True,
+            poll_timeout_seconds=None if self.managed else DEFAULT_TASK_TIMEOUT_SECONDS,
         )
 
         def on_job_status(status: ApiTaskStatus) -> None:
@@ -259,10 +294,16 @@ class V1ArtifactClient:
                 cancel_on_cancel=True,
             )
         except Exception as exc:
-            emit(f"Failed: {exc}")
+            code = getattr(exc, "code", "parse_failed")
+            message = {
+                "task_timeout": "Task execution timed out",
+                "worker_restarted": "Worker was replaced; please retry",
+                "recovery_failed": "Parse service recovery failed",
+            }.get(code, str(exc))
+            emit(f"Failed: {message}")
             if isinstance(exc, (FileNotFoundError, V1ArtifactError)):
                 raise
-            raise V1ArtifactError(str(exc), code=getattr(exc, "code", "parse_failed")) from exc
+            raise V1ArtifactError(message, code=code) from exc
         return result
 
     def _headers(self) -> dict[str, str]:
@@ -320,8 +361,8 @@ def _reserve_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
-class ManagedLocalApiServer:
-    """管理 Gradio 自动启动的独立 V1 API server 子进程。"""
+class ManagedLocalRouter:
+    """管理 WebUI 自动启动的 Router，由 Router 负责唯一 API worker 的恢复。"""
 
     def __init__(
         self,
@@ -331,6 +372,7 @@ class ManagedLocalApiServer:
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
+        task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS,
     ) -> None:
         """保存显式启动配置，但不在构造阶段创建目录或启动进程。"""
         if tier not in SERVER_STARTUP_TIERS:
@@ -342,19 +384,23 @@ class ManagedLocalApiServer:
         self.disable_image_analysis = disable_image_analysis
         self.preload_models = preload_models
         self.api_key = api_key
+        self.task_timeout_seconds = validate_timeout(task_timeout_seconds, "task_timeout_seconds")
+        if not self.task_timeout_seconds.is_integer():
+            raise ValueError("task_timeout_seconds must be a positive integer")
         self.base_url: str | None = None
         self.process: subprocess.Popen[bytes] | None = None
+        self._process_job: WindowsProcessJob | None = None
         self._control: ManagedProcessControl | None = None
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self._atexit_registered = False
 
     def start(self) -> str:
-        """启动 `mineru-kit api-server` 并等待 `/v1/health` 返回成功。"""
+        """启动本地单 worker Router，保留站点配置环境及独立冷启动预算。"""
         if self.process is not None and self.process.poll() is None:
             raise RuntimeError("Managed V1 API server is already running")
         if self.process is not None or self._temp_dir is not None or self._control is not None:
             self.stop()
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="mineru-kit-gradio-api-")
+        self._temp_dir = create_managed_temp_dir(reserve_worker=True)
         upload_dir = Path(self._temp_dir.name) / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         port = _reserve_local_port()
@@ -363,7 +409,25 @@ class ManagedLocalApiServer:
         control = ManagedProcessControl.create()
         control.start_accepting()
         environment = utf8_subprocess_env()
+        temporary_root = Path(self._temp_dir.name) / "tmp"
+        temporary_root.mkdir()
+        # Router 及嵌套 worker 的暂存目录归属于本次托管生命周期，已物化的 WebUI 产物仍在 output_dir。
+        environment.update({name: str(temporary_root) for name in ("TMPDIR", "TEMP", "TMP")})
         environment.update(control.child_env())
+        environment.update({
+            "MINERU_ROUTER_UPSTREAM_URLS_JSON": "[]",
+            "MINERU_ROUTER_LOCAL_GPUS": "inherit",
+            "MINERU_ROUTER_WORKER_HOST": "127.0.0.1",
+            "MINERU_ROUTER_WORKER_TIER": self.tier,
+            "MINERU_ROUTER_WORKER_CONCURRENCY": str(self.concurrency),
+            "MINERU_ROUTER_PRELOAD_MODELS": "1" if self.preload_models else "0",
+            "MINERU_ROUTER_TASK_TIMEOUT_SECONDS": str(self.task_timeout_seconds),
+            "MINERU_ROUTER_WORKER_STARTUP_TIMEOUT_SECONDS": str(_startup_timeout_seconds()),
+            "MINERU_ROUTER_DISABLE_IMAGE_ANALYSIS": "1" if self.disable_image_analysis else "0",
+            "MINERU_ROUTER_MANAGED_WEBUI": "1",
+            "MINERU_ROUTER_WORKER_API_KEY": self.api_key or "",
+        })
+        environment.pop("MINERU_ROUTER_ADMIN_API_KEY", None)
         command = self._command(port, upload_dir)
         try:
             self.process = subprocess.Popen(
@@ -375,6 +439,7 @@ class ManagedLocalApiServer:
                 stderr=None,
                 **_new_session_kwargs(),
             )
+            self._process_job = create_process_job(self.process)
         except Exception:
             control.close()
             self._cleanup_temp_dir()
@@ -391,37 +456,23 @@ class ManagedLocalApiServer:
         return self.base_url
 
     def stop(self) -> None:
-        """请求子进程优雅退出，并在超时后清理进程和临时目录。"""
+        """给 Router 留出 worker 的回收预算；失败保留引用供调用方继续收尾。"""
         process = self.process
         control = self._control
+        if process is not None:
+            stop_process_tree(process, control, timeout_seconds=30, grouped=True, process_job=self._process_job)
         self.process = None
         self._control = None
-        try:
-            if process is not None and process.poll() is None:
-                if control is not None:
-                    control.request_shutdown(3.0)
-                try:
-                    process.wait(timeout=8.0)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=3.0)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-        finally:
-            if control is not None:
-                control.close()
-            if self._atexit_registered:
-                try:
-                    atexit.unregister(self.stop)
-                except Exception:
-                    pass
-                self._atexit_registered = False
-            self.base_url = None
-            self._cleanup_temp_dir()
+        self._process_job = None
+        if control is not None:
+            control.close()
+        if self._atexit_registered:
+            atexit.unregister(self.stop)
+            self._atexit_registered = False
+        self.base_url = None
+        self._cleanup_temp_dir()
 
-    def __enter__(self) -> "ManagedLocalApiServer":
+    def __enter__(self) -> "ManagedLocalRouter":
         """进入上下文时启动本地 API server。"""
         self.start()
         return self
@@ -431,27 +482,13 @@ class ManagedLocalApiServer:
         self.stop()
 
     def _command(self, port: int, upload_dir: Path) -> list[str]:
-        """构造不包含 Gradio 参数的正式 API server 子进程命令。"""
+        """站点配置仅通过子进程环境传递，避免把密钥放入命令行或重复初始化模型。"""
         return [
             sys.executable,
             "-m",
-            "mineru.kit.main",
-            "api-server",
-            "--host",
-            "127.0.0.1",
+            "mineru.kit.gradio.managed_router",
             "--port",
             str(port),
-            "--upload-dir",
-            str(upload_dir),
-            "--tier",
-            self.tier,
-            "--concurrency",
-            str(self.concurrency),
-            "--log-level",
-            "warning",
-            *(["--disable-image-analysis"] if self.disable_image_analysis else []),
-            *(["--preload-models"] if self.preload_models else []),
-            *(["--api-key", self.api_key] if self.api_key else []),
         ]
 
     def _wait_until_ready(self) -> None:
@@ -470,7 +507,7 @@ class ManagedLocalApiServer:
                     if response.status_code < 400:
                         return
                     error_code, last_error = _error_detail(response)
-                    if response.status_code < 500 or error_code.startswith("model_preload_"):
+                    if response.status_code < 500 or error_code.startswith("model_preload_") or error_code == "recovery_failed":
                         raise V1ArtifactError(last_error, code=error_code)
                 except httpx.HTTPError as exc:
                     last_error = str(exc)
@@ -506,7 +543,7 @@ def _new_session_kwargs() -> dict[str, Any]:
 
 __all__ = [
     "GradioArtifactClient",
-    "ManagedLocalApiServer",
+    "ManagedLocalRouter",
     "STATUS_CHECKING_SERVER",
     "STATUS_COMPLETED",
     "STATUS_DOWNLOADING_RESULT",

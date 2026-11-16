@@ -36,7 +36,7 @@ from mineru.kit.gradio.artifacts import create_run_artifacts, persist_parse_resu
 from mineru.kit.gradio.client import (
     STATUS_DOWNLOADING_RESULT,
     GradioArtifactClient,
-    ManagedLocalApiServer,
+    ManagedLocalRouter,
     V1ArtifactClient,
     V1ArtifactError,
     V1ServerCapabilities,
@@ -246,9 +246,10 @@ def test_webui_startup_tier_options(monkeypatch: pytest.MonkeyPatch, standalone:
 @pytest.mark.parametrize("tier", [None, *SERVER_STARTUP_TIERS])
 def test_gradio_managed_startup_tier_command(tier: str | None, tmp_path: Path) -> None:
     """托管服务默认与显式 auto 都传给正式 API 命令，不在 Gradio 内重复探测。"""
-    server = ManagedLocalApiServer() if tier is None else ManagedLocalApiServer(tier=tier)
+    server = ManagedLocalRouter() if tier is None else ManagedLocalRouter(tier=tier)
     command = server._command(8123, tmp_path)
-    assert command[command.index("--tier") + 1] == (tier or "auto")
+    assert command[2] == "mineru.kit.gradio.managed_router"
+    assert server.tier == (tier or "auto")
 
 
 @pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
@@ -785,7 +786,7 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
 
 def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     """验证托管 server 使用正式 mineru-kit api-server 命令。"""
-    server = ManagedLocalApiServer(
+    server = ManagedLocalRouter(
         tier="standard",
         concurrency=3,
         disable_image_analysis=True,
@@ -793,26 +794,21 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
         api_key="secret",
     )
     command = server._command(8123, Path("/tmp/mineru-upload"))
-    assert command[command.index("--log-level") + 1] == "warning"
-    assert command[:4] == [server._command(8123, Path("/tmp/mineru-upload"))[0], "-m", "mineru.kit.main", "api-server"]
-    assert "--tier" in command and command[command.index("--tier") + 1] == "standard"
-    assert "--no-flash" not in command
-    assert "--no-advanced" not in command
-    assert "--preload-models" in command
-    assert "--ocr-mode" not in command
-    assert "--language" not in command
-    assert command[command.index("--api-key") + 1] == "secret"
+    assert command[1:] == ["-m", "mineru.kit.gradio.managed_router", "--port", "8123"]
+    assert server.tier == "standard" and server.preload_models
+    assert server.disable_image_analysis and server.concurrency == 3
+    assert "secret" not in command
     with pytest.raises(TypeError, match="ocr_mode"):
-        ManagedLocalApiServer(ocr_mode="ocr")  # type: ignore[call-arg]
+        ManagedLocalRouter(ocr_mode="ocr")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="api_server_ocr_mode"):
         gradio_app.launch_gradio(api_server_ocr_mode="ocr")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="language"):
-        ManagedLocalApiServer(language="ch")  # type: ignore[call-arg]
+        ManagedLocalRouter(language="ch")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="api_server_language"):
         gradio_app.launch_gradio(api_server_language="ch")  # type: ignore[call-arg]
     for option in ("no_flash", "no_advanced"):
         with pytest.raises(TypeError, match=option):
-            ManagedLocalApiServer(**{option: True})  # type: ignore[arg-type]
+            ManagedLocalRouter(**{option: True})  # type: ignore[arg-type]
         with pytest.raises(TypeError, match=f"api_server_{option}"):
             gradio_app.launch_gradio(**{f"api_server_{option}": True})  # type: ignore[arg-type]
 
@@ -880,14 +876,15 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
         """返回测试控制通道。"""
         return fake_control
 
-    def fake_wait_until_ready(_server: ManagedLocalApiServer) -> None:
+    def fake_wait_until_ready(_server: ManagedLocalRouter) -> None:
         """跳过真实 HTTP 健康检查。"""
 
     monkeypatch.setattr(gradio_client.ManagedProcessControl, "create", fake_create_control)
     monkeypatch.setattr(gradio_client.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(ManagedLocalApiServer, "_wait_until_ready", fake_wait_until_ready)
+    monkeypatch.setattr(gradio_client, "create_process_job", lambda process: None)
+    monkeypatch.setattr(ManagedLocalRouter, "_wait_until_ready", fake_wait_until_ready)
 
-    server = ManagedLocalApiServer(tier="flash")
+    server = ManagedLocalRouter(tier="flash")
     server.start()
     assert server._temp_dir is not None
     temp_root = Path(server._temp_dir.name)
@@ -896,11 +893,18 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
     assert "--no-advanced" not in captured["command"]
     assert captured["accepting"] is True
 
+    def fake_stop_tree(process: object, control: object, **kwargs: object) -> None:
+        """只校验父进程关闭委托；真实进程树回收由独立子进程测试覆盖。"""
+        assert kwargs == {"timeout_seconds": 30, "grouped": True, "process_job": None}
+        control.request_shutdown(1.0)
+        process.wait(timeout=1)
+
+    monkeypatch.setattr(gradio_client, "stop_process_tree", fake_stop_tree)
     server.stop()
 
     assert not temp_root.exists()
     assert captured["closed"] is True
-    assert captured["shutdown_timeout"] == 3.0
+    assert captured["shutdown_timeout"] == 1.0
     assert "terminated" not in captured
 
 

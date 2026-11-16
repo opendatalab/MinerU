@@ -68,6 +68,20 @@ class _AsyncClient:
 
 
 @pytest.fixture
+def compatible_vllm_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """为引擎替身提供真实形态的兼容版本元数据，保留启动前检查。"""
+    from importlib.metadata import PackageNotFoundError
+    from types import SimpleNamespace
+
+    from mineru.model.vlm import engine_utils
+
+    versions = {"vllm": "0.29.0", "transformers": "5.23.0"}
+    monkeypatch.setattr(
+        engine_utils, "metadata", SimpleNamespace(version=versions.__getitem__, PackageNotFoundError=PackageNotFoundError)
+    )
+
+
+@pytest.fixture
 def native_runtime() -> Any:
     """创建可跨线程使用的原生异步运行时并保证用例后关闭。"""
     runtime = AsyncVlmPredictor(lambda: RuntimeHandle(_AsyncClient(), backend="test"), backend="test", max_concurrency=2)
@@ -250,7 +264,10 @@ def test_failed_initialization_does_not_poison_cache(monkeypatch: pytest.MonkeyP
         manager.shutdown()
 
 
-def test_vllm_sync_and_async_names_resolve_to_one_async_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_vllm_sync_and_async_names_resolve_to_one_async_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    compatible_vllm_metadata: None,
+) -> None:
     """同步引擎名称在托管边界规范化，防止初始化两套 vLLM 权重。"""
     from mineru.model.vlm import runtime
 
@@ -277,7 +294,10 @@ def test_vllm_sync_and_async_names_resolve_to_one_async_engine(monkeypatch: pyte
         manager.shutdown()
 
 
-def test_real_model_factory_constructs_async_llm_on_owner_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_real_model_factory_constructs_async_llm_on_owner_loop(
+    monkeypatch: pytest.MonkeyPatch,
+    compatible_vllm_metadata: None,
+) -> None:
     """真实 MinerU 工厂必须在所属循环构造 AsyncLLM，并只关闭一次自有引擎。"""
     import sys
     from types import ModuleType

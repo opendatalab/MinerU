@@ -65,7 +65,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 `mineru-kit` 参数暂不划分 `stable` / `experimental` 等稳定性等级。第一阶段保持参数体系简单，后续只有在兼容性压力明确出现时再引入分级。
 
-`mineru-kit webui` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback `mineru-kit api-server`；指定 URL 时只连接已有的 V1 服务，不会静默改连官方远程服务。`mineru-webui` 提供为同一新版命令的独立入口，不再提供旧 HTTP 协议或旧参数。
+`mineru-kit webui` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback Router，由 Router 管理唯一的 API worker；指定 URL 时只连接已有的 V1 服务。`mineru-webui` 提供同一新版命令的独立入口。
 
 当前 `mineru-kit parse` 已确定：
 
@@ -88,10 +88,11 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 当前 `mineru-kit router` 已确定：
 
-- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`、`--admin-api-key`。
+- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--task-timeout`、`--preload-models`、`--admin-api-key`。
 - `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
-- `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
-- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 是包含较低档位的上限，可选 flash/basic/standard/advanced，默认 standard；`--worker-concurrency` 默认 `1`。
+- `--local-gpus` 支持 `auto`、`inherit`、`none` 或 GPU CSV，例如 `0,1,2`；`inherit` 仅启动一个继承设备环境的 worker，不枚举或重写可见 GPU。
+- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 可选 auto/flash/basic/standard/advanced，默认 auto，由各 worker 在自己的设备环境中沿用 API server 的自动选档逻辑确定上限；显式指定档位时，上限包含较低档位；`--worker-concurrency` 默认 `1`。
+- `--task-timeout` 为每个文件取得解析名额后的执行秒数上限，默认 `3600`，必须为正整数；排队和上传不计入。Router 独立监督本地 worker 的实际执行和取消清理，超时后结束旧请求并重建 worker；外部 upstream 不由本层终止或重启。
 - Router 提供 V1 health、models、tiers、usage、按 ID 操作 Files，以及 `/v1/tasks` JSON 创建、按 ID 查询/取消、逐文件上传和结果下载；不提供任务或文件列表。
 - Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
 - tasks 与 files 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。

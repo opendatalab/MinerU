@@ -591,9 +591,15 @@ ZH_MESSAGES: dict[str, str] = {
     "Unsupported worker tier '{tier}'. Supported tiers: {tiers}": "不支持的 worker 档位 '{tier}'。支持的档位: {tiers}",
     "Enable auto-reload": "启用自动重载",
     "Existing MinerU V1 API base URL; repeat to add upstreams": "既有的 MinerU V1 API 基础 URL;可重复传入以添加多个上游",
-    "Local workers: auto, none, or GPU CSV": "本地 worker: auto、none 或 GPU 列表(CSV)",
+    "Local workers: auto, inherit, none, or GPU CSV": "本地 worker: auto、inherit、none 或 GPU 列表(CSV)",
+    "Maximum execution seconds per file": "单文件最大执行秒数（不含排队，默认 3600）",
+    "Maximum execution seconds per file (managed mode only; default: 3600)": (
+        "单文件最大执行秒数（仅托管模式生效，默认 3600）"
+    ),
     "Host for managed api-server workers": "托管 api-server worker 的主机",
-    "Managed worker tier ceiling: flash, basic, standard, advanced": "托管 worker 档位上限: flash、basic、standard、advanced",
+    "Managed worker tier ceiling: auto, flash, basic, standard, advanced": (
+        "托管 worker 档位上限: auto、flash、basic、standard、advanced"
+    ),
     "Concurrency per managed worker": "每个托管 worker 的并发数",
     "Preload models in managed workers": "在托管 worker 中预加载模型",
     # -------------------------------------------------------- kit common

@@ -549,7 +549,8 @@ def test_api_client_disables_env_proxy_for_local_network_urls() -> None:
 
 def test_api_client_poll_timeout_budget_is_one_hour() -> None:
     """验证 v1 job 轮询最大等待预算为 1 小时。"""
-    assert api_client._POLL_INTERVAL_SECONDS * api_client._POLL_MAX_ATTEMPTS == 60 * 60
+    assert api_client._POLL_INTERVAL_SECONDS == 1
+    assert MinerUApiParser().poll_timeout_seconds == 60 * 60
 
 
 def test_api_client_constructor_exposes_request_ocr_without_legacy_options() -> None:
