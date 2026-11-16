@@ -2,6 +2,16 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.2.3
+
+- **Add per-file execution timeouts and managed recovery**. WebUI, Router, and API Server support `--task-timeout`, defaulting to `3600` seconds from acquiring an execution slot through parsing and server-side artifact packaging. Timed-out tasks return `task_timeout`. A standalone API stops accepting new work and relies on its deployment host to recreate the service. Router supervises local workers from the parent process, reclaims timed-out workers and model subprocesses, and restarts the service even when execution threads, the event loop, or cancellation cleanup stall.
+- **Improve WebUI recovery and process cleanup**. Local WebUI uses Router to manage a single worker, displays recovery status, and resumes queued requests awaiting submission once the service is ready. Other unfinished requests on the replaced worker return `worker_restarted`, and affected files can be retried manually. Improve Windows process-tree, temporary-directory, and control-channel cleanup, surface model preload failures, and stop automatic recovery after three consecutive startup failures.
+- **Keep image payloads out of Doclib full-text indexes**. Build search text from body content, formulas, and figure or table descriptions before applying the character budget, preventing embedded image base64 data from crowding out searchable text. Rebuild existing indexes from cached parse results during upgrade while preserving cross-page continuations. Documents with incomplete caches record a migration reason and can resume migration after restoring or reparsing the cache and restarting Doclib.
+- **Check vLLM and Transformers compatibility before startup**. Detect the incompatible combination of `vllm<0.29.0` and `transformers>=5.23.0` before engine initialization, with actionable guidance to upgrade vLLM or select a compatible Transformers range.
+- **Update DocVortex**. Raise the minimum version to `0.6.24` for native document parsing and shared rendering improvements.
+
+**Configuration note**. Router now defaults `--worker-tier` to `auto`, allowing each worker to select its tier ceiling from its device environment. Specify `flash`, `basic`, `standard`, or `advanced` for a fixed ceiling. `--task-timeout` requires a positive integer. Uploads, queueing, client downloads, and model startup preloading use their own waiting and lifecycle settings.
+
 ## 4.2.2
 
 - **Improve local VLM failure propagation and lifecycle management**. Consume shared health and failure contracts for LMDeploy, vLLM, llama.cpp, and MLX. Confirmed engine failure invalidates cached instances and notifies their hosts, preventing a global outage from silently becoming a local recognition fallback. Ordinary per-crop failures retain the existing fallback behavior.
