@@ -39,9 +39,9 @@ from ..tasks.contracts import TaskFileIdentity
 from ..types import PageInfo, Tier, validate_tier
 from .base import DocumentParser, ParseResult
 from .page_range import normalize_page_range_input
+from .execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, validate_timeout
 
 _POLL_INTERVAL_SECONDS = 1
-_POLL_MAX_ATTEMPTS = 3600
 _TASK_CREATE_TIMEOUT_SECONDS = 120.0
 _TASK_CANCEL_TIMEOUT_SECONDS = 5.0
 _TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
@@ -131,6 +131,7 @@ class MinerUApiParser(DocumentParser):
         tier: Tier | None = None,
         ocr_mode: Literal["auto", "txt", "ocr"] | None = None,
         include_images: bool = False,
+        poll_timeout_seconds: float | None = DEFAULT_TASK_TIMEOUT_SECONDS,
     ) -> None:
         """只保存显式配置，不在构造时联网或读取文件。"""
         if ocr_mode is not None and ocr_mode not in ("auto", "txt", "ocr"):
@@ -141,6 +142,9 @@ class MinerUApiParser(DocumentParser):
         self.tier = validate_tier(tier) if tier is not None else None
         self.ocr_mode = ocr_mode
         self.include_images = include_images
+        self.poll_timeout_seconds = (
+            validate_timeout(poll_timeout_seconds, "poll_timeout_seconds") if poll_timeout_seconds is not None else None
+        )
 
     def _headers(self) -> dict[str, str]:
         """生成仅用于 API 同源地址的认证头。"""
@@ -272,8 +276,9 @@ class MinerUApiParser(DocumentParser):
             task = self._upload_input(
                 cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
             )
-            for _ in range(_POLL_MAX_ATTEMPTS):
-                if task["status"] in _TERMINAL_JOB_STATUSES:
+            deadline = None if self.poll_timeout_seconds is None else time.monotonic() + self.poll_timeout_seconds
+            while task["status"] not in _TERMINAL_JOB_STATUSES:
+                if deadline is not None and time.monotonic() >= deadline:
                     break
                 time.sleep(_POLL_INTERVAL_SECONDS)
                 task = self._query(cli, task)
@@ -436,8 +441,9 @@ class MinerUApiParser(DocumentParser):
                 task = await self._async_upload_input(
                     cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
                 )
-                for _ in range(_POLL_MAX_ATTEMPTS):
-                    if task["status"] in _TERMINAL_JOB_STATUSES:
+                deadline = None if self.poll_timeout_seconds is None else time.monotonic() + self.poll_timeout_seconds
+                while task["status"] not in _TERMINAL_JOB_STATUSES:
+                    if deadline is not None and time.monotonic() >= deadline:
                         break
                     await asyncio.sleep(_POLL_INTERVAL_SECONDS)
                     task = await self._async_query(cli, task)

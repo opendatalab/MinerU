@@ -74,7 +74,7 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
     demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={"css": "test-css", "js": "test-js"})
     build = Mock(return_value=demo)
     managed_server = Mock()
-    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", managed_server)
+    monkeypatch.setattr(gradio_app, "ManagedLocalRouter", managed_server)
     monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
     monkeypatch.setattr(gradio_app, "build_gradio_app", build)
     gradio_app.launch_gradio(
@@ -101,7 +101,7 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
     """验证无远程地址时托管 API server 沿用配置、不禁用档位并在退出时停止。"""
     captured: dict[str, object] = {}
 
-    class FakeManagedLocalApiServer:
+    class FakeManagedLocalRouter:
         """记录托管 API server 的构造参数和生命周期。"""
 
         def __init__(self, **kwargs: object) -> None:
@@ -120,7 +120,7 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
     capabilities = V1ServerCapabilities("http://127.0.0.1:18000", ("flash", "standard"), ("zip",), ("file_id",))
     client = SimpleNamespace(discover=AsyncMock(return_value=capabilities), capabilities=capabilities)
     demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={})
-    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", FakeManagedLocalApiServer)
+    monkeypatch.setattr(gradio_app, "ManagedLocalRouter", FakeManagedLocalRouter)
     monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
     monkeypatch.setattr(gradio_app, "build_gradio_app", Mock(return_value=demo))
 
@@ -141,6 +141,7 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
     assert captured["options"] == {
         "tier": "standard",
         "concurrency": 2,
+        "task_timeout_seconds": 3600,
         "disable_image_analysis": False,
         "preload_models": False,
         "api_key": None,
@@ -177,7 +178,7 @@ def test_launch_remote_preserves_capabilities_without_local_fallback(
         demo.launch.side_effect = failure
     monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
     monkeypatch.setattr(gradio_app, "V1ArtifactClient", factory)
-    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", server_factory)
+    monkeypatch.setattr(gradio_app, "ManagedLocalRouter", server_factory)
     monkeypatch.setattr(gradio_app, "build_gradio_app", build)
     options = {
         "api_url": remote_cap.base_url,

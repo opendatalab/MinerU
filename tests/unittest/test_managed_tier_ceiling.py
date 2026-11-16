@@ -12,7 +12,7 @@ from mineru.doclib.background.parse_server_health import api_server_args_for_tie
 from mineru.doclib.config_schema import validate_config_value
 from mineru.errors import InvalidRequestError
 from mineru.kit.gradio import app as gradio_app
-from mineru.kit.gradio.client import ManagedLocalApiServer, V1ServerCapabilities
+from mineru.kit.gradio.client import ManagedLocalRouter, V1ServerCapabilities
 from mineru.kit.router.workers import ManagedLocalWorker, RouterSettings
 from mineru.types import SERVER_STARTUP_TIERS, ManagedServerTier, ServerStartupTier
 from pathlib import Path
@@ -23,9 +23,9 @@ def test_managed_ceiling_is_forwarded(tier: ManagedServerTier, tmp_path: Path) -
     """所有托管方原样传递单档上限，不额外展开或补齐 Advanced。"""
     validate_config_value("parse_server.local.managed_tier", tier)
     assert server._validate_managed_parse_server_tier(tier, "tier") == tier
+    assert ManagedLocalRouter(tier=tier).tier == tier
     commands = [
         api_server_args_for_tier(tier, host="127.0.0.1", port=8000),
-        ManagedLocalApiServer(tier=tier)._command(8000, tmp_path),
         ManagedLocalWorker("worker", "127.0.0.1", None, RouterSettings(worker_tier=tier)).command(8000, tmp_path),
     ]
     for command in commands:
@@ -66,7 +66,7 @@ def test_remote_standard_only_gradio_never_starts_local_server(
     managed = Mock(side_effect=AssertionError("must not start local fallback"))
     build = Mock(return_value=object())
     monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
-    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", managed)
+    monkeypatch.setattr(gradio_app, "ManagedLocalRouter", managed)
     monkeypatch.setattr(gradio_app, "build_gradio_app", build)
     monkeypatch.setattr(gradio_app, "_launch_gradio_app", Mock())
     gradio_app.launch_gradio(

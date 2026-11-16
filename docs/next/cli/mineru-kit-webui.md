@@ -45,7 +45,7 @@ UI 也可安装在独立环境，通过 `--api-url` 连接推理服务。
 pip install mineru
 ```
 
-自动启动本地 V1 API server：
+自动启动本地 Router 和唯一的 V1 API worker：
 
 ```bash
 mineru-kit webui
@@ -63,7 +63,7 @@ mineru-kit webui \
   --api-key "$MINERU_API_KEY"
 ```
 
-未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 `--tier auto`，由 API Server 按硬件和有效后端推荐 PDF/图片上限；可用 `--tier flash|basic|standard|advanced` 显式指定上限。原生文档始终支持并固定 flash。所有文件通过 Tasks 提交 hash 清单，缓存未命中时上传，同机也不使用路径免上传。
+未指定 `--api-url` 时，Gradio 会托管一个 loopback Router，由 Router 监督唯一的 API worker。worker 继承设备可见性，默认 `--tier auto`，由 API Server 按硬件和有效后端推荐 PDF/图片上限；可显式指定上限。原生文档始终支持并固定 flash。所有文件通过 Tasks 提交 hash 清单，缓存未命中时上传。
 
 未指定 `--server-port` 时，界面由 Gradio 从 `7860` 开始寻找空闲端口；可通过 `GRADIO_SERVER_PORT` 设置起始端口、`GRADIO_NUM_PORTS` 设置尝试数量（默认 `100`）。显式指定 `--server-port 7861` 时只尝试该端口，覆盖环境变量；该端口已被占用则启动失败。界面最终访问地址以启动输出为准，与内部 API server 的端口不同。
 
@@ -76,6 +76,7 @@ mineru-kit webui \
 | `--server-name` / `--server-port` | Gradio UI 的监听地址和端口；省略端口时自动寻找空闲端口。 |
 | `--output-dir` | 本地 UI 产物根目录，默认 `./output`。 |
 | `--max-pages` | 单次 PDF 解析的最多页数，必须为正整数；省略则不限制。不限制非 PDF。 |
+| `--task-timeout` | 托管 worker 的单文件执行期限，单位秒，默认 `3600`，必须为正整数；外部 `--api-url` 模式由远端配置期限。 |
 | `--tier` | 自托管 API Server 的上限：`auto`（默认）、`flash`、`basic`、`standard`、`advanced`；指定 `--api-url` 时忽略。 |
 | `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
 | `--api-server-preload-models` | 在自动启动阶段预加载模型。 |
@@ -86,6 +87,20 @@ mineru-kit webui \
 Gradio 只保留 `--tier`，不接受旧名 `--api-server-tier`。Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advanced`、`--no-advanced`；传入会报错。独立 API 与 WebUI 的单值托管配置统一表示能力上限，并包含自身和全部较低档位。
 
 指定外部 `--api-url` 时，Gradio 校验 `/v1/health` 和 `/v1/tiers` 后直接使用该服务。公开 tiers 只约束 PDF/图片；原生文档同样上传给远端，不因列表中缺少 flash 而启动本地补充服务或增加 PDF 档位。认证只用于所连接服务，连接或解析失败保持原错误。
+
+## 执行超时与恢复
+
+```bash
+mineru-webui --max-pages 20 --preload-models --task-timeout 600
+```
+
+执行期限从取得解析名额开始，到解析和服务端产物写出完成；上传、排队、客户端下载及启动预加载不计入。取消后的实际清理仍受监督。
+超时请求返回 `task_timeout`，同一旧 worker 上其他未完成请求返回 `worker_restarted`。Router 回收旧进程及模型子进程后重新加载，期间界面显示“解析服务恢复中”。问题文件不自动重试；本地尚未提交的排队请求在恢复后继续。
+
+连续三次启动恢复失败后停止自动重试，并显示恢复失败。已物化到 WebUI 的产物保留；尚未取得的旧 worker 产物不保证可用。
+`MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS` 继续单独控制模型启动等待，默认 `300` 秒，ModelScope 可保留 `1800` 秒；它不受 `--task-timeout 600` 缩短。
+
+SDK 的 `MinerUApiParser(poll_timeout_seconds=3600)` 控制客户端等待预算；显式 `None` 等待服务端终态。托管 WebUI 使用后者并由 Router 监督执行，外部 API 模式保留一小时客户端等待预算。
 
 ## 解析流程
 

@@ -10,6 +10,7 @@ import typer
 from packaging.specifiers import SpecifierSet
 
 from ...types import SERVER_STARTUP_TIERS, ServerStartupTier
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
@@ -68,6 +69,10 @@ def webui_cmd(
     ),
     output_dir: str = typer.Option("./output", "--output-dir", help=t("Directory for Web UI artifacts")),
     max_pages: int | None = typer.Option(None, "--max-pages", help=t("Maximum pages per PDF conversion; omitted: unlimited")),
+    task_timeout: int = typer.Option(
+        DEFAULT_TASK_TIMEOUT_SECONDS, "--task-timeout", min=1,
+        help=t("Maximum execution seconds per file (managed mode only; default: 3600)")
+    ),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
     tier: str = typer.Option(
@@ -108,6 +113,7 @@ def webui_cmd(
             server_port=server_port,
             output_dir=output_dir,
             max_pages=max_pages,
+            task_timeout_seconds=task_timeout,
             enable_example=enable_example,
             enable_api=enable_api,
             tier=normalized_tier,

@@ -4,6 +4,7 @@ import click
 import typer
 
 from ...parser import api_server as parser_api_server
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
@@ -14,9 +15,7 @@ def api_server_cmd(
     host: str = typer.Option("127.0.0.1", "--host", help=t("Server host")),
     port: int = typer.Option(8000, "--port", help=t("Server port")),
     upload_dir: str = typer.Option("", "--upload-dir", help=t("Upload directory")),
-    tier: str = typer.Option(
-        "auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")
-    ),
+    tier: str = typer.Option("auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")),
     retention_seconds: int | None = typer.Option(
         None,
         "--retention-seconds",
@@ -25,6 +24,9 @@ def api_server_cmd(
         help=t("Terminal retention seconds (default 86400; 0 disables collection)"),
     ),
     concurrency: int = typer.Option(1, "--concurrency", help=t("Maximum concurrent parse jobs")),
+    task_timeout: int = typer.Option(
+        DEFAULT_TASK_TIMEOUT_SECONDS, "--task-timeout", min=1, help=t("Maximum execution seconds per file")
+    ),
     url_timeout: int = typer.Option(60, "--url-timeout", help=t("Timeout for URL source downloads")),
     allow_http_source: bool = typer.Option(False, "--allow-http-source", help=t("Allow URL sources to use plain HTTP")),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
@@ -75,6 +77,8 @@ def api_server_cmd(
                 *(["--retention-seconds", str(retention_seconds)] if retention_seconds is not None else []),
                 "--concurrency",
                 str(concurrency),
+                "--task-timeout",
+                str(task_timeout),
                 "--url-timeout",
                 str(url_timeout),
                 "--tier",

@@ -18,7 +18,7 @@ from typer.testing import CliRunner as TyperRunner
 from mineru.kit.commands.api_server import main as standalone_main
 from mineru.kit.main import app as kit_app
 from mineru.kit.gradio.app import build_gradio_app
-from mineru.kit.gradio.client import ManagedLocalApiServer, V1ArtifactClient
+from mineru.kit.gradio.client import ManagedLocalRouter, V1ArtifactClient
 from mineru.model.runtime import tier_recommendation
 from mineru.parser import api_server
 from mineru.parser.server_tiers import parse_server_tier
@@ -97,8 +97,7 @@ def test_gradio_discovers_auto_server_and_matches_task_default(
     """串联托管命令、自动推荐、真实能力发现、界面构建与 Tasks 默认接单。"""
     recommend = Mock(return_value=SimpleNamespace(pdf_image_tiers=tiers))
     monkeypatch.setattr(tier_recommendation, "recommend_tiers", recommend)
-    command = ManagedLocalApiServer()._command(8000, tmp_path)
-    startup_tier = command[command.index("--tier") + 1]
+    startup_tier = ManagedLocalRouter().tier
     assert startup_tier == "auto"
     app = api_server.create_app(upload_dir=str(tmp_path), tiers=parse_server_tier(startup_tier))
     with TestClient(app) as client:

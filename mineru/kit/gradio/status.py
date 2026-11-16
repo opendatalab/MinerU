@@ -26,6 +26,7 @@ _STEPS = ("prepare", "check", "submit", "queue", "process", "download", "outputs
 _MESSAGE_STEPS = {
     STATUS_PREPARING_REQUEST: 0,
     STATUS_CHECKING_SERVER: 1,
+    "Parse service is recovering...": 1,
     STATUS_SUBMITTING_TASK: 2,
     STATUS_PREPARING_FILE: 2,
     STATUS_QUEUED_LOCALLY: 3,

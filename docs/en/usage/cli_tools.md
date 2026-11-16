@@ -105,7 +105,9 @@ The wrapper defaults to port 8003, accepts multipart, and calls upstream Tasks; 
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-webui` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
+Without `--api-url`, Gradio manages a loopback Router with one API worker. With `--api-url`, it connects only to that V1 service. `mineru-webui` accepts the same options.
+
+`--task-timeout` limits execution time per file in managed mode (default: `3600` seconds). For example: `mineru-webui --max-pages 20 --preload-models --task-timeout 600`. Uploads, queue time and model startup are excluded. On timeout, affected requests fail and Router replaces the worker before accepting more work; the failed document is not retried automatically. `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS` controls startup waiting separately.
 
 Gradio accepts only `--tier auto|flash|basic|standard|advanced`, defaulting to `auto`, for the managed API Server ceiling. The old `--api-server-tier` option has been removed. The UI and Tasks share the Standard → Basic → Flash → Advanced default order; Advanced is automatic only when it is the sole available tier.
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ...tasks.execution import TaskExecution
+from ...tasks.contracts import ErrorDetail
 
 if TYPE_CHECKING:
     from .workers import JobReservation
@@ -31,6 +32,7 @@ class ExecutionRouteState:
     reservation: JobReservation | None = None
     upstream_headers: dict[str, str] = field(default_factory=dict)
     upstream_lost: bool = False
+    loss_error: ErrorDetail | None = None
     # 租约指向的结果可能在执行快照因 worker 丢失而失效后仍需清理。
     result_file_id: str | None = None
 
