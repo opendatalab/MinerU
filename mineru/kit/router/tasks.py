@@ -117,7 +117,7 @@ def _worker_path(worker: WorkerState, url: str) -> str:
 def _lost_execution(route: ExecutionRoute) -> TaskExecution:
     """worker 丢失时终结有类型快照，并保留既有资源计数与诊断缓存。"""
     previous = route.state.execution
-    error = ErrorDetail(code="upstream_task_lost", message="Upstream task no longer exists")
+    error = route.state.loss_error or ErrorDetail(code="upstream_task_lost", message="Upstream task no longer exists")
     execution = replace(previous, status="failed", finished_at=utc_now_iso(), result_file_id=None, error=error)
     payload = copy.deepcopy(route.payload or {})
     payload.update(status="failed", finished_at=execution.finished_at)

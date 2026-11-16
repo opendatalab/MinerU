@@ -9,6 +9,7 @@ import hashlib
 import json
 import time
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any, AsyncIterator
 
 import httpx
@@ -17,6 +18,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ...tasks.errors import ApiServerError
 from ...tasks.execution import TaskExecution
+from ...tasks.contracts import ErrorDetail
 from ...tasks.http import build_task_router
 from ...tasks.service import TaskStore
 from ...types import TIERS
@@ -177,23 +179,35 @@ def create_app(
 
     async def _invalidate_replaced_worker(worker: WorkerState) -> None:
         """在本地 worker replacement 发布前移除旧 generation 的资源状态。"""
+        failed: dict[str, TaskExecution] = {}
         for route in registry.list("job"):
             if route.worker_id != worker.worker_id:
                 continue
-            payload = route.payload
-            if not isinstance(payload, dict) or payload.get("status") in {"completed", "partial", "failed", "canceled"}:
+            previous = route.state.execution
+            if previous.status in {"completed", "failed", "canceled"} or route.state.upstream_lost:
                 continue
+            payload = route.payload or {}
+            code = "task_timeout" if route.state.upstream_file_id in worker.timed_out_file_ids else "worker_restarted"
+            error = ErrorDetail(code=code, message="Task execution timed out" if code == "task_timeout"
+                                else "Worker was replaced; please retry")
             route.state.release_reservation()
             route.state.upstream_lost = True
+            route.state.loss_error = error
+            route.state.execution = replace(previous, status="failed", finished_at=utc_now_iso(),
+                                            result_file_id=None, error=error)
+            failed[route.public_id] = route.state.execution
+            route.finalized_at = route.state.execution.finished_at
             payload["status"] = "failed"
             payload["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             for file in payload.get("files") or []:
                 if file.get("status") != "completed":
                     file["status"] = "failed"
-                    file["error"] = {"code": "engine_dead", "message": "Worker engine was replaced"}
+                    file["error"] = error.model_dump()
+            route.payload = payload
             progress = payload.get("progress")
             if isinstance(progress, dict):
                 progress["failed"] = progress.get("total", 0) - progress.get("completed", 0)
+        task_store.invalidate_executions(failed)
         for route in registry.remove_worker(worker.worker_id):
             if route.kind == "file":
                 source_store.delete_file(route.public_id)
@@ -281,6 +295,22 @@ def create_app(
     application.state.collect_resources_once = collect_resources_once
     application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+    @application.middleware("http")
+    async def managed_auth(request: Request, call_next: Any) -> Response:
+        """仅托管 WebUI 保留原 API 固定密钥边界，普通 Router 继续原有调用方隔离。"""
+        if resolved_settings.managed_webui and resolved_settings.worker_api_key:
+            path = request.url.path
+            root = request.scope.get("root_path", "").rstrip("/")
+            if root and path.startswith(root + "/"):
+                path = path[len(root):]
+            public = path in {"/v1/health", "/v1/models", "/v1/tiers"} or path.startswith(
+                ("/v1/models/", "/openapi", "/docs", "/redoc")
+            )
+            if not public and request.headers.get("authorization") != f"Bearer {resolved_settings.worker_api_key}":
+                return JSONResponse({"error": {"code": "invalid_api_key", "message": "Invalid or missing API key"}},
+                                    status_code=401)
+        return await call_next(request)
+
     async def _reconcile_once_for_state() -> None:
         """向测试和诊断入口暴露一次显式 Job reconciliation。"""
         await _reconcile_jobs_once(registry, pool)
@@ -297,6 +327,12 @@ def create_app(
         """聚合健康 worker 的 source/output 能力并返回 Router V1 health。"""
         workers = pool.healthy_workers()
         if not workers:
+            if resolved_settings.managed_webui:
+                for worker in pool.workers:
+                    if worker.startup_error is not None:
+                        raise RouterProxyError(503, worker.startup_error.code, worker.startup_error.message)
+            if any(worker.recovery_exhausted for worker in pool.workers):
+                raise RouterProxyError(503, "recovery_failed", "Parse service recovery failed")
             raise RouterProxyError(503, "upstream_unavailable", "No healthy MinerU V1 upstream is available")
         sources = sorted({source for worker in workers for source in worker.features.get("sources") or []})
         task_output_formats = sorted(
@@ -306,6 +342,8 @@ def create_app(
             {
                 "status": "ok",
                 "version": __version__,
+                **({"runtime": workers[0].runtime} if resolved_settings.managed_webui
+                   and len(workers) == 1 and workers[0].runtime is not None else {}),
                 "features": {
                     "task_output_formats": task_output_formats,
                     "sources": sources,

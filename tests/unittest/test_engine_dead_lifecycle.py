@@ -218,7 +218,7 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
 
         execution = client.portal.call(snapshot)
         assert execution.status == "failed"
-        assert execution.error is not None and execution.error.code == "upstream_task_lost"
+        assert execution.error is not None and execution.error.code == "worker_restarted"
         pool._workers = {state.worker_id: state}
         reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
         assert reservation is not None and reservation.worker is state

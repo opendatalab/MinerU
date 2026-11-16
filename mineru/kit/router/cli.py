@@ -7,11 +7,12 @@ from typing import cast
 
 import typer
 
-from ...types import SERVER_TIERS, ServerTier
+from ...types import SERVER_STARTUP_TIERS, ServerStartupTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.server import run_server
 from ...utils.stdio import configure_standard_streams
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS
 from ..errors import exit_with_message
 from .app import create_app
 from .workers import RouterSettings
@@ -26,12 +27,15 @@ def router_cmd(
         "--upstream-url",
         help=t("Existing MinerU V1 API base URL; repeat to add upstreams"),
     ),
-    local_gpus: str = typer.Option("auto", "--local-gpus", help=t("Local workers: auto, none, or GPU CSV")),
+    local_gpus: str = typer.Option("auto", "--local-gpus", help=t("Local workers: auto, inherit, none, or GPU CSV")),
     worker_host: str = typer.Option("127.0.0.1", "--worker-host", help=t("Host for managed api-server workers")),
     worker_tier: str = typer.Option(
-        "standard", "--worker-tier", help=t("Managed worker tier ceiling: flash, basic, standard, advanced")
+        "auto", "--worker-tier", help=t("Managed worker tier ceiling: auto, flash, basic, standard, advanced")
     ),
     worker_concurrency: int = typer.Option(1, "--worker-concurrency", help=t("Concurrency per managed worker")),
+    task_timeout: int = typer.Option(
+        DEFAULT_TASK_TIMEOUT_SECONDS, "--task-timeout", min=1, help=t("Maximum execution seconds per file")
+    ),
     retention_seconds: int | None = typer.Option(
         None,
         "--retention-seconds",
@@ -48,13 +52,13 @@ def router_cmd(
     ),
 ) -> None:
     """启动只暴露 MinerU V1 API 的独立 Router 服务。"""
-    if worker_tier not in SERVER_TIERS:
+    if worker_tier not in SERVER_STARTUP_TIERS:
         exit_with_message(
             "invalid_request",
             t(
                 "Unsupported worker tier '{tier}'. Supported tiers: {tiers}",
                 tier=worker_tier,
-                tiers=", ".join(SERVER_TIERS),
+                tiers=", ".join(SERVER_STARTUP_TIERS),
             ),
             "worker_tier",
         )
@@ -63,11 +67,12 @@ def router_cmd(
             upstream_urls=tuple(upstream_url or ()),
             local_gpus=local_gpus,
             worker_host=worker_host,
-            worker_tier=cast(ServerTier, worker_tier),
+            worker_tier=cast(ServerStartupTier, worker_tier),
             worker_concurrency=worker_concurrency,
             preload_models=preload_models,
             retention_seconds=retention_seconds,
             admin_api_key=admin_api_key,
+            task_timeout_seconds=task_timeout,
         )
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc))

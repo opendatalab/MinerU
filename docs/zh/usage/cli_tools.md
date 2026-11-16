@@ -103,7 +103,9 @@ mineru-kit file-parse-server --api-url http://127.0.0.1:8000
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-webui` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
+未传 `--api-url` 时，Gradio 会托管 loopback Router，由 Router 管理唯一的 API worker；传入后只连接指定的 V1 服务。`mineru-webui` 接受相同参数。
+
+`--task-timeout` 设置托管 worker 的单文件执行期限，默认 `3600` 秒；例如 `mineru-webui --max-pages 20 --preload-models --task-timeout 600`。上传、排队和模型启动不计入。超时后旧请求明确失败，Router 重建 worker 后继续处理后续请求，不自动重跑问题文件。`MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS` 单独控制启动等待。
 
 Gradio 只保留 `--tier auto|flash|basic|standard|advanced`，默认 `auto`，仅用于自托管 API Server 的上限。旧参数 `--api-server-tier` 已移除。界面与 Tasks 共享默认选档顺序 Standard → Basic → Flash → Advanced；仅开放 Advanced 时自动选择它。
 

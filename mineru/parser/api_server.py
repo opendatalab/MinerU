@@ -71,6 +71,7 @@ from .page_range import (
     format_page_range as _compact_page_numbers,
 )
 from .process_control import ManagedProcessControlWatcher
+from .execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, ExecutionLease, ExecutionReporter, validate_timeout
 from .server_tiers import model_tier_for_server_tiers, parse_server_tier, resolve_server_tiers
 from .url_source import UrlSourceTransport
 from .tier import (
@@ -797,7 +798,11 @@ def _discard_unfinished_output(rec: _ExecutionRecord) -> None:
 class ExecutionStore:
     """管理本地单文件执行、并发名额及结果保留期。"""
 
-    def __init__(self, concurrency: int = 1, retention_seconds: int = 86400) -> None:
+    def __init__(
+        self, concurrency: int = 1, retention_seconds: int = 86400, *,
+        task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS,
+        execution_reporter: ExecutionReporter | None = None,
+    ) -> None:
         """初始化本应用执行状态、准备限流与解析信号量。"""
         self.retention_seconds = retention_seconds
         self._jobs_created = 0
@@ -812,6 +817,57 @@ class ExecutionStore:
         self._completion_events: dict[str, asyncio.Event] = {}
         self._closing = False
         self.runtime_owner = RuntimeOwner()
+        self.task_timeout_seconds = validate_timeout(task_timeout_seconds, "task_timeout_seconds")
+        self.execution_reporter = execution_reporter
+        self._execution_leases: dict[str, ExecutionLease] = {}
+        self._deadline_task: asyncio.Task[None] | None = None
+        self._timeout_error: ErrorDetail | None = None
+
+    def _begin_execution(self, rec: _ExecutionRecord) -> None:
+        """取得解析名额后计时；排队、上传及模型预加载不消耗执行预算。"""
+        lease = ExecutionLease(rec.id, rec.request.file_id, time.monotonic() + self.task_timeout_seconds)
+        self._execution_leases[rec.id] = lease
+        if self.execution_reporter is not None:
+            self.execution_reporter.execution_started(lease)
+        if self._deadline_task is None or self._deadline_task.done():
+            self._deadline_task = asyncio.create_task(self._watch_deadlines(), name="mineru-execution-deadlines")
+
+    def _end_execution(self, execution_id: str) -> None:
+        """只在实际执行及清理结束时撤销期限，不能用公开 canceled 状态代替。"""
+        if self._execution_leases.pop(execution_id, None) is not None and self.execution_reporter is not None:
+            self.execution_reporter.execution_finished(execution_id)
+
+    async def _watch_deadlines(self) -> None:
+        """独立 API 也发布超时失败；托管父进程另外监督事件循环失效场景。"""
+        while self._execution_leases and self._timeout_error is None:
+            now = time.monotonic()
+            expired = {
+                key for key, lease in self._execution_leases.items()
+                if lease.deadline <= now and key in self._tasks and not self._tasks[key].done()
+            }
+            if expired:
+                self._fail_timeout(expired)
+                return
+            await asyncio.sleep(min(0.25, self.task_timeout_seconds))
+
+    def _fail_timeout(self, expired: set[str]) -> None:
+        """先发布终态并拒绝接单，再请求取消；不等待可能卡住的同步清理。"""
+        self._timeout_error = ErrorDetail(code="task_timeout", message="Task execution exceeded its time limit")
+        if self.execution_reporter is not None:
+            for execution_id in expired:
+                self.execution_reporter.execution_timed_out(self._execution_leases[execution_id])
+        logger.error("Parse worker execution timeout: execution_ids=%s limit=%ss", sorted(expired), self.task_timeout_seconds)
+        for execution_id, task in tuple(self._tasks.items()):
+            rec = self._executions[execution_id]
+            if rec.status not in {"completed", "failed", "canceled"}:
+                rec.status = "failed"
+                rec.error = ErrorDetail(
+                    code="task_timeout" if execution_id in expired else "worker_restarted",
+                    message="Task execution timed out" if execution_id in expired else "Worker became unavailable",
+                )
+                _discard_unfinished_output(rec)
+            if not task.done() and not task.cancelling():
+                task.cancel()
 
     def fail_engine(self, message: str) -> None:
         """标记本应用未结束执行的引擎错误，并沿原边界取消和排空任务。"""
@@ -830,6 +886,8 @@ class ExecutionStore:
 
     def require_ready(self) -> None:
         """健康和提交入口共用引擎死亡状态及现有错误封装。"""
+        if self._timeout_error is not None:
+            raise_api_error(503, code=self._timeout_error.code, message=self._timeout_error.message)
         message = self.runtime_owner.engine_error
         if message is not None:
             self.fail_engine(message)
@@ -868,7 +926,8 @@ class ExecutionStore:
                 else:
                     await self._semaphore.acquire()
                     acquired = True
-                if rec.status == "pending":
+                if rec.status == "pending" and not self._closing:
+                    self._begin_execution(rec)
                     await operation()
             except asyncio.CancelledError:
                 if rec.status != "failed":
@@ -877,6 +936,7 @@ class ExecutionStore:
             finally:
                 rec.prepared_input = None
                 if acquired:
+                    self._end_execution(rec.id)
                     self._semaphore.release()
                 runtime_owner.reset(token)
 
@@ -919,6 +979,8 @@ class ExecutionStore:
     async def shutdown(self) -> None:
         """停止接单并等待所有任务清理，再释放应用持有的推理运行时。"""
         self._closing = True
+        if self._deadline_task is not None:
+            self._deadline_task.cancel()
         tasks = list(self._tasks.items())
         for job_id, task in tasks:
             if not task.done():
@@ -928,6 +990,8 @@ class ExecutionStore:
                 if not task.cancelling():
                     task.cancel()
         try:
+            if self._deadline_task is not None:
+                await asyncio.gather(self._deadline_task, return_exceptions=True)
             await drain_future(asyncio.gather(*(task for _, task in tasks), return_exceptions=True))
         finally:
             from ..model.runtime.ownership import release_runtime_owner
@@ -1848,6 +1912,8 @@ def create_app(
     preload_models: bool = False,
     vlm_config: VlmConfig | None = None,
     retention_seconds: int | None = None,
+    task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS,
+    execution_reporter: ExecutionReporter | None = None,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
 
@@ -1879,7 +1945,12 @@ def create_app(
         Initialize the VLM client and local Hybrid models at startup. Ignored for Flash.
     vlm_config:
         Complete VLM connection configuration override; defaults to global model.vlm settings.
+    task_timeout_seconds:
+        单文件取得执行名额后的最大执行秒数，默认 3600；上传、排队和启动预加载不计入。
+    execution_reporter:
+        托管宿主可显式接收实际执行与清理生命周期；普通内嵌调用无需提供。
     """
+    task_timeout_seconds = validate_timeout(task_timeout_seconds, "task_timeout_seconds")
     retention_seconds = resolve_retention_seconds(retention_seconds)
     upload_dir = upload_dir or ""
     vlm_config = (vlm_config if vlm_config is not None else get_config().model.vlm).model_copy(deep=True)
@@ -2053,7 +2124,10 @@ def create_app(
     application.state.vlm_config = vlm_config
     application.state.model_preload_error = None
     FileStore(_upload_dir, retention_seconds=retention_seconds).install(application.state)
-    ExecutionStore(concurrency=concurrency, retention_seconds=retention_seconds).install(application.state)
+    ExecutionStore(
+        concurrency=concurrency, retention_seconds=retention_seconds,
+        task_timeout_seconds=task_timeout_seconds, execution_reporter=execution_reporter,
+    ).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @application.exception_handler(ApiServerError)
@@ -2179,6 +2253,8 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     type=int,
     help="Timeout in seconds for url source downloads (default: 60)",
 )
+@click.option("--task-timeout", default=DEFAULT_TASK_TIMEOUT_SECONDS, type=click.IntRange(min=1),
+              help="Maximum execution seconds per file, excluding queue time (default: 3600).")
 @click.option(
     "--max-url-bytes",
     default=_MAX_URL_BYTES_DEFAULT,
@@ -2234,6 +2310,7 @@ def main(
     vlm_max_concurrency: int | None,
     log_level: str | None,
     retention_seconds: int | None = None,
+    task_timeout: int = DEFAULT_TASK_TIMEOUT_SECONDS,
 ) -> None:
     """合并显式 VLM 参数后启动 MinerU v1 REST API 服务，不修改全局配置。"""
     configure_standard_streams()
@@ -2283,6 +2360,8 @@ def main(
             preload_models=preload_models,
             vlm_config=vlm_settings,
             retention_seconds=retention_seconds,
+            task_timeout_seconds=task_timeout,
+            execution_reporter=control_watcher,
         )
     except ParseServerStartupError as exc:
         if control_watcher is not None:

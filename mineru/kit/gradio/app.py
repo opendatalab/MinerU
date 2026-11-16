@@ -26,9 +26,10 @@ from ...types import TIERS, ServerStartupTier, Tier, select_default_task_tier
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, render_download
+from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS
 from .client import (
     GradioArtifactClient,
-    ManagedLocalApiServer,
+    ManagedLocalRouter,
     V1ArtifactClient,
     V1ServerCapabilities,
 )
@@ -1338,6 +1339,7 @@ def launch_gradio(
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
+    task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS,
 ) -> None:
     """连接外部服务或托管一个本地服务，原生文档始终由同一服务解析。"""
     configure_standard_streams()
@@ -1346,19 +1348,25 @@ def launch_gradio(
     resolved_api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
     output_root = Path(output_dir).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    managed_server: ManagedLocalApiServer | None = None
+    managed_server: ManagedLocalRouter | None = None
     resolved_api_url = api_url
     try:
         if resolved_api_url is None:
-            managed_server = ManagedLocalApiServer(
+            managed_server = ManagedLocalRouter(
                 tier=tier,
                 concurrency=api_server_concurrency,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key=resolved_api_key,
+                task_timeout_seconds=task_timeout_seconds,
             )
             resolved_api_url = managed_server.start()
         client = V1ArtifactClient(api_url=resolved_api_url, api_key=resolved_api_key)
+        if managed_server is not None:
+            from .client import _startup_timeout_seconds
+
+            client.managed = True
+            client.recovery_timeout_seconds = _startup_timeout_seconds() + 10
         asyncio.run(client.discover())
         routed_client = GradioArtifactClient(client)
         demo = build_gradio_app(

@@ -388,7 +388,9 @@ def test_local_worker_replacement_invalidates_previous_generation_routes() -> No
         assert state.active_jobs == 0
         assert state.tier_metadata["standard"]["current_model"] == "worker-a-model"
         assert registry.find("file", file_route.public_id) is None
-        assert registry.find("job", job_route.public_id) is None
+        assert registry.find("job", job_route.public_id) is job_route
+        assert job_route.state.execution.status == "failed"
+        assert job_route.state.execution.error.code == "worker_restarted"
 
 
 def test_router_console_script_points_to_new_cli() -> None:

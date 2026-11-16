@@ -98,7 +98,7 @@ SaaS 可按共同契约仅发布 standard，原生文档由同一服务解析。
 
 非连续精确集合只用于 Python 工厂或部署方自己的服务配置，不能通过本地 CLI 表达。原 `--tiers standard` 只开放 standard，与新 `--tier standard` 的上限展开语义不同。
 
-WebUI、Router、Doclib 的托管 standard 均只开放到 standard，不再隐含 advanced；需要时显式配置 advanced。WebUI 默认配置为 auto，Router、Doclib 仍为 standard。Doclib 的 `parse_server.local.managed_tier` 支持 basic、standard、advanced，其原生执行路径保持现状。Advanced 的模型检查与下载使用 Standard 模型配置。
+WebUI、Router、Doclib 的托管 standard 均只开放到 standard，不再隐含 advanced；需要时显式配置 advanced。WebUI 和 Router 默认配置为 auto，Doclib 仍为 standard。Doclib 的 `parse_server.local.managed_tier` 支持 basic、standard、advanced，其原生执行路径保持现状。Advanced 的模型检查与下载使用 Standard 模型配置。
 
 ## 4. self-hosted 与 managed
 
@@ -127,6 +127,11 @@ Standard/Advanced 上限复用 Standard 模型配置，Basic 上限使用 Basic 
 OCR 模式通过每次 `POST /v1/tasks` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
 
 模型默认在首次解析时懒加载。`--preload-models` 会在 Basic、Standard 或 Advanced 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；该参数对 Flash 无操作，但 Flash OCR 首次使用时仍需要小模型资源。Doclib managed parse-server 会自动启用模型预加载。
+
+### 执行超时
+
+`--task-timeout` 控制每个文件的实际执行期限，默认 `3600` 秒，必须为正整数；Python 工厂对应 `task_timeout_seconds`。计时从取得执行名额开始，包含解析和产物打包，不包含上传、排队、下载及启动预加载。
+超时后任务进入失败终态、服务拒绝继续接单；独立 API 不自行杀死宿主，由部署方重建。Router 托管模式另有父进程监督，即使 API 事件循环或取消清理挂起，也能回收整个 worker 并恢复。
 
 ### 服务日志级别
 

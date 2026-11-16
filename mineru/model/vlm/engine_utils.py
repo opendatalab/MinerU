@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import json
 import os
+from importlib import metadata
 from typing import Any, Literal
 
 from loguru import logger
@@ -9,6 +10,41 @@ from packaging import version
 from ..runtime.device import get_device
 from ..runtime.memory import get_vram
 from ..runtime.platform import is_linux_environment, is_windows_environment
+
+
+def ensure_vllm_transformers_compatibility() -> None:
+    """仅通过发行包元数据检查兼容性，在启动引擎前拒绝已知不兼容的版本组合。"""
+    installed_versions: dict[str, version.Version] = {}
+    for package in ("vllm", "transformers"):
+        try:
+            installed_version = metadata.version(package)
+        except metadata.PackageNotFoundError as exc:
+            message = (
+                f"Cannot start vLLM: version metadata for '{package}' was not found. "
+                f"Install or reinstall '{package}' in the same Python environment."
+            )
+            logger.error(message)
+            raise RuntimeError(message) from exc
+        try:
+            installed_versions[package] = version.Version(installed_version)
+        except version.InvalidVersion as exc:
+            message = (
+                f"Cannot start vLLM: invalid version metadata for '{package}': {installed_version!r}. "
+                f"Install or reinstall '{package}' with valid version metadata in the same Python environment."
+            )
+            logger.error(message)
+            raise RuntimeError(message) from exc
+
+    if installed_versions["vllm"] < version.Version("0.29.0") and installed_versions["transformers"] >= version.Version(
+        "5.23.0"
+    ):
+        message = (
+            f"Cannot start vLLM: vllm=={installed_versions['vllm']} is incompatible with "
+            f"transformers=={installed_versions['transformers']}. "
+            "Upgrade vLLM to >=0.29.0, or install 'transformers>=5.10.1,<5.23.0' in the same Python environment."
+        )
+        logger.error(message)
+        raise RuntimeError(message)
 
 
 def enable_custom_logits_processors() -> bool:
