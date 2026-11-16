@@ -30,6 +30,9 @@ from mineru.doclib.telemetry.transport import signed_headers
 from mineru.doclib.telemetry import service as telemetry_service_module
 from mineru.doclib.types import ParseRequest
 from mineru.doclib.types import TelemetryObservation, TelemetryObservationsRequest
+from mineru.doclib.rows import FileRow
+from mineru.parser.base import ParseResult
+from mineru.types import MiddleJson, PageInfo, Tier
 
 
 def test_bucket_helpers_use_documented_boundaries() -> None:
@@ -349,26 +352,16 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         async def upsert_filename(self, *args, **kwargs) -> None:
             return None
 
-    class _Result:
-        # 写盘后的源数据回填会读取 middle_json 的 metadata 与 extensions，提供最小合法替身。
-        middle_json = SimpleNamespace(
-            metadata=SimpleNamespace(document=None, file_suffix="pdf"),
-            extensions={},
-        )
-
-        def to_dict(self, *, skip_defaults: bool = True) -> dict:
-            return {"pages": [{"page_idx": 0, "blocks": []}]}
-
-        def markdown(self, *, add_markers: bool = False) -> str:
-            return "content"
-
-        def images(self) -> dict[str, bytes]:
-            """测试替身补齐 ParseResult 图片接口，保持成功路径契约完整。"""
-            return {}
-
     class _ParseService(ParseExecutionService):
-        async def _parse_via_local(self, file_row, tier, page_range):
-            return _Result()
+        async def _parse_via_local(self, file_row: FileRow, tier: Tier, page_range: str) -> ParseResult:
+            """仅替换推理，使用真实页面与元数据协议覆盖索引和遥测的成功收尾。"""
+            return ParseResult(
+                MiddleJson(
+                    metadata={"file_suffix": "pdf", "producer": {"name": "mineru", "version": "test"}},
+                    pages=[PageInfo(page_idx=0, blocks=[])],
+                    is_full_document=True,
+                )
+            )
 
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))

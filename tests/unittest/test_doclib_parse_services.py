@@ -131,7 +131,9 @@ def test_worker_unexpected_execution_error_records_failure_and_unlocks(tmp_path:
                 health=ingest.health,
                 latex_delimiters=LatexDelimitersConfig(),
             )
-            execution = ParseExecutionService(db, fts, config, str(tmp_path), health=ingest.health)
+            execution = ParseExecutionService(
+                db, fts, config, str(tmp_path), health=ingest.health, latex_delimiters=LatexDelimitersConfig()
+            )
             pool = ParseWorkerPool(queue, execution, num_workers=1)
             acquire = queue.acquire_task
 

@@ -24,19 +24,17 @@ from ...parser.page_range import (
 from ...parser.page_range import (
     format_page_range as _page_numbers_to_range_str,
 )
-from ...types import QUALITY_TIERS, TIER_ORDER, Tier
-from ..core import fts as fts_utils
+from ...types import QUALITY_TIERS, Tier
 from ..core.db import DatabaseManager
 from ..parse_server_state import ParseServerHealth
 from ..core.fts import FTSManager
+from ..core.fts_content import rebuild_fts_from_cache
 from ..core.parse_artifacts import (
-    load_pages_from_done_batches,
     parse_batch_is_readable,
     parse_coverage,
 )
 from ..rows import DocRow, FileRow, ParseRow
 from ..types import (
-    FILE_STATUS_ACTIVE,
     PARSE_STATUS_DONE,
     PARSE_STATUS_PARSING,
     PARSE_STATUS_PENDING,
@@ -348,63 +346,10 @@ class ParseQueueService:
         return cursor.rowcount
 
     async def _rebuild_fts_after_invalidate(self, sha256: str) -> None:
-        # FTS rebuild reads only cached parse batches, so any active row works;
-        # keep it deterministic and tolerate rows whose file moved away.
-        """按档位和缓存可读性重建正文索引，不修改历史缓存或源文件。"""
-        file_row = cast(
-            FileRow | None,
-            await self.db.fetchone(
-                "SELECT * FROM files WHERE sha256=? AND status=? ORDER BY updated_at DESC",
-                (sha256, FILE_STATUS_ACTIVE),
-            ),
+        """按共享规则从剩余缓存重建正文索引，不依赖源文件仍然存在。"""
+        await rebuild_fts_from_cache(
+            self.db, self.fts, data_dir=self.data_dir, sha256=sha256, latex_delimiters=self.latex_delimiters
         )
-        if file_row is None:
-            await self.fts.delete(sha256)
-            return
-        doc_row = cast(DocRow | None, await self.db.fetchone("SELECT title, author FROM docs WHERE sha256=?", (sha256,)))
-
-        rows = cast(
-            list[ParseRow],
-            await self.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
-                (sha256, PARSE_STATUS_DONE),
-            ),
-        )
-        tier_set: set[Tier] = {row["tier"] for row in rows}
-        tiers = sorted(tier_set, key=lambda item: TIER_ORDER.get(item, -1), reverse=True)
-        for tier in tiers:
-            tier_rows = [
-                row for row in rows if row["tier"] == tier and parse_batch_is_readable(self.data_dir, sha256, tier, row)
-            ]
-            pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
-            if not pages:
-                continue
-
-            from docvortex.render.markdown import render_single_block
-
-            delimiters = self.latex_delimiters
-            parts: list[str] = []
-            for page in pages:
-                for block in page.blocks:
-                    rendered = render_single_block(
-                        block,
-                        delimiters=delimiters,
-                        asset_base_url="",
-                        image_renderer=lambda _block: "",
-                    )
-                    if rendered and rendered.strip():
-                        parts.append(rendered.strip())
-            text = fts_utils.truncate_head_tail("\n\n".join(parts))
-            await self.fts.replace(
-                sha256=sha256,
-                tier=tier,
-                text=text,
-                title=(doc_row or {}).get("title") or "",
-                author=(doc_row or {}).get("author") or "",
-            )
-            return
-
-        await self.fts.delete(sha256)
 
     async def _record_count(self, metric_name: str, *, value: int = 1, dimensions: dict[str, str] | None = None) -> None:
         """通过显式指标接口记录计数，未配置时跳过。"""
