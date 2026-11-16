@@ -68,7 +68,15 @@ def create_parse_services(
         parse_lock_timeout_sec=parse_lock_timeout_sec,
         telemetry_svc=telemetry_svc,
     )
-    execution = execution_type(db, fts, config_svc, data_dir, health=health, telemetry_svc=telemetry_svc)
+    execution = execution_type(
+        db,
+        fts,
+        config_svc,
+        data_dir,
+        health=health,
+        latex_delimiters=config.render.latex_delimiters,
+        telemetry_svc=telemetry_svc,
+    )
     return ParseServices(ingest, queue, execution, health, config)
 
 

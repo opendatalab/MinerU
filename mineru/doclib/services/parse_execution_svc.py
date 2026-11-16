@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from urllib.parse import urlparse
 
+from docvortex.options import LatexDelimitersConfig
+
 from ...filetypes import (
     OFD_EXTENSIONS,
     OFFICE_EXTENSIONS,
@@ -25,13 +27,13 @@ from ...parser.page_range import (
     parse_page_range_set,
 )
 from ...types import TIER_ORDER, Tier
-from ..core import fts as fts_utils
 from ..core.db import DatabaseManager
 from ..parse_server_state import ParseServerHealth
 from ..core.file_io import (
     metadata_to_doclib,
 )
 from ..core.fts import FTSManager
+from ..core.fts_content import render_fts_text
 from ..core.parse_artifacts import (
     accessible_file_for_sha256,
     parse_artifact_directory,
@@ -72,10 +74,12 @@ class ParseExecutionService:
         data_dir: str,
         *,
         health: ParseServerHealth,
+        latex_delimiters: LatexDelimitersConfig,
         telemetry_svc: TelemetryService | None = None,
     ) -> None:
         """保存此服务所需的显式依赖，不隐式组装另一侧服务。"""
         self.health = health
+        self.latex_delimiters = latex_delimiters.model_copy(deep=True)
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
@@ -231,10 +235,8 @@ class ParseExecutionService:
             return False
 
         try:
-            # generate markdown for FTS (not persisted, only for search indexing)
-            md_text = ""
-            md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
-            md_text += md + "\n"
+            # 新解析与缓存重建使用相同的检索表示，在截断前排除图片载荷。
+            md_text = render_fts_text(result.middle_json, latex_delimiters=self.latex_delimiters)
 
             # 原文件属性不受推理档位限制，先更新数据库和已有索引，再处理正文索引。
             await self._update_source_metadata(sha256, result)
@@ -473,12 +475,11 @@ class ParseExecutionService:
         await self._record_duration("parse_task.write_duration_bucket.count", start_ms, dimensions=dimensions)
 
     async def _maybe_update_fts(self, sha256: str, tier: Tier, text: str, file_row: FileRow) -> None:
-        """仅以相同或更高档位的正文更新索引，并保留首尾截断。"""
+        """只用更高档位替换已有索引；调用方传入已按统一预算处理的检索文本。"""
         existing_tier = await self.fts.get_tier(sha256)
         if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
             return  # current FTS data is from a higher or equal tier
 
-        text = fts_utils.truncate_head_tail(text)
         await self.fts.replace(
             sha256=sha256,
             tier=tier,

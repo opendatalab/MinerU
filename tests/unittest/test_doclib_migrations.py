@@ -18,7 +18,7 @@ def test_fresh_database_records_all_schema_migrations(tmp_path: Path) -> None:
         await db.initialize()
 
         rows = await db.fetchall("SELECT version FROM _migrations ORDER BY version")
-        assert rows == [{"version": 1}, {"version": 2}]
+        assert rows == [{"version": 1}, {"version": 2}, {"version": 3}]
 
     asyncio.run(_run())
 
