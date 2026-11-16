@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import sys
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
@@ -17,10 +18,15 @@ from typing import Iterator
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
-from mineru.kit.gradio.client import ManagedLocalRouter
+from mineru.kit.gradio.client import ManagedLocalRouter, V1ArtifactClient, V1ArtifactError
+from mineru.kit.router.app import create_app
 from mineru.kit.router.workers import ManagedLocalWorker, RouterSettings, WorkerPool, WorkerState
+from mineru.parser.managed_temp import create_managed_temp_dir
 from mineru.parser.process_tree import _group_running
+from mineru.tasks.contracts import ErrorDetail
+from mineru.tasks.errors import ApiServerError
 
 
 @contextmanager
@@ -182,3 +188,181 @@ def test_owned_worker_cleanup_survives_router_exit(
         if worker_pid is not None and _group_running(worker_pid):
             os.killpg(worker_pid, signal.SIGKILL)
         server.stop()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix socket 路径和真实 POSIX 进程验收")
+@pytest.mark.parametrize("mode", ["ipc", "preload_error"])
+@pytest.mark.parametrize("long_temp_root", [False, True])
+def test_managed_startup_ipc_and_preload_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    long_temp_root: bool,
+) -> None:
+    """真实两级启动检查 IPC 可用、长环境路径回退、错误及时透传和所有临时目录回收。"""
+    marker = tmp_path / "startup.json"
+    ambient = tmp_path / ("长临时目录" * 12) if long_temp_root else Path("/tmp")
+    ambient.mkdir(exist_ok=True)
+    monkeypatch.setattr(tempfile, "tempdir", str(ambient))
+    monkeypatch.setenv("PYTHONPATH", str(Path.cwd()))
+    monkeypatch.setenv("MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS", "8")
+    fixture = Path("tests/fixtures/managed_startup_probe.py").resolve()
+    roots = []
+
+    def command(server: ManagedLocalRouter, port: int, upload_dir: Path) -> list[str]:
+        """保存最外层目录，验证嵌套目录没有因缩短路径而逃出父进程所有权。"""
+        roots.append(Path(server._temp_dir.name))
+        return [sys.executable, str(fixture), "router", str(port), str(marker), mode]
+
+    monkeypatch.setattr(ManagedLocalRouter, "_command", command)
+    server = ManagedLocalRouter(tier="flash", preload_models=True)
+    started = time.monotonic()
+    try:
+        if mode == "preload_error":
+            with pytest.raises(V1ArtifactError) as caught:
+                server.start()
+            assert caught.value.code == "model_preload_dependency_missing"
+            assert str(caught.value) == "startup probe: dependency unavailable"
+            assert time.monotonic() - started < 5
+            assert server.process is None
+        else:
+            server.start()
+        evidence = json.loads(marker.read_text())
+        assert Path(evidence["scratch"]).is_relative_to(roots[0])
+        if mode == "ipc":
+            assert evidence["error"] is None
+            assert evidence["socket_bytes"] < 104 and evidence["listener_bytes"] < 104
+    finally:
+        server.stop()
+    assert roots and all(not root.exists() for root in roots)
+    assert not _group_running(evidence["pid"])
+    assert not _group_running(evidence["router_pid"])
+
+
+@pytest.mark.parametrize("code", ["model_preload_dependency_missing", "model_preload_files_missing", "model_preload_failed"])
+def test_worker_preload_error_keeps_original_detail(code: str) -> None:
+    """明确的预加载错误只探测一次，并使用公共结构化异常保留错误身份。"""
+
+    async def scenario() -> None:
+        """直接覆盖正式 worker 等待入口，不把预加载失败归类成连接超时。"""
+        calls = []
+
+        def health(request: httpx.Request) -> httpx.Response:
+            """返回 API 已完成初始化后的稳定错误响应。"""
+            calls.append(request)
+            return httpx.Response(503, json={"error": {"code": code, "message": "preload failed"}})
+
+        worker = ManagedLocalWorker("probe", "127.0.0.1", None, RouterSettings())
+        worker.base_url = "http://worker"
+        async with httpx.AsyncClient(transport=httpx.MockTransport(health)) as client:
+            with pytest.raises(ApiServerError) as caught:
+                await worker.wait_until_ready(client, timeout_seconds=0.3)
+        assert caught.value.error.code == code and caught.value.error.message == "preload failed"
+        assert len(calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_worker_startup_keeps_waiting_for_transient_failures() -> None:
+    """网络未就绪、普通 503 以及非 JSON 响应不能误触发永久预加载失败。"""
+
+    async def scenario() -> None:
+        """让同一实例经过短暂不可用后成功就绪。"""
+        replies = [
+            httpx.ConnectError("still starting"),
+            httpx.Response(503, json={"error": {"code": "starting", "message": "loading"}}),
+            httpx.Response(503, text="not ready"),
+            httpx.Response(200),
+        ]
+
+        def health(request: httpx.Request) -> httpx.Response:
+            """按实际启动时序给出连接失败及后续 HTTP 状态。"""
+            response = replies.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
+
+        worker = ManagedLocalWorker("probe", "127.0.0.1", None, RouterSettings())
+        worker.base_url = "http://worker"
+        async with httpx.AsyncClient(transport=httpx.MockTransport(health)) as client:
+            await worker.wait_until_ready(client, timeout_seconds=2)
+        assert not replies
+
+    asyncio.run(scenario())
+
+
+def test_waiting_webui_request_surfaces_recovery_preload_error() -> None:
+    """已排队的 WebUI 请求也应及时看到恢复阶段的预加载失败。"""
+
+    async def scenario() -> None:
+        """用与 Router health 相同的响应验证正在等待的客户端收尾。"""
+        client = V1ArtifactClient(
+            api_url="http://router",
+            managed=True,
+            recovery_timeout_seconds=0.01,
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    503,
+                    json={"error": {"code": "model_preload_device_unavailable", "message": "device unavailable"}},
+                )
+            ),
+        )
+        with pytest.raises(V1ArtifactError) as caught:
+            await client.wait_for_ready(lambda message: None)
+        assert caught.value.code == "model_preload_device_unavailable"
+        assert str(caught.value) == "device unavailable"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("managed", [False, True])
+def test_preload_failure_is_cleared_after_successful_retry(monkeypatch: pytest.MonkeyPatch, managed: bool) -> None:
+    """托管 UI 保留原始错误，普通 Router 保留聚合语义；成功重试后不再发布过时失败。"""
+    starts = []
+
+    async def start(worker: ManagedLocalWorker, client: httpx.AsyncClient) -> None:
+        """第一次返回真实类型的预加载错误，第二次模拟重新配置后成功。"""
+        starts.append(True)
+        if len(starts) == 1:
+            raise ApiServerError(503, ErrorDetail(code="model_preload_files_missing", message="missing model"))
+        worker.base_url = "http://worker"
+        worker.process = SimpleNamespace(poll=lambda: None)
+
+    async def stop(worker: ManagedLocalWorker) -> None:
+        """仅回收测试的进程状态，不执行系统进程操作。"""
+        worker.process = None
+
+    monkeypatch.setattr(ManagedLocalWorker, "start", start)
+    monkeypatch.setattr(ManagedLocalWorker, "stop", stop)
+    app = create_app(
+        RouterSettings(local_gpus="inherit", managed_webui=managed, worker_refresh_interval_seconds=0),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"status": "ok", "data": []})),
+    )
+    with TestClient(app) as client:
+        pool = app.state.worker_pool
+        worker = pool.workers[0]
+        response = client.get("/v1/health")
+        assert response.status_code == 503
+        expected = "model_preload_files_missing" if managed else "upstream_unavailable"
+        assert response.json()["error"]["code"] == expected
+        worker.retry_at = 0
+        client.portal.call(pool.refresh, worker)
+        assert worker.startup_error is None and worker.restart_failures == 0
+        assert client.get("/v1/health").status_code == 200
+        assert len(starts) == 2
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX IPC 路径预算")
+def test_temp_root_reserves_space_for_owned_nested_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """父目录单独够短但两层会超长时，必须提前选根，不能让 worker 跳出父目录。"""
+    with tempfile.TemporaryDirectory(prefix="ambient-", dir="/tmp") as base:
+        ambient = Path(base) / "12345678"
+        ambient.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(ambient))
+        with create_managed_temp_dir(reserve_worker=True) as outer:
+            scratch = Path(outer) / "tmp"
+            scratch.mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+            with create_managed_temp_dir() as worker:
+                assert Path(worker).is_relative_to(outer)
+                assert len(os.fsencode(Path(worker) / "tmp")) <= 60

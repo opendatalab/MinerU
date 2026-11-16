@@ -327,6 +327,10 @@ def create_app(
         """聚合健康 worker 的 source/output 能力并返回 Router V1 health。"""
         workers = pool.healthy_workers()
         if not workers:
+            if resolved_settings.managed_webui:
+                for worker in pool.workers:
+                    if worker.startup_error is not None:
+                        raise RouterProxyError(503, worker.startup_error.code, worker.startup_error.message)
             if any(worker.recovery_exhausted for worker in pool.workers):
                 raise RouterProxyError(503, "recovery_failed", "Parse service recovery failed")
             raise RouterProxyError(503, "upstream_unavailable", "No healthy MinerU V1 upstream is available")

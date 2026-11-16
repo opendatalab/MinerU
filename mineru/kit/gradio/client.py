@@ -21,6 +21,7 @@ from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_en
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
+from ...parser.managed_temp import create_managed_temp_dir
 from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, validate_timeout
 from ...parser.process_tree import stop_process_tree
 from ...parser.windows_process_job import WindowsProcessJob, create_process_job
@@ -136,6 +137,8 @@ class V1ArtifactClient:
                     if response.status_code == 200:
                         return
                     code, message = _error_detail(response)
+                    if code.startswith("model_preload_"):
+                        raise V1ArtifactError(message, code=code)
                     if code == "recovery_failed":
                         raise V1ArtifactError("Parse service recovery failed", code=code)
                     if response.status_code < 500:
@@ -397,7 +400,7 @@ class ManagedLocalRouter:
             raise RuntimeError("Managed V1 API server is already running")
         if self.process is not None or self._temp_dir is not None or self._control is not None:
             self.stop()
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="mineru-kit-gradio-api-")
+        self._temp_dir = create_managed_temp_dir(reserve_worker=True)
         upload_dir = Path(self._temp_dir.name) / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         port = _reserve_local_port()

@@ -22,9 +22,12 @@ from loguru import logger
 
 from ...model.runtime.device import get_device
 from ...parser.process_control import ManagedProcessControl
+from ...parser.managed_temp import create_managed_temp_dir
 from ...parser.process_tree import process_group_options, stop_process_tree
 from ...parser.windows_process_job import WindowsProcessJob, create_process_job
 from ...parser.execution_limits import DEFAULT_TASK_TIMEOUT_SECONDS, validate_timeout
+from ...tasks.contracts import ErrorDetail
+from ...tasks.errors import ApiServerError
 from ...types import SERVER_STARTUP_TIERS, TIERS, ServerStartupTier, Tier
 from ...utils.stdio import utf8_subprocess_env
 from ...utils.retention import resolve_retention_seconds
@@ -33,6 +36,23 @@ from ...utils.async_utils import run_sync
 DEFAULT_WORKER_REFRESH_INTERVAL_SECONDS = 2.0
 DEFAULT_WORKER_STARTUP_TIMEOUT_SECONDS = 300.0
 DEFAULT_WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
+
+
+def _preload_error(response: httpx.Response) -> ErrorDetail | None:
+    """只识别已完成初始化后公开的预加载失败，普通 503 和非结构化响应继续等待。"""
+    if response.status_code != 503:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return None
+    code, message = error.get("code"), error.get("message")
+    if isinstance(code, str) and code.startswith("model_preload_") and isinstance(message, str) and message:
+        return ErrorDetail(code=code, message=message)
+    return None
 
 
 def normalize_base_url(url: str) -> str:
@@ -287,7 +307,7 @@ class ManagedLocalWorker:
         """启动 worker 子进程并等待 V1 health 就绪。"""
         if self.process is not None and self.process.poll() is None:
             return
-        self.temp_dir = tempfile.TemporaryDirectory(prefix=f"mineru-router-{self.worker_id}-")
+        self.temp_dir = create_managed_temp_dir()
         upload_dir = Path(self.temp_dir.name) / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         port = reserve_local_port(self.host)
@@ -343,6 +363,9 @@ class ManagedLocalWorker:
                 )
                 if response.status_code == 200:
                     return
+                preload_error = _preload_error(response)
+                if preload_error is not None:
+                    raise ApiServerError(503, preload_error)
                 last_error = response.text
             except httpx.HTTPError as exc:
                 last_error = str(exc)
@@ -386,6 +409,7 @@ class WorkerState:
     active_jobs: int = 0
     max_concurrent_jobs: int = 1
     last_error: str | None = None
+    startup_error: ErrorDetail | None = None
     generation: int = 0
     restart_requested: bool = False
     restart_failures: int = 0
@@ -542,9 +566,11 @@ class WorkerPool:
                 await worker.local_worker.start(self.client)
                 worker.base_url = worker.local_worker.base_url
                 worker.generation = 1
+                worker.startup_error = None
             except Exception as exc:
                 worker.healthy = False
                 worker.last_error = str(exc)
+                worker.startup_error = exc.error if isinstance(exc, ApiServerError) else None
                 worker.restart_failures = 1
                 worker.retry_at = time.monotonic() + 5
                 worker.restart_requested = True
@@ -690,12 +716,14 @@ class WorkerPool:
                     worker.base_url = worker.local_worker.base_url
                     worker.generation = max(worker.generation, 1)
                     worker.restart_requested = False
+                    worker.startup_error = None
                     worker.restart_failures = 0
                     worker.retry_at = 0.0
                     logger.info("Router worker {} generation {} ready after {:.2f}s", worker.worker_id,
                                 worker.generation, time.monotonic() - recovery_started)
                 except Exception as exc:
                     worker.last_error = str(exc)
+                    worker.startup_error = exc.error if isinstance(exc, ApiServerError) else None
                     delay = (5, 10, 20, 30)[min(worker.restart_failures, 3)]
                     worker.restart_failures += 1
                     worker.retry_at = time.monotonic() + delay
