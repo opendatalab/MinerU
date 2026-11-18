@@ -2,6 +2,39 @@
 
 This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
 
+## 4.2.3
+
+- **Add per-file execution timeouts and managed recovery**. WebUI, Router, and API Server support `--task-timeout`, defaulting to `3600` seconds from acquiring an execution slot through parsing and server-side artifact packaging. Timed-out tasks return `task_timeout`. A standalone API stops accepting new work and relies on its deployment host to recreate the service. Router supervises local workers from the parent process, reclaims timed-out workers and model subprocesses, and restarts the service even when execution threads, the event loop, or cancellation cleanup stall.
+- **Improve WebUI recovery and process cleanup**. Local WebUI uses Router to manage a single worker, displays recovery status, and resumes queued requests awaiting submission once the service is ready. Other unfinished requests on the replaced worker return `worker_restarted`, and affected files can be retried manually. Improve Windows process-tree, temporary-directory, and control-channel cleanup, surface model preload failures, and stop automatic recovery after three consecutive startup failures.
+- **Keep image payloads out of Doclib full-text indexes**. Build search text from body content, formulas, and figure or table descriptions before applying the character budget, preventing embedded image base64 data from crowding out searchable text. Rebuild existing indexes from cached parse results during upgrade while preserving cross-page continuations. Documents with incomplete caches record a migration reason and can resume migration after restoring or reparsing the cache and restarting Doclib.
+- **Check vLLM and Transformers compatibility before startup**. Detect the incompatible combination of `vllm<0.29.0` and `transformers>=5.23.0` before engine initialization, with actionable guidance to upgrade vLLM or select a compatible Transformers range.
+- **Update DocVortex**. Raise the minimum version to `0.6.24` for native document parsing and shared rendering improvements.
+
+**Configuration note**. Router now defaults `--worker-tier` to `auto`, allowing each worker to select its tier ceiling from its device environment. Specify `flash`, `basic`, `standard`, or `advanced` for a fixed ceiling. `--task-timeout` requires a positive integer. Uploads, queueing, client downloads, and model startup preloading use their own waiting and lifecycle settings.
+
+## 4.2.2
+
+- **Improve local VLM failure propagation and lifecycle management**. Consume shared health and failure contracts for LMDeploy, vLLM, llama.cpp, and MLX. Confirmed engine failure invalidates cached instances and notifies their hosts, preventing a global outage from silently becoming a local recognition fallback. Ordinary per-crop failures retain the existing fallback behavior.
+- **Strengthen parse-server health checks and task cleanup**. Periodically probe initialized runtimes that support health checks. Temporary unavailability rejects new inference until health recovers. Confirmed engine death produces explicit health and capability errors and cleans up running and queued tasks through the existing lifecycle boundaries; recovery remains the host's responsibility. Improve the ordering of active probes, cancellation, and resource release during shutdown.
+- **Correct batch input validation and error handling**. Validate file content signatures and containers so Office lock files do not stop subsequent documents, while valid documents beginning with `~$` remain supported. Report known corrupt, encrypted, resource-limited, missing, or inaccessible inputs as individual failures and continue. Engine, service, and output failures stop the batch. Summaries distinguish succeeded, skipped, failed, and unprocessed inputs; partial failure returns a nonzero exit code.
+- **Correct batch output-path handling**. Directory and multiple-file inputs always produce directory output, even when only one document remains. Accept existing and new dotted directory names such as `results.v1` and `results.md`, and reject existing regular files as batch destinations. Explicit single-file output continues to support overwriting its destination.
+- **Clarify reading and exporting**. Markdown from `mineru read` remains a progressive stdout or JSON read with continuation hints; `--output PATH` is reserved for images. Save the current text fragment through redirection or the SDK, and use `mineru parse ... -o ...` to export a complete page range without the reading budget.
+- **Improve service startup and shutdown**. Print directly accessible API documentation URLs after successful binding, avoid interrupt tracebacks on normal Ctrl+C shutdown, and remove unimplemented webhook capability declarations and documentation.
+- **Update runtime dependencies**. Require `mineru-llama-cpp 0.2.1` and `mineru-vl-utils 2.0.9` or newer compatible versions for the shared lifecycle contracts.
+
+**Compatibility note**. Replace `mineru read <locator> -o part.md` with stdout redirection or SDK saving. For complete exports, use `mineru parse <path> --pages <range> -o result.md`. Batch callers should interpret the result summary and exit code to distinguish full success, partial failure, and an aborted batch.
+
+## 4.2.1
+
+- **Complete Doclib continuation after truncation**. Markdown document and single-page reads with `context=0` use both `next_request.locator` and `next_request.after` to resume the unfinished page after reaching the output limit, then suggest the next page. CLI continuation markers and SDK documentation follow the same contract.
+- **Bound managed parse-server recovery**. Stop automatic retries after repeated startup or restart failures and clean up remaining processes. Setting the managed mode or tier again, or restarting the document library server, allows recovery to resume. Improve process and control-channel cleanup during mode changes, tier changes, and shutdown.
+- **Correct Windows managed-port probing**. Match the server's actual binding behavior and skip occupied or system-reserved ports when strict-port mode is disabled, reducing startup failures after a successful port probe.
+- **Graceful document library shutdown**. Use a host shutdown callback to run lifecycle cleanup, including background tasks, managed parsing processes, and database resources on Windows.
+- **Restore Windows GPU memory information**. Improve PCI-address matching between DXGI and the hardware inventory, and retain consistent memory and device properties when same-model entries have ambiguous identities.
+- **Preserve native PDF body text**. Accept normal text directions close to 360° due to floating-point error, preventing horizontal text from being filtered during native text restoration.
+
+**Integration note**. Embedded Doclib hosts must provide a `shutdown` callback to support the shutdown endpoint. A missing callback returns `service_unavailable`. The standard `mineru server` entry point already provides the callback.
+
 ## 4.2.0
 
 MinerU 4.2.0 upgrades WebUI interaction and source tracing, improves parsing of complex PDFs, formulas, and tables, and strengthens device selection, model caching, service management, and input security. These are cumulative changes since 4.1.0, including improvements released in 4.1.x.
