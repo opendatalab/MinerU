@@ -56,7 +56,7 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `PUT` | 返回的上传链接 | 每个链接上传一个文件 |
 | `GET` | `/v1/usage` | 查询用量 |
 
-JSON、逐文件上传、独立结果链接与 Router 负载规则见 [V1 tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
+JSON、逐文件上传与独立结果链接见 [V1 Tasks](https://opendatalab.github.io/MinerU/zh/usage/tasks/)。worker 分配和上游节点管理见 [Router 部署](https://opendatalab.github.io/MinerU/zh/deployment/router/)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
 
 各接口的成功状态码、Content-Type 和返回对象见 [响应总览](responses.md#success-responses)。
 创建、查询、取消及本地上传分别返回独立的[响应模型](https://opendatalab.github.io/MinerU/zh/usage/tasks/#response-models)，Tasks 成功响应省略无值可选字段；Files 下载返回二进制附件。

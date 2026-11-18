@@ -28,7 +28,9 @@ $env:MINERU_MODEL_SOURCE = "modelscope"
 
 The small-model bundles `MinerU-4_models_torch` and `MinerU-4_models_onnx` are registered for both Hugging Face and ModelScope. Original VLM weights and llama.cpp GGUF/mmproj use different repositories selected by the engine. Basic needs the selected small-model bundle; Standard also needs VLM models and serves Advanced requests.
 
-## Download, verify, and run offline
+## Download, verify, and run offline {#offline-models}
+
+<span id="download-verify-and-run-offline"></span>
 
 Download and verify a Standard deployment using the current configuration:
 
@@ -93,6 +95,30 @@ MinerU talks to three different kinds of remote services. They are not interchan
 | V1 document parsing service | Upload documents, submit parse jobs, download results (self-hosted `mineru-kit api-server`, router, or the official cloud service) | Per client: `MINERU_API_URL` / `MINERU_API_KEY`, or SDK `MinerUApiParser(api_url=..., api_key=...)`. The document library's default remote target is a library runtime setting, not part of `config.yaml` |
 | Remote VLM inference service | Model inference for local parse pipelines (Standard/Advanced), OpenAI-compatible | `model.vlm.server_url` / `api_key` / `model` in `config.yaml` |
 | LLM-aided post-processing | Title leveling and cross-page table cell continuation | `llm_aided.api_key` / `base_url` / `model` in `config.yaml`; both features are disabled by default |
+
+## LLM-aided post-processing {#llm-post-processing}
+
+LLM-aided title leveling and cross-page table cell continuation read `$MINERU_HOME/config.yaml` and support OpenAI-compatible model services:
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.8-flash
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+- `title_leveling` groups paragraph titles into levels 2 through 6 by document-title boundaries and runs only when `MiddleJson.is_full_document` is `true`. Page-selected input is persisted as `false` and skips title leveling.
+- `cross_page_table_cell_merge` asks the LLM whether each pair of boundary-row cells continues after the existing rules identify a cross-page table.
+- Table cell merge does not require whole-document input. Both features are disabled by default and share one asynchronous client, one connection configuration, and the `max_concurrency` request limit, which defaults to 16.
+- `max_concurrency` must be an integer of at least 1 and can be overridden with `MINERU_LLM_AIDED_MAX_CONCURRENCY`.
+- Enabling either feature requires non-empty `api_key`, `base_url`, and `model` values.
+- `enable_thinking` is optional. When omitted, the extension parameter is not sent to the model service.
+- The legacy `llm-aided-config` section in `mineru.json` is no longer read.
 
 ## Download troubleshooting
 

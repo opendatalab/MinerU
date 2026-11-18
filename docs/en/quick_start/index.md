@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide targets **MinerU 4.x**, including 4.1 automatic device selection and API updates. Existing deployments should read the [4.1 migration guide](../reference/migration_4_1.md). Legacy vendor-accelerator instructions remain scoped to `<4`; see the [legacy platform guides](../usage/compatibility.md).
+Install MinerU 4.x, verify local parsing with a small file, and open the resulting Markdown.
 
 ## Install MinerU
 
@@ -32,11 +32,18 @@ Alternatively, run `python -m pip install -U "mineru>=4.0,<5"` in the activated 
 
 The base package includes the WebUI, ONNX small-model runtime, and llama.cpp VLM. Apple Silicon automatically includes Torch dependencies. For Torch small models or higher-throughput VLM serving, see [extension modules](extension_modules.md) for the `torch` and `full` extras. Do not use 3.x extras.
 
-4.1 uses DirectML on Windows x64 and WebGPU on Linux x86_64 to select a compatible GPU or CPU automatically. Apple Silicon defaults to Torch/MPS and llama.cpp/Metal. Use `mineru-kit hardware detect` for tier recommendations or `hardware info --json` for diagnostics. Initial ONNX calibration may download the recognition model; see [Tiers and runtimes](../usage/tiers.md).
+To identify an accelerator or prepare inference models, see [deployment](../deployment/index.md).
 
 ## First conversion
 
-Parse a single file without a document library and write Markdown to a file:
+In an empty directory, create a small document and convert it to Markdown with the stateless CLI. The native HTML parser runs without a model download.
+
+```bash
+python -c "from pathlib import Path; Path('report.html').write_text('<h1>MinerU</h1><p>First conversion.</p>', encoding='utf-8')"
+mineru-kit parse report.html -o report.md --tier flash
+```
+
+Open `report.md` in the same directory. It contains the heading `MinerU` and the text `First conversion.` To convert your own PDF, supply its path and the desired tier.
 
 ```bash
 mineru-kit parse document.pdf -o document.md --tier standard
@@ -61,13 +68,7 @@ For directories or multiple inputs, `-o` must be a directory. For single-file Ma
 
 ## Document library and agents
 
-```bash
-mineru parse document.pdf --json
-mineru parse document.pdf --pages all -o document.md
-mineru search "keyword" --json
-```
-
-`mineru` uses the document library and cache. `mineru parse` defaults to the first 10 PDF pages and may return a continuation request when the output reaches its length budget. Follow the returned locator and `next_request`. This differs from `mineru-kit parse`, which directly writes complete conversion outputs; see [Quick Usage](../usage/quick_usage.md).
+To keep results, search them, or continue reading, use the same `report.html` in the [document library guide](../usage/quick_usage.md) to start the library service and add your first file. The library command `mineru parse` requests the first 10 PDF pages by default.
 
 ### Document-library telemetry
 
@@ -79,13 +80,13 @@ Doclib includes usage and diagnostic telemetry, initially enabled. Inspect it wi
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-Open the [local WebUI](http://127.0.0.1:7860). `mineru-webui` is the standalone command for the same entrypoint. Without `--api-url`, the WebUI manages a local V1 API server. See [SDK and API](../usage/sdk_api.md) to connect an existing service.
+Open the [local WebUI](http://127.0.0.1:7860) and follow the [WebUI guide](../usage/webui.md) to upload a file, check its source, and download results. To call a parsing service from an application, start the API separately.
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ```
 
-Inspect the running service through its [OpenAPI documentation](http://127.0.0.1:8000/docs). Use [Tasks](../usage/tasks.md) for asynchronous batches; start the separate [file-parse service](../usage/file_parse.md) to upload one file and receive an attachment directly.
+Inspect the running service through its [OpenAPI documentation](http://127.0.0.1:8000/docs). Send your [first HTTP request](../usage/http_api.md) to download an example result. Use [Tasks](../usage/tasks.md) for asynchronous batches; start the separate [file-parse service](../usage/file_parse.md) to upload one file and receive an attachment directly.
 
 ## Install from source
 

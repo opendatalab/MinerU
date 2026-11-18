@@ -51,7 +51,7 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 - **WebUI 交互升级**：支持原文与结果双向定位、目录导航和布局可视化，优化上传、档位选择与 PDF 预览。[在线体验](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 - **解析质量提升**：提升行内公式识别与复杂版面布局分析的准确性，优化跨页表格合并逻辑；Flash 原生解析支持利用 `Tagged PDF` / `PDF/UA` 结构语义，改善阅读顺序与内容准确性。
-- **Router 动态管理**：支持节点动态注册、平滑移除与多层级联。[管理 API 与级联示例](https://opendatalab.github.io/MinerU/zh/usage/tasks/#upstream)
+- **Router 动态管理**：支持节点动态注册、平滑移除与多层级联。[管理 API 与级联示例](https://opendatalab.github.io/MinerU/zh/deployment/router/#upstreams)
 
 ### MinerU 4.1
 

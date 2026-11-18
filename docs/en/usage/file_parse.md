@@ -1,6 +1,8 @@
 # file-parse API: Synchronous Single-File Parsing
 
-This page describes the **4.1.0** interface. `mineru-kit file-parse-server` is a standalone HTTP wrapper: it accepts one file, creates and uploads a [Task](tasks.md), waits, and returns a ZIP, DOCX, or HTML attachment. It connects to a local API, Router, or compatible SaaS without loading parsing models.
+`mineru-kit file-parse-server` is a standalone HTTP wrapper: it accepts one file, creates and uploads a [Task](tasks.md), waits, and returns a ZIP, DOCX, or HTML attachment. It connects to a local API, Router, or compatible SaaS without loading parsing models.
+
+[Start the service](#startup) · [Request fields](#request-fields) · [Attachments and 202 responses](#responses) · [Errors](#error-responses) · [Waiting and recovery](#recovery)
 
 ## Startup
 
@@ -48,7 +50,9 @@ Multipart filenames retain the existing compatibility behavior: backslashes are 
 
 The resulting basename must contain 1–1024 characters, must not be exactly `.` or `..`, and must not contain slashes, backslashes, colons, or Unicode `Cc` control characters. Unicode names, spaces, and hidden names such as `.report.csv` are allowed, without trimming or percent-decoding. Invalid names return `400 invalid_request` before creating an upload staging file or an upstream task. The JSON [Tasks API](tasks.md) instead rejects path-like `file_name` values directly.
 
-## Upload and attachment responses
+## Upload and attachment responses {#responses}
+
+<span id="upload-and-attachment-responses"></span>
 
 These are Bash/curl examples; in Windows PowerShell use `curl.exe` and adjust line continuations. The service calculates the size and hash from the actual uploaded file.
 
@@ -127,7 +131,9 @@ curl --fail-with-body -D result.headers -o report.zip \
 
 Downloads return `409 result_not_ready` before completion, or potentially `409 task_not_created` without a confirmed upstream task. Retry GET after an interrupted download. For an expired signature, the wrapper queries the original task and tries up to three times; unrecoverable expired results do not trigger reparsing.
 
-## Waiting, idempotency, and recovery
+## Waiting, idempotency, and recovery {#recovery}
+
+<span id="waiting-idempotency-and-recovery"></span>
 
 `wait_timeout` starts after the upstream file is ready and covers queuing, parsing, and export. Receiving the source, upstream upload/download/validation, and result download use separate budgets, so this is not an overall HTTP request timeout. Normal polling is every two seconds; connection, metadata-request, and transfer-idle timeouts are 10, 30, and 600 seconds. Zero wait can be used to obtain a status-query entrypoint first.
 
