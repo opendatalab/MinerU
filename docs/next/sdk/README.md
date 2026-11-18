@@ -11,7 +11,7 @@
 
 | 层 | 公开入口 | 职责 | 主要消费者 |
 |----|----------|------|------------|
-| Tool SDK | `mineru.parser` | 无状态解析文件，返回 `ParseResult`。 | `mineru-kit parse`、parse-server worker、需要直接嵌入解析能力的开发者 |
+| Tool SDK | [`mineru.parser`](parser.md) | 无状态解析文件，返回 `ParseResult`。 | `mineru-kit parse`、parse-server worker、需要直接嵌入解析能力的开发者 |
 | API-backed Parser | `mineru.parser.MinerUApiParser` | 仍实现 `DocumentParser`，但通过 v1 API 委托解析。 | 需要用同一 parser 接口连接 local parse-server 或 mineru.net 的开发者 |
 | Doclib SDK | `mineru.doclib.client.DoclibClient` | 连接本地 doclib，使用缓存、搜索、watch、配置和服务状态能力。 | `mineru` CLI、MCP Server、桌面端、本地自动化 |
 

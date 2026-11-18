@@ -51,7 +51,7 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 - **WebUI interaction upgrades**: Supports bidirectional navigation between source documents and parsed results, outline navigation, and layout visualization, with improved uploads, tier selection, and PDF previews. [Try online](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 - **Improved parsing quality**: More accurate inline formula recognition and complex layout analysis, with improved cross-page table merging. Flash native parsing uses `Tagged PDF` / `PDF/UA` structural semantics to improve reading order and content accuracy.
-- **Dynamic Router management**: Supports dynamic node registration, graceful removal, and multi-level cascading. [Management APIs and cascading examples](https://opendatalab.github.io/MinerU/usage/tasks/#dynamic-router-upstreams-and-cascading)
+- **Dynamic Router management**: Supports dynamic node registration, graceful removal, and multi-level cascading. [Management APIs and cascading examples](https://opendatalab.github.io/MinerU/deployment/router/#upstreams)
 
 ### MinerU 4.1
 

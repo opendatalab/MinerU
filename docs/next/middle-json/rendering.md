@@ -230,10 +230,17 @@ pdf_bytes = render_pdf(
 ```
 
 `render_pdf()` 只接受严格 `MiddleJson`，返回完整 PDF bytes，不写文件、不读取 cwd 且不访问网络。
-它固定使用 A4 纵向和 20 mm 页边距，是面向阅读的语义化重排输出，不承诺复刻源文件坐标、
-分栏、断行或原始物理页数。PDF 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、
-合并跨页续段与续表，不保留空源页或在 `PageInfo` 边界硬分页；内容仍会按 A4 可用空间自然分页，
-`page_footnote` 仍然输出。
+默认 `PdfLayout.AUTO` 在 PDF 来源和必要几何完整时保留原页和块布局，几何不足时整份回退语义重排。`ORIGINAL` 显式要求 PDF 来源、页尺寸及必要 bbox；`REFLOW` 显式选择语义重排。非 PDF 来源默认重排。
+
+固定布局中的正文、图注、代码、表格和图片继续独立适配各自原框；`continues_prev` 不移动原框之间的文字。原页数与空白页保留。原布局与重排 PDF 中，含中日韩文字的自然语言段落、图注及表格单元格使用 CJK 字符断行，避免将空格间的长串中文整体移到下一行；纯英文和代码、算法字面块保留既有规则，不向内容插入排版字符或连字符。
+
+标题参考实际适配后的正文字号：优先同页同栏后续正文，其次同栏最近正文，再回退到导出正文的字号中位数；没有正文时采用 10.5 pt。章节标题按 `type + level` 取参考字号中位数 +2 pt，向上取整至 0.1 pt；附近正文较大时只上调该标题。主标题比最大章节标题目标再大 2 pt，没有章节标题时采用正文 +4 pt，并保留局部层次。取消按 90% 容纳率压低整组字号和旧样式字号上限。
+
+原框放得下则保持位置，否则标题可利用上下及同栏右侧空白，保持左边缘；优先原顶边，必要时向上移动。栏宽由对应正文确定，不可靠时保持原宽，原有跨栏标题保留跨度。其他原框视为占用，与相邻内容保留 2 pt 间距且不越页；相邻标题按间隙中线分配空间。仍放不下时只缩小该标题，低于 6 pt 沿用完整块缩放。上下标和公式的真实外伸范围计入标题测量，目录引用及缺子坐标的近似组合不参与。
+
+`pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
+
+语义重排使用 A4 纵向页面和 20 mm 页边距，按 DEFAULT 连续阅读规则隐藏页面辅助块、合并跨页续段与续表。内容按可用空间分页，保留 `page_footnote`。
 
 PDF 使用 ReportLab 生成，标题、正文、表格、图片、代码、caption 与 footnote 采用 MinerU HTML
 主题的打印配色。标题与 `page_footnote` anchor 会建立 PDF destination，目录和 InlineSpan fragment
@@ -252,7 +259,7 @@ page/block 定位的浅色占位，远程 URL 同时保留可点击链接，图�
 物化为支持 rowspan/colspan、嵌套表、重复表头和跨页拆分的原生 ReportLab table；结构无效时
 回退空间文本、整体图片或占位。
 
-该接口只属于严格 `mineru.render` 公共面，不新增 ParseResult 方法，也不迁移 CLI、API 或 doclib。
+WebUI 的 PDF 下载使用该渲染入口。CLI、Tasks 与 Doclib 各自支持的输出见[用户输出参考](https://opendatalab.github.io/MinerU/zh/reference/output_files/)。
 
 ## MinerU 独立 HTML
 

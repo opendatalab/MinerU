@@ -67,7 +67,8 @@ def on_post_build(config: MkDocsConfig) -> None:
             else:
                 public_source = destination.removeprefix("en/")
                 public_output = _html_path(public_source, config)
-                if not destination.startswith(("en/", "zh/")):
+                # 默认语言的双语页面与共享页面沿用来访语言，显式中文目标保持固定。
+                if not destination.startswith("zh/"):
                     public_output = prefix + public_output
                 url = posixpath.relpath(public_output, (PurePosixPath(prefix) / _html_path(source, config)).parent)
             if output.exists() and 'data-mineru-redirect="true"' not in output.read_text(encoding="utf-8"):

@@ -1,70 +1,43 @@
-# V1 HTTP API
+# 第一次 HTTP 请求 {#v1-http-api}
 
-4.1 使用 Tasks 作为唯一异步解析入口。API Server、Router、SDK 和 WebUI 统一提交 JSON 清单、按需上传、查询状态并下载逐文件结果。Python 调用见 [Python SDK](sdk_api.md)，完整字段见 [Tasks 契约](tasks.md)。
+用一个 HTML 文件走完创建任务、上传、查询和下载，得到一个可打开的 ZIP。这个例子使用本地 V1 API 和原生 Flash 解析；如果你要直接上传单文件并等待附件，请用独立的 [file-parse 服务](file_parse.md)。
 
-```bash
-mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
-MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_task_example.sh a.pdf b.pdf
-OUTPUT_FORMATS=default,docx MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_api_example.sh a.pdf
-```
+## 运行单文件示例 {#curl-example}
 
-## 文件清单与上传
+<span id="tasks"></span>
 
-Tasks 与 Files JSON 统一使用 `file_name`；旧字段 `manifest`、`filename` 及新旧混传返回 400。
-
-向 `POST /v1/tasks` 提交 `application/json`：files 每项包含逻辑 file_name、上传文件的 bytes 和可选 sha256sum/page_range，也可提供 URL（bytes 可省略）。禁止传入 client_file_id 或 file_id；服务端生成唯一 file_id，按输入顺序返回，并在上传、查询、取消和产物下载中保持不变。解析选项为 tier/ocr_mode/page_range/output_formats。
-
-创建返回稳定的 `task_id`；仅需要客户端上传的文件携带 `upload`，包含 `url/headers/expires_at`，其他文件省略该字段。客户端固定使用 PUT 上传缺失文件，使用响应指定的 PUT 地址及请求头，无需 complete。每个文件就绪即独立排队，其他文件等待上传不会阻塞它。
-同机也使用相同流程。SDK 总是计算 hash；已完成上传的有效缓存可以免传。并发首次请求允许重复传输，但源字节去重。缓存默认保留 24 小时、每 5 分钟扫描，正在执行及传输的引用受保护。
-
-上传链接固定有效一小时，查询不会续期。截止前已受理上传可继续完成。中断后先查询，进入 pending/running/completed 后跳过上传；waiting-file 且 upload 省略 时只等待，有有效上传目标时才有限重试。过期文件进入 failed，错误码为 upload_expired。
-
-## 状态与结果
-
-使用配置的 API 基址（保留代理前缀）和编码后的 task_id 构造 `GET /v1/tasks/{task_id}` 轮询。父任务状态为 `waiting-file/pending/running/completed/partial/failed/canceled`；通过创建回执中的 `file_id` 对应输入。逐文件使用同一组状态但没有 partial，不再返回 upload_status。waiting-file 包括上传、服务端下载和校验，pending 表示输入已就绪并排队等待解析。
-每个成功文件在 `files[].result_url` 提供唯一下载地址，即使父任务尚未完成也可下载。顶层没有 result_url，不生成跨输入文件的总 ZIP。
-
-| output_formats | 内容 |
-|---|---|
-| default | ZIP：Markdown、Middle JSON、Structured Content、images/ |
-| docx | 图片内嵌的 DOCX |
-| html | 图片内嵌的 HTML |
-| latex | TEX 与 images/ 的 ZIP |
-| 多种 | 对应文件平铺在一个 ZIP 中 |
-
-ModelJson 仅在解析内部使用，API、SDK、CLI 和 Gradio 均不输出模型文件。`include_model_output` 已删除，提交该字段返回 400。
-`POST /v1/tasks/{task_id}/cancel` 取消未完成文件。任务和文件列表已移除；Files 保留按 ID 查询元数据和下载结果；不提供任务记录或产物删除接口。逐文件 `parse` 在完成前省略，成功后包含实际 `tier`、耗时和解析器版本；响应顶层不再有 tier。逐文件响应不回显 hash、页范围、底层源缓存 ID 或重复的 name；请求参数仍保留。
-
-客户端原样使用结果链接：本地/Router 返回 Files 地址，SaaS 可返回对象存储签名地址。只为 API 同源请求附加 API Key，每次重定向重新判断；签名失效可重新查询结果链接。
-
-## 示例客户端与迁移
-
-两个 shell 示例入口都复用标准库 Python Tasks 客户端。`RESULT_DIR` 指定逐文件目录；`OUTPUT_FORMATS` 默认为 default，`SEND_HASH=0` 可关闭预检 hash。
-使用相同文件顺序设置 `TASK_ID` 可继续原任务。创建请求不自动重试；`MAX_POLLS/POLL_INTERVAL` 限制轮询，`CONNECT_TIMEOUT/REQUEST_TIMEOUT` 限制单次传输。
-退出码为 0（全部成功）、2（部分成功）、1（失败或取消）、124（轮询耗尽）。已下载产物保留。
-
-旧独立上传和 Jobs 接口已移除，客户端与服务端需协调升级，详见 [4.1 迁移说明](../reference/migration_4_1.md)。需要同步单文件返回时使用独立的 [file-parse 包装服务](file_parse.md)。
-
-POST 创建、GET 详情、POST cancel 和本地 PUT 分别返回创建回执、查询详情、逐文件取消结果和上传确认；Tasks 成功响应省略 null，但保留零值和空集合。POST cancel 取消未完成文件，成功文件的产物仍可直接下载。
-
-## 单文件 curl 流程 {#curl-example}
-
-下载 [Bash 示例](../../assets/examples/tasks-curl.sh)，准备 `curl`、`jq` 和一个输入文件；先启动本地 API：
+安装 MinerU 后，在第一个终端启动服务。
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier flash
 ```
 
-在另一个终端，从仓库根目录执行：
+将 [tasks-curl.sh](../../assets/examples/tasks-curl.sh) 下载到示例目录。在有 Bash、`curl` 和 `jq` 的第二个终端进入该目录。第一行创建输入文件。如果目录里已有[快速入门](../quick_start/index.md)创建的 `report.html`，直接运行第二行。
 
 ```bash
-MINERU_API_URL=http://127.0.0.1:8000 \
-  bash docs/assets/examples/tasks-curl.sh report.html report.zip
+python -c "from pathlib import Path; Path('report.html').write_text('<h1>MinerU</h1><p>First conversion.</p>', encoding='utf-8')"
+bash ./tasks-curl.sh report.html report.zip
 ```
 
-示例依次 POST JSON 清单、PUT 缺失文件、GET 轮询和下载 `files[0].result_url`。它读取真实文件大小，
-不使用旧 complete 接口，不自动重试创建；回执目录和 task_id 会先打印，轮询耗尽退出 124，任务继续运行。
-成功后写出新 ZIP，已有输出路径会被拒绝。启用认证时设置 `MINERU_API_KEY`。
+打开新生成的 `report.zip`。`markdown.md` 中可以看到 `First conversion.`，同时还有 `middle_json.json` 和 `structured_content.json`；带图片的结果会包含 `images/` 素材。脚本要求输出路径尚未存在。要连接其他自部署服务，可设置 `MINERU_API_URL`；服务启用认证时设置 `MINERU_API_KEY`。
 
-此例限定同一自部署 API 的上传与 Files 下载，不跟随重定向。URL 输入、缓存 hash、批量恢复或对象存储签名链接使用上文的完整 Python 客户端。
-解析 PDF/图片时选择需要的服务档位及模型；HTML 等原生文档不需要推理模型。
+## 创建和上传 {#create-and-upload}
+
+<span id="_1"></span>
+脚本将 `file_name` 和真实文件大小提交给 `POST /v1/tasks`，保存 `task_id` 及各输入对应的 `file_id`。只有响应包含 `files[].upload` 时才向返回的地址 PUT 原始字节，采用该对象的请求头。上传成功即可查询。[Tasks 请求字段](tasks.md#create-request)
+
+## 查询和下载 {#status-and-results}
+
+<span id="_2"></span>
+使用 `GET /v1/tasks/{task_id}` 查询。单文件状态为 `completed` 时，从该文件的 `result_url` 下载。多文件任务中，已完成的文件可以先下载；某个文件失败时，检查其 `error`。脚本会打印任务 ID 和回执目录，轮询预算耗尽时退出码为 `124`，可继续查询原任务。[状态与输出](tasks.md#outputs-and-downloads)
+
+## 批量、恢复与迁移 {#client-and-migration}
+
+<span id="_3"></span>
+单文件示例只访问同一自部署 API 的上传与结果地址。需要 URL 输入、哈希预检、对象存储签名下载或中断恢复时，使用仓库中的[完整 Python 客户端](https://github.com/opendatalab/MinerU/blob/master/scripts/http_task_example.py)。下面的命令从仓库根目录处理两个文件。
+
+```bash
+MINERU_API_URL=http://127.0.0.1:8000 bash scripts/http_task_example.sh a.pdf b.pdf
+```
+
+指定原 `TASK_ID` 和相同输入顺序可恢复已有任务。完整选项和退出码见 [Tasks 客户端示例](tasks.md#client-examples)，旧 uploads/jobs 的替换方式见 [4.1 迁移指南](../reference/migration_4_1.md)。

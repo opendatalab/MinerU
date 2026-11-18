@@ -105,7 +105,7 @@ The wrapper defaults to port 8003, accepts multipart, and calls upstream Tasks; 
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-Without `--api-url`, Gradio manages a loopback Router with one API worker. With `--api-url`, it connects only to that V1 service. `mineru-webui` accepts the same options.
+Without `--api-url`, Gradio manages a loopback Router with one API worker. With `--api-url`, it connects only to that V1 service. `mineru-webui` accepts the same options. For uploading, source tracing, and downloads, see the [WebUI guide](webui.md).
 
 `--task-timeout` limits execution time per file in managed mode (default: `3600` seconds). For example: `mineru-webui --max-pages 20 --preload-models --task-timeout 600`. Uploads, queue time and model startup are excluded. On timeout, affected requests fail and Router replaces the worker before accepting more work; the failed document is not retried automatically. `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS` controls startup waiting separately.
 
@@ -120,7 +120,7 @@ mineru-kit vlm-server --engine auto --port 30000
 
 `mineru-router` remains a command-name alias for `mineru-kit router`. Router exposes only the V1 API and accepts only its documented worker options.
 
-Set `--admin-api-key` or `MINERU_ROUTER_ADMIN_API_KEY` to enable independently authenticated upstream registration, listing, and safe deregistration. Dynamic membership lasts only for the current process; another Router can be registered as an upstream. See [management APIs and cascading](./tasks.md#dynamic-router-upstreams-and-cascading).
+Set `--admin-api-key` or `MINERU_ROUTER_ADMIN_API_KEY` to enable independently authenticated upstream registration, listing, and safe deregistration. Dynamic membership lasts only for the current process; another Router can be registered as an upstream. See [Router management APIs and cascading](../deployment/router.md#upstreams).
 
 ## Environment variables
 

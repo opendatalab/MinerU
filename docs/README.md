@@ -12,7 +12,8 @@
 
 用户文档从 `en/index.md` 和 `zh/index.md` 进入；开发文档从 `next/README.md` 进入。
 Middle JSON 现行规范只在 `next/middle-json/` 维护；官方用户文档引用该规范，不另建一套 schema。
-Tasks、file-parse 与版本迁移的公开契约在双语用户文档维护，开发文档链接到它们。
+首次 HTTP 请求的可下载示例在 `usage/http_api.md`。Tasks、file-parse 与版本迁移的公开契约在双语用户文档维护。
+WebUI 操作、Router 部署分别在 `usage/webui.md` 和 `deployment/router.md`，开发文档链接到对应的公开说明。
 
 ## 编辑规则
 
@@ -20,7 +21,7 @@ Tasks、file-parse 与版本迁移的公开契约在双语用户文档维护，�
 - 面向用户的行为修改同步中英文；代码路径、示例字段和默认值应从当前实现核对。
 - 中文小节被跨页引用时使用显式、稳定的英文锚点，如 `{#tier-selection}`。
 - 归档记录保留当时的版本、失败和测试数据；尚未解决的问题迁入 `next/backlog.md`，不把历史结果改写成当前验收。
-- 页面迁移后更新源文件链接，在 `_redirects.json` 登记旧地址。构建为旧页面生成无索引跳转；历史 JSON/PDF 附件的旧下载地址仍返回原字节。
+- 页面迁移后更新源文件链接，在 `_redirects.json` 登记旧地址。双语目的页写作 `en/...` 时沿用访问者的语言；固定指向中文原文时使用 `zh/...`。构建为旧页面生成无索引跳转；历史 JSON/PDF 附件的旧下载地址仍返回原字节。
 - 归档或提案的站内入口使用 GitHub 源文件链接。截图随使用它的教程保留，不按目录年龄批量删除。
 
 ## 验证

@@ -28,7 +28,9 @@ $env:MINERU_MODEL_SOURCE = "modelscope"
 
 小模型包 `MinerU-4_models_torch` 和 `MinerU-4_models_onnx` 在 Hugging Face 与 ModelScope 均已登记；VLM 原始权重与 llama.cpp 的 GGUF/mmproj 使用不同模型仓库，由所选引擎决定。Basic 需要对应小模型包，Standard 还需要 VLM 模型，并同时支持 Advanced 请求。
 
-## 下载、检查和离线使用
+## 下载、检查和离线使用 {#offline-models}
+
+<span id="_3"></span>
 
 按当前配置下载并验证 Standard 部署模型：
 
@@ -84,7 +86,7 @@ mineru-kit parse document.pdf -o document.md --tier standard
 
 `model.stack`、`MINERU_MODEL_STACK` 和 `--stack` 已移除。修改配置后重启相关服务。
 
-## 三种远程连接对照
+## 三种远程连接对照 {#_4}
 
 MinerU 会连接三类不同的远程服务，它们互不通用——不要把其中一个服务的地址、密钥或模型名复用到另一个上：
 
@@ -94,6 +96,30 @@ MinerU 会连接三类不同的远程服务，它们互不通用——不要把�
 | 远程 VLM 推理服务 | 为本地解析流程（Standard/Advanced）提供模型推理，OpenAI 兼容 | `config.yaml` 的 `model.vlm.server_url` / `api_key` / `model` |
 | LLM 辅助后处理 | 标题分级、跨页表格单元格续接 | `config.yaml` 的 `llm_aided.api_key` / `base_url` / `model`；两个功能默认关闭 |
 
-## 下载问题
+## LLM 辅助后处理 {#llm-post-processing}
+
+LLM 辅助标题分级和跨页表格单元格续接读取 `$MINERU_HOME/config.yaml`，兼容 OpenAI 协议的模型服务：
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.8-flash
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+- `title_leveling`：仅在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页结果持久化为 `false` 并跳过该功能。
+- `cross_page_table_cell_merge`：在现有规则确认跨页续表后，通过 LLM 判断边界行中各组相邻单元格是否续接。
+- table cell merge 不要求整本输入；两个功能默认关闭，并通过同一个异步客户端共享连接参数和 `max_concurrency` 请求上限，默认值为 16。
+- `max_concurrency` 必须是不小于 1 的整数，可通过 `MINERU_LLM_AIDED_MAX_CONCURRENCY` 覆盖。
+- 启用任一功能前必须配置非空的 `api_key`、`base_url` 和 `model`。
+- `enable_thinking` 可省略；省略后不会向模型服务发送该扩展参数。
+- 旧 `mineru.json` 中的 `llm-aided-config` 不再读取。
+
+## 下载问题 {#_5}
 
 Hugging Face 默认使用 `hf_xet`。如果网络无法访问 Xet CAS，可在下载前设置 `HF_HUB_DISABLE_XET=1` 使用普通 HTTP；也可切换 ModelScope。离线部署先完成下载和验证，再设置 `local`。更多安装组合见[扩展模块](../quick_start/extension_modules.md)。

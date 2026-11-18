@@ -103,7 +103,7 @@ mineru-kit file-parse-server --api-url http://127.0.0.1:8000
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-未传 `--api-url` 时，Gradio 会托管 loopback Router，由 Router 管理唯一的 API worker；传入后只连接指定的 V1 服务。`mineru-webui` 接受相同参数。
+未传 `--api-url` 时，Gradio 会托管 loopback Router，由 Router 管理唯一的 API worker；传入后只连接指定的 V1 服务。`mineru-webui` 接受相同参数。上传、原文定位和下载步骤见 [WebUI 操作指南](webui.md)。
 
 `--task-timeout` 设置托管 worker 的单文件执行期限，默认 `3600` 秒；例如 `mineru-webui --max-pages 20 --preload-models --task-timeout 600`。上传、排队和模型启动不计入。超时后旧请求明确失败，Router 重建 worker 后继续处理后续请求，不自动重跑问题文件。`MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS` 单独控制启动等待。
 
@@ -118,7 +118,7 @@ mineru-kit vlm-server --engine auto --port 30000
 
 `mineru-router` 保留为 `mineru-kit router` 的命令名别名。Router 只暴露 V1 API，并且只接受文档中声明的 worker 参数。
 
-使用 `--admin-api-key` 或 `MINERU_ROUTER_ADMIN_API_KEY` 启用独立认证的 upstream 注册、查询和安全注销接口。动态清单仅当前进程有效；下层 Router 可作为 upstream 接入。[管理 API 与级联示例](./tasks.md#upstream)。
+使用 `--admin-api-key` 或 `MINERU_ROUTER_ADMIN_API_KEY` 启用独立认证的 upstream 注册、查询和安全注销接口。动态清单仅当前进程有效；下层 Router 可作为 upstream 接入。[Router 管理 API 与级联示例](../deployment/router.md#upstreams)。
 
 ## 环境变量
 

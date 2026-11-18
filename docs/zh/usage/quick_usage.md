@@ -1,143 +1,47 @@
-# 使用 MinerU
+# 文档库与 Agent 阅读 {#mineru}
 
-## 快速配置模型源
-MinerU 默认使用 `auto` 模型源策略，优先探测 Hugging Face，不可访问时选择 ModelScope，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
-```bash
-export MINERU_MODEL_SOURCE=modelscope
-```
-有关模型源配置和自定义本地模型路径的更多信息，请参考文档中的[模型源说明](./model_source.md)。
+文档库适合需要反复搜索、引用或继续阅读同一份文档的场景。只想把文件或目录一次性导出为 Markdown 或 ZIP 时，使用[快速入门](../quick_start/index.md)里的 `mineru-kit parse`。
 
-## 通过命令行快速使用
-MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行文档解析：
-```bash
-mineru parse <input_path> -o <output_path>
-```
-> [!TIP]
-> - `<input_path>`：单个本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / `MHTML`（`.mhtml` 或 `.mht`）/ 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件
-> - `<output_path>`：可选输出文件；未指定时 Markdown 写入标准输出
-> - PDF 默认解析前 10 页；使用 `--pages all` 解析整份 PDF。MHTML 等非 PDF 输入按整份文档解析，不接受 `--pages`。
-> 
-> 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
+## 解析并保存到文档库 {#_2}
 
-> [!NOTE]
-> 运行时加速按两个模型组件分别选择，依据是已安装的依赖和检测到的设备：
->
-> - 小模型仅在 `torch`、`torchvision`、`transformers`、`accelerate`、`safetensors` **全部安装**且检测到非 CPU 设备（CUDA/MPS 等）时使用 Torch 后端，否则使用 ONNX。4.1 在 Windows/Linux 为 ONNX 自动选择兼容的 DirectML/WebGPU 加速或 CPU，详见[档位与运行环境](tiers.md)。只安装 Torch 并不足以启用。
-> - 本地 VLM 引擎独立选择：macOS 固定使用 llama.cpp；加速卡设备上 Linux 优先 vLLM、其次已安装的 LMDeploy，Windows 使用 LMDeploy；否则使用 llama.cpp。
-> - XPU 不会自动选择 LMDeploy：Linux 上安装了支持 XPU 的 vLLM 时使用 vLLM，否则使用 llama.cpp；Windows 上使用 llama.cpp。
-> - Windows 用户如需 CUDA 加速，请先前往 [PyTorch 官网](https://pytorch.org/get-started/locally/) 选择与 CUDA 版本匹配的命令安装支持加速的 `torch` 和 `torchvision`，再安装 `mineru[full]`。
-
-安装完成后，确认当前环境实际生效的运行时：
+先启动本地文档库服务，再用[快速入门](../quick_start/index.md)中的 `report.html` 试一次。解析结果存入文档库，命令的 JSON 响应写入 `parsed.json`。原生 HTML 整份解析，使用 Flash。
 
 ```bash
-mineru-kit models show
+mineru server start
+mineru parse report.html --wait 600 --json > parsed.json
 ```
 
-输出会报告 `Effective small backend` 与 `Effective VLM engine`，以及每个取值的配置来源。`models show` **显示**有效后端、引擎和模型就绪状态——模型文件缺失会被报告但命令不会失败；需要以非零退出码标识模型文件不完整时使用 `mineru-kit models verify`。两者都不执行推理。完整验证按顺序推进：依赖安装成功 → 选择符合预期 → `models verify` 通过 → 一份小样本文档实际解析成功。完整选择规则见[档位与运行环境](./tiers.md)。
+完成后的 `content` 包含这次返回的正文和 `content_ranges`。每个范围的 `start` 和 `end` 都是可读取的定位符，包含真实的文档 ID、档位和内容位置。需要完整 Markdown 文件时使用 `-o`。[解析、导出与等待](cli_tools.md)
 
-如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
-
-## 文档库、搜索与继续阅读
-
-`mineru` 使用本地文档库保存文件身份、解析缓存和索引。解析后的响应带有 locator；按真实返回值替换下例中的文档 ID：
+## 搜索和读取已有内容 {#_3}
 
 ```bash
-mineru parse document.pdf --json
-mineru search "关键词" --json
-mineru read "doc:ab12cd3/tier:standard/page:11" --json
+mineru search "MinerU" --json
 ```
 
-超过输出预算时按 `next_request` 或返回的继续阅读命令操作。`read` 读取已有结果，不会自动发起新的高质量解析。无状态批处理和完整导出使用 `mineru-kit parse`；原生 Office、HTML/MHTML、CSV/TSV、EPUB、OFD 自动归一到本地 Flash。
+搜索结果给出文档的 `short_id`、命中片段和可用路径。要读取刚解析的具体位置，可以复制 `parsed.json` 中的 `content.content_ranges[0].start`，将其作为 `mineru read` 的第一个参数。使用 Bash 和 `jq` 时可以将这个定位符直接传给 CLI。
 
-## 通过 API、WebUI 和服务进阶使用
-
-- 启动自部署 V1 API：
-  ```bash
-  mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
-  ```
-  >[!TIP]
-  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
-  >
-  >原生文档解析示例：[Python SDK](sdk_api.md)；纯 HTTP 调用见 [V1 HTTP API](http_api.md)
-
-- 启动gradio webui 可视化前端：
-  ```bash
-  mineru-kit webui --server-name 0.0.0.0 --server-port 7860
-  ```
-  >[!TIP]
-  > 
-  >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
-  >- 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。
-  >- 使用 `--api-server-preload-models` 为托管的本地服务预加载模型。
-  >- `mineru-webui` 仍作为命令名兼容别名，使用相同的新版参数。
-
-- 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
-  ```bash
-  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto --worker-tier standard
-  ```
-  >[!TIP]
-  >
-  >- `mineru-router` 与 `mineru-kit router` 都只暴露完整 `/v1/*` API。
-  >- 可重复使用 `--upstream-url` 聚合多个 V1 api-server，也可通过 `--local-gpus` 自动拉起 `mineru-kit api-server` worker。
-  >- `--preload-models` 只作用于 Router 托管的本地 worker，远端 upstream 保持自己的启动配置。
-  >- Router 不再透传未知模型引擎参数。
-  >- 适用于多服务、多 GPU 和统一入口部署场景。
-
-- 启动 OpenAI 兼容 VLM 服务：
-  ```bash
-  mineru-kit vlm-server --engine auto --port 30000
-  ```
-
-> [!NOTE]
-> 模型引擎参数只适用于显式声明它们的命令；`mineru-router` 仅接受文档列出的 Router/worker 参数，不透传未知参数。
-> 我们整理了一些`vllm/lmdeploy`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
-
-## 使用 config.yaml 配置 LLM 辅助后处理
-
-LLM 辅助标题分级和跨页表格单元格续接读取 `$MINERU_HOME/config.yaml`，兼容 OpenAI 协议的模型服务：
-
-```yaml
-llm_aided:
-  api_key: ${MINERU_LLM_API_KEY:-}
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.8-flash
-  enable_thinking: false
-  max_concurrency: 16
-  features:
-    title_leveling: false
-    cross_page_table_cell_merge: false
+```bash
+locator=$(jq -er '.content.content_ranges[0].start' parsed.json) &&
+  mineru read "$locator" --json
 ```
 
-- `title_leveling`：仅在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页结果持久化为 `false` 并跳过该功能。
-- `cross_page_table_cell_merge`：在现有规则确认跨页续表后，通过 LLM 判断边界行中各组相邻单元格是否续接。
-- table cell merge 不要求整本输入；两个功能默认关闭，并通过同一个异步客户端共享连接参数和 `max_concurrency` 请求上限，默认值为 16。
-- `max_concurrency` 必须是不小于 1 的整数，可通过 `MINERU_LLM_AIDED_MAX_CONCURRENCY` 覆盖。
-- 启用任一功能前必须配置非空的 `api_key`、`base_url` 和 `model`。
-- `enable_thinking` 可省略；省略后不会向模型服务发送该扩展参数。
-- 旧 `mineru.json` 中的 `llm-aided-config` 不再读取。
+这会读取第一个已返回范围的起始位置。`read` 消费当前缓存。若读取响应中有 `next_request`，使用其中的 `locator` 继续读，`after` 有值时一并传给 `--after`。文本输出中的 `<!-- Next: ... -->` 给出了可执行的下一条命令。
 
-## 基于配置文件扩展 MinerU 功能
+## 阅读更多 PDF 页面 {#pdf}
 
-MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；可通过 `MINERU_CONFIG` 指定其他配置文件。旧 `mineru.json` CLI 配置不再支持。
+`mineru parse document.pdf` 默认请求前 10 页。如果需要第 11 页，先请求它，再使用响应中的定位符。要导出整份 PDF，显式请求全部页。
 
-模型目录和模型源使用 `model` 配置段：
-
-```yaml
-model:
-  base_dir: ~/.mineru/models
-  source: auto
-  small_backend: auto
-  vlm:
-    engine: auto
+```bash
+mineru parse document.pdf --pages 11 --wait 600 --json
+mineru parse document.pdf --pages all -o document.md --wait 600
 ```
 
-模型下载和本地模型源的详细说明见[模型源说明](./model_source.md)。
+PDF 页码从 1 开始，`1-5,8,r1` 表示前五页、第八页和最后一页。`--pages` 决定请求的页面，`--limit` 限制一次返回终端的文字量，`-o` 写出所请求范围的完整内容。等待超时后，使用同一条解析命令继续等待。[PDF 页范围](../../next/page-ranges.md)
 
-## PDF 页码选择
+## 服务与配置 {#related-settings}
 
-使用 `--pages "1-5,8,r3-r1"`：页码从 1 开始，包含区间两端，`r1` 表示最后一页，`all` 表示全部。
-结果去重并按原页序排列；部分越界取有效交集，倒序或选不到页面时返回 `page_range_invalid`。
-省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
-新请求使用新规范；历史正整数半角 `~` 结果可直接读取，无需重建 Doclib 缓存。
-结果返回值和新缓存使用 `-`，全角 `～` 及负号倒数页码不受支持。
-档位与默认选择见[档位与运行环境](tiers.md)，升级注意事项见[迁移指南](../reference/migration_4.md)。
+- [下载与离线准备模型](model_source.md){#_1}，或查看[模型配置文件](model_source.md){#mineru_1}中的路径和后端设置。
+- [部署解析服务](../deployment/index.md){#apiwebui}，或[在 WebUI 中使用已有服务](webui.md)。
+- [配置标题分级和跨页表格续接](model_source.md#llm-post-processing){#configyaml-llm}。
+- 文档库初始启用使用与诊断遥测。`mineru telemetry preview` 可检查数据，`mineru telemetry disable` 可停止采集和发送；服务启动前也可设置 `MINERU_TELEMETRY_DISABLED=1`。[遥测范围与设置](../../next/telemetry-minimum.md)

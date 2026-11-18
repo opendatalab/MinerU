@@ -1,39 +1,15 @@
-# 使用指南
+# 使用指南 {#_1}
 
-本章节提供了项目的完整使用说明。我们将通过以下几个部分，帮助您从基础到进阶逐步掌握项目的使用方法：
+## 按任务选择入口 {#_2}
 
-## 目录
+| 想得到的结果 | 使用方式 |
+| --- | --- |
+| 一个文件或整个目录的 Markdown、Middle JSON 或 ZIP | 用 `mineru-kit parse` 做[第一次转换](../quick_start/index.md)。命令默认处理 PDF 全部页，将产物写到 `-o` 指定的位置。 |
+| 在浏览器里对照原文检查识别结果 | 打开 [WebUI](webui.md)，选择文件和页范围，点击原文或解析结果双向定位。 |
+| 保存解析缓存、搜索文档并继续阅读 | 用 `mineru parse` 将文件加入[文档库](quick_usage.md)，再用 `mineru search` 和 `mineru read` 访问已有内容。 |
+| 在程序中处理文档 | 选择[本地或远程 Python SDK](sdk_api.md)、[异步 Tasks](tasks.md) 或[单文件同步接口](file_parse.md)。 |
+| 把结果交给现有应用或工作流 | 在[第三方集成](integrations.md)查看 n8n 下载模板和各历史教程的适用范围。 |
 
-- [档位与运行环境](tiers.md)
-- [Python SDK](sdk_api.md)
-- [V1 HTTP API](http_api.md)
-- [Tasks 异步接口](tasks.md)
-- [file-parse 同步接口](file_parse.md)
-- [4.0.x → 4.1 迁移](../reference/migration_4_1.md)
-- [3.x → 4.0 迁移](../reference/migration_4.md)
-- 本地部署
-    * [基础使用](./quick_usage.md) - 快速上手和基本使用
-    * [模型源配置](./model_source.md) - 模型源的详细配置说明  
-    * [命令行工具](./cli_tools.md) - 命令行工具的详细参数说明
-    * [命令行进阶参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
-- [旧平台适配（MinerU <4）](compatibility.md) - 国产卡保留原适配
-- 插件与生态（保留原集成说明，不代表已支持 4.0 V1 API）
-    * [Cherry Studio](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Cherry_Studio.md)
-    * [Sider](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Sider.md)
-    * [Dify](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Dify.md)
-    * [n8n](plugin/n8n.md)
-    * [Coze](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Coze.md)
-    * [FastGPT](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/FastGPT.md)
-    * [ModelWhale](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/ModelWhale.md)
-    * [DingTalk](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/DingTalk.md)
-    * [DataFlow](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/DataFlow.md)
-    * [BISHENG](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/BISHENG.md)
-    * [RagFlow](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/RagFlow.md)
+## 参数和排障 {#_3}
 
-## 开始使用
-
-`mineru` 是面向交互和 Agent 工作流的文档库 CLI；无状态批处理、V1 API Server、Gradio、模型管理和多服务 Router 使用 `mineru-kit`。
-
-建议按照上述顺序阅读文档，这样可以帮助您更好地理解和使用项目功能。
-
-如果您在使用过程中遇到问题，请查看 [FAQ](../faq/index.md)
+查看[命令行工具](cli_tools.md)了解导出和等待参数，查看[输出格式](../reference/output_files.md)确定需要的文件。部署模型、API 或多 GPU 服务请从[部署与运维](../deployment/index.md)开始。[常见问题](../faq/index.md)

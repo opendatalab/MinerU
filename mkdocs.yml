@@ -87,44 +87,41 @@ copyright: © 2024 - 2026 MinerU. All Rights Reserved.
 
 # 复用公共导航项，中文仅覆盖在线演示的目标地址。
 nav:
-  - Home:
-    - &nav_home
-      "MinerU": index.md
-    - &nav_quick_start
-      Quick Start:
-      - Quick Start: quick_start/index.md
-      - Extension Modules: quick_start/extension_modules.md
-      - Docker Deployment: quick_start/docker_deployment.md
-    - &nav_usage
-      Usage:
+  - &nav_home
+    Home: index.md
+  - &nav_quick_start
+    Quick Start: quick_start/index.md
+  - &nav_usage
+    Usage:
       - Usage: usage/index.md
-      - Quick Usage: usage/quick_usage.md
+      - WebUI: usage/webui.md
+      - Document Library and Agents: usage/quick_usage.md
+      - CLI Tools: usage/cli_tools.md
+      - Third-party Integrations: usage/integrations.md
+  - &nav_deployment
+    Deployment:
+      - Deployment: deployment/index.md
       - Tiers and Runtimes: usage/tiers.md
+      - Extension Modules: quick_start/extension_modules.md
+      - Models and Configuration: usage/model_source.md
+      - Docker Deployment: quick_start/docker_deployment.md
+      - Router Deployment: deployment/router.md
+      - GPU and Engine Parameters: usage/advanced_cli_parameters.md
+  - &nav_reference
+    Reference:
+      - Reference: reference/index.md
       - Python SDK: usage/sdk_api.md
-      - V1 HTTP API: usage/http_api.md
+      - First HTTP Request: usage/http_api.md
       - Tasks API: usage/tasks.md
       - Synchronous File Parse: usage/file_parse.md
-      - Legacy Platforms (MinerU <4): usage/compatibility.md
-      - Model Source: usage/model_source.md
-      - CLI Tools: usage/cli_tools.md
-      - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-      - Third-party Integrations: usage/integrations.md
-    - &nav_reference
-      Reference:
-      - Reference: reference/index.md
-      - Migration to 4.0: reference/migration_4.md
-      - Migration to 4.1: reference/migration_4_1.md
       - Output File Format: reference/output_files.md
       - Developer Reference: reference/development.md
+      - Migration to 4.0: reference/migration_4.md
+      - Migration to 4.1: reference/migration_4_1.md
+      - Legacy Platforms (MinerU <4): usage/compatibility.md
       - Changelog: reference/changelog.md
-    - &nav_faq
-      FAQ:
-      - FAQ: faq/index.md
-    - Demo: https://huggingface.co/spaces/opendatalab/MinerU
-  - *nav_quick_start
-  - *nav_usage
-  - *nav_reference
-  - *nav_faq
+  - &nav_faq
+    FAQ: faq/index.md
   - Demo: https://huggingface.co/spaces/opendatalab/MinerU
 
 
@@ -144,15 +141,10 @@ plugins:
           name: 中文
           build: true
           nav:
-            - Home:
-              - *nav_home
-              - *nav_quick_start
-              - *nav_usage
-              - *nav_reference
-              - *nav_faq
-              - Demo: https://www.modelscope.cn/studios/OpenDataLab/MinerU
+            - *nav_home
             - *nav_quick_start
             - *nav_usage
+            - *nav_deployment
             - *nav_reference
             - *nav_faq
             - Demo: https://www.modelscope.cn/studios/OpenDataLab/MinerU
@@ -160,20 +152,23 @@ plugins:
             Home: 主页
             Quick Start: 快速入门
             Extension Modules: 扩展模块安装
-            Docker Deployment: Docker部署
+            Docker Deployment: Docker 部署
+            Deployment: 部署与运维
+            Router Deployment: Router 部署
             Usage: 使用指南
-            Quick Usage: 基础使用
+            Document Library and Agents: 文档库与 Agent 阅读
+            WebUI: WebUI 操作指南
             CLI Tools: 命令行工具
             Tiers and Runtimes: 档位与运行环境
             Python SDK: Python SDK
-            V1 HTTP API: V1 HTTP API
+            First HTTP Request: 第一次 HTTP 请求
             Tasks API: Tasks 异步接口
             Synchronous File Parse: 单文件同步解析
             Legacy Platforms (MinerU <4): 旧平台适配（MinerU <4）
             Migration to 4.0: 迁移到 4.0
             Migration to 4.1: 迁移到 4.1
-            Model Source: 模型源配置
-            Advanced CLI Parameters: 命令行进阶参数
+            Models and Configuration: 模型下载与配置
+            GPU and Engine Parameters: GPU 与引擎参数
             Third-party Integrations: 第三方集成
             Developer Reference: 开发参考
             FAQ: 常见问题解答

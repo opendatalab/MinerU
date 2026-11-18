@@ -1,27 +1,15 @@
 # Usage Guide
 
-This section provides comprehensive usage instructions for the project. We will help you progressively master the project's usage from basic to advanced through the following sections:
+## Choose a workflow {#table-of-contents}
 
-## Table of Contents
+| What do you need? | Workflow |
+| --- | --- |
+| Markdown, Middle JSON, or a ZIP from one file or a folder | Follow the [first conversion](../quick_start/index.md) with `mineru-kit parse`. It processes all PDF pages by default and writes to the path supplied with `-o`. |
+| A browser view to check recognition against the source | Open the [WebUI](webui.md), select a file and page range, and click either the source or the result to see its counterpart. |
+| A searchable library with cached results | Add a file with `mineru parse`, then search and read it with the [document library](quick_usage.md). |
+| Parsing inside an application | Use the [local or remote Python SDK](sdk_api.md), [asynchronous Tasks](tasks.md), or the [single-file synchronous API](file_parse.md). |
+| An existing application or workflow | See [third-party integrations](integrations.md) for the n8n download template and the scope of historical tutorials. |
 
-- [Tiers and runtimes](tiers.md)
-- [Python SDK](sdk_api.md)
-- [V1 HTTP API](http_api.md)
-- [Tasks API](tasks.md)
-- [Synchronous file-parse API](file_parse.md)
-- [4.0.x → 4.1 migration](../reference/migration_4_1.md)
-- [3.x → 4.0 migration](../reference/migration_4.md)
-- [Legacy platforms (MinerU <4)](compatibility.md)
+## Options and troubleshooting {#getting-started}
 
-- [Quick Usage](./quick_usage.md) - Quick setup and basic usage
-- [Model Source Configuration](./model_source.md) - Detailed configuration instructions for model sources
-- [Command Line Tools](./cli_tools.md) - Detailed parameter descriptions for command line tools
-- [Advanced Optimization Parameters](./advanced_cli_parameters.md) - Advanced parameter descriptions for command line tool adaptation
-
-## Getting Started
-
-`mineru` is the document-library CLI for interactive and agent workflows. Use `mineru-kit` for stateless batch parsing, the V1 API server, Gradio, model management, and multi-service routing.
-
-We recommend reading the documentation in the order listed above, which will help you better understand and use the project features.
-
-If you encounter issues during usage, please check the [FAQ](../faq/index.md)
+Look up export and wait options in the [CLI guide](cli_tools.md) and available files in [output formats](../reference/output_files.md). For models, API servers, and multi-GPU workers, start with [deployment](../deployment/index.md). [FAQ](../faq/index.md)

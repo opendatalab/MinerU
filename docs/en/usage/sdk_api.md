@@ -29,6 +29,8 @@ print(result.markdown())
 
 Inside an existing event loop, use `await parse_async(...)`. An async interface does not imply identical execution mechanisms across engines.
 
+See the [local SDK parameter reference](../../next/sdk/parser.md) (in Chinese) for defaults and `MinerUParser` instance usage.
+
 ## Connect to a self-hosted V1 API
 
 Start the service in its inference environment:

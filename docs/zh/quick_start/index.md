@@ -1,6 +1,6 @@
 # 快速入门
 
-本指南面向 MinerU **4.x**，包含 4.1 自动设备选择与 API 更新。已有部署请阅读 [4.1 迁移说明](../reference/migration_4_1.md)。国产卡的旧适配教程仍适用于 `<4`，见[旧平台指南](../usage/compatibility.md)。
+安装 MinerU 4.x 后，用一个小文件验证本地解析并查看生成的 Markdown。
 
 ## 安装 MinerU
 
@@ -32,11 +32,18 @@ uv pip install -U "mineru>=4.0,<5"
 
 基础包包含 WebUI、ONNX 小模型运行时和 llama.cpp VLM；Apple Silicon 上会自动安装 Torch 依赖。需要 Torch 小模型或高吞吐 VLM 时，按[扩展模块](extension_modules.md)安装 `torch` 或 `full`，不要使用 3.x 的 extras。
 
-4.1 在 Windows x64 使用 DirectML、Linux x86_64 使用 WebGPU，自动选择兼容 GPU 或 CPU；Apple Silicon 默认使用 Torch/MPS 与 llama.cpp/Metal。可用 `mineru-kit hardware detect` 推荐档位，或用 `hardware info --json` 读取诊断信息。首次 ONNX 校准可能下载识别模型，详见[档位与运行环境](../usage/tiers.md)。
+需要确认设备或准备推理模型时，参见[部署与运维](../deployment/index.md)。
 
 ## 第一次解析
 
-无状态解析单个文件，将 Markdown 写入指定文件：
+在一个空目录中创建一份小文档，用无状态 CLI 将它转换为 Markdown。这个示例使用原生 HTML 解析，无需下载模型。
+
+```bash
+python -c "from pathlib import Path; Path('report.html').write_text('<h1>MinerU</h1><p>First conversion.</p>', encoding='utf-8')"
+mineru-kit parse report.html -o report.md --tier flash
+```
+
+打开当前目录的 `report.md`，可以看到标题 `MinerU` 和正文 `First conversion.`。转换自己的 PDF 时，在同一条命令中换用 PDF 路径和所需档位。
 
 ```bash
 mineru-kit parse document.pdf -o document.md --tier standard
@@ -61,13 +68,7 @@ mineru-kit parse ./documents -o ./output --format zip
 
 ## 文档库与 Agent
 
-```bash
-mineru parse document.pdf --json
-mineru parse document.pdf --pages all -o document.md
-mineru search "关键词" --json
-```
-
-`mineru` 使用文档库和缓存。`mineru parse` 默认读取 PDF 前 10 页，可能按输出长度返回继续阅读请求；按返回的 locator 和 `next_request` 继续。它与直接输出完整文件的 `mineru-kit parse` 是不同工作流，详见[基础使用](../usage/quick_usage.md)。
+想保存结果、搜索或继续阅读时，可用上面创建的 `report.html` 跟随[文档库与 Agent 阅读](../usage/quick_usage.md)启动本地服务并完成首次入库。文档库命令 `mineru parse` 默认请求 PDF 的前 10 页。
 
 ### 文档库遥测
 
@@ -79,13 +80,13 @@ Doclib 提供使用与诊断遥测，初始设置为启用。可通过 `mineru t
 mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-在浏览器打开 [本地 WebUI](http://127.0.0.1:7860)。`mineru-webui` 是相同入口的独立命令。未指定 `--api-url` 时，WebUI 托管本地 V1 API 服务；连接已有服务见[SDK 与 API](../usage/sdk_api.md)。
+打开[本地 WebUI](http://127.0.0.1:7860)，按 [WebUI 操作指南](../usage/webui.md)上传文件、对照原文和下载结果。若要在应用中调用解析服务，可单独启动 API。
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ```
 
-在 [OpenAPI 文档](http://127.0.0.1:8000/docs)查看当前服务接口。异步批次使用 [Tasks](../usage/tasks.md)；需要上传单文件并直接返回附件时，另行启动 [file-parse 服务](../usage/file_parse.md)。
+在 [OpenAPI 文档](http://127.0.0.1:8000/docs)查看当前服务接口。按[第一次 HTTP 请求](../usage/http_api.md)下载示例结果，异步批次的字段见 [Tasks](../usage/tasks.md)；需要上传单文件并直接返回附件时，另行启动 [file-parse 服务](../usage/file_parse.md)。
 
 ## 源码安装
 

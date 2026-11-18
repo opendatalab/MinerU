@@ -1,145 +1,47 @@
-# Using MinerU
+# Document library and agent reading {#using-mineru}
 
-## Quick Model Source Configuration
-MinerU defaults to `auto`: probe Hugging Face first and choose ModelScope when it is unavailable. If users cannot access `huggingface` due to network restrictions, they can conveniently switch the model source to `modelscope` through environment variables:
-```bash
-export MINERU_MODEL_SOURCE=modelscope
-```
-For more information about model source configuration and custom local model paths, please refer to the [Model Source Documentation](./model_source.md) in the documentation.
+Use the library when you need to search, cite, or revisit the same documents. For a one-time conversion of a file or folder to Markdown or ZIP, use `mineru-kit parse` in the [quick start](../quick_start/index.md).
 
-## Quick Usage via Command Line
-MinerU has built-in command line tools that allow users to quickly use MinerU for document parsing through the command line:
-```bash
-mineru parse <input_path> -o <output_path>
-```
-> [!TIP]
->- `<input_path>`: One local `PDF` / `OFD` / `EPUB` / static `HTML` / `MHTML` (`.mhtml` or `.mht`) / image / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` file
->- `<output_path>`: Optional output file; without it, Markdown is written to stdout
->- PDF parsing defaults to the first 10 pages; use `--pages all` for the full PDF. Non-PDF inputs, including MHTML, are parsed as whole documents and do not accept `--pages`.
->
-> For more information about output files, please refer to [Output File Documentation](../reference/output_files.md).
+## Parse a file into the library {#quick-usage-via-command-line}
 
-> [!NOTE]
-> Runtime acceleration is selected separately for the two model components, based on installed dependencies and detected devices:
->
-> - Small models use the Torch backend only when `torch`, `torchvision`, `transformers`, `accelerate`, and `safetensors` are **all** installed and a non-CPU device (CUDA/MPS/...) is detected; otherwise they use ONNX. In 4.1, ONNX selects compatible DirectML/WebGPU acceleration or CPU on Windows/Linux; see [Tiers and runtimes](tiers.md). Installing Torch alone is not enough.
-> - The local VLM engine is chosen independently: macOS always uses llama.cpp; on an accelerator device Linux prefers vLLM, then an installed LMDeploy, and Windows uses LMDeploy; otherwise llama.cpp.
-> - XPU is excluded from automatic LMDeploy selection: Linux uses an installed XPU-compatible vLLM, otherwise llama.cpp; Windows uses llama.cpp.
-> - Windows users who need CUDA acceleration should first visit the [PyTorch website](https://pytorch.org/get-started/locally/) and install accelerator-enabled `torch` and `torchvision` matching their CUDA version, then install the `mineru[full]` extras.
-
-After installation, confirm the runtimes actually in effect in your environment:
+Start the local library service, then try the `report.html` from the [quick start](../quick_start/index.md). The parsed result is kept in the library, and the command's JSON response is written to `parsed.json`. Native HTML is parsed in full using Flash.
 
 ```bash
-mineru-kit models show
+mineru server start
+mineru parse report.html --wait 600 --json > parsed.json
 ```
 
-The output reports `Effective small backend` and `Effective VLM engine` together with the config source of each value. `models show` *displays* effective backends, engines, and model readiness — missing model files are reported but do not fail the command; use `mineru-kit models verify` when a non-zero exit code should signal incomplete model files. Neither command runs inference. A full validation progresses in order: dependencies installed → selection as expected → `models verify` passes → a small sample document actually parses successfully. See [Tiers and Runtimes](./tiers.md) for the full selection table.
+On completion, `content` contains the returned text and its `content_ranges`. Each range has a `start` and an `end` locator with the actual document ID, tier, and content position. To write a complete Markdown file, use `-o`. [Parsing, exporting, and waiting](cli_tools.md)
 
-If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
-
-## Library, search, and continuation
-
-`mineru` keeps file identity, parsing caches, and indexes in a local document library. Responses include locators; replace the example document ID below with an actual returned ID:
+## Search and read cached content {#library-search-and-continuation}
 
 ```bash
-mineru parse document.pdf --json
-mineru search "keyword" --json
-mineru read "doc:ab12cd3/tier:standard/page:11" --json
+mineru search "MinerU" --json
 ```
 
-When an output reaches its budget, follow `next_request` or the returned continuation command. `read` consumes existing results without automatically starting higher-quality parsing. Use `mineru-kit parse` for stateless batches and complete exports. Native Office, HTML/MHTML, CSV/TSV, EPUB, and OFD normalize to local Flash.
+Search results provide a document `short_id`, snippet, and available paths. To read a specific position from the file you just parsed, copy `content.content_ranges[0].start` from `parsed.json` and pass it as the first argument to `mineru read`. With Bash and `jq`, the following commands pass that locator directly to the CLI.
 
-## Advanced Usage via API, WebUI, and Services
-
-- Start the self-hosted V1 API:
-  ```bash
-  mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
-  ```
-  >[!TIP]
-  >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, Tasks creation and operations by ID, per-file uploads, result downloads, and usage. Task and file lists are not exposed.
-  >
-  >Native document parsing example: [Python SDK](sdk_api.md); plain HTTP: [V1 HTTP API](http_api.md)
-
-- Start Gradio WebUI visual frontend:
-  ```bash
-  mineru-kit webui --server-name 0.0.0.0 --server-port 7860
-  ```
-  >[!TIP]
-  >
-  >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
-  >- Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`; with `--api-url`, it connects only to that existing V1 service.
-  >- Use `--api-server-preload-models` to preload models for the managed local server.
-  >- `mineru-webui` remains available as a command-name alias with the same modern options.
-
-- Use `mineru-router` for multi-service / multi-GPU orchestration:
-  ```bash
-  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto --worker-tier standard
-  ```
-  >[!TIP]
-  >
-  >- `mineru-router` and `mineru-kit router` expose the complete `/v1/*` API.
-  >- Repeat `--upstream-url` to aggregate multiple existing V1 api-server services, or use `--local-gpus` to launch `mineru-kit api-server` workers automatically.
-  >- Use `--preload-models` for router-managed workers; remote upstreams keep their own startup configuration.
-  >- Unknown model-engine arguments are not forwarded by Router.
-  >- It is intended for advanced multi-service, multi-GPU, and unified-entry deployments.
-
-- Start an OpenAI-compatible VLM server:
-  ```bash
-  mineru-kit vlm-server --engine auto --port 30000
-  ```
-
-> [!NOTE]
-> Model-engine parameters apply only to commands that explicitly declare them. `mineru-router` accepts documented Router/worker options and does not forward unknown arguments.
-> We have compiled some commonly used parameters and usage methods for `vllm/lmdeploy`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
-
-## Configuring LLM-aided post-processing with config.yaml
-
-LLM-aided title leveling and cross-page table cell continuation read `$MINERU_HOME/config.yaml` and support OpenAI-compatible model services:
-
-```yaml
-llm_aided:
-  api_key: ${MINERU_LLM_API_KEY:-}
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.8-flash
-  enable_thinking: false
-  max_concurrency: 16
-  features:
-    title_leveling: false
-    cross_page_table_cell_merge: false
+```bash
+locator=$(jq -er '.content.content_ranges[0].start' parsed.json) &&
+  mineru read "$locator" --json
 ```
 
-- `title_leveling` groups paragraph titles into levels 2 through 6 by document-title boundaries and runs only when `MiddleJson.is_full_document` is `true`. Page-selected input is persisted as `false` and skips title leveling.
-- `cross_page_table_cell_merge` asks the LLM whether each pair of boundary-row cells continues after the existing rules identify a cross-page table.
-- Table cell merge does not require whole-document input. Both features are disabled by default and share one asynchronous client, one connection configuration, and the `max_concurrency` request limit, which defaults to 16.
-- `max_concurrency` must be an integer of at least 1 and can be overridden with `MINERU_LLM_AIDED_MAX_CONCURRENCY`.
-- Enabling either feature requires non-empty `api_key`, `base_url`, and `model` values.
-- `enable_thinking` is optional. When omitted, the extension parameter is not sent to the model service.
-- The legacy `llm-aided-config` section in `mineru.json` is no longer read.
+This reads the start of the first returned range from the cache. If a read response includes a `next_request`, pass its `locator` to the next read and supply `--after` when `after` has a value. In text mode, the `<!-- Next: ... -->` marker gives the next command.
 
-## Extending MinerU Functionality with Configuration Files
+## Read additional PDF pages {#pdf-page-selection}
 
-MinerU works out of the box and reads current settings from `$MINERU_HOME/config.yaml`; set `MINERU_CONFIG` to use another file. Legacy `mineru.json` CLI settings are no longer supported.
+`mineru parse document.pdf` requests the first 10 pages by default. To read page 11, request that page before using the locator in the response. To export the entire PDF, request all pages explicitly.
 
-Model storage and source settings use the `model` section:
-
-```yaml
-model:
-  base_dir: ~/.mineru/models
-  source: auto
-  small_backend: auto
-  vlm:
-    engine: auto
+```bash
+mineru parse document.pdf --pages 11 --wait 600 --json
+mineru parse document.pdf --pages all -o document.md --wait 600
 ```
 
-See [Model Source Documentation](./model_source.md) for model download and local-source details.
+PDF pages start at 1. `1-5,8,r1` selects the first five pages, page eight, and the last page. `--pages` sets the requested pages, `--limit` bounds one terminal response, and `-o` writes the complete requested range. After a wait timeout, repeat the same parse command to keep waiting. [PDF page ranges](../../next/page-ranges.md)
 
-## PDF page selection
+## Services and configuration
 
-Use `--pages "1-5,8,r3-r1"`: page numbers start at 1, ranges include both endpoints,
-and `r1` means the last page. Use `all` for every page. Results are sorted and deduplicated;
-partially out-of-bounds ranges select their valid intersection. Reversed or empty selections
-fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with the first 10 pages;
-`mineru-kit parse`, Python and Gradio select all pages. New requests use the current syntax. Historical positive result ranges using ASCII `~`
-remain readable without rebuilding Doclib caches; result responses and new cache entries use `-`.
-Fullwidth `～` and negative page-number notation are not supported.
-See [page-range syntax and historical result compatibility](tiers.md).
+- [Prepare models for offline use](model_source.md){#quick-model-source-configuration} or look up [model paths and backends](model_source.md){#extending-mineru-functionality-with-configuration-files}.
+- [Deploy a parsing service](../deployment/index.md){#advanced-usage-via-api-webui-and-services} or [connect the WebUI to an existing service](webui.md).
+- [Configure title leveling and cross-page table continuation](model_source.md#llm-post-processing){#configuring-llm-aided-post-processing-with-configyaml}.
+- Library usage and diagnostic telemetry is enabled initially. Inspect it with `mineru telemetry preview`, disable collection and sending with `mineru telemetry disable`, or set `MINERU_TELEMETRY_DISABLED=1` before starting the service. [Telemetry scope and controls](../../next/telemetry-minimum.md)
