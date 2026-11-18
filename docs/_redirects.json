@@ -104,6 +104,7 @@
   "chemical_knowledge_introduction/introduction.pdf": "archive/attachments/introduction.pdf",
   "next/api/tasks.md": "zh/usage/tasks.md",
   "next/api/file-parse.md": "zh/usage/file_parse.md",
+  "next/api/examples.md": "en/usage/http_api.md",
   "next/api/changes.md": "zh/reference/migration_4_1.md",
   "next/cli/mineru-e2e-test-cases.md": "archive/testing/mineru-e2e-test-cases.md",
   "usage/acceleration_cards/Ascend.md": "archive/platforms/Ascend.md",

@@ -1,6 +1,6 @@
 # Output Formats and Result Contract
 
-4.1 uses a shared document model. Distinguish what a renderer can generate from what a particular CLI/API exposes; renderer capabilities are not automatically valid command options.
+Find your interface in the table before choosing an output. Command responses, saved data for rendering, and files for reading serve different purposes.
 
 ## Entrypoint capabilities
 
@@ -10,6 +10,7 @@
 | `mineru read` | Markdown or `--format image`; cached content only |
 | `mineru-kit parse` | `markdown`, `middle_json`, `zip` |
 | V1 Tasks / file-parse | `default`, `docx`, `html`, `latex`, including combinations; `default` is a ZIP of Markdown, Middle JSON, Structured Content, and images |
+| [WebUI downloads](../usage/webui.md#downloads) | Markdown ZIP, JSON ZIP (Structured Content), HTML, DOCX, LaTeX ZIP, EPUB, and a PDF rendered from the result. |
 | `ParseResult` | `markdown()`, `structured_content()`, `to_dict()`, `to_json()`, `save(writer)` |
 | `mineru.render.render()` | The nine targets below |
 
@@ -33,7 +34,7 @@ image bytes are not re-encoded. All document references are updated together wit
 
 Historical ZIPs retain their stored references, with no automatic migration or old-name aliases.
 Consumers should follow actual document references instead of constructing `*_body_*` filenames.
-CLI image acquisition is unchanged; local file loading and PDF crop fallback remain Gradio features.
+The WebUI reads assets from the saved result bundle.
 
 ## Nine rendering targets
 
@@ -63,47 +64,9 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
                    options=PdfRenderOptions(layout=PdfLayout.REFLOW))
 ```
 
-Original layout keeps body text, captions, code, tables and images independently
-fitted to their source boxes. `continues_prev` does not move text between original
-boxes. Original pages and blank pages remain. Both PDF layouts use CJK character
-wrapping for paragraphs containing Chinese, Japanese or Korean text, including
-mixed-language annotations and table cells. This avoids moving long Chinese
-phrases together at spaces. Pure Latin text and literal code/algorithm blocks
-retain their existing rules; no layout-only characters or hyphens are inserted.
+Original-layout export retains the source page count and blank pages. The [developer rendering reference](../../next/middle-json/rendering.md#mineru-pdf) documents fitting rules and diagnostics in Chinese.
 
-Titles reference actual fitted body fonts: following text in the same page and
-column, then nearest same-column text, then the exported body's median (10.5 pt
-if absent). A chapter type/level shares the median reference plus 2 pt, rounded
-up to 0.1 pt, with individual increases for larger local body text. Document
-titles target 2 pt above the largest chapter target, or body plus 4 pt without
-chapters, retaining local hierarchy. Neither 90% coverage nor the previous style
-cap forces smaller titles.
-
-Titles that do not fit their original box may borrow whitespace above, below and
-to the right in the same column, retaining their left edge and preferably their
-top edge. Column width comes from the matched body; uncertain columns keep the
-original width, while existing spanning titles retain their span. Other source
-boxes remain occupied, with 2 pt clearance and page boundaries enforced.
-Adjacent titles divide their gap at its midpoint. Insufficient space shrinks
-only that title in 0.1 pt steps, then uses the existing below-6-pt fallback.
-Script and formula ink extents are measured; index references and approximate
-parent groups are excluded.
-
-`pdf_title_layout_expanded` records expansion. `pdf_layout_font_exception` records
-local-body increases or space-driven reductions, with reference/target/final
-sizes and original/drawing bounds. Existing overlaps retain original occupancy
-and report `pdf_title_geometry_conflict`; unavailable expansion clearance reports
-`pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
-asset, protocol or public-option changes.
-
-MinerU currently requires `docvortex>=0.6.16,<0.7`; the release’s `pyproject.toml` defines its dependency range. DocVortex clears native TXT PDF display equation
-`content` once when producing model output; MinerU Flash TXT uses that output.
-Flash OCR already leaves display equation content empty. MinerU does not clear
-equation content again. Both Flash paths retain the bbox, orientation, image and
-detected number region.
-PDF, Markdown, HTML, DOCX, EPUB and LaTeX use the existing image fallback. Inline
-and non-Flash equations retain their content. Old caches are not rewritten;
-reparse to obtain geometry and image-only Flash display equations.
+Flash PDF parsing uses the retained formula image for display equations. Existing caches keep their previous results. Reparse to obtain updated geometry and images. The [MinerU package metadata](https://github.com/opendatalab/MinerU/blob/master/pyproject.toml) for each release specifies its DocVortex dependency range.
 
 ```python
 from pathlib import Path
@@ -216,4 +179,4 @@ result.save(FileBasedDataWriter("output"))
 
 PDF `ParseResult.to_dict()` / `to_json()` still omit block `image_base64`, so standalone structural JSON is not a complete result package. `save(writer)` neither recrops nor rotates images and rejects unresolved asset references before writing, without reading the working directory or fetching network resources. With `include_images=True`, the API client restores direct images and images embedded in visual HTML from the ZIP. Gradio reuses those assets; PDF export needs only MiddleJson and the images, without the source PDF or ModelJson. `include_images=False` retains structural-only reading. Regenerate historical incomplete or incorrectly materialized results.
 
-The WebUI layout PDF is a debugging artifact used to preview detections when available; otherwise the UI previews the original/cropped PDF. It serves a different purpose from `RenderFormat.PDF` above.
+When you check layout in the WebUI, region boxes appear over the source preview. The PDF from the download menu is rendered from the saved result. See [source tracing in the WebUI](../usage/webui.md#source-tracing).

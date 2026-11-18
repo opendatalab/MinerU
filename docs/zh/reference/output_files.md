@@ -1,6 +1,6 @@
 # 输出格式与结果协议
 
-4.1 使用统一文档模型。区分“渲染器能生成什么”与“当前 CLI/API 暴露什么”，不要将渲染层的能力直接当作某个产品入口的参数。
+选择输出前，先按下表找到使用的入口。命令响应、可供继续渲染的协议文件和面向阅读的下载文件各有用途。
 
 ## 入口支持范围
 
@@ -10,6 +10,7 @@
 | `mineru read` | Markdown 或 `--format image`；只读取已缓存内容 |
 | `mineru-kit parse` | `markdown`、`middle_json`、`zip` |
 | V1 Tasks / file-parse | `default`、`docx`、`html`、`latex`，支持组合；`default` 是 Markdown、Middle JSON、Structured Content 和图片组成的 ZIP |
+| [WebUI 下载](../usage/webui.md#downloads) | Markdown ZIP、JSON ZIP（Structured Content）、HTML、DOCX、LaTeX ZIP、EPUB、PDF。PDF 从解析结果渲染。 |
 | `ParseResult` | `markdown()`、`structured_content()`、`to_dict()`、`to_json()`、`save(writer)` |
 | `mineru.render.render()` | 下列九种目标格式 |
 
@@ -33,7 +34,7 @@ DocVortex 图片物化与命名规则。ZIP 文件名和正文成员组织仍由
 扩展名转小写，图片字节不重新编码。命名与 Markdown、JSON、HTML/LaTeX 引用同步更新。
 
 历史 ZIP 按已有引用读取，不自动改名或生成旧名称别名。下游应读取实际图片引用，避免拼接旧的
-`image_body` / `table_body` 文件名。此次统一不扩展 CLI 的素材获取能力：仅 Gradio 保留本地读图和 PDF 补裁图。
+`image_body` / `table_body` 文件名。WebUI 从已保存的结果包读取素材。
 
 ## 九种渲染目标
 
@@ -59,15 +60,9 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
                    options=PdfRenderOptions(layout=PdfLayout.REFLOW))
 ```
 
-固定布局中的正文、图注、代码、表格和图片继续独立适配各自原框；`continues_prev` 不移动原框之间的文字。原页数与空白页保留。原布局与重排 PDF 中，含中日韩文字的自然语言段落、图注及表格单元格使用 CJK 字符断行，避免将空格间的长串中文整体移到下一行；纯英文和代码、算法字面块保留既有规则，不向内容插入排版字符或连字符。
+原布局导出保留源页数和空白页。调试排版时，可查阅[开发参考中的布局规则](../../next/middle-json/rendering.md#mineru-pdf)。
 
-标题参考实际适配后的正文字号：优先同页同栏后续正文，其次同栏最近正文，再回退到导出正文的字号中位数；没有正文时采用 10.5 pt。章节标题按 `type + level` 取参考字号中位数 +2 pt，向上取整至 0.1 pt；附近正文较大时只上调该标题。主标题比最大章节标题目标再大 2 pt，没有章节标题时采用正文 +4 pt，并保留局部层次。取消按 90% 容纳率压低整组字号和旧样式字号上限。
-
-原框放得下则保持位置，否则标题可利用上下及同栏右侧空白，保持左边缘；优先原顶边，必要时向上移动。栏宽由对应正文确定，不可靠时保持原宽，原有跨栏标题保留跨度。其他原框视为占用，与相邻内容保留 2 pt 间距且不越页；相邻标题按间隙中线分配空间。仍放不下时只缩小该标题，低于 6 pt 沿用完整块缩放。上下标和公式的真实外伸范围计入标题测量，目录引用及缺子坐标的近似组合不参与。
-
-`pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
-
-MinerU 当前依赖 `docvortex>=0.6.16,<0.7`；安装范围以对应发行版的 `pyproject.toml` 为准。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+Flash 解析 PDF 时，行间公式使用保留的公式图像导出。已有缓存保留原结果，重新解析后获得更新的几何和图片。DocVortex 的依赖范围见对应版本的 [MinerU 包声明](https://github.com/opendatalab/MinerU/blob/master/pyproject.toml)。
 
 ```python
 from pathlib import Path
@@ -175,4 +170,4 @@ result.save(FileBasedDataWriter("output"))
 
 PDF 的 `ParseResult.to_dict()` / `to_json()` 仍省略块中的 `image_base64`，因此独立结构 JSON 不等于携带素材的结果包。`save(writer)` 不重新裁图或旋转图片；已有路径却缺少字节时在写出前失败，不隐式读取当前目录或网络。API 客户端设置 `include_images=True` 后，从 ZIP 恢复直接图片和视觉 HTML 内嵌图片；Gradio 复用这些素材，PDF 导出只需 MiddleJson 与图片文件，无需源 PDF 或 ModelJson。`include_images=False` 保持结构读取行为。历史错误结果包需要重新生成。
 
-WebUI 显示的布局 PDF 是调试产物，可用时用于预览检测结果；不可用时使用原始/裁页 PDF 预览。它与上述 `RenderFormat.PDF` 是不同用途。
+在 WebUI 中核对布局时，区域框直接叠加在原文预览上。下载菜单中的 PDF 由保存的解析结果渲染。操作步骤见 [WebUI 原文定位](../usage/webui.md#source-tracing)。

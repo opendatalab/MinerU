@@ -29,6 +29,8 @@ print(result.markdown())
 
 在已有事件循环中直接 `await parse_async(...)`。异步接口不保证所有引擎采用相同的执行机制。
 
+完整参数、默认值和 `MinerUParser` 实例用法见[本地 SDK 参数参考](../../next/sdk/parser.md)。
+
 ## 连接自部署 V1 API
 
 先在服务环境启动：

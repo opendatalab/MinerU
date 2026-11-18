@@ -1,8 +1,14 @@
 # Third-party integrations
 
-The linked older tutorials are repository snapshots, not current platform instructions or evidence of local MinerU 4.1 compatibility. They are in Chinese.
+Integrate with [Tasks](tasks.md) for asynchronous batches, or [file-parse](file_parse.md) to upload one file and wait for an attachment. Check whether the plugin connects to the official service or a self-hosted API, and which endpoints it calls.
 
-Use [Tasks](tasks.md) for asynchronous local integrations, or the separate [file-parse service](file_parse.md) for single-file multipart requests. Verify the plugin version and actual endpoints before upgrading; legacy `/file_parse`, Jobs, and upload-complete flows are incompatible.
+## Download results with n8n
+
+The [n8n ZIP workflow](https://opendatalab.github.io/MinerU/zh/usage/plugin/n8n/#zip-workflow) (in Chinese) uses built-in nodes to download and extract an existing result. It requires a completed task and a valid `result_url`. The node parameters have been checked. End-to-end validation on a running n8n instance is pending.
+
+## Historical integration tutorials
+
+These Chinese tutorials describe platform interfaces and endpoints at the time they were archived. For self-hosted 4.x clients, see the [4.0](../reference/migration_4.md) and [4.1](../reference/migration_4_1.md) migration guides.
 
 | Integration | Tutorial scope |
 |---|---|
@@ -16,6 +22,3 @@ Use [Tasks](tasks.md) for asynchronous local integrations, or the separate [file
 | [ModelWhale](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/ModelWhale.md) | Historical tutorial; current compatibility unverified |
 | [RagFlow](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/RagFlow.md) | Cloud/local configuration; local 4.1 requires separate validation |
 | [Sider](https://github.com/opendatalab/MinerU/blob/master/docs/archive/integrations/Sider.md) | Historical tutorial; current compatibility unverified |
-| [n8n](https://opendatalab.github.io/MinerU/zh/usage/plugin/n8n/) | Built-in ZIP workflow; instance validation still required |
-
-The [n8n ZIP workflow](https://opendatalab.github.io/MinerU/zh/usage/plugin/n8n/#zip-workflow) downloads and extracts an existing result without a community parsing node.

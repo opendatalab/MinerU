@@ -2,7 +2,11 @@
 
 `mineru-kit file-parse-server` 提供独立的同步 HTTP 包装服务：接收一个文件，创建 Tasks、上传、等待，完成后直接返回 ZIP、DOCX 或 HTML 附件。它连接本地 API、Router 或 SaaS；切换部署只修改上游地址和认证。
 
-## 启动
+[启动服务](#startup) · [请求字段](#request-fields) · [附件与 202 响应](#responses) · [错误](#error-responses) · [等待与恢复](#recovery)
+
+## 启动 {#startup}
+
+<span id="_1"></span>
 
 ```bash
 mineru-kit file-parse-server --api-url http://127.0.0.1:8000
@@ -24,7 +28,9 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 
 服务只执行 HTTP 上传、查询、下载，不初始化解析模型。OpenAPI 位于 `/openapi.json`，交互文档位于 `/docs`。这些路由属于独立包装服务，不注册到原 API Server 或 Router。
 
-## 上传与等待
+## 上传与等待 {#request-fields}
+
+<span id="_2"></span>
 
 `POST /v1/file_parse` 仅接受 `multipart/form-data`，业务参数放在表单字段中；不接受查询参数、未知字段或重复标量字段。
 
@@ -172,7 +178,9 @@ X-Task-ID: job_0123456789abcdef01234567
 }
 ```
 
-### GET /v1/file_parse/{request_id}：200 状态查询
+### GET /v1/file_parse/{request_id}：200 状态查询 {#status-queries}
+
+<span id="get-v1file_parserequest_id200"></span>
 
 查询已有记录且上游状态刷新成功时，返回 `200 OK`、`Content-Type: application/json` 和完整 `StatusResponse`。
 返回值可以是 `running`，也可以是 `completed/failed/canceled/submission_unknown`；HTTP `200` 不表示解析成功。
@@ -211,7 +219,7 @@ file_parse 使用自己的 `code/message/upstream_status` 错误结构；主 Tas
 | `error.message` | string | 否 | 错误说明。 |
 | `error.upstream_status` | integer | 是 | 已知上游 HTTP 错误状态码；本地错误、网络异常或通过任务状态得知的解析失败可以为 `null`。 |
 
-### 没有恢复记录时
+### 没有恢复记录时 {#_3}
 
 只返回顶层 `error`，没有 `request_id/task_id/status_url` 等状态字段。例如提交 JSON 而不是 multipart：
 
@@ -230,7 +238,7 @@ Content-Type: application/json
 }
 ```
 
-### 已有恢复记录时
+### 已有恢复记录时 {#_4}
 
 返回完整 `StatusResponse` 的七个顶层字段，但用本次操作的错误覆盖正文 `error`。`status` 仍表示该记录当前状态，不会因为本次 HTTP 失败就统一改成 `failed`。
 例如查询尚未完成的结果，HTTP 为 `409 Conflict`，任务仍为 `running`：
@@ -278,7 +286,7 @@ Content-Type: application/json
 }
 ```
 
-### 常见错误状态码
+### 常见错误状态码 {#_5}
 
 | HTTP | 常见 code | 含义 |
 |---|---|---|
@@ -296,7 +304,9 @@ Content-Type: application/json
 创建阶段的 5xx 响应中，仅符合共享错误结构的 `503 quality_tier_unavailable` 可确认为档位拒单；其余 5xx、408、畸形响应或网络异常仍按 `submission_unknown` 处理。明确拒单和提交结果未知都不会自动重放创建，保留期内相同 request_id 的重复请求和重启恢复沿用原记录。
 `submission_unknown` 首次创建失败通常返回 `502`；后续请求仍可能得到 `409/502`，应查询原恢复记录，不自动重放创建。
 
-## 等待、超时与断连后查询
+## 等待、超时与断连后查询 {#recovery}
+
+<span id="_6"></span>
 
 每次调用在确认上游文件就绪后开始计时，等待包含排队、解析与导出。接收文件、上游上传、文件下载与校验准备及结果下载不占此预算，独立使用传输空闲超时。缓存命中跳过上传；只有进入 pending/running/completed 或失败/取消终态后，才清理本地保留的源文件。
 
@@ -316,7 +326,7 @@ curl --fail-with-body -o report.zip \
 已取得非空 `task_id` 且有权使用对应上游身份时，可向配置的上游 API 调用 `POST /v1/tasks/{task_id}/cancel`；不要使用包装服务的基址，也不要把 `request_id` 当作上游任务 ID。
 上游取消成功后，再查询 `/v1/file_parse/{request_id}` 可观察 `canceled` 状态。取消能力沿用上游 Tasks 契约；file_parse 自身的 `status_url`、响应字段和 null 规则保持不变。
 
-## 去重与持久化边界
+## 去重与持久化边界 {#_7}
 
 完整接收并持久化源文件后，包装服务才接受请求并托管上游上传。此后连接中断不取消上传或解析；文件尚未完整接收时中断不会创建任务。
 
@@ -326,7 +336,9 @@ curl --fail-with-body -o report.zip \
 
 源文件在上游确认就绪后删除，终结失败也会清理源文件。结果只临时下载，发送完成或中断即删除；重启清理遗留传输文件。恢复记录的保留期限不延长上游结果有效期，查询也不会为上游上传链接续期。结果及请求过期后应使用新的请求 ID 发起新的解析。
 
-## Python HTTP 示例
+## Python HTTP 示例 {#python-example-client}
+
+<span id="python-http"></span>
 
 仓库提供 `scripts/http_file_parse_example.py`，依赖 `httpx`，提前打印并保存请求 ID；成功时原子保存附件，`202` 时打印查询信息并以 `124` 退出。
 
@@ -340,7 +352,7 @@ python scripts/http_file_parse_example.py report.pdf --wait-timeout 0 \
 
 后续查询和下载仍使用上面的包装接口，不需要安装 MinerU SDK 或重建 `ParseResult`。
 
-## 升级与恢复记录
+## 升级与恢复记录 {#_8}
 
 本次协议升级要求 API Server、Router、SDK、Gradio 与包装服务同步更新，先停收请求并排空旧任务。
 恢复记录目录使用 `tasks-v5-` 加既有上游地址与认证摘要，不加载、不迁移也不自动删除旧 `tasks-v4-`、`tasks-v3-`、`tasks-v2-` 或无前缀目录。包装服务自身的 `status_url` 与 Location 头保持不变，上游 Tasks 查询改用固定路径。旧 request_id 不再恢复；新空间内继续支持幂等和进程重启恢复。

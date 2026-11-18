@@ -1,6 +1,6 @@
 # mineru-kit webui
 
-页码规范与历史结果兼容说明见 [PDF 页码范围规范](../page-ranges.md)。
+上传、选页、双向定位和下载见 [WebUI 操作指南](https://opendatalab.github.io/MinerU/zh/usage/webui/)。接口的页码语法与历史结果兼容见 [PDF 页码范围规范](../page-ranges.md)。
 
 状态: Implemented
 
