@@ -1,0 +1,1152 @@
+{
+  "date": "2026-10-22",
+  "gpu": "NVIDIA GeForce RTX3060Ti",
+  "pci_id": "10de:2489",
+  "pci_address": "0000:01:00.0",
+  "driver": "nouveau / Mesa26.0.8 NVK Vulkan",
+  "input": "demo/pdfs/demo1.pdf",
+  "page_range": "1",
+  "tier": "advanced",
+  "ocr_mode": "ocr",
+  "protocol": "Exactly one fresh process each, off then on, serial, no explicit warm-up or wall timeout. Same Q8_0 model/mmproj and Engine defaults. ONNX small models run on CPU in both. Parse wall time includes initialization; result writing excluded. Normal existing shader cache, not isolated cold caches.",
+  "off_definition": "GGML_VK_SERIALIZE_SUBMISSIONS absent, not set to0",
+  "on_definition": "GGML_VK_SERIALIZE_SUBMISSIONS=1",
+  "runs": [
+    {
+      "mode": "off",
+      "serialize_env": null,
+      "pid": 86977,
+      "returncode": 0,
+      "process_wall_s": 28.02129779900133,
+      "wall_timeout": null,
+      "drm_samples": [
+        {
+          "elapsed_s": 0.0004769629995280411,
+          "devices": []
+        },
+        {
+          "elapsed_s": 1.0006431080000766,
+          "devices": []
+        },
+        {
+          "elapsed_s": 2.000936628999625,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.001355596999929,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.002382025999395,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 5.0028635099988605,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 6.003307582999696,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.00366622400179,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 8.004051635001815,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 9.005276570002025,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 10.00565207800173,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 11.006045520000043,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 12.006478372000856,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 13.006868098000268,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 14.007251405000716,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 15.00853164900036,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 16.009760839999217,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 17.01105406699935,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 18.01232549999986,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 19.013672162000148,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 20.015020147999167,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 21.016088280000986,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 22.017604009000934,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 23.01886531100172,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 24.019240542998887,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 25.019655676002003,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 26.020120059001783,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 27.020519364999927,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        }
+      ],
+      "model_inference_log": [
+        "2026-10-22 01:57:05.335 | INFO     | mineru.backend.analyze:_log_infer_performance:26 - model_list infer finished, file_suffix=pdf, pages=1, cost=22.736244s, speed=0.044 page/s"
+      ],
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "pid": 86977,
+        "timeout_seconds": null,
+        "serialize_submissions": null,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 26.57672181200178,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3652,
+        "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+        "title_present": true,
+        "completed": true
+      },
+      "model_inference_s": 22.736244,
+      "predictor_init_s": 2.58
+    },
+    {
+      "mode": "on",
+      "serialize_env": "1",
+      "pid": 87099,
+      "returncode": 0,
+      "process_wall_s": 36.0355486849985,
+      "wall_timeout": null,
+      "drm_samples": [
+        {
+          "elapsed_s": 0.0015202329996100161,
+          "devices": []
+        },
+        {
+          "elapsed_s": 1.0019088179979008,
+          "devices": []
+        },
+        {
+          "elapsed_s": 2.0022158899992064,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.0037637210007233,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.004237108998495,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 5.004654585998651,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 6.006115436000982,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.007410550999339,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 8.008576702999562,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 9.009180000000924,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 10.009803856999497,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 11.011135431999719,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 12.011772566998843,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 13.012971918000403,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 14.014143135998893,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 15.015297294998163,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 16.01594719199784,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 17.017251473000215,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 18.018766984998365,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 19.019412116998865,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 20.020972876998712,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 21.021709126998758,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 22.02289245800057,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 23.02415536499757,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 24.025134241997876,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 25.026253844000166,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 26.027409418999014,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 27.027879780998774,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 28.028316275998804,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 29.029464896000718,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 30.02987021000081,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 31.03037347300051,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 32.031276485999115,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 33.0321348519974,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 34.03311328699783,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 35.033808860000136,
+          "devices": [
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            },
+            {
+              "path": "/dev/dri/card0",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n"
+            },
+            {
+              "path": "/dev/dri/renderD129",
+              "fdinfo": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n"
+            }
+          ]
+        }
+      ],
+      "model_inference_log": [
+        "2026-10-22 01:57:41.956 | INFO     | mineru.backend.analyze:_log_infer_performance:26 - model_list infer finished, file_suffix=pdf, pages=1, cost=32.330087s, speed=0.031 page/s"
+      ],
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "pid": 87099,
+        "timeout_seconds": null,
+        "serialize_submissions": "1",
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 35.14883172400005,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3652,
+        "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+        "title_present": true,
+        "completed": true
+      },
+      "model_inference_s": 32.330087,
+      "predictor_init_s": 1.59
+    }
+  ],
+  "output_markdown_byte_identical": true,
+  "comparison": {
+    "total_parse_delta_s": 8.572109911998268,
+    "total_parse_on_over_off": 1.3225420340640806,
+    "total_parse_increase_percent": 32.25420340640805,
+    "inference_delta_s": 9.593843,
+    "inference_increase_percent": 42.19625281994686
+  },
+  "interpretation": "On this one-page single-pair comparison, serialized submission slows the3060Ti while giving identical Markdown. Not a cross-model or cross-driver performance estimate.",
+  "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "production_code_modified": false,
+  "raw_evidence_directory": "demo/output/llama-3060ti-serialize-20261022"
+}

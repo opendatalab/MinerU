@@ -1,0 +1,362 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "cpu": "Intel Core Ultra 5 225H",
+  "gpu": "Intel Graphics (ARL)",
+  "pci_id": "8086:7d51",
+  "kernel": "7.0.0-38-generic",
+  "python": "3.14.4",
+  "packages": {
+    "mineru": "4.0.12",
+    "mineru-llama-cpp": "0.1.3",
+    "mineru-vl-utils": "2.0.7",
+    "onnxruntime": "1.31.0",
+    "onnxruntime-ep-webgpu": "0.4.0"
+  },
+  "model_files": {
+    "main": {
+      "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+      "sha256": "3f3523429c880d675c0330cb3de78240452bc40a961d037e24f91ab8488f03e7"
+    },
+    "mmproj": {
+      "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+      "sha256": "b6c08ab50352677f7396af45ee60682f353f55488e26911d8154bfc37514d3f8"
+    }
+  },
+  "input_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+  "config_path": "/home/myhloli/.mineru/config.yaml",
+  "config_sha256_before": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "git_head": "345f630eb1710ff4d36b2b33c96fece3f54bfb5b",
+  "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "threads": {
+    "llama_auto_math_threads": 2,
+    "llama_physical_core_count": 14
+  },
+  "protocol": "One fresh process for each tier/device; all four serial. No explicit warm-up or wall timeout. Real MinerU parse(page_range=1,ocr_mode=ocr), llama-cpp VLM, ONNX small models fixed CPU. n_parallel4,n_ctx_seq0,n_threads default auto. Process-local backend forced CPU/Vulkan for comparison. Serial-submission variable absent, appropriate for PCI8086:7d51. No extra LLM post-processing.",
+  "measurement": "parse_wall_s includes model initialization and parsing, excludes writing output files; inference_s is the application model-list stage. Existing OS/shader caches, not isolated cold cache.",
+  "power_profile_observed": "performance; AC adapter online; CPU scaling governor powersave (driver policy), not changed by benchmark.",
+  "driver": "i915 / Mesa26.0.8-1ubuntu0.3 ANV Vulkan",
+  "runs": [
+    {
+      "label": "standard-cpu",
+      "tier": "standard",
+      "llama_device": "cpu",
+      "pid": 13203,
+      "returncode": 0,
+      "process_wall_s": 115.05097510799993,
+      "wall_timeout": null,
+      "power_before": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "2.88 2.17 1.03 2/1809 13202",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "power_after": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "4.82 3.09 1.50 2/1795 13446",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "policy_logs": [
+        "2026-10-22 11:07:51.801 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:165 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 11:07:52.765 | INFO     | mineru.model.runtime.llama_device:resolve_llama_device:129 - llama.cpp device policy: cpu (explicit_cpu)"
+      ],
+      "inference_s": 110.490697,
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "cpu",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 13203,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 113.39672294300004,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "content_spot_check": true,
+      "valid_output": true,
+      "markdown_path": "demo/output/ultra225h-llama-page1-20261022/cpu/document.md",
+      "kernel_gpu_errors": false,
+      "drm_summary": [
+        {
+          "path": "/dev/dri/renderD128",
+          "driver": "i915",
+          "pci_address": "0000:00:02.0",
+          "max_render_ns": 0
+        }
+      ]
+    },
+    {
+      "label": "standard-vulkan",
+      "tier": "standard",
+      "llama_device": "vulkan",
+      "pid": 13448,
+      "returncode": 0,
+      "process_wall_s": 64.05399067600001,
+      "wall_timeout": null,
+      "power_before": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "4.82 3.09 1.50 2/1795 13447",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "power_after": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "3.91 3.16 1.63 2/1792 13618",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "policy_logs": [
+        "2026-10-22 11:09:46.424 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:165 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 11:09:47.438 | INFO     | mineru.model.runtime.llama_device:resolve_llama_device:129 - llama.cpp device policy: ['Intel(R) Graphics (ARL)'] (explicit_gpu)"
+      ],
+      "inference_s": 59.48534,
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 13448,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 62.45206956499999,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "content_spot_check": true,
+      "valid_output": true,
+      "markdown_path": "demo/output/ultra225h-llama-page1-20261022/vulkan/document.md",
+      "kernel_gpu_errors": false,
+      "drm_summary": [
+        {
+          "path": "/dev/dri/renderD128",
+          "driver": "i915",
+          "pci_address": "0000:00:02.0",
+          "max_render_ns": 32476305680
+        }
+      ]
+    },
+    {
+      "label": "advanced-cpu",
+      "tier": "advanced",
+      "llama_device": "cpu",
+      "pid": 13620,
+      "returncode": 0,
+      "process_wall_s": 204.100680194,
+      "wall_timeout": null,
+      "power_before": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "3.91 3.16 1.63 3/1792 13619",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "power_after": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "4.79 4.04 2.29 1/1786 13922",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "policy_logs": [
+        "2026-10-22 11:10:50.477 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:165 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 11:10:51.167 | INFO     | mineru.model.runtime.llama_device:resolve_llama_device:129 - llama.cpp device policy: cpu (explicit_cpu)"
+      ],
+      "inference_s": 200.960343,
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "cpu",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 13620,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 202.9701559,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3653,
+        "markdown_sha256": "c82d0247514aacdad383aa5e3f30a11802cf37275b248326b21984d111b4609f",
+        "title_present": true,
+        "completed": true
+      },
+      "content_spot_check": true,
+      "valid_output": true,
+      "markdown_path": "demo/output/ultra225h-llama-page1-20261022/advanced/cpu/document.md",
+      "kernel_gpu_errors": false,
+      "drm_summary": [
+        {
+          "path": "/dev/dri/renderD128",
+          "driver": "i915",
+          "pci_address": "0000:00:02.0",
+          "max_render_ns": 0
+        }
+      ]
+    },
+    {
+      "label": "advanced-vulkan",
+      "tier": "advanced",
+      "llama_device": "vulkan",
+      "pid": 13924,
+      "returncode": 0,
+      "process_wall_s": 33.03014019700004,
+      "wall_timeout": null,
+      "power_before": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "4.79 4.04 2.29 1/1786 13923",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "power_after": {
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/proc/loadavg": "4.12 3.94 2.33 1/1787 14016",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1"
+      },
+      "policy_logs": [
+        "2026-10-22 11:14:14.591 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:165 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 11:14:15.601 | INFO     | mineru.model.runtime.llama_device:resolve_llama_device:129 - llama.cpp device policy: ['Intel(R) Graphics (ARL)'] (explicit_gpu)"
+      ],
+      "inference_s": null,
+      "kernel": "2026-10-22T11:14:38+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[13924]:63a!\n2026-10-22T11:14:38+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[13924]:638!\n2026-10-22T11:14:46+08:00 myhloli-ubuntu-ssd kernel: i915 0000:00:02.0: [drm] GPU HANG: ecode 12:1:85dffffb, in python [13924]\n2026-10-22T11:14:46+08:00 myhloli-ubuntu-ssd kernel: i915 0000:00:02.0: [drm] python[13924] context reset due to GPU hang\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 13924,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 31.69441046299994,
+        "completed": false,
+        "error": "ServerError('got exception: vk::Queue::submit: ErrorDeviceLost')"
+      },
+      "content_spot_check": false,
+      "valid_output": false,
+      "markdown_path": "demo/output/ultra225h-llama-page1-20261022/advanced/vulkan/document.md",
+      "kernel_gpu_errors": true,
+      "drm_summary": [
+        {
+          "path": "/dev/dri/renderD128",
+          "driver": "i915",
+          "pci_address": "0000:00:02.0",
+          "max_render_ns": 17536396904
+        }
+      ]
+    }
+  ],
+  "comparisons": {
+    "standard": {
+      "gpu_over_cpu": 0.5507396328939076,
+      "cpu_over_gpu_speedup": 1.8157400344431653,
+      "markdown_byte_identical": true,
+      "markdown_differences": [],
+      "cpu_parse_s": 113.39672294300004,
+      "gpu_parse_s": 62.45206956499999,
+      "gpu_failure_elapsed_s": null
+    },
+    "advanced": {
+      "gpu_over_cpu": null,
+      "cpu_over_gpu_speedup": null,
+      "markdown_byte_identical": false,
+      "markdown_differences": [
+        {
+          "operation": "delete",
+          "cpu_text": "# The response of flow duration curves to afforestation\n\nPatrick N.J. Lane $^{a,c,*}$ , Alice E. Best $^{b,c,d}$ , Klaus Hickel $^{b,c}$ , Lu Zhang $^{b,c}$\n\n$^{a}$ School of Forest and Ecosystem Studies, University of Melbourne, P.O. Box 137, Heidelberg, Victoria 3084, Australia\n\n$^{b}$ CSIRO Division of Land and Water, Canberra, ACT, Australia\n\n$^{c}$ Cooperative Research Centre for Catchment Hydrology, Canberra, ACT, Australia\n\n$^{d}$ Department of Civil and Environmental Engineering, University of Melbourne, Victoria, Australia\n\nReceived 1 October 2003; revised 22 December 2004; accepted 3 January 2005\n\n## Abstract\n\nThe hydrologic effect of replacing pasture or other short crops with trees is reasonably well understood on a mean annual basis. The impact on flow regime, as described by the annual flow duration curve (FDC) is less certain. A method to assess the impact of plantation establishment on FDCs was developed. The starting point for the analyses was the assumption that rainfall and vegetation age are the principal drivers of evapotranspiration. A key objective was to remove the variability in the rainfall signal, leaving changes in streamflow solely attributable to the evapotranspiration of the plantation. A method was developed to (1) fit a model to the observed annual time series of FDC percentiles; i.e. 10th percentile for each year of record with annual rainfall and plantation age as parameters, (2) replace the annual rainfall variation with the long term mean to obtain climate adjusted FDCs, and (3) quantify changes in FDC percentiles as plantations age. Data from 10 catchments from Australia, South Africa and New Zealand were used. The model was able to represent flow variation for the majority of percentiles at eight of the 10 catchments, particularly for the 10–50th percentiles. The adjusted FDCs revealed variable patterns in flow reductions with two types of responses (groups) being identified. Group 1 catchments show a substantial increase in the number of zero flow days, with low flows being more affected than high flows. Group 2 catchments show a more uniform reduction in flows across all percentiles. The differences may be partly explained by storage characteristics. The modelled flow reductions were in accord with published results of paired catchment experiments. An additional analysis was performed to characterise the impact of afforestation on the number of zero flow days ( $N_{zero}$ ) for the catchments in group 1. This model performed particularly well, and when adjusted for climate, indicated a significant increase in  $N_{zero}$ . The zero flow day method could be used to determine change in the occurrence of any given flow in response to afforestation. The methods used in this study proved satisfactory in removing the rainfall variability, and have added useful insight into the hydrologic impacts of plantation establishment. This approach provides a methodology for understanding catchment response to afforestation, where paired catchment data is not available. © 2005 Elsevier B.V. All rights reserved.\n\nKeywords: Afforestation; Flow duration curves; Flow reduction; Paired catchments\n\n<small><span class=\"docvortex-page-footnote\" data-block-type=\"page_footnote\" style=\"color:#6b7280\">\\* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.</span></small>\n\n<small><span class=\"docvortex-page-footnote\" data-block-type=\"page_footnote\" style=\"color:#6b7280\">E-mail address: patrickl@unimelb.edu.au (P.N.J. Lane).</span></small>",
+          "gpu_text": "",
+          "cpu_offset": 0
+        }
+      ],
+      "cpu_parse_s": 202.9701559,
+      "gpu_parse_s": null,
+      "gpu_failure_elapsed_s": 31.69441046299994
+    }
+  },
+  "interpretation": "CPU times use the installed llama.cpp default thread detection, which returns2 on this14-core CPU. These results do not measure full-core CPU throughput. Single run per case, not a repeated statistical benchmark.",
+  "raw_evidence_directory": "demo/output/ultra225h-llama-page1-20261022",
+  "script_sha256": {
+    "build_report.py": "18b5915fbecb0bd273a2394f98860454681eaf5ac4d54566aea3edf271f7829e",
+    "worker.py": "ad57a293bd29134bae529fe2cac74cdf10a08a9bda1b7d0f1e4627c5e6fbb6b3",
+    "run.py": "4dd7dee58363871af4400f4f0a982f17e9fea9651e5963c669b18274b18b95b0"
+  },
+  "production_code_modified": false
+}

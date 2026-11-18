@@ -1,0 +1,1079 @@
+{
+  "date": "2026-10-22",
+  "cpu": "Intel Core Ultra5 225H,14physical cores/14hardware threads",
+  "tier": "standard",
+  "ocr_mode": "ocr",
+  "input": "demo/pdfs/demo1.pdf",
+  "page_range": "1",
+  "protocol": "One fresh process per thread count, ordered4/8/12, all serial, no explicit warm-up or inference wall timeout. Real standard OCR parse including model initialization, excluding result serialization. llama.cpp CPU and ONNX CPU; ONNX threads remain4/1. No CPU affinity pinning.",
+  "configuration": "An ignored15MB MinerU source copy differs only by one line passing explicit n_threads to the existing Engine constructor. This also becomes the native batch thread count via its role-model default. No repository production source change, monkey-patch, or runtime registry injection.",
+  "manifest": {
+    "date": "2026-10-22",
+    "cpu": "Intel Core Ultra 5 225H",
+    "gpu": "Intel Graphics (ARL)",
+    "pci_id": "8086:7d51",
+    "kernel": "7.0.0-38-generic",
+    "python": "3.14.4",
+    "packages": {
+      "mineru": "4.0.12",
+      "mineru-llama-cpp": "0.1.3",
+      "mineru-vl-utils": "2.0.7",
+      "onnxruntime": "1.31.0",
+      "onnxruntime-ep-webgpu": "0.4.0"
+    },
+    "model_files": {
+      "main": {
+        "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "sha256": "3f3523429c880d675c0330cb3de78240452bc40a961d037e24f91ab8488f03e7"
+      },
+      "mmproj": {
+        "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "sha256": "b6c08ab50352677f7396af45ee60682f353f55488e26911d8154bfc37514d3f8"
+      }
+    },
+    "input_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+    "config_path": "/home/myhloli/.mineru/config.yaml",
+    "config_sha256_before": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+    "git_head": "345f630eb1710ff4d36b2b33c96fece3f54bfb5b",
+    "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+    "source_override": "Exactly one line in an ignored source copy passes explicit n_threads to Engine. Repository source unchanged.",
+    "original_runtime_sha256": "5dd55f8bfb0cdbf6233c50a46b4a6ce9b30554cda17676b6991c588ebd9b52f7",
+    "benchmark_runtime_sha256": "4e1c7cbec0f6192cc3b570a46246e884bb9a37fd8f001cf0624c2f190aeda4e4",
+    "threads": [
+      4,
+      8,
+      12
+    ]
+  },
+  "runs": [
+    {
+      "n_threads": 4,
+      "pid": 16590,
+      "returncode": 0,
+      "process_wall_s": 68.02097805800008,
+      "power_before": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "78050",
+        "/sys/class/thermal/thermal_zone12/temp": "78000",
+        "/sys/class/thermal/thermal_zone7/temp": "49050",
+        "/sys/class/thermal/thermal_zone10/temp": "78000",
+        "/sys/class/thermal/thermal_zone5/temp": "51050",
+        "/sys/class/thermal/thermal_zone3/temp": "53050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "43050",
+        "/sys/class/thermal/thermal_zone11/temp": "48000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "51050"
+      },
+      "power_after": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "78050",
+        "/sys/class/thermal/thermal_zone12/temp": "78000",
+        "/sys/class/thermal/thermal_zone7/temp": "60050",
+        "/sys/class/thermal/thermal_zone10/temp": "78000",
+        "/sys/class/thermal/thermal_zone5/temp": "65050",
+        "/sys/class/thermal/thermal_zone3/temp": "72050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "48050",
+        "/sys/class/thermal/thermal_zone11/temp": "49000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "57050"
+      },
+      "cpu_samples": [
+        {
+          "wall_s": 0.002118280000104278,
+          "cpu_ticks": 0
+        },
+        {
+          "wall_s": 1.0023481949999677,
+          "cpu_ticks": 458
+        },
+        {
+          "wall_s": 2.002504295000108,
+          "cpu_ticks": 570
+        },
+        {
+          "wall_s": 3.0028873979999844,
+          "cpu_ticks": 916
+        },
+        {
+          "wall_s": 4.003190201000052,
+          "cpu_ticks": 1340
+        },
+        {
+          "wall_s": 5.0035082189999684,
+          "cpu_ticks": 1738
+        },
+        {
+          "wall_s": 6.003831433999949,
+          "cpu_ticks": 2138
+        },
+        {
+          "wall_s": 7.004169708000063,
+          "cpu_ticks": 2538
+        },
+        {
+          "wall_s": 8.004470339999898,
+          "cpu_ticks": 2937
+        },
+        {
+          "wall_s": 9.004714664999938,
+          "cpu_ticks": 3336
+        },
+        {
+          "wall_s": 10.004936154999996,
+          "cpu_ticks": 3735
+        },
+        {
+          "wall_s": 11.005213823000076,
+          "cpu_ticks": 4135
+        },
+        {
+          "wall_s": 12.005477460000066,
+          "cpu_ticks": 4534
+        },
+        {
+          "wall_s": 13.00569250500007,
+          "cpu_ticks": 4934
+        },
+        {
+          "wall_s": 14.005944032000116,
+          "cpu_ticks": 5329
+        },
+        {
+          "wall_s": 15.006251767000094,
+          "cpu_ticks": 5724
+        },
+        {
+          "wall_s": 16.006548078999913,
+          "cpu_ticks": 6123
+        },
+        {
+          "wall_s": 17.0067806699999,
+          "cpu_ticks": 6521
+        },
+        {
+          "wall_s": 18.007015507000006,
+          "cpu_ticks": 6919
+        },
+        {
+          "wall_s": 19.007339898000055,
+          "cpu_ticks": 7313
+        },
+        {
+          "wall_s": 20.007572453999956,
+          "cpu_ticks": 7698
+        },
+        {
+          "wall_s": 21.007819505000043,
+          "cpu_ticks": 8086
+        },
+        {
+          "wall_s": 22.008079985999984,
+          "cpu_ticks": 8470
+        },
+        {
+          "wall_s": 23.00833474000001,
+          "cpu_ticks": 8854
+        },
+        {
+          "wall_s": 24.008557112000062,
+          "cpu_ticks": 9237
+        },
+        {
+          "wall_s": 25.008793248000075,
+          "cpu_ticks": 9622
+        },
+        {
+          "wall_s": 26.009023313999933,
+          "cpu_ticks": 10004
+        },
+        {
+          "wall_s": 27.0093257609999,
+          "cpu_ticks": 10379
+        },
+        {
+          "wall_s": 28.00955835900004,
+          "cpu_ticks": 10769
+        },
+        {
+          "wall_s": 29.009780329000023,
+          "cpu_ticks": 11149
+        },
+        {
+          "wall_s": 30.010204023999904,
+          "cpu_ticks": 11528
+        },
+        {
+          "wall_s": 31.010511342999962,
+          "cpu_ticks": 11908
+        },
+        {
+          "wall_s": 32.01080177099993,
+          "cpu_ticks": 12289
+        },
+        {
+          "wall_s": 33.01105385999995,
+          "cpu_ticks": 12670
+        },
+        {
+          "wall_s": 34.011356213,
+          "cpu_ticks": 13055
+        },
+        {
+          "wall_s": 35.01163444200006,
+          "cpu_ticks": 13438
+        },
+        {
+          "wall_s": 36.01187360499989,
+          "cpu_ticks": 13824
+        },
+        {
+          "wall_s": 37.01217580399998,
+          "cpu_ticks": 14207
+        },
+        {
+          "wall_s": 38.0124902340001,
+          "cpu_ticks": 14588
+        },
+        {
+          "wall_s": 39.01277263199995,
+          "cpu_ticks": 14977
+        },
+        {
+          "wall_s": 40.01311912899996,
+          "cpu_ticks": 15359
+        },
+        {
+          "wall_s": 41.013435140999945,
+          "cpu_ticks": 15740
+        },
+        {
+          "wall_s": 42.013671408999926,
+          "cpu_ticks": 16120
+        },
+        {
+          "wall_s": 43.01396253000007,
+          "cpu_ticks": 16509
+        },
+        {
+          "wall_s": 44.01429512200002,
+          "cpu_ticks": 16908
+        },
+        {
+          "wall_s": 45.014602935000084,
+          "cpu_ticks": 17308
+        },
+        {
+          "wall_s": 46.01495214500005,
+          "cpu_ticks": 17708
+        },
+        {
+          "wall_s": 47.01521889600008,
+          "cpu_ticks": 18107
+        },
+        {
+          "wall_s": 48.01550028800011,
+          "cpu_ticks": 18507
+        },
+        {
+          "wall_s": 49.01577966900004,
+          "cpu_ticks": 18908
+        },
+        {
+          "wall_s": 50.01602968800012,
+          "cpu_ticks": 19286
+        },
+        {
+          "wall_s": 51.01635755899997,
+          "cpu_ticks": 19686
+        },
+        {
+          "wall_s": 52.01660558599997,
+          "cpu_ticks": 20085
+        },
+        {
+          "wall_s": 53.01686040200002,
+          "cpu_ticks": 20485
+        },
+        {
+          "wall_s": 54.01711977900004,
+          "cpu_ticks": 20885
+        },
+        {
+          "wall_s": 55.017385012999966,
+          "cpu_ticks": 21285
+        },
+        {
+          "wall_s": 56.0176268969999,
+          "cpu_ticks": 21684
+        },
+        {
+          "wall_s": 57.01790566699992,
+          "cpu_ticks": 22083
+        },
+        {
+          "wall_s": 58.018183575999956,
+          "cpu_ticks": 22483
+        },
+        {
+          "wall_s": 59.01850330299999,
+          "cpu_ticks": 22883
+        },
+        {
+          "wall_s": 60.01877111099998,
+          "cpu_ticks": 23283
+        },
+        {
+          "wall_s": 61.01905114300007,
+          "cpu_ticks": 23681
+        },
+        {
+          "wall_s": 62.01940461899994,
+          "cpu_ticks": 24081
+        },
+        {
+          "wall_s": 63.01964634000001,
+          "cpu_ticks": 24481
+        },
+        {
+          "wall_s": 64.01990270300007,
+          "cpu_ticks": 24881
+        },
+        {
+          "wall_s": 65.02016852099996,
+          "cpu_ticks": 25280
+        },
+        {
+          "wall_s": 66.02048683199996,
+          "cpu_ticks": 25680
+        },
+        {
+          "wall_s": 67.02068801299993,
+          "cpu_ticks": 26042
+        }
+      ],
+      "cpu_tick_hz": 100,
+      "wall_timeout": null,
+      "affinity": "not pinned; OS scheduler",
+      "inference_s": 64.778633,
+      "result": {
+        "llama_device": "cpu",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": 4,
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 16590,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "mineru_source": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-standard-threads-20261022/source/mineru/__init__.py",
+        "parse_wall_s": 66.82956665699999,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "average_cpu_percent": 388.5788685695715,
+      "time_over_four_threads": 1.0,
+      "speedup_over_prior_two_threads": 1.6968047021014527
+    },
+    {
+      "n_threads": 8,
+      "pid": 16727,
+      "returncode": 0,
+      "process_wall_s": 61.02204094900003,
+      "power_before": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "80050",
+        "/sys/class/thermal/thermal_zone12/temp": "80000",
+        "/sys/class/thermal/thermal_zone7/temp": "60050",
+        "/sys/class/thermal/thermal_zone10/temp": "86000",
+        "/sys/class/thermal/thermal_zone5/temp": "65050",
+        "/sys/class/thermal/thermal_zone3/temp": "72050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "48050",
+        "/sys/class/thermal/thermal_zone11/temp": "49000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "57050"
+      },
+      "power_after": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "71050",
+        "/sys/class/thermal/thermal_zone12/temp": "71000",
+        "/sys/class/thermal/thermal_zone7/temp": "58050",
+        "/sys/class/thermal/thermal_zone10/temp": "73000",
+        "/sys/class/thermal/thermal_zone5/temp": "62050",
+        "/sys/class/thermal/thermal_zone3/temp": "68050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "49050",
+        "/sys/class/thermal/thermal_zone11/temp": "49000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "59050"
+      },
+      "cpu_samples": [
+        {
+          "wall_s": 0.0017721460001212108,
+          "cpu_ticks": 0
+        },
+        {
+          "wall_s": 1.0020083419999537,
+          "cpu_ticks": 461
+        },
+        {
+          "wall_s": 2.0022382439999546,
+          "cpu_ticks": 585
+        },
+        {
+          "wall_s": 3.002483217999952,
+          "cpu_ticks": 904
+        },
+        {
+          "wall_s": 4.002798367999958,
+          "cpu_ticks": 1576
+        },
+        {
+          "wall_s": 5.003184929000099,
+          "cpu_ticks": 2205
+        },
+        {
+          "wall_s": 6.003558333000001,
+          "cpu_ticks": 2879
+        },
+        {
+          "wall_s": 7.003810784000052,
+          "cpu_ticks": 3504
+        },
+        {
+          "wall_s": 8.004143741000007,
+          "cpu_ticks": 4157
+        },
+        {
+          "wall_s": 9.004488902000048,
+          "cpu_ticks": 4784
+        },
+        {
+          "wall_s": 10.00478572399993,
+          "cpu_ticks": 5427
+        },
+        {
+          "wall_s": 11.005083657000114,
+          "cpu_ticks": 6079
+        },
+        {
+          "wall_s": 12.005481923999923,
+          "cpu_ticks": 6721
+        },
+        {
+          "wall_s": 13.005834155000002,
+          "cpu_ticks": 7359
+        },
+        {
+          "wall_s": 14.006241406000072,
+          "cpu_ticks": 8027
+        },
+        {
+          "wall_s": 15.006594876999998,
+          "cpu_ticks": 8663
+        },
+        {
+          "wall_s": 16.007136267000078,
+          "cpu_ticks": 9307
+        },
+        {
+          "wall_s": 17.00751278200005,
+          "cpu_ticks": 9933
+        },
+        {
+          "wall_s": 18.007877817999997,
+          "cpu_ticks": 10625
+        },
+        {
+          "wall_s": 19.00811273399995,
+          "cpu_ticks": 11318
+        },
+        {
+          "wall_s": 20.008351735000133,
+          "cpu_ticks": 11959
+        },
+        {
+          "wall_s": 21.008632504999923,
+          "cpu_ticks": 12624
+        },
+        {
+          "wall_s": 22.00891724400003,
+          "cpu_ticks": 13308
+        },
+        {
+          "wall_s": 23.00923432200011,
+          "cpu_ticks": 14000
+        },
+        {
+          "wall_s": 24.009530611999935,
+          "cpu_ticks": 14678
+        },
+        {
+          "wall_s": 25.009831903000077,
+          "cpu_ticks": 15348
+        },
+        {
+          "wall_s": 26.010080690999985,
+          "cpu_ticks": 16014
+        },
+        {
+          "wall_s": 27.01037509699995,
+          "cpu_ticks": 16686
+        },
+        {
+          "wall_s": 28.01068005000002,
+          "cpu_ticks": 17381
+        },
+        {
+          "wall_s": 29.01099264100003,
+          "cpu_ticks": 18043
+        },
+        {
+          "wall_s": 30.011294604000113,
+          "cpu_ticks": 18716
+        },
+        {
+          "wall_s": 31.011580344000095,
+          "cpu_ticks": 19397
+        },
+        {
+          "wall_s": 32.01186216700012,
+          "cpu_ticks": 20062
+        },
+        {
+          "wall_s": 33.01217211900007,
+          "cpu_ticks": 20755
+        },
+        {
+          "wall_s": 34.01244788100007,
+          "cpu_ticks": 21435
+        },
+        {
+          "wall_s": 35.01272781300008,
+          "cpu_ticks": 22114
+        },
+        {
+          "wall_s": 36.0130239560001,
+          "cpu_ticks": 22790
+        },
+        {
+          "wall_s": 37.01332126800003,
+          "cpu_ticks": 23449
+        },
+        {
+          "wall_s": 38.013733123000065,
+          "cpu_ticks": 24112
+        },
+        {
+          "wall_s": 39.01402907800002,
+          "cpu_ticks": 24804
+        },
+        {
+          "wall_s": 40.01434404600013,
+          "cpu_ticks": 25476
+        },
+        {
+          "wall_s": 41.014629861,
+          "cpu_ticks": 26153
+        },
+        {
+          "wall_s": 42.01495620300011,
+          "cpu_ticks": 26798
+        },
+        {
+          "wall_s": 43.01535807100004,
+          "cpu_ticks": 27460
+        },
+        {
+          "wall_s": 44.01570244100003,
+          "cpu_ticks": 28141
+        },
+        {
+          "wall_s": 45.016060214999925,
+          "cpu_ticks": 28789
+        },
+        {
+          "wall_s": 46.016396674000134,
+          "cpu_ticks": 29463
+        },
+        {
+          "wall_s": 47.01676333699993,
+          "cpu_ticks": 30139
+        },
+        {
+          "wall_s": 48.017137448000085,
+          "cpu_ticks": 30799
+        },
+        {
+          "wall_s": 49.01753351699995,
+          "cpu_ticks": 31463
+        },
+        {
+          "wall_s": 50.01790046700012,
+          "cpu_ticks": 32133
+        },
+        {
+          "wall_s": 51.018335793999995,
+          "cpu_ticks": 32786
+        },
+        {
+          "wall_s": 52.018699334000075,
+          "cpu_ticks": 33435
+        },
+        {
+          "wall_s": 53.01905046799993,
+          "cpu_ticks": 34096
+        },
+        {
+          "wall_s": 54.01941720200011,
+          "cpu_ticks": 34766
+        },
+        {
+          "wall_s": 55.01980468600004,
+          "cpu_ticks": 35433
+        },
+        {
+          "wall_s": 56.020161336,
+          "cpu_ticks": 36094
+        },
+        {
+          "wall_s": 57.02055364700004,
+          "cpu_ticks": 36760
+        },
+        {
+          "wall_s": 58.02092599499997,
+          "cpu_ticks": 37428
+        },
+        {
+          "wall_s": 59.02131792299997,
+          "cpu_ticks": 38089
+        },
+        {
+          "wall_s": 60.021604931999946,
+          "cpu_ticks": 38405
+        }
+      ],
+      "cpu_tick_hz": 100,
+      "wall_timeout": null,
+      "affinity": "not pinned; OS scheduler",
+      "inference_s": 57.398835,
+      "result": {
+        "llama_device": "cpu",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": 8,
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 16727,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "mineru_source": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-standard-threads-20261022/source/mineru/__init__.py",
+        "parse_wall_s": 59.47342367900001,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "average_cpu_percent": 639.8718259834659,
+      "time_over_four_threads": 0.8899268191314919,
+      "speedup_over_prior_two_threads": 1.9066789151914973
+    },
+    {
+      "n_threads": 12,
+      "pid": 16882,
+      "returncode": 0,
+      "process_wall_s": 60.03447674100016,
+      "power_before": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "74050",
+        "/sys/class/thermal/thermal_zone12/temp": "74000",
+        "/sys/class/thermal/thermal_zone7/temp": "58050",
+        "/sys/class/thermal/thermal_zone10/temp": "74000",
+        "/sys/class/thermal/thermal_zone5/temp": "62050",
+        "/sys/class/thermal/thermal_zone3/temp": "68050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "49050",
+        "/sys/class/thermal/thermal_zone11/temp": "49000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "59050"
+      },
+      "power_after": {
+        "/sys/firmware/acpi/platform_profile": "performance",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor": "powersave",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "1",
+        "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "0",
+        "/sys/class/power_supply/ADP1/online": "1",
+        "/sys/class/thermal/thermal_zone2/temp": "35050",
+        "/sys/class/thermal/thermal_zone0/temp": "27800",
+        "/sys/class/thermal/thermal_zone9/temp": "72050",
+        "/sys/class/thermal/thermal_zone12/temp": "72000",
+        "/sys/class/thermal/thermal_zone7/temp": "58050",
+        "/sys/class/thermal/thermal_zone10/temp": "73000",
+        "/sys/class/thermal/thermal_zone5/temp": "60050",
+        "/sys/class/thermal/thermal_zone3/temp": "66050",
+        "/sys/class/thermal/thermal_zone1/temp": "20000",
+        "/sys/class/thermal/thermal_zone8/temp": "48050",
+        "/sys/class/thermal/thermal_zone11/temp": "52000",
+        "/sys/class/thermal/thermal_zone6/temp": "35050",
+        "/sys/class/thermal/thermal_zone4/temp": "59050"
+      },
+      "cpu_samples": [
+        {
+          "wall_s": 0.010666902000139089,
+          "cpu_ticks": 0
+        },
+        {
+          "wall_s": 1.0109495890001199,
+          "cpu_ticks": 471
+        },
+        {
+          "wall_s": 2.011223593000068,
+          "cpu_ticks": 609
+        },
+        {
+          "wall_s": 3.0115542480000386,
+          "cpu_ticks": 984
+        },
+        {
+          "wall_s": 4.011762919000148,
+          "cpu_ticks": 1473
+        },
+        {
+          "wall_s": 5.012009226000146,
+          "cpu_ticks": 2169
+        },
+        {
+          "wall_s": 6.012225242000113,
+          "cpu_ticks": 2900
+        },
+        {
+          "wall_s": 7.0124413300000015,
+          "cpu_ticks": 3364
+        },
+        {
+          "wall_s": 8.012666803000002,
+          "cpu_ticks": 3759
+        },
+        {
+          "wall_s": 9.012859886000115,
+          "cpu_ticks": 4286
+        },
+        {
+          "wall_s": 10.013171844999988,
+          "cpu_ticks": 4838
+        },
+        {
+          "wall_s": 11.013420003000192,
+          "cpu_ticks": 5359
+        },
+        {
+          "wall_s": 12.01375636900002,
+          "cpu_ticks": 5904
+        },
+        {
+          "wall_s": 13.014101133000167,
+          "cpu_ticks": 6618
+        },
+        {
+          "wall_s": 14.014346553999985,
+          "cpu_ticks": 7201
+        },
+        {
+          "wall_s": 15.014560029999984,
+          "cpu_ticks": 7819
+        },
+        {
+          "wall_s": 16.014790962999996,
+          "cpu_ticks": 8354
+        },
+        {
+          "wall_s": 17.015033224000035,
+          "cpu_ticks": 9060
+        },
+        {
+          "wall_s": 18.015436556000168,
+          "cpu_ticks": 9579
+        },
+        {
+          "wall_s": 19.015681274000144,
+          "cpu_ticks": 10193
+        },
+        {
+          "wall_s": 20.01592787300001,
+          "cpu_ticks": 10956
+        },
+        {
+          "wall_s": 21.01615966700001,
+          "cpu_ticks": 11549
+        },
+        {
+          "wall_s": 22.016396707000013,
+          "cpu_ticks": 12391
+        },
+        {
+          "wall_s": 23.016814969000052,
+          "cpu_ticks": 13236
+        },
+        {
+          "wall_s": 24.017181701000027,
+          "cpu_ticks": 13967
+        },
+        {
+          "wall_s": 25.01760067300006,
+          "cpu_ticks": 14947
+        },
+        {
+          "wall_s": 26.018062738000026,
+          "cpu_ticks": 15927
+        },
+        {
+          "wall_s": 27.018471154000054,
+          "cpu_ticks": 16950
+        },
+        {
+          "wall_s": 28.018838511000013,
+          "cpu_ticks": 17911
+        },
+        {
+          "wall_s": 29.019180439000138,
+          "cpu_ticks": 18827
+        },
+        {
+          "wall_s": 30.020320314000173,
+          "cpu_ticks": 19752
+        },
+        {
+          "wall_s": 31.02070973900004,
+          "cpu_ticks": 20715
+        },
+        {
+          "wall_s": 32.02107477599998,
+          "cpu_ticks": 21695
+        },
+        {
+          "wall_s": 33.0214719170001,
+          "cpu_ticks": 22685
+        },
+        {
+          "wall_s": 34.022315543000104,
+          "cpu_ticks": 23591
+        },
+        {
+          "wall_s": 35.02270058099998,
+          "cpu_ticks": 24515
+        },
+        {
+          "wall_s": 36.02307164500007,
+          "cpu_ticks": 25466
+        },
+        {
+          "wall_s": 37.023441952999974,
+          "cpu_ticks": 26449
+        },
+        {
+          "wall_s": 38.023895835000076,
+          "cpu_ticks": 27444
+        },
+        {
+          "wall_s": 39.02433266700018,
+          "cpu_ticks": 28430
+        },
+        {
+          "wall_s": 40.02470823400017,
+          "cpu_ticks": 29446
+        },
+        {
+          "wall_s": 41.02530432399999,
+          "cpu_ticks": 30438
+        },
+        {
+          "wall_s": 42.025763820000066,
+          "cpu_ticks": 31470
+        },
+        {
+          "wall_s": 43.026161694000166,
+          "cpu_ticks": 32458
+        },
+        {
+          "wall_s": 44.026525010000114,
+          "cpu_ticks": 33425
+        },
+        {
+          "wall_s": 45.02692989000002,
+          "cpu_ticks": 34378
+        },
+        {
+          "wall_s": 46.02940404900005,
+          "cpu_ticks": 35371
+        },
+        {
+          "wall_s": 47.02990364800007,
+          "cpu_ticks": 36273
+        },
+        {
+          "wall_s": 48.03028780900013,
+          "cpu_ticks": 37117
+        },
+        {
+          "wall_s": 49.03065787500009,
+          "cpu_ticks": 37932
+        },
+        {
+          "wall_s": 50.0310664550002,
+          "cpu_ticks": 38652
+        },
+        {
+          "wall_s": 51.03143828400016,
+          "cpu_ticks": 39487
+        },
+        {
+          "wall_s": 52.031791141999975,
+          "cpu_ticks": 40340
+        },
+        {
+          "wall_s": 53.03219372100011,
+          "cpu_ticks": 41186
+        },
+        {
+          "wall_s": 54.0325323200002,
+          "cpu_ticks": 42035
+        },
+        {
+          "wall_s": 55.03284107700006,
+          "cpu_ticks": 42879
+        },
+        {
+          "wall_s": 56.03310785100007,
+          "cpu_ticks": 43733
+        },
+        {
+          "wall_s": 57.033384276000106,
+          "cpu_ticks": 44585
+        },
+        {
+          "wall_s": 58.033773870000005,
+          "cpu_ticks": 45428
+        },
+        {
+          "wall_s": 59.034057615000165,
+          "cpu_ticks": 46029
+        }
+      ],
+      "cpu_tick_hz": 100,
+      "wall_timeout": null,
+      "affinity": "not pinned; OS scheduler",
+      "inference_s": 56.846367,
+      "result": {
+        "llama_device": "cpu",
+        "tier": "standard",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "small_models": "onnx-cpu",
+        "cpu_threads": 12,
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pid": 16882,
+        "serialize_requested": null,
+        "wall_timeout": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "mineru_source": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-standard-threads-20261022/source/mineru/__init__.py",
+        "parse_wall_s": 58.85515137499988,
+        "serialize_after_init": null,
+        "visible_after_init": null,
+        "pages": 1,
+        "blocks": 18,
+        "markdown_chars": 3543,
+        "markdown_sha256": "55519fc10bdad5c5d5dbc76d7388a443066a46ea7e30dff99e3531ad3283218f",
+        "title_present": true,
+        "completed": true
+      },
+      "average_cpu_percent": 779.8433713138411,
+      "time_over_four_threads": 0.8806753405580426,
+      "speedup_over_prior_two_threads": 1.9267085428170012
+    }
+  ],
+  "fastest_measured_threads": 12,
+  "all_markdown_byte_identical": true,
+  "prior_two_thread_reference": {
+    "parse_wall_s": 113.39672294300004,
+    "source": "docs/next/benchmarks/llama-ultra225h-page1-linux-20261022.json",
+    "collected_separately": true
+  },
+  "scope": "Thread counts, not a restriction to specific physical CPUs. Existing OS/shader caches; plugged in and performance profile. Single run per case, not a repeated statistical estimate.",
+  "raw_evidence_directory": "demo/output/ultra225h-standard-threads-20261022",
+  "scripts_sha256": {
+    "build_report.py": "b665ac6d7c273861db268bffedce4afee5512e5ff3632221a84049b28e04aebc",
+    "worker.py": "d256d9ed9a0a22224850871bcad45b3bbc7449bf545fa1617264fed02e2603cc",
+    "run.py": "bc0bdb4dcf08a2166a70c09cc3003440804a833da96620409245df34074965cc"
+  },
+  "production_code_modified": false
+}

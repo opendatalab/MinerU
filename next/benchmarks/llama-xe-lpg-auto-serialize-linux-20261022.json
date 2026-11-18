@@ -1,0 +1,154 @@
+{
+  "date": "2026-10-22",
+  "scope": "Linux Vulkan: add Xe-LPG (7dxx/b6xx), preserve legacy/Xe-LP; no automatic serialization for Xe-HPG or later LPG/HPG architectures.",
+  "hardware": "Core Ultra 5 225H / Intel Graphics ARL / 8086:7d51",
+  "kernel": "7.0.0-38-generic",
+  "driver": "i915 / Mesa26.0.8-1ubuntu0.3",
+  "execution": {
+    "pid": 59315,
+    "returncode": 0,
+    "manual_serialize_variable": null,
+    "wall_timeout": null,
+    "config_sha256_before": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+    "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+    "kernel": "-- No entries --\n"
+  },
+  "result": {
+    "llama_device": "vulkan",
+    "tier": "advanced",
+    "ocr_mode": "ocr",
+    "page_range": "1",
+    "explicit_warmup": false,
+    "small_models": "onnx-cpu",
+    "cpu_threads": "llama default auto",
+    "n_parallel": "llama default4",
+    "n_ctx_seq": "llama default0",
+    "preload": null,
+    "pid": 59315,
+    "serialize_requested": null,
+    "wall_timeout": null,
+    "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+    "packages": {
+      "mineru": "4.0.12",
+      "mineru-llama-cpp": "0.1.3",
+      "mineru-vl-utils": "2.0.7"
+    },
+    "selection": {
+      "device": "gpu",
+      "devices": [
+        {
+          "name": "Vulkan0",
+          "description": "Intel(R) Graphics (ARL)",
+          "backend": "vulkan",
+          "integrated": true,
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "vulkan_index": 0
+        }
+      ],
+      "reason": "explicit_gpu",
+      "environment": [
+        [
+          "GGML_VK_SERIALIZE_SUBMISSIONS",
+          "1"
+        ],
+        [
+          "GGML_VK_VISIBLE_DEVICES",
+          "0"
+        ]
+      ],
+      "device_aliases": [
+        [
+          "Vulkan0",
+          "Vulkan0"
+        ]
+      ],
+      "model_devices": null,
+      "cpu_model": false
+    },
+    "server_selection": {
+      "device": "gpu",
+      "devices": [
+        {
+          "name": "Vulkan0",
+          "description": "Intel(R) Graphics (ARL)",
+          "backend": "vulkan",
+          "integrated": true,
+          "vendor_id": 32902,
+          "device_id": 32081,
+          "vulkan_index": 0
+        }
+      ],
+      "reason": "explicit_gpu",
+      "environment": [
+        [
+          "GGML_VK_SERIALIZE_SUBMISSIONS",
+          "1"
+        ],
+        [
+          "GGML_VK_VISIBLE_DEVICES",
+          "0"
+        ]
+      ],
+      "device_aliases": [
+        [
+          "Vulkan0",
+          "Vulkan0"
+        ]
+      ],
+      "model_devices": null,
+      "cpu_model": false
+    },
+    "parse_wall_s": 115.22695443299926,
+    "serialize_after_init": null,
+    "visible_after_init": null,
+    "pages": 1,
+    "blocks": 19,
+    "markdown_chars": 3652,
+    "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+    "title_present": true,
+    "semantic_pages_sha256": "8ddb4e9c29258376fc3f75c0ed5b3310b02e13e0383755d87459d1f576eff3c4",
+    "completed": true,
+    "engine_environment_signature": {
+      "GGML_VK_VISIBLE_DEVICES": "0",
+      "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/intel_icd.json",
+      "VK_ICD_FILENAMES": null,
+      "VK_LOADER_VENDOR_ID_FILTER": null,
+      "VK_LOADER_DEVICE_ID_FILTER": null,
+      "MESA_VK_DEVICE_SELECT": null,
+      "GGML_VK_SERIALIZE_SUBMISSIONS": "1"
+    }
+  },
+  "markdown_equal_manual_serialized": true,
+  "markdown_equal_cpu_ignoring_whitespace": true,
+  "cpu_diff": [
+    "--- \n",
+    "+++ \n",
+    "@@ -2,7 +2,7 @@\n",
+    " ",
+    " Patrick N.J. Lane $^{a,c,*}$ , Alice E. Best $^{b,c,d}$ , Klaus Hickel $^{b,c}$ , Lu Zhang $^{b,c}$",
+    " ",
+    "-$^{a}$ School of Forest and Ecosystem Studies, University of Melbourne, P.O. Box 137, Heidelberg, Victoria 3084, Australia",
+    "+$^{a}$School of Forest and Ecosystem Studies, University of Melbourne, P.O. Box 137, Heidelberg, Victoria 3084, Australia",
+    " ",
+    " $^{b}$ CSIRO Division of Land and Water, Canberra, ACT, Australia",
+    " "
+  ],
+  "policy_sha256": "fe5ee6fad9fcfd92e975149c20c315f5ecd3757523f7a2ac4ee66da988d34540",
+  "unit_tests": {
+    "passed": 369,
+    "files": [
+      "test_llama_device_policy.py",
+      "test_llama_server_device_policy.py",
+      "test_llama_cpp_server.py",
+      "test_webgpu_architecture.py",
+      "test_webgpu_runtime.py",
+      "test_onnx_device_selection.py",
+      "test_onnx_calibration.py"
+    ]
+  },
+  "ruff": "check and format check passed",
+  "raw_artifacts": "demo/output/xe-lpg-auto-serialize-20261022",
+  "performance_comparison": "not performed",
+  "limitations": "One real full-page correctness validation on this Linux Xe-LPG device. Other architectures/platforms covered by regression tests, not new hardware testing. Server policy verified against the real device and launch environment covered by integration unit tests."
+}

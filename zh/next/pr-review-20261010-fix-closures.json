@@ -1,0 +1,50 @@
+{
+  "5188": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5188",
+    "body": "感谢贡献。当前维护分支 dev 已按现有 V1 运行时修复致命引擎错误、任务清理与 worker 恢复（[提交](https://github.com/myhloli/Magic-PDF/commit/c92834be1)），原 PR 的旧 API 实现不再合并，现关闭。修复已推送，尚未发布。",
+    "comment_id": 6085915135,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5188#issuecomment-6085915135",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:28:52.564735+00:00"
+  },
+  "5477": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5477",
+    "body": "感谢贡献。当前维护分支 dev 已在 Torch 模型初始化及工作线程入口限制 CPU 线程数（[提交](https://github.com/myhloli/Magic-PDF/commit/ae2f957ed)），此旧入口实现关闭。修复已推送，Linux PDF 性能对照仍待单独验收，尚未发布。",
+    "comment_id": 6085917018,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5477#issuecomment-6085917018",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:29:00.725704+00:00"
+  },
+  "5495": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5495",
+    "body": "感谢贡献。当前 V1 API/Router 已实现默认 24 小时回收及共享字节租约（[提交](https://github.com/myhloli/Magic-PDF/commit/56f90f988)），原目录清理实现不再合并，现关闭。修复已推送到维护分支 dev，尚未发布。",
+    "comment_id": 6085919084,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5495#issuecomment-6085919084",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:29:08.075271+00:00"
+  },
+  "5526": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5526",
+    "body": "感谢贡献。当前维护分支 dev 已补齐缺失的 CJK 边缘标点，并验证 Python 与原生匹配一致（[提交](https://github.com/myhloli/Magic-PDF/commit/ee8244be0)），现关闭原 PR。修复已推送，尚未发布。",
+    "comment_id": 6085921045,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5526#issuecomment-6085921045",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:29:15.715194+00:00"
+  },
+  "5389": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5389",
+    "body": "感谢贡献。表格链接问题已归 DocVortex main 修复（[提交](https://github.com/myhloli/DocVortex/commit/519cd6231b289775387c2219787c391fe7ca79b3)），MinerU 已通过公开接口完成集成验证（[提交](https://github.com/myhloli/Magic-PDF/commit/132a7728b)），不再保留旧 Office 修复实现，现关闭。两边源码已推送，包发布集成另行进行。",
+    "comment_id": 6085922869,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5389#issuecomment-6085922869",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:29:23.278409+00:00"
+  },
+  "5341": {
+    "url": "https://github.com/opendatalab/MinerU/pull/5341",
+    "body": "感谢贡献。当前 V1 API 入口已接入离线文档，并保留代理前缀、授权和文档开关（[提交](https://github.com/myhloli/Magic-PDF/commit/2ce1df871)），此旧 API 入口修改不再合并，现关闭。修复已推送到维护分支 dev，尚未发布。",
+    "comment_id": 6085924832,
+    "comment_url": "https://github.com/opendatalab/MinerU/pull/5341#issuecomment-6085924832",
+    "state": "closed",
+    "verified_at": "2026-10-09T17:29:30.853240+00:00"
+  }
+}

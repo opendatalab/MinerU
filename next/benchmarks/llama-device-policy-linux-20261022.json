@@ -1,0 +1,504 @@
+{
+  "date": "2026-10-22",
+  "policy": "Native ggml GPU inventory in isolated subprocess; discrete priority; on Windows/Linux integrated-only automatic selection reuses existing DML/WebGPU ONNX decision. Linux known Xe-LP/legacy Intel selected Vulkan devices receive a process-scoped serialized-submission default. Physical visibility is bound and reprobed before engine/server initialization.",
+  "manual_overrides": "Explicit CPU, Vulkan backend, GPU layers/device choices and existing GGML_VK_SERIALIZE_SUBMISSIONS values respected. Mixed legacy-Intel/other GPU groups requiring incompatible global switches rejected when explicitly requested; automatic routing prefers the other discrete GPUs.",
+  "offline": "llama-server --offline also prohibits ONNX calibration model downloads; missing local resources fall back to CPU without persisting the failure.",
+  "full_page_runs": [
+    {
+      "case": "dual-auto",
+      "returncode": 0,
+      "wall_s": 23.03444639599911,
+      "devices": {
+        "/dev/dri/renderD129": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1243\n",
+        "/dev/dri/card0": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t1244\n",
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1887\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "pid": 91549,
+        "timeout_seconds": null,
+        "serialize_submissions": null,
+        "onnx_requested": "cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 22.155138848000206,
+        "serialize_after_init": null,
+        "ggml_visible_after_init": null,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3652,
+        "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+        "title_present": true,
+        "completed": true
+      },
+      "policy_log": [
+        "2026-10-22 02:21:02.716 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:152 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 02:21:04.060 | INFO     | mineru.model.runtime.llama_device:_resolve:174 - llama.cpp device policy: ['NVIDIA GeForce RTX 3060 Ti (NVK GA104)'] (discrete_gpu)"
+      ],
+      "actual_route": "NVIDIA RTX3060Ti Vulkan, automatic serialization absent"
+    },
+    {
+      "case": "intel-auto",
+      "returncode": 0,
+      "wall_s": 73.10930791300052,
+      "devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1892\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t0\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t0\ndrm-purgeable-system0:\t0\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t0 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "pid": 91694,
+        "timeout_seconds": null,
+        "serialize_submissions": null,
+        "onnx_requested": "auto",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 72.31784400800098,
+        "serialize_after_init": null,
+        "ggml_visible_after_init": null,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3653,
+        "markdown_sha256": "c82d0247514aacdad383aa5e3f30a11802cf37275b248326b21984d111b4609f",
+        "title_present": true,
+        "completed": true
+      },
+      "policy_log": [
+        "2026-10-22 02:21:25.778 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:152 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='webgpu_architecture_policy', backend='webgpu')"
+      ],
+      "actual_route": "CPU selected by Linux WebGPU architecture policy"
+    },
+    {
+      "case": "intel-forced",
+      "returncode": 0,
+      "wall_s": 204.6870674790007,
+      "devices": {
+        "/dev/dri/renderD128": "pos:\t0\nflags:\t02100002\nmnt_id:\t41\nino:\t970\ndrm-driver:\ti915\ndrm-client-id:\t1898\ndrm-pdev:\t0000:00:02.0\ndrm-total-system0:\t66320 KiB\ndrm-shared-system0:\t0\ndrm-active-system0:\t0\ndrm-resident-system0:\t66320 KiB\ndrm-purgeable-system0:\t208 KiB\ndrm-total-stolen-system0:\t0\ndrm-shared-stolen-system0:\t0\ndrm-active-stolen-system0:\t0\ndrm-resident-stolen-system0:\t0\ndrm-purgeable-stolen-system0:\t0\ndrm-engine-render:\t179788977316 ns\ndrm-engine-copy:\t0 ns\ndrm-engine-video:\t0 ns\ndrm-engine-capacity-video:\t2\ndrm-engine-video-enhance:\t0 ns\n"
+      },
+      "kernel": "-- No entries --\n",
+      "result": {
+        "llama_device": "vulkan",
+        "tier": "advanced",
+        "ocr_mode": "ocr",
+        "page_range": "1",
+        "explicit_warmup": false,
+        "pid": 91979,
+        "timeout_seconds": null,
+        "serialize_submissions": null,
+        "onnx_requested": "cpu",
+        "cpu_threads": "llama default auto",
+        "n_parallel": "llama default4",
+        "n_ctx_seq": "llama default0",
+        "preload": null,
+        "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+        "packages": {
+          "mineru": "4.0.12",
+          "mineru-llama-cpp": "0.1.3",
+          "mineru-vl-utils": "2.0.7"
+        },
+        "parse_wall_s": 203.83788199600167,
+        "serialize_after_init": null,
+        "ggml_visible_after_init": null,
+        "pages": 1,
+        "blocks": 19,
+        "markdown_chars": 3652,
+        "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+        "title_present": true,
+        "completed": true
+      },
+      "policy_log": [
+        "2026-10-22 02:22:38.879 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:152 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='configured_cpu', backend=None)",
+        "2026-10-22 02:22:39.909 | INFO     | mineru.model.runtime.llama_device:_resolve:174 - llama.cpp device policy: ['Intel(R) UHD Graphics 770 (ADL-S GT1)'] (explicit_gpu)"
+      ],
+      "actual_route": "UHD770 Vulkan with automatic serialized submissions"
+    }
+  ],
+  "native_server_prefix_runs": [
+    {
+      "case": "wrapper-dual-auto",
+      "llm": "gpu",
+      "vision": "gpu",
+      "serialize": false,
+      "disable_f16": false,
+      "max_tokens": 128,
+      "wall_timeout": null,
+      "dump_embeddings": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "-m",
+        "mineru.kit.vlm_server.llama_cpp_server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "60705",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "8",
+        "-tb",
+        "8",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4",
+        "--mmproj-offload"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/llama-uhd770-diagnosis-20261022/request.json",
+      "pid": 94437,
+      "init_s": 2.4190248209997662,
+      "request_wall_s": 3.310355231998983,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>"
+            }
+          }
+        ],
+        "created": 1792607303,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 128,
+          "prompt_tokens": 1394,
+          "total_tokens": 1522,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-DLNjMzJMLAhaQ5NDvIwWJaQHSc0lN98k",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 2544.907,
+          "prompt_per_token_ms": 1.8256147776183644,
+          "prompt_per_second": 547.7606843786432,
+          "predicted_n": 128,
+          "predicted_ms": 732.674,
+          "predicted_per_token_ms": 5.769086614173228,
+          "predicted_per_second": 173.33766450017333
+        }
+      },
+      "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>",
+      "has_layout_boxes": true,
+      "layout_boxes": [
+        [
+          "077 095 177 177",
+          "header"
+        ],
+        [
+          "339 092 652 107",
+          "header"
+        ],
+        [
+          "395 109 594 141",
+          "header"
+        ],
+        [
+          "366 165 622 178",
+          "header"
+        ],
+        [
+          "768 105 913 168",
+          "header"
+        ]
+      ],
+      "server_cleanup_returncode": 0,
+      "kernel": "-- No entries --\n",
+      "process_wall_s": 5.830304959999921,
+      "routing_logs": [
+        "2026-10-22 02:28:18.318 | INFO     | mineru.model.runtime.llama_device:_resolve:179 - llama.cpp device policy: ['NVIDIA GeForce RTX 3060 Ti (NVK GA104)'] (discrete_gpu)",
+        "0.00.368.951 I load_tensors: offloaded 25/25 layers to GPU",
+        "0.00.666.368 I clip_ctx: CLIP using Vulkan0 backend"
+      ]
+    },
+    {
+      "case": "wrapper-intel-auto-fixed",
+      "llm": "gpu",
+      "vision": "gpu",
+      "serialize": false,
+      "disable_f16": false,
+      "max_tokens": 128,
+      "wall_timeout": null,
+      "dump_embeddings": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "-m",
+        "mineru.kit.vlm_server.llama_cpp_server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "50761",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "8",
+        "-tb",
+        "8",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/llama-uhd770-diagnosis-20261022/request.json",
+      "pid": 95182,
+      "init_s": 1.2091443720019015,
+      "request_wall_s": 29.38443962800011,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>"
+            }
+          }
+        ],
+        "created": 1792607606,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 128,
+          "prompt_tokens": 1394,
+          "total_tokens": 1522,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-jIZdzzJaO0nj9bvXDqeEZ3paIn8hk2Pc",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 27528.958,
+          "prompt_per_token_ms": 19.748176470588234,
+          "prompt_per_second": 50.63758679133442,
+          "predicted_n": 128,
+          "predicted_ms": 1823.66,
+          "predicted_per_token_ms": 14.359527559055119,
+          "predicted_per_second": 69.64017415527017
+        }
+      },
+      "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>",
+      "has_layout_boxes": true,
+      "layout_boxes": [
+        [
+          "077 095 177 177",
+          "header"
+        ],
+        [
+          "339 092 652 107",
+          "header"
+        ],
+        [
+          "395 109 594 141",
+          "header"
+        ],
+        [
+          "366 165 622 178",
+          "header"
+        ],
+        [
+          "768 105 913 168",
+          "header"
+        ]
+      ],
+      "server_cleanup_returncode": 0,
+      "kernel": "-- No entries --\n",
+      "process_wall_s": 30.66700919700088,
+      "routing_logs": [
+        "2026-10-22 02:32:56.515 | INFO     | mineru.model.runtime.onnx_device:resolve_onnx_device:165 - ONNX device selected: OnnxSelection(device='cpu', adapter=None, reason='webgpu_architecture_policy', backend='webgpu')",
+        "0.00.194.418 I load_tensors: offloaded 0/25 layers to GPU",
+        "0.00.341.705 I clip_ctx: CLIP using CPU backend"
+      ]
+    },
+    {
+      "case": "wrapper-intel-forced-fixed",
+      "llm": "gpu",
+      "vision": "gpu",
+      "serialize": false,
+      "disable_f16": false,
+      "max_tokens": 128,
+      "wall_timeout": null,
+      "dump_embeddings": false,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/bin/python",
+        "-m",
+        "mineru.kit.vlm_server.llama_cpp_server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "50341",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "8",
+        "-tb",
+        "8",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4",
+        "--mmproj-offload",
+        "-ngl",
+        "99",
+        "--device",
+        "Vulkan1",
+        "--mmproj-device",
+        "Vulkan1"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/llama-uhd770-diagnosis-20261022/request.json",
+      "pid": 94922,
+      "init_s": 2.0485227259996464,
+      "request_wall_s": 80.8929976770014,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>"
+            }
+          }
+        ],
+        "created": 1792607549,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 128,
+          "prompt_tokens": 1394,
+          "total_tokens": 1522,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-CuLtTb2EmGx0rh6I7TziHoCggA2FkgX7",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 73549.512,
+          "prompt_per_token_ms": 52.76148637015782,
+          "prompt_per_second": 18.95321888743463,
+          "predicted_n": 128,
+          "predicted_ms": 7306.366,
+          "predicted_per_token_ms": 57.53044094488189,
+          "predicted_per_second": 17.382102128472624
+        }
+      },
+      "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 652 107<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>395 109 594 141<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>366 165 622 178<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>768 105 913 168<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>716 179 915 193<|box_end|><|ref_start|>",
+      "has_layout_boxes": true,
+      "layout_boxes": [
+        [
+          "077 095 177 177",
+          "header"
+        ],
+        [
+          "339 092 652 107",
+          "header"
+        ],
+        [
+          "395 109 594 141",
+          "header"
+        ],
+        [
+          "366 165 622 178",
+          "header"
+        ],
+        [
+          "768 105 913 168",
+          "header"
+        ]
+      ],
+      "server_cleanup_returncode": 0,
+      "kernel": "-- No entries --\n",
+      "process_wall_s": 83.0139515239971,
+      "routing_logs": [
+        "2026-10-22 02:31:07.886 | INFO     | mineru.model.runtime.llama_device:_resolve:179 - llama.cpp device policy: ['Intel(R) UHD Graphics 770 (ADL-S GT1)'] (explicit_gpu)",
+        "0.00.301.088 I load_tensors: offloaded 25/25 layers to GPU",
+        "0.00.644.446 I clip_ctx: CLIP using Vulkan0 backend"
+      ]
+    }
+  ],
+  "server_probe_notes": "Each server prefix request capped at128tokens for routing/output validation, no wall timeout; idle servers shut down after request completion. The earlier wrapper-intel-forced attempt exposed parser validation of stale Vulkan1 after filtering; fixed by replacing/remapping argv and env selectors. The original wrapper-intel-auto probe explicitly enabled GPU mmproj and is not counted as CPU-only validation.",
+  "windows_validation": "Windows DML and architecture routing covered by mocked unit tests; no Windows hardware run in this session.",
+  "tests_log": "demo/output/llama-device-policy-20261022/tests-final.log",
+  "kernel_or_global_environment_changed": false,
+  "user_config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "source_sha256": {
+    "mineru/model/runtime/llama_device.py": "232f319dc20a4fb727d8cfda3be6dc9e96639c31e3c93dd4b8880812f5e87e45",
+    "mineru/model/runtime/llama_probe.py": "c4293ad6f19fdc9bb46eb8589861ef0e73aece70f0cce9ea29bb3a6ce617bdef",
+    "mineru/model/runtime/vulkan.py": "e55b9e29ab0b377abe52c8eca070ab2dcaed70a345c62f6f2ccbe22c188c9d70",
+    "mineru/model/runtime/onnx_device.py": "13f6bc5638e3e50b955501ca068cdf9e6d546e89f34f4e2c09a3e4c42835128e",
+    "mineru/model/vlm/runtime.py": "5dd55f8bfb0cdbf6233c50a46b4a6ce9b30554cda17676b6991c588ebd9b52f7",
+    "mineru/kit/vlm_server/llama_cpp_server.py": "fcc49c5e30ee07d9d0e709445a042c80bacaef2f2057dca3707037dda3c9aff2"
+  },
+  "raw_evidence_directory": "demo/output/llama-device-policy-20261022"
+}

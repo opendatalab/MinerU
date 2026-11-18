@@ -1,0 +1,368 @@
+{
+  "date": "2026-10-18",
+  "threshold": 0.8,
+  "label": "i7",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12700",
+  "gpu": "Intel(R) UHD Graphics 770",
+  "requested_runs": 10,
+  "successful_runs": 10,
+  "cpu_selections": 10,
+  "gpu_selections": 0,
+  "errors": [],
+  "validation_passed": true,
+  "minimum_ratio": 1.541681982052094,
+  "maximum_ratio": 1.8595392617371458,
+  "median_ratio": 1.6057012217187245,
+  "signature": [
+    "5d6728644b7f9ba220b3072eb00b6d436e774f32f3d30cddd06f0017042f4375",
+    "474fa06cbc4c20303081e85084b45f3a4f24190d1141e4bd3bf3f3feb432c078",
+    "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+    "1.24.4",
+    4,
+    1
+  ],
+  "source_report_sha256": "2f10d1a93488413a44fa2c4012ebca6ccfd513ef593ad6ee50cfd7decad98f63",
+  "protocol": "10 fresh workers; CPU first, GPU second; one warm-up and two timed batch6 runs per device; 4/1 threads; Intel rec metacommands off",
+  "runs": [
+    {
+      "run": 1,
+      "cpu": {
+        "init_s": 0.08625900000333786,
+        "first_s": 0.15661530010402203,
+        "timed_s": [
+          0.16551060043275356,
+          0.1512667997740209
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.18019469967111945,
+        "first_s": 0.37250009970739484,
+        "timed_s": [
+          0.24737749993801117,
+          0.2507206997834146
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.3167774002067745,
+      "gpu_elapsed": 0.49809819972142577,
+      "ratio": 1.572391841704286,
+      "selected": "cpu",
+      "worker_wall_s": 2.3538882001303136,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 2,
+      "cpu": {
+        "init_s": 0.11205330025404692,
+        "first_s": 0.22100889962166548,
+        "timed_s": [
+          0.16745080007240176,
+          0.15029080025851727
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.4032955998554826,
+        "first_s": 0.3545626001432538,
+        "timed_s": [
+          0.24505490018054843,
+          0.2448015999980271
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.317741600330919,
+      "gpu_elapsed": 0.4898565001785755,
+      "ratio": 1.541681982052094,
+      "selected": "cpu",
+      "worker_wall_s": 2.664180700201541,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 3,
+      "cpu": {
+        "init_s": 0.07879989966750145,
+        "first_s": 0.1900048996321857,
+        "timed_s": [
+          0.16707619978114963,
+          0.1503589996136725
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.22637039981782436,
+        "first_s": 0.3442545998841524,
+        "timed_s": [
+          0.24778660014271736,
+          0.24555819993838668
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.3174351993948221,
+      "gpu_elapsed": 0.49334480008110404,
+      "ratio": 1.5541590882852523,
+      "selected": "cpu",
+      "worker_wall_s": 2.4069735002703965,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 4,
+      "cpu": {
+        "init_s": 0.07987920008599758,
+        "first_s": 0.17749949963763356,
+        "timed_s": [
+          0.15440709982067347,
+          0.13619509991258383
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.18289580009877682,
+        "first_s": 0.45124789979308844,
+        "timed_s": [
+          0.27159929974004626,
+          0.2687869002111256
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.2906021997332573,
+      "gpu_elapsed": 0.5403861999511719,
+      "ratio": 1.8595392617371458,
+      "selected": "cpu",
+      "worker_wall_s": 2.593133999966085,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 5,
+      "cpu": {
+        "init_s": 0.08565740007907152,
+        "first_s": 0.16779650002717972,
+        "timed_s": [
+          0.1658973996527493,
+          0.14534990023821592
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.16685859998688102,
+        "first_s": 0.3460075999610126,
+        "timed_s": [
+          0.2489708000794053,
+          0.24423420010134578
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.3112472998909652,
+      "gpu_elapsed": 0.4932050001807511,
+      "ratio": 1.5846081246440644,
+      "selected": "cpu",
+      "worker_wall_s": 2.5043258001096547,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 6,
+      "cpu": {
+        "init_s": 0.08326179999858141,
+        "first_s": 0.17670980002731085,
+        "timed_s": [
+          0.14763120003044605,
+          0.1476646000519395
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.16335829999297857,
+        "first_s": 0.3053096001967788,
+        "timed_s": [
+          0.24584809970110655,
+          0.24588420009240508
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.29529580008238554,
+      "gpu_elapsed": 0.49173229979351163,
+      "ratio": 1.6652194161119855,
+      "selected": "cpu",
+      "worker_wall_s": 2.276292699854821,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 7,
+      "cpu": {
+        "init_s": 0.08156939968466759,
+        "first_s": 0.15990540012717247,
+        "timed_s": [
+          0.1556295999325812,
+          0.1378607996739447
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.1639045001938939,
+        "first_s": 0.3187303002923727,
+        "timed_s": [
+          0.24700330011546612,
+          0.2433102000504732
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.2934903996065259,
+      "gpu_elapsed": 0.49031350016593933,
+      "ratio": 1.6706287525019166,
+      "selected": "cpu",
+      "worker_wall_s": 2.2545465999282897,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 8,
+      "cpu": {
+        "init_s": 0.08818410011008382,
+        "first_s": 0.15725370030850172,
+        "timed_s": [
+          0.146055500023067,
+          0.16311899991706014
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.16608940018340945,
+        "first_s": 0.30329359974712133,
+        "timed_s": [
+          0.2454309999011457,
+          0.24593059998005629
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.30917449994012713,
+      "gpu_elapsed": 0.491361599881202,
+      "ratio": 1.5892694901305124,
+      "selected": "cpu",
+      "worker_wall_s": 2.2385326996445656,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 9,
+      "cpu": {
+        "init_s": 0.08204400027170777,
+        "first_s": 0.17115489998832345,
+        "timed_s": [
+          0.1495567001402378,
+          0.14376969961449504
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.16184849990531802,
+        "first_s": 0.3028835002332926,
+        "timed_s": [
+          0.2472366001456976,
+          0.2436722000129521
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.29332639975473285,
+      "gpu_elapsed": 0.4909088001586497,
+      "ratio": 1.6735922868488036,
+      "selected": "cpu",
+      "worker_wall_s": 2.2591197001747787,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    },
+    {
+      "run": 10,
+      "cpu": {
+        "init_s": 0.0922516998834908,
+        "first_s": 0.16064579971134663,
+        "timed_s": [
+          0.14966769982129335,
+          0.15491799963638186
+        ],
+        "providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "gpu": {
+        "init_s": 0.16616430040448904,
+        "first_s": 0.3052006997168064,
+        "timed_s": [
+          0.2473430000245571,
+          0.2467355001717806
+        ],
+        "providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      },
+      "cpu_elapsed": 0.3045856994576752,
+      "gpu_elapsed": 0.4940785001963377,
+      "ratio": 1.6221329533069366,
+      "selected": "cpu",
+      "worker_wall_s": 2.2529193996451795,
+      "gpu_first": false,
+      "outputs_match": true,
+      "rec_metacommands": false
+    }
+  ]
+}

@@ -1,0 +1,486 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "cpu": "Intel Core Ultra 5 225H",
+  "gpu": "Intel Graphics (ARL)",
+  "pci_id": "8086:7d51",
+  "kernel": "7.0.0-38-generic",
+  "driver": "i915 / Mesa26.0.8-1ubuntu0.3 ANV Vulkan",
+  "packages": {
+    "mineru": "4.0.12",
+    "mineru-llama-cpp": "0.1.3",
+    "mineru-vl-utils": "2.0.7",
+    "onnxruntime": "1.31.0",
+    "onnxruntime-ep-webgpu": "0.4.0"
+  },
+  "llama_cpp_commit": "86a283532072722c5f3363d37d59a874d09fa99b",
+  "model_files": {
+    "main": {
+      "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+      "sha256": "3f3523429c880d675c0330cb3de78240452bc40a961d037e24f91ab8488f03e7"
+    },
+    "mmproj": {
+      "path": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+      "sha256": "b6c08ab50352677f7396af45ee60682f353f55488e26911d8154bfc37514d3f8"
+    }
+  },
+  "input": {
+    "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+    "render_size": [
+      1512,
+      2064
+    ],
+    "layout_size": [
+      1036,
+      1036
+    ],
+    "png_sha256": "c97362434e8a08f405a36333c773d39f4a4fe4d2f01d52ba859e527ab397df2c",
+    "request_sha256": "fcfe064d94634d7cb58952079cfe090a2340d13f570923e7cda559fb819f83d8",
+    "max_tokens": 32
+  },
+  "scope": "Investigation only; installed mineru-llama-cpp 0.1.3 and original Vulkan backend, without the separate CPU-core patch. No system/driver setting or product code changed. All inference requests have unlimited wall time.",
+  "kernel_configuration": {
+    "CONFIG_DRM_I915_REQUEST_TIMEOUT": 20000,
+    "CONFIG_DRM_I915_FENCE_TIMEOUT": 10000,
+    "rcs0_preempt_timeout_ms": 7500,
+    "rcs0_heartbeat_interval_ms": 2500
+  },
+  "previous_failure": {
+    "pid": 13924,
+    "kernel": "2026-10-22T11:14:38+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[13924]:63a!\n2026-10-22T11:14:38+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:python[13924]:638!\n2026-10-22T11:14:46+08:00 myhloli-ubuntu-ssd kernel: i915 0000:00:02.0: [drm] GPU HANG: ecode 12:1:85dffffb, in python [13924]\n2026-10-22T11:14:46+08:00 myhloli-ubuntu-ssd kernel: i915 0000:00:02.0: [drm] python[13924] context reset due to GPU hang\n",
+    "result": {
+      "llama_device": "vulkan",
+      "tier": "advanced",
+      "ocr_mode": "ocr",
+      "page_range": "1",
+      "explicit_warmup": false,
+      "small_models": "onnx-cpu",
+      "cpu_threads": "llama default auto",
+      "n_parallel": "llama default4",
+      "n_ctx_seq": "llama default0",
+      "preload": null,
+      "pid": 13924,
+      "serialize_requested": null,
+      "wall_timeout": null,
+      "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+      "packages": {
+        "mineru": "4.0.12",
+        "mineru-llama-cpp": "0.1.3",
+        "mineru-vl-utils": "2.0.7"
+      },
+      "parse_wall_s": 31.69441046299994,
+      "completed": false,
+      "error": "ServerError('got exception: vk::Queue::submit: ErrorDeviceLost')"
+    }
+  },
+  "full_page_serialized": {
+    "llama_device": "vulkan",
+    "tier": "advanced",
+    "ocr_mode": "ocr",
+    "page_range": "1",
+    "explicit_warmup": false,
+    "small_models": "onnx-cpu",
+    "cpu_threads": "llama default auto",
+    "n_parallel": "llama default4",
+    "n_ctx_seq": "llama default0",
+    "preload": null,
+    "pid": 39883,
+    "serialize_requested": "1",
+    "wall_timeout": null,
+    "pdf_sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+    "packages": {
+      "mineru": "4.0.12",
+      "mineru-llama-cpp": "0.1.3",
+      "mineru-vl-utils": "2.0.7"
+    },
+    "parse_wall_s": 112.8470317639999,
+    "serialize_after_init": "1",
+    "visible_after_init": null,
+    "pages": 1,
+    "blocks": 19,
+    "markdown_chars": 3652,
+    "markdown_sha256": "559ffd6a9c184d6e69a93411ece7b0b1148cd77a4543dfdea22dfe82a3b79980",
+    "title_present": true,
+    "completed": true,
+    "kernel": "-- No entries --\n"
+  },
+  "full_page_comparison": {
+    "cpu_blocks": 19,
+    "gpu_blocks": 19,
+    "markdown_byte_identical": false,
+    "difference": [
+      "--- cpu\n",
+      "+++ gpu-serialized\n",
+      "@@ -2,7 +2,7 @@\n",
+      " ",
+      " Patrick N.J. Lane $^{a,c,*}$ , Alice E. Best $^{b,c,d}$ , Klaus Hickel $^{b,c}$ , Lu Zhang $^{b,c}$",
+      " ",
+      "-$^{a}$ School of Forest and Ecosystem Studies, University of Melbourne, P.O. Box 137, Heidelberg, Victoria 3084, Australia",
+      "+$^{a}$School of Forest and Ecosystem Studies, University of Melbourne, P.O. Box 137, Heidelberg, Victoria 3084, Australia",
+      " ",
+      " $^{b}$ CSIRO Division of Land and Water, Canberra, ACT, Australia",
+      " "
+    ],
+    "assessment": "Only one missing space after the first affiliation superscript; content otherwise unchanged."
+  },
+  "minimal_cases": [
+    {
+      "case": "vision-cpu-text-gpu",
+      "llm": "gpu",
+      "vision": "cpu",
+      "serialize": false,
+      "disable_f16": false,
+      "max_tokens": 32,
+      "wall_timeout": null,
+      "dump_embeddings": true,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/mineru_llama_cpp/bin/llama-server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "38939",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "4",
+        "-tb",
+        "4",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4",
+        "-ngl",
+        "99",
+        "--device",
+        "Vulkan0",
+        "--mmproj-device",
+        "none",
+        "--no-mmproj-offload"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-vulkan-diagnosis-20261022/request.json",
+      "pid": 40139,
+      "init_s": 1.0099832559999413,
+      "request_wall_s": 50.868782273000306,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 6"
+            }
+          }
+        ],
+        "created": 1792642074,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 32,
+          "prompt_tokens": 1394,
+          "total_tokens": 1426,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-L712hQjP8GyQmEEXTjdJJiKKjYvx8M2w",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 49319.662,
+          "prompt_per_token_ms": 35.37995839311334,
+          "prompt_per_second": 28.264589485629486,
+          "predicted_n": 32,
+          "predicted_ms": 1517.966,
+          "predicted_per_token_ms": 48.966645161290316,
+          "predicted_per_second": 20.422064789329934
+        }
+      },
+      "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 6",
+      "has_layout_boxes": true,
+      "layout_boxes": [
+        [
+          "077 095 177 177",
+          "header"
+        ]
+      ],
+      "server_cleanup_returncode": 0,
+      "kernel": "-- No entries --\n",
+      "process_wall_s": 51.952407088999735
+    },
+    {
+      "case": "vision-gpu-text-cpu-default",
+      "llm": "cpu",
+      "vision": "gpu",
+      "serialize": false,
+      "disable_f16": false,
+      "max_tokens": 32,
+      "wall_timeout": null,
+      "dump_embeddings": true,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/mineru_llama_cpp/bin/llama-server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "58621",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "4",
+        "-tb",
+        "4",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4",
+        "-ngl",
+        "0",
+        "--device",
+        "none",
+        "--mmproj-device",
+        "Vulkan0",
+        "--mmproj-offload",
+        "--no-op-offload"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-vulkan-diagnosis-20261022/request.json",
+      "pid": 40214,
+      "init_s": 0.6627480189999915,
+      "request_wall_s": 25.221550104000016,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "THE MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN ME"
+            }
+          }
+        ],
+        "created": 1792642100,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 32,
+          "prompt_tokens": 1394,
+          "total_tokens": 1426,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-zSe40VFw67v02u8HT6l1PtSiDufmb57K",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 24651.326,
+          "prompt_per_token_ms": 17.68387804878049,
+          "prompt_per_second": 56.548682208819116,
+          "predicted_n": 32,
+          "predicted_ms": 538.046,
+          "predicted_per_token_ms": 17.356322580645163,
+          "predicted_per_second": 57.61589157804351
+        }
+      },
+      "content": "THE MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN MEAN ME",
+      "has_layout_boxes": false,
+      "layout_boxes": [],
+      "server_cleanup_returncode": 0,
+      "kernel": "2026-10-22T12:08:15+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:llama-server[40214]:22!\n2026-10-22T12:08:15+08:00 myhloli-ubuntu-ssd kernel: Fence expiration time out i915-0000:00:02.0:llama-server[40214]:20!\n",
+      "process_wall_s": 25.944937001999733
+    },
+    {
+      "case": "vision-gpu-text-cpu-serialized",
+      "llm": "cpu",
+      "vision": "gpu",
+      "serialize": true,
+      "disable_f16": false,
+      "max_tokens": 32,
+      "wall_timeout": null,
+      "dump_embeddings": true,
+      "command": [
+        "/home/myhloli/PycharmProjects/mineru/Magic-PDF/.venv/lib/python3.14/site-packages/mineru_llama_cpp/bin/llama-server",
+        "-m",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "-mm",
+        "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "51585",
+        "-c",
+        "32768",
+        "-np",
+        "4",
+        "-t",
+        "4",
+        "-tb",
+        "4",
+        "--fit",
+        "off",
+        "--no-kv-unified",
+        "--cache-ram",
+        "0",
+        "--no-cache-idle-slots",
+        "--special",
+        "--no-context-shift",
+        "-lv",
+        "4",
+        "-ngl",
+        "0",
+        "--device",
+        "none",
+        "--mmproj-device",
+        "Vulkan0",
+        "--mmproj-offload",
+        "--no-op-offload"
+      ],
+      "request_file": "/home/myhloli/PycharmProjects/mineru/Magic-PDF/demo/output/ultra225h-vulkan-diagnosis-20261022/request.json",
+      "pid": 40265,
+      "init_s": 0.6627884419999646,
+      "request_wall_s": 25.76569968800004,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "length",
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 6"
+            }
+          }
+        ],
+        "created": 1792642126,
+        "model": "/home/myhloli/.mineru/models/MinerU2.5-Pro-2605-1.2B-GGUF/MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "system_fingerprint": "b1-86a2835",
+        "object": "chat.completion",
+        "usage": {
+          "completion_tokens": 32,
+          "prompt_tokens": 1394,
+          "total_tokens": 1426,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "id": "chatcmpl-V5z7XxnIcXkAASkJIhcjhFt20caV4m6m",
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 1394,
+          "prompt_ms": 25239.699,
+          "prompt_per_token_ms": 18.10595337159254,
+          "prompt_per_second": 55.230452629407345,
+          "predicted_n": 32,
+          "predicted_ms": 495.242,
+          "predicted_per_token_ms": 15.975548387096774,
+          "predicted_per_second": 62.5956603034476
+        }
+      },
+      "content": "<|box_start|>077 095 177 177<|box_end|><|ref_start|>header<|ref_end|><|rotate_up|>\n<|box_start|>339 092 6",
+      "has_layout_boxes": true,
+      "layout_boxes": [
+        [
+          "077 095 177 177",
+          "header"
+        ]
+      ],
+      "server_cleanup_returncode": 0,
+      "kernel": "-- No entries --\n",
+      "process_wall_s": 26.488517725999827
+    }
+  ],
+  "embedding_comparison": {
+    "vision-cpu-text-gpu": {
+      "shape": [
+        1369,
+        896
+      ],
+      "count": 1226624,
+      "finite_count": 1226624,
+      "zero_count": 0,
+      "min": -1000.83251953125,
+      "max": 4789.21044921875,
+      "rmse_vs_cpu": 0.0,
+      "relative_l2_vs_cpu": 0.0,
+      "cosine_vs_cpu": 0.9999999999999999,
+      "max_abs_diff_vs_cpu": 0.0
+    },
+    "vision-gpu-text-cpu-default": {
+      "shape": [
+        1369,
+        896
+      ],
+      "count": 1226624,
+      "finite_count": 1226624,
+      "zero_count": 0,
+      "min": -1.7922625541687012,
+      "max": 2.0748836994171143,
+      "rmse_vs_cpu": 72.36671922954488,
+      "relative_l2_vs_cpu": 0.9997903508081395,
+      "cosine_vs_cpu": 0.021030824948510236,
+      "max_abs_diff_vs_cpu": 4787.280113101006
+    },
+    "vision-gpu-text-cpu-serialized": {
+      "shape": [
+        1369,
+        896
+      ],
+      "count": 1226624,
+      "finite_count": 1226624,
+      "zero_count": 0,
+      "min": -1001.6793212890625,
+      "max": 4782.42138671875,
+      "rmse_vs_cpu": 0.883270061190033,
+      "relative_l2_vs_cpu": 0.012202914457602947,
+      "cosine_vs_cpu": 0.9999261678455825,
+      "max_abs_diff_vs_cpu": 212.20526123046875
+    }
+  },
+  "conclusions": [
+    "Default Vulkan vision encoding reproduces fence expiration and severely incorrect finite embeddings even when the text decoder uses CPU. A successful HTTP response is insufficient for correctness.",
+    "CPU vision plus GPU text produces the expected layout prefix. Serialized GPU vision plus CPU text produces the same prefix, with cosine similarity 0.999926 to CPU embeddings.",
+    "Serial submissions complete the real advanced OCR page with 19 blocks and no kernel GPU error. This is a validated workaround for this device and software stack, not a proof of universal Intel GPU stability.",
+    "Evidence isolates asynchronous large-image Vulkan vision execution interacting with i915/Mesa. Exact responsibility between llama.cpp synchronization, Mesa/ANV, and i915 scheduling/watchdog is not fully bisected.",
+    "The recorded 20-second kernel request watchdog is consistent with the observed fence expiration; it is separate from application inference timeouts.",
+    "This reproducer runs ONNX on CPU and does not exercise WebGPU NHWC; it cannot establish a common root cause with the older ONNX issue."
+  ],
+  "recommendations": [
+    "Short term: set GGML_VK_SERIALIZE_SUBMISSIONS=1 before starting a fresh process on this Linux Intel iGPU; retain existing device selection.",
+    "If automating the workaround, initially target the actually selected Linux Intel integrated PCI 8086:7d51 device; do not apply it to unrelated AMD/NVIDIA discrete GPUs.",
+    "Alternative CLI path: --no-mmproj-offload with GPU text generation; verified only on the 32-token minimal layout prefix, not a full advanced page.",
+    "Upstream PR30438 addresses a different GPU-to-host barrier issue on Intel/Mesa and remains unmerged as checked; it has not been validated for this timeout and is not asserted to fix it."
+  ],
+  "sources": [
+    "https://github.com/ggml-org/llama.cpp/blob/86a283532072722c5f3363d37d59a874d09fa99b/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L14278",
+    "https://github.com/torvalds/linux/blob/v7.0/drivers/gpu/drm/i915/Kconfig.profile#L1",
+    "https://github.com/ggml-org/llama.cpp/pull/30438",
+    "https://github.com/intel/compute-runtime/issues/939#issuecomment-5479421984"
+  ],
+  "config_sha256_before": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "config_sha256_after": "5c447bf9c2834991aba50a86cd5a435a4753a0ad6a6e21b745e685670fd59e99",
+  "raw_artifact_directory": "demo/output/ultra225h-vulkan-diagnosis-20261022"
+}
