@@ -84,7 +84,7 @@ button:focus-visible, input:focus-visible, #viewer-container:focus-visible { out
 .mineru-merge-layer circle { fill: var(--trace-strong); }
 .mineru-merge-layer rect { fill: #fff; stroke: var(--trace-strong); stroke-width: 1px; }
 .mineru-merge-layer text { fill: var(--trace-strong); font: 11px system-ui, sans-serif; }
-#trace-toggle, #page-sync-toggle { font-size: 11px; padding: 0 5px; }
+#trace-toggle, #page-sync-toggle { padding: 0 5px; }
 #page-sync-toggle[aria-pressed="true"] { color: #fff; background: #374151; border-color: #374151; }
 @media (max-width: 580px) {
     body:has(#trace-toggle:not([hidden])) { --toolbar-height: 80px; }
