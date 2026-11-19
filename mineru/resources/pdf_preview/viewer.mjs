@@ -26,7 +26,7 @@ let resizeObserver;
 let resizeFrame;
 let fitWidth = true;
 let ready = false;
-let disposeTrace;
+let trace;
 
 // 清除或换文件时释放渲染队列、worker 和观察器，旧页面不会向新预览写入结果。
 const dispose = () => {
@@ -34,7 +34,7 @@ const dispose = () => {
     disposed = true;
     cancelAnimationFrame(resizeFrame);
     resizeObserver?.disconnect();
-    disposeTrace?.();
+    trace?.dispose();
     try {
         viewer?.setDocument(null);
         links?.setDocument(null);
@@ -50,12 +50,13 @@ window.addEventListener("pagehide", dispose, { once: true });
 const updateControls = () => {
     if (disposed || !viewer || !ready) return;
     pageInput.disabled = false;
-    pageInput.value = String(viewer.currentPageNumber);
+    const pageNumber = trace?.pageNumber ?? viewer.currentPageNumber;
+    pageInput.value = String(pageNumber);
     pageInput.max = String(viewer.pagesCount);
     document.getElementById("pages").textContent = String(viewer.pagesCount);
     document.getElementById("scale").textContent = `${Math.round(viewer.currentScale * 100)}%`;
-    controls.previous.disabled = viewer.currentPageNumber <= 1;
-    controls.next.disabled = viewer.currentPageNumber >= viewer.pagesCount;
+    controls.previous.disabled = pageNumber <= 1;
+    controls.next.disabled = pageNumber >= viewer.pagesCount;
     controls["zoom-out"].disabled = viewer.currentScale <= .25;
     controls["zoom-in"].disabled = viewer.currentScale >= 4;
     controls.fit.disabled = false;
@@ -73,7 +74,7 @@ const resize = () => {
 const goToPage = (value) => {
     if (!ready || disposed) return;
     const page = Number(value);
-    if (Number.isInteger(page) && page >= 1 && page <= viewer.pagesCount) viewer.currentPageNumber = page;
+    if (Number.isInteger(page) && page >= 1 && page <= viewer.pagesCount) trace.goToPage(page);
     updateControls();
 };
 
@@ -105,7 +106,7 @@ try {
             ready = true;
             document.getElementById("toolbar").setAttribute("aria-busy", "false");
             resize();
-            disposeTrace = installTrace({ viewer, eventBus, container, sourceId: params.get("sourceId"), messages });
+            trace = installTrace({ viewer, eventBus, container, sourceId: params.get("sourceId"), messages, updateControls });
         });
         eventBus.on("pagechanging", updateControls);
         eventBus.on("scalechanging", updateControls);
@@ -115,8 +116,8 @@ try {
                 document.body.dataset.rendered = event.error ? "error" : "true";
             }
         });
-        controls.previous.addEventListener("click", () => goToPage(viewer.currentPageNumber - 1));
-        controls.next.addEventListener("click", () => goToPage(viewer.currentPageNumber + 1));
+        controls.previous.addEventListener("click", () => goToPage(trace.pageNumber - 1));
+        controls.next.addEventListener("click", () => goToPage(trace.pageNumber + 1));
         pageInput.addEventListener("change", () => goToPage(pageInput.value));
         pageInput.addEventListener("keydown", (event) => { if (event.key === "Enter") goToPage(pageInput.value); });
         controls["zoom-out"].addEventListener("click", () => zoom(-.25));
