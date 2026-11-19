@@ -116,13 +116,15 @@ class ConversionRun:
 
 
 class SessionConversions:
-    """按 Gradio 会话隔离任务，并让所有实际解析共享一个执行槽。"""
+    """按 Gradio 会话隔离任务，并为整个应用限制同时转换的数量。"""
 
-    def __init__(self) -> None:
-        """在构建 WebUI 时创建注册表，不在模块导入期间分配运行资源。"""
+    def __init__(self, *, conversion_concurrency: int = 1) -> None:
+        """构建注册表与执行槽，普通 WebUI 默认串行。"""
+        if type(conversion_concurrency) is not int or conversion_concurrency < 1:
+            raise ValueError("conversion_concurrency must be a positive integer")
         self.runs: dict[str, ConversionRun] = {}
         self.revisions: dict[str, int] = {}
-        self.slot = asyncio.Semaphore(1)
+        self.slot = asyncio.Semaphore(conversion_concurrency)
 
     def start(self, session: str, run_id: str, *, revision: int | None = None) -> ConversionRun | None:
         """拒绝晚到的旧提交，替换会话任务时先取消其后台工作。"""

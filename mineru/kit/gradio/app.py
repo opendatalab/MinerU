@@ -365,8 +365,9 @@ def build_gradio_app(
     max_pages: int | None = None,
     document_io: GradioDocumentIO | None = None,
     runtime_device_loader: Callable[[], Awaitable[Literal["cpu", "gpu"] | None]] | None = None,
+    conversion_concurrency: int = 1,
 ) -> Any:
-    """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
+    """构建 Gradio 界面，宿主可指定网页与公开 API 共用的转换并发数。"""
     import gradio as gr
 
     viewer_entry = register_pdf_preview_resources()
@@ -409,7 +410,7 @@ def build_gradio_app(
     app_js = app_js.replace("__MINERU_TRACE__", _resource_text("gradio_trace.js"))
     app_js = app_js.replace("__MINERU_PDF_PREVIEW__", _resource_text("gradio_pdf_preview.js"))
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
-    conversions = SessionConversions()
+    conversions = SessionConversions(conversion_concurrency=conversion_concurrency)
     conversion_service = ConversionService(
         client,
         tier_choices=tier_choices,
