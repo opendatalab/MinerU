@@ -196,6 +196,7 @@ console.log("HTML source-page controls respect the outline toolbar and viewport"
 // 正文跟随 PDF 跳到第三页，用户在第二页按下鼠标后不再滚动，也应上报第二页。
 {
     const htmlEvents = {};
+    const docEvents = {};
     const frames = new Map();
     let frameId = 0;
     const reports = [];
@@ -208,13 +209,14 @@ console.log("HTML source-page controls respect the outline toolbar and viewport"
         // 模拟一次动画帧引起的滚动，接管后不会再生成滚动事件。
         scrollTo({ top }) { this.scrollTop = top; htmlEvents.scroll(); }
     };
-    const blocks = [0, 1, 2].map(page => ({
+    const pageTops = [0, 600, 1200];
+    const blocks = pageTops.map((_, page) => ({
         style: makeStyle(),
         dataset: {
             docvortexTraceId: String(page + 1),
             docvortexSources: JSON.stringify([{ page_idx: page, block_index: 0, child_path: [], bbox: [0, 0, 1, 1] }])
         },
-        getBoundingClientRect: () => ({ top: page * 600 - root.scrollTop, height: 600, width: 400 })
+        getBoundingClientRect: () => ({ top: pageTops[page] - root.scrollTop, height: 600, width: 400 })
     }));
     const context = {
         parent: htmlParent, URL, CustomEvent, navigator: { language: "en" }, innerHeight: 600,
@@ -232,7 +234,8 @@ console.log("HTML source-page controls respect the outline toolbar and viewport"
         },
         document: {
             scrollingElement: root, documentElement: root, querySelectorAll: () => blocks,
-            createElement: () => ({ setAttribute() {} }), body: { append() {} }, addEventListener() {}
+            createElement: () => ({ setAttribute() {} }), body: { append() {} },
+            addEventListener: (name, callback) => { docEvents[name] = callback; }
         }
     };
     vm.runInNewContext(`${motionScript}\n(${htmlScript})({ pageLabels: ["Page", "页"], documentId: "one",
@@ -253,6 +256,21 @@ console.log("HTML source-page controls respect the outline toolbar and viewport"
     tick(500);
     assert.equal(root.scrollTop, stopped);
     assert.deepEqual(reports, ["2"]);
+    // 前页图片在翻页动画中撑高后，按第三页的新位置对齐到工具栏下方。
+    sendToHtml({ type: "pdf-page", pageIdx: 2, scroll: true });
+    tick(100);
+    pageTops[2] += 600;
+    root.scrollHeight += 600;
+    docEvents.load();
+    tick(120);
+    tick(600);
+    assert.equal(root.scrollTop, pageTops[2] - 24);
+    // 用户接管后，即使字体再次改变同一页的位置，也不能把视口拉回锚点。
+    htmlEvents.pointerdown({ type: "pointerdown" });
+    pageTops[2] -= 300;
+    htmlEvents.resize();
+    tick(800);
+    assert.equal(root.scrollTop, 1776);
 }
 
 // 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。

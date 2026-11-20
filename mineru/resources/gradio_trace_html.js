@@ -14,7 +14,7 @@
     let pageFrame = 0;
     let selected = null;
     let selectedPage = null;
-    let alignOnResize = false;
+    let scrollAnchor = null;
     let resizeFrame = 0;
     const motion = createMineruPreviewScroll(document.scrollingElement);
     // PDF 结果目录和溯源共用正文滚动器，后来的导航可以直接接管前一次动画。
@@ -102,19 +102,6 @@
     const scheduleReadingPage = () => {
         if (pageSync && htmlDrives && !pageFrame) pageFrame = requestAnimationFrame(reportReadingPage);
     };
-    // 释放目录或精确溯源的旧锚点，仅在阅读位置确实属于别页时滚动正文。
-    const followPdfPage = (pageIdx, scroll) => {
-        htmlDrives = false;
-        alignOnResize = false;
-        lastPages = "";
-        motion.cancel();
-        if (!scroll) return;
-        const current = readingBlock();
-        const target = firstByPage.get(pageIdx);
-        if (!target || current?.pages.includes(pageIdx)) return;
-        window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: "page" }));
-        motion.move(scrollY + target.node.getBoundingClientRect().top - readingOffset());
-    };
     // 初次加载和父窗口主动握手共用结果快照，覆盖两侧就绪先后顺序。
     const announceReady = () => send({ type: "ready", entries, initialPageIdx: config.initialPageIdx,
         layoutRegions: config.layoutRegions, pdfPageSync: config.pdfPageSync });
@@ -125,13 +112,33 @@
         const offset = parseFloat(getComputedStyle(document.body).getPropertyValue("--mineru-preview-offset")) || 8;
         navigation.style.top = `${Math.max(offset, Math.min(innerHeight - navigation.offsetHeight - 8, rect.top))}px`;
     };
-    // 仅调整结果 iframe 自身滚动，避免带动整个 Gradio 页面。
+    // 联动翻页对齐该页首个可见块，精确溯源则居中选中块；重排后按同一锚点重新求坐标。
     const align = () => {
-        if (!selected || !alignOnResize) return;
-        const rect = selected.getBoundingClientRect();
-        const offset = parseFloat(getComputedStyle(document.body).getPropertyValue("--mineru-preview-offset")) || 24;
-        motion.move(scrollY + rect.top - Math.max(offset, (innerHeight - Math.min(rect.height, innerHeight - 48)) / 2));
+        if (!scrollAnchor) return;
+        if (!scrollAnchor.node) indexPositions();
+        const node = scrollAnchor.node ?? firstByPage.get(scrollAnchor.pageIdx)?.node;
+        if (!node) return;
+        const rect = node.getBoundingClientRect();
+        const offset = scrollAnchor.node
+            ? Math.max(readingOffset(), (innerHeight - Math.min(rect.height, innerHeight - 48)) / 2)
+            : readingOffset();
+        motion.move(scrollY + rect.top - offset);
         positionNavigation();
+    };
+    // 已经在目标页时保留同页阅读位置；需要翻页时保存来源页直到用户接管。
+    const followPdfPage = (pageIdx, scroll) => {
+        htmlDrives = false;
+        lastPages = "";
+        if (scroll && scrollAnchor?.pageIdx === pageIdx) {
+            align();
+            return;
+        }
+        motion.cancel();
+        scrollAnchor = null;
+        if (!scroll || readingBlock()?.pages.includes(pageIdx) || !firstByPage.has(pageIdx)) return;
+        window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: "page" }));
+        scrollAnchor = { pageIdx };
+        align();
     };
     // 一个目标对应多个原文页时，用去重后的原文页号切换来源。
     const select = (id, pageIdx, scroll, selectedSourceKey) => {
@@ -158,7 +165,7 @@
             navigation.append(button);
         }
         navigation.hidden = pages.length < 2;
-        alignOnResize = scroll;
+        scrollAnchor = scroll ? { node: selected } : null;
         // 展开源内容所属的 details 后再读取其真实位置。
         for (let ancestor = selected.parentElement; ancestor; ancestor = ancestor.parentElement) {
             if (ancestor.tagName === "DETAILS") ancestor.open = true;
@@ -196,10 +203,14 @@
             navigation.setAttribute("aria-label", pageLabel);
         }
         if (data.type === "labels" || data.type === "page-sync-mode") {
-            motion.cancel();
-            pageSync = config.pdfPageSync && data.pageSync === true;
-            htmlDrives = false;
-            lastPages = "";
+            const enabled = config.pdfPageSync === true && data.pageSync === true;
+            if (enabled !== pageSync) {
+                motion.cancel();
+                if (scrollAnchor?.pageIdx !== undefined) scrollAnchor = null;
+                pageSync = enabled;
+                htmlDrives = false;
+                lastPages = "";
+            }
         }
         if (data.type === "pdf-page" && pageSync) followPdfPage(data.pageIdx, data.scroll);
         if (data.type === "select") select(data.id, data.pageIdx, data.scroll, data.sourceKey);
@@ -210,7 +221,7 @@
             name,
             (event) => {
                 const interrupted = motion.cancel();
-                alignOnResize = false;
+                scrollAnchor = null;
                 htmlDrives = event.type !== "wheel" || !(event.ctrlKey || event.metaKey);
                 if (interrupted) scheduleReadingPage();
             },
@@ -221,30 +232,32 @@
         positionNavigation();
         scheduleReadingPage();
     }, { passive: true });
-    // 预览区缩小时重新约束控件位置，即使用户操作已停用正文自动对齐。
-    window.addEventListener("resize", () => {
-        positions = null;
-        positionNavigation();
-    });
     // 目录接管正文导航时，结束旧来源块的自动对齐。
     window.addEventListener("mineru-preview-navigate", (event) => {
         motion.cancel();
-        alignOnResize = false;
+        scrollAnchor = null;
         htmlDrives = false;
         lastPages = "";
         const id = event.detail?.heading?.closest("[data-docvortex-trace-id]")?.dataset.docvortexTraceId;
         if (pageSync && id && nodes.has(id)) send({ type: "outline", id });
     });
-    // 图片、公式、字体和折叠内容可能在首屏渲染后改变块位置，下一次使用时再测量。
-    const invalidatePositions = () => { positions = null; };
+    // 图片、字体或折叠内容可能只改变局部位置，统一在下一帧重新测量仍有效的锚点。
+    const invalidatePositions = () => {
+        positions = null;
+        if (scrollAnchor && !resizeFrame) resizeFrame = requestAnimationFrame(() => {
+            resizeFrame = 0;
+            align();
+        });
+    };
+    // 预览区缩小时重新约束控件位置，即使用户操作已停用正文自动对齐。
+    window.addEventListener("resize", () => {
+        invalidatePositions();
+        positionNavigation();
+    });
     document.addEventListener("load", invalidatePositions, true);
     document.addEventListener("toggle", invalidatePositions, true);
     document.fonts?.addEventListener("loadingdone", invalidatePositions);
-    const observer = new ResizeObserver(() => {
-        invalidatePositions();
-        cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(align);
-    });
+    const observer = new ResizeObserver(invalidatePositions);
     observer.observe(document.body);
     window.addEventListener(
         "pagehide",
