@@ -171,3 +171,26 @@ def test_vlm_app_and_parser_snapshot_configuration(tmp_path: Path, monkeypatch: 
     with TestClient(app) as client:
         assert client.get("/v1/health").status_code == 200
         assert app.state.vlm_config.model == "alias"
+
+
+def test_vlm_gpu_memory_utilization_bounds() -> None:
+    """gpu_memory_utilization 仅接受 [0.05, 1.0]，None 表示沿用按显存比例的默认算法。"""
+    assert VlmConfig().gpu_memory_utilization is None
+    assert VlmConfig(gpu_memory_utilization=0.9).gpu_memory_utilization == 0.9
+    with pytest.raises(ValidationError):
+        VlmConfig(gpu_memory_utilization=0.01)
+    with pytest.raises(ValidationError):
+        VlmConfig(gpu_memory_utilization=1.5)
+
+
+def test_vlm_gpu_memory_utilization_config_file_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """配置文件可下发该字段，供大显存卡解除 KV 池的默认小额预算。"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "model:\n  vlm:\n    gpu_memory_utilization: 0.9\n    max_concurrency: 4\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("MINERU_CONFIG", str(config_file))
+    loaded = _load_effective_config()
+    assert loaded.config.model.vlm.gpu_memory_utilization == 0.9
+    assert loaded.config.model.vlm.max_concurrency == 4
+    assert loaded.sources[("model", "vlm", "gpu_memory_utilization")] == "file"

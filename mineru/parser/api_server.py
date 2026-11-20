@@ -2286,6 +2286,12 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     "--vlm-max-concurrency", default=None, type=click.IntRange(min=1), help="VLM inference concurrency (default: 100)."
 )
 @click.option(
+    "--vlm-gpu-memory-utilization",
+    default=None,
+    type=click.FloatRange(min=0.05, max=1.0),
+    help="GPU memory budget fraction for the local vLLM engine (default: auto).",
+)
+@click.option(
     "--api-key",
     default=None,
     type=str,
@@ -2308,6 +2314,7 @@ def main(
     vlm_model: str | None,
     vlm_http_timeout: int | None,
     vlm_max_concurrency: int | None,
+    vlm_gpu_memory_utilization: float | None,
     log_level: str | None,
     retention_seconds: int | None = None,
     task_timeout: int = DEFAULT_TASK_TIMEOUT_SECONDS,
@@ -2341,6 +2348,7 @@ def main(
             "model": vlm_model,
             "http_timeout": vlm_http_timeout,
             "max_concurrency": vlm_max_concurrency,
+            "gpu_memory_utilization": vlm_gpu_memory_utilization,
         }
         vlm_settings = VlmConfig.model_validate(
             {

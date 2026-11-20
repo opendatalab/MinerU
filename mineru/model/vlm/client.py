@@ -31,11 +31,14 @@ def get_vlm_predictor(vlm_config: VlmConfig | None = None) -> tuple[VlmPredictor
     from .selector import get_vlm_engine
 
     engine = get_vlm_engine(settings.engine, is_async=True)
+    engine_kwargs = {"max_concurrency": settings.max_concurrency}
+    if settings.gpu_memory_utilization is not None and engine.startswith("vllm"):
+        engine_kwargs["gpu_memory_utilization"] = settings.gpu_memory_utilization
     return ModelSingleton().get_model(
         backend=engine,
         model_path=None,
         server_url=None,
-        max_concurrency=settings.max_concurrency,
+        **engine_kwargs,
     ), engine
 
 

@@ -522,6 +522,11 @@ class VlmConfig(BaseModel):
     model: str = ""
     http_timeout: int = Field(default=600, ge=1)
     max_concurrency: int = Field(default=100, ge=1)
+    # Fraction of total GPU memory the local vllm engine family may budget for
+    # weights + KV cache. None keeps the VRAM-proportional default, which reserves
+    # only ~6 GiB on large cards (e.g. 10% of a 96 GiB H20) and starves the KV
+    # pool. Ignored by remote servers, which manage their own memory.
+    gpu_memory_utilization: float | None = Field(default=None, ge=0.05, le=1.0)
 
     @field_validator("api_key", "model")
     @classmethod
