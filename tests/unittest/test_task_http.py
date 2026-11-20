@@ -95,12 +95,6 @@ class _LiveService:
     execution_apps: list[FastAPI]
 
 
-@pytest.fixture
-def direct_worker_concurrency() -> int:
-    """独立 API 默认一个执行槽，容量测试按用例覆盖。"""
-    return 1
-
-
 @pytest.fixture(params=["api", "router"])
 def live_service(request: pytest.FixtureRequest, tmp_path: Path, direct_worker_concurrency: int) -> Iterator[_LiveService]:
     """启动真实 Uvicorn 服务；Router 的两个 worker 同样使用真实 TCP。"""
