@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 const motionScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/preview_scroll.js"), "utf8");
+const htmlScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
 const handlers = {};
 const delivered = [];
 // 为两个实际 iframe 接口提供最小可观测替身。
@@ -145,9 +146,8 @@ const checkHtmlNavigation = (
         // 此用例仅驱动滚动事件，尺寸观察器保留生产注册入口。
         ResizeObserver: class { observe() {} }
     };
-    const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
     vm.runInNewContext(`${motionScript}
-(${source})(${JSON.stringify({
+(${htmlScript})(${JSON.stringify({
         pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, initialPageIdx: 2,
         layoutRegions: [
             { ...entry.sources[0], child_path: [0], color: [0.2, 0.4, 0.9] },
@@ -192,6 +192,68 @@ checkHtmlNavigation("52px", -100, 52, "https://mineru.test:443", "https://mineru
 checkHtmlNavigation("52px", -100, 52, "HTTP://MINERU.TEST:80", "http://mineru.test");
 checkHtmlNavigation("52px", -100, 52, "https://mineru.test:8443", "https://mineru.test:8443");
 console.log("HTML source-page controls respect the outline toolbar and viewport");
+
+// 正文跟随 PDF 跳到第三页，用户在第二页按下鼠标后不再滚动，也应上报第二页。
+{
+    const htmlEvents = {};
+    const frames = new Map();
+    let frameId = 0;
+    const reports = [];
+    const htmlParent = {
+        // 记录父窗口实际会转发的阅读块。
+        postMessage(message) { if (message.type === "html-page") reports.push(message.id); }
+    };
+    const root = {
+        scrollTop: 0, scrollLeft: 0, scrollWidth: 400, clientWidth: 400, scrollHeight: 1800, clientHeight: 600,
+        // 模拟一次动画帧引起的滚动，接管后不会再生成滚动事件。
+        scrollTo({ top }) { this.scrollTop = top; htmlEvents.scroll(); }
+    };
+    const blocks = [0, 1, 2].map(page => ({
+        style: makeStyle(),
+        dataset: {
+            docvortexTraceId: String(page + 1),
+            docvortexSources: JSON.stringify([{ page_idx: page, block_index: 0, child_path: [], bbox: [0, 0, 1, 1] }])
+        },
+        getBoundingClientRect: () => ({ top: page * 600 - root.scrollTop, height: 600, width: 400 })
+    }));
+    const context = {
+        parent: htmlParent, URL, CustomEvent, navigator: { language: "en" }, innerHeight: 600,
+        // window 与正文滚动元素读取同一个浏览位置。
+        get scrollY() { return root.scrollTop; },
+        performance: { now: () => 0 },
+        getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+        requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
+        cancelAnimationFrame: id => frames.delete(id),
+        ResizeObserver: class { observe() {} },
+        window: {
+            addEventListener: (name, callback) => { htmlEvents[name] = callback; },
+            dispatchEvent: event => htmlEvents[event.type](event),
+            matchMedia: () => ({ matches: false })
+        },
+        document: {
+            scrollingElement: root, documentElement: root, querySelectorAll: () => blocks,
+            createElement: () => ({ setAttribute() {} }), body: { append() {} }, addEventListener() {}
+        }
+    };
+    vm.runInNewContext(`${motionScript}\n(${htmlScript})({ pageLabels: ["Page", "页"], documentId: "one",
+        parentOrigin: "https://mineru.test", pdfPageSync: true });`, context);
+    // 与浏览器一致，帧回调中新排入的任务推迟到下一帧。
+    const tick = time => {
+        for (const [id, callback] of [...frames]) if (frames.delete(id)) callback(time);
+    };
+    // 通过正文 iframe 的真实消息入口切换联动并发起翻页。
+    const sendToHtml = data => htmlEvents.message({ source: htmlParent, origin: location.origin,
+        data: { channel: "mineru-trace", documentId: "one", ...data } });
+    sendToHtml({ type: "page-sync-mode", pageSync: true });
+    sendToHtml({ type: "pdf-page", pageIdx: 2, scroll: true });
+    tick(150);
+    assert.deepEqual(reports, []);
+    htmlEvents.pointerdown({ type: "pointerdown" });
+    const stopped = root.scrollTop;
+    tick(500);
+    assert.equal(root.scrollTop, stopped);
+    assert.deepEqual(reports, ["2"]);
+}
 
 // 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。
 // 只实现浮层使用的 DOM 接口，所有布局输入由测试显式给定。

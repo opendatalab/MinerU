@@ -2,11 +2,13 @@
 function createMineruPreviewScroll(element) {
     let frame = 0;
     let destination = null;
-    // 手动接管、换目标和卸载时取消剩余帧，保留已经滚到的位置。
+    // 保留已经滚到的位置，并告知调用者是否中断了尚未到达目标的动画。
     const cancel = () => {
+        const interrupted = destination !== null;
         cancelAnimationFrame(frame);
         frame = 0;
         destination = null;
+        return interrupted;
     };
     // 从当前位置缓入缓出，长距离跳转也在有限时间内完成。
     const move = (top, left = element.scrollLeft, onFinish) => {

@@ -98,6 +98,10 @@
         lastPages = block.key;
         send({ type: "html-page", id: block.id });
     };
+    // 滚动和手动打断共用下一帧的阅读位置，避免同一帧重复同步。
+    const scheduleReadingPage = () => {
+        if (pageSync && htmlDrives && !pageFrame) pageFrame = requestAnimationFrame(reportReadingPage);
+    };
     // 释放目录或精确溯源的旧锚点，仅在阅读位置确实属于别页时滚动正文。
     const followPdfPage = (pageIdx, scroll) => {
         htmlDrives = false;
@@ -205,16 +209,17 @@
         window.addEventListener(
             name,
             (event) => {
-                motion.cancel();
+                const interrupted = motion.cancel();
                 alignOnResize = false;
                 htmlDrives = event.type !== "wheel" || !(event.ctrlKey || event.metaKey);
+                if (interrupted) scheduleReadingPage();
             },
             { passive: true }
         );
     }
     window.addEventListener("scroll", () => {
         positionNavigation();
-        if (pageSync && htmlDrives && !pageFrame) pageFrame = requestAnimationFrame(reportReadingPage);
+        scheduleReadingPage();
     }, { passive: true });
     // 预览区缩小时重新约束控件位置，即使用户操作已停用正文自动对齐。
     window.addEventListener("resize", () => {
