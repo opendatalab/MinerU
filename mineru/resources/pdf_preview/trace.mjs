@@ -1,5 +1,5 @@
 // PDF.js 的溯源层只依赖宿主查看器及公开页视图，状态按文档隔离。
-export function installTrace({ viewer, eventBus, container, sourceId, messages }) {
+export function installTrace({ viewer, eventBus, container, sourceId, messages, updateControls }) {
     let documentId = "";
     let initialized = false;
     const layers = new Map();
@@ -15,6 +15,19 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
     let hoveredBox = null;
     let focusedBox = null;
     let pending = null;
+    let requestedPage = null;
+    let toolbarPage = null;
+    const motion = createMineruPreviewScroll(container);
+    // 用户接管后丢弃惰性渲染的旧定位，页面随后加载也不能把视口拉回。
+    const cancelNavigation = () => {
+        motion.cancel();
+        requestedPage = null;
+        if (toolbarPage !== null) {
+            toolbarPage = null;
+            updateControls?.();
+        }
+        pending = null;
+    };
     let showAll = true;
     const abort = new AbortController();
     const options = { signal: abort.signal };
@@ -34,6 +47,22 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
     toggle.setAttribute("aria-pressed", "true");
     toggle.hidden = true;
     document.getElementById("toolbar").append(toggle);
+    const syncToggle = document.createElement("button");
+    syncToggle.type = "button";
+    syncToggle.id = "page-sync-toggle";
+    syncToggle.textContent = messages.trace_page_sync;
+    syncToggle.hidden = true;
+    document.getElementById("toolbar").append(syncToggle);
+    let pageSync = false;
+    let pdfDrives = false;
+    let pageFrame = 0;
+    // 能力随产物重建，用户开关由父页面保存，图片预览不展示翻页控件。
+    const setPageSync = (mode) => {
+        pageSync = mode === true;
+        syncToggle.hidden = typeof mode !== "boolean";
+        syncToggle.setAttribute("aria-pressed", String(pageSync));
+        pdfDrives = false;
+    };
     // 普通调用语句保留当前调用帧，避免 WebKit 在严格模式尾调用中把消息来源归到父窗口。
     const send = (message) => {
         parent.postMessage({ ...message, channel: "mineru-trace", documentId, sourceId }, location.origin);
@@ -265,33 +294,46 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
             updateSelection();
         });
     };
-    // 跳页后的页面可能尚未获得真实尺寸，等待对应页完成渲染再定位。
+    // 直接从页框与归一化来源计算终点，远处的页无需先跳到页首再等待命中层。
     const finishNavigation = () => {
-        if (!pending) return;
-        const pageNumber = pending.pageIdx + 1;
-        const page = viewer.getPageView(pageNumber - 1);
-        const layer = page?.div.querySelector(".mineru-trace-layer");
-        const boxes = [...(layer?.children || [])].filter(item => item.traceIds.includes(pending.id));
-        const target = layoutBySource.get(selectedSourceKey);
-        const box = boxes.find(item => item.dataset?.sourceKey === selectedSourceKey
-            || (target && item.source && boxKey(item.source) === boxKey(target))) || boxes[0];
-        if (!box) return;
-        const rect = box.getBoundingClientRect();
+        if (!pending) return false;
+        const { pageIdx, bbox } = pending;
+        const page = viewer.getPageView(pageIdx);
+        const rect = page?.div.getBoundingClientRect();
+        if (!rect?.width || !rect.height) return false;
         const host = container.getBoundingClientRect();
-        // 放大后同时沿横纵方向对齐，超宽区域保留左侧起始部分可见。
-        container.scrollTo({
-            left:
-                container.scrollLeft +
-                rect.left -
-                host.left -
-                Math.max(16, (container.clientWidth - Math.min(rect.width, container.clientWidth - 32)) / 2),
-            top:
-                container.scrollTop +
-                rect.top -
-                host.top -
-                Math.max(16, (container.clientHeight - Math.min(rect.height, container.clientHeight - 32)) / 2)
+        let top = container.scrollTop + rect.top - host.top - container.clientTop;
+        let left = container.scrollLeft;
+        if (bbox) {
+            const width = (bbox[2] - bbox[0]) * rect.width;
+            const height = (bbox[3] - bbox[1]) * rect.height;
+            top += bbox[1] * rect.height - Math.max(16, (container.clientHeight - Math.min(height, container.clientHeight - 32)) / 2);
+            left += rect.left - host.left - container.clientLeft + bbox[0] * rect.width
+                - Math.max(16, (container.clientWidth - Math.min(width, container.clientWidth - 32)) / 2);
+        }
+        if (page.pdfPage) pending = null;
+        motion.move(top, left, () => {
+            requestedPage = null;
+            toolbarPage = null;
+            // 多个短页完全可见时，PDF.js 可能保留旧页号，显式翻页仍需选中目标页。
+            viewer.update();
+            if (viewer.currentPageNumber !== pageIdx + 1) {
+                viewer.currentPageNumber = pageIdx + 1;
+                // 页码 setter 会滚到页首，溯源时在同一帧恢复已经对齐的块坐标。
+                if (bbox) container.scrollTo({ top, left, behavior: "instant" });
+            }
+            updateControls?.();
         });
-        pending = null;
+        return true;
+    };
+    // 连续模式立即使用页占位尺寸，单页模式由 PDF.js 先挂载目标页。
+    const navigate = (pageIdx, bbox = null) => {
+        requestedPage = pageIdx + 1;
+        pending = { pageIdx, bbox };
+        if (!finishNavigation()) {
+            viewer.scrollPageIntoView({ pageNumber: pageIdx + 1 });
+            finishNavigation();
+        }
     };
     // 同框父子优先具体节点，剩余重叠按面积从小到大排列命中层级。
     const mount = (pageNumber) => {
@@ -403,17 +445,21 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
                 initialized = false;
             } else if (data.documentId !== documentId) return;
             if (data.type === "clear" || data.type === "bind") {
+                cancelNavigation();
+                setPageSync(null);
+                cancelAnimationFrame(pageFrame);
+                pageFrame = 0;
                 entries = [];
                 selectedId = "";
                 selectedSourceKey = "";
                 hoveredBox = null;
                 focusedBox = null;
                 indexRegions([]);
-                pending = null;
                 clearLayers();
                 toggle.hidden = true;
             } else if (data.type === "init") {
                 if (!documentId || !Array.isArray(data.entries)) return;
+                setPageSync(data.pageSync);
                 entries = data.entries.filter(
                     (entry) =>
                         typeof entry.id === "string" &&
@@ -449,8 +495,23 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
                         viewer.scrollPageIntoView({ pageNumber });
                     }
                 }
+            } else if (data.type === "page-sync-mode") {
+                // 本地开关已立即生效，迟到的同值回执不能取消用户随后发起的跳转。
+                if (data.pageSync !== pageSync) {
+                    cancelNavigation();
+                    setPageSync(data.pageSync);
+                }
+            } else if (data.type === "html-page" && pageSync && Array.isArray(data.pages)) {
+                const pageNumber = data.pages[0] + 1;
+                if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
+                pdfDrives = false;
+                if (!data.pages.includes((requestedPage ?? viewer.currentPageNumber) - 1)) {
+                    cancelNavigation();
+                    if (!data.pages.includes(viewer.currentPageNumber - 1)) navigate(pageNumber - 1);
+                }
             } else if (data.type === "select" && entries.some((entry) => entry.id === data.id)) {
-                pending = null;
+                pdfDrives = false;
+                cancelNavigation();
                 selectedId = data.id;
                 const entry = entries.find(item => item.id === data.id);
                 const source = entry.sources.find(item => sourceKey(item) === data.sourceKey)
@@ -459,12 +520,8 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
                 hoveredBox = null;
                 focusedBox = null;
                 updateSelection();
-                if (data.scroll) {
-                    const pageNumber = data.pageIdx + 1;
-                    if (pageNumber < 1 || pageNumber > viewer.pagesCount) return;
-                    pending = data;
-                    viewer.scrollPageIntoView({ pageNumber });
-                    finishNavigation();
+                if (data.scroll && source && source.page_idx >= 0 && source.page_idx < viewer.pagesCount) {
+                    navigate(source.page_idx, source.bbox);
                 }
             }
         },
@@ -479,25 +536,83 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages }
         },
         options
     );
+    syncToggle.addEventListener("click", () => {
+        cancelNavigation();
+        setPageSync(!pageSync);
+        send({ type: "toggle-page-sync", enabled: pageSync });
+    }, options);
+    // 同一帧连续翻页只发布最终工具栏页码；HTML 驱动的 PDF.js 延迟更新也不会回传。
+    const pageChanged = () => {
+        if (!pageSync || !pdfDrives || pageFrame) return;
+        pageFrame = requestAnimationFrame(() => {
+            pageFrame = 0;
+            if (pageSync && pdfDrives) send({ type: "pdf-page", pageIdx: viewer.currentPageNumber - 1 });
+        });
+    };
+    // 仅用户在 PDF 阅读区或翻页控件的操作接管联动；缩放、重排和被动定位不会反推正文。
+    const takePageControl = (event) => {
+        if (event.type === "wheel" && (event.ctrlKey || event.metaKey)) return;
+        if (event.target.closest?.("#viewer-container")) {
+            const interrupted = requestedPage !== null;
+            cancelNavigation();
+            pdfDrives = true;
+            // 动画途中经过的页未上报，停在同一页也要让正文跟到实际位置。
+            if (interrupted) pageChanged();
+        }
+    };
+    for (const name of ["wheel", "pointerdown", "touchstart", "keydown", "click", "change"]) {
+        window.addEventListener(name, takePageControl, { ...options, capture: true, passive: true });
+    }
+    // 缩放后 PDF.js 会重新评估可见页，等下一次主动阅读再同步。
+    const pauseForScale = () => {
+        cancelNavigation();
+        pdfDrives = false;
+        scheduleConnections();
+    };
+    eventBus.on("pagechanging", pageChanged);
+    eventBus.on("scalechanging", pauseForScale);
     // 查看器事件在缩放和缓存重建后重新挂载区域。
     const onRendered = (event) => {
         if (!event.error) mount(event.pageNumber);
     };
     eventBus.on("pagerendered", onRendered);
-    const connectionEvents = ["updateviewarea", "scalechanging", "pagesloaded"];
+    const connectionEvents = ["updateviewarea", "pagesloaded"];
     for (const name of connectionEvents) eventBus.on(name, scheduleConnections);
     container.addEventListener("scroll", scheduleConnections, { ...options, passive: true });
     const connectionObserver = new ResizeObserver(scheduleConnections);
     connectionObserver.observe(container);
     send({ type: "ready" });
-    return () => {
-        // 查看器卸载时释放本次文档拥有的监听器和浮层。
+    // 工具栏显式翻页时两栏同时起步；中途经过的页只更新 PDF.js 视图。
+    const goToPage = number => {
+        if (toolbarPage === number) return;
+        if (!initialized) {
+            viewer.currentPageNumber = number;
+            return;
+        }
+        pdfDrives = false;
+        cancelNavigation();
+        toolbarPage = number;
+        navigate(number - 1);
+        if (pageSync) send({ type: "pdf-page", pageIdx: number - 1 });
+    };
+    // 卸载时释放本次文档拥有的监听器、动画和浮层。
+    const dispose = () => {
         abort.abort();
+        cancelNavigation();
+        cancelAnimationFrame(pageFrame);
+        eventBus.off("pagechanging", pageChanged);
+        eventBus.off("scalechanging", pauseForScale);
         eventBus.off("pagerendered", onRendered);
         for (const name of connectionEvents) eventBus.off(name, scheduleConnections);
         connectionObserver.disconnect();
         clearLayers();
         connections.remove();
         toggle.remove();
+        syncToggle.remove();
+    };
+    return {
+        goToPage, dispose,
+        // 连点上一页/下一页时从上次请求的页码继续，手动滚动时采用 PDF.js 当前页。
+        get pageNumber() { return toolbarPage ?? viewer.currentPageNumber; }
     };
 }

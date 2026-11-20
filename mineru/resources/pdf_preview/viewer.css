@@ -84,15 +84,17 @@ button:focus-visible, input:focus-visible, #viewer-container:focus-visible { out
 .mineru-merge-layer circle { fill: var(--trace-strong); }
 .mineru-merge-layer rect { fill: #fff; stroke: var(--trace-strong); stroke-width: 1px; }
 .mineru-merge-layer text { fill: var(--trace-strong); font: 11px system-ui, sans-serif; }
-#trace-toggle { font-size: 11px; padding: 0 5px; }
-@media (max-width: 480px) {
+#trace-toggle, #page-sync-toggle { padding: 0 5px; }
+#page-sync-toggle[aria-pressed="true"] { color: #fff; background: #374151; border-color: #374151; }
+@media (max-width: 580px) {
     body:has(#trace-toggle:not([hidden])) { --toolbar-height: 80px; }
     #toolbar { flex-wrap: wrap; align-content: center; }
-    #trace-toggle { grid-column: 1 / -1; }
     #toolbar:has(#trace-toggle:not([hidden])) { height: var(--toolbar-height); }
 }
 
 @media (max-width: 360px) {
     body:has(#trace-toggle:not([hidden])) { --toolbar-height: 112px; }
     #trace-toggle { grid-area: 3 / 1 / 4 / 6; }
+    #toolbar:has(#page-sync-toggle:not([hidden])) #trace-toggle { grid-column: 1 / 4; }
+    #page-sync-toggle { grid-area: 3 / 4 / 4 / 6; }
 }

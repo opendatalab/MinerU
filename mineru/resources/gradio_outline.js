@@ -105,7 +105,11 @@
         if (layoutDirty) {
             positions = entries.map((entry) => entry.heading.getBoundingClientRect().top + window.scrollY);
             layoutDirty = false;
-            if (target) window.scrollTo({ top: positions[entries.indexOf(target)] - 52, behavior: "instant" });
+            if (target) {
+                const top = positions[entries.indexOf(target)] - 52;
+                if (window.__mineruPreviewScroll) window.__mineruPreviewScroll.move(top);
+                else window.scrollTo({ top, behavior: "instant" });
+            }
         }
         const top = window.scrollY + 54;
         let start = 0;
@@ -139,7 +143,7 @@
     // 导航只滚动本窗口，并通知溯源脚本停止此前定位的布局校正。
     const navigate = (event, entry) => {
         event.preventDefault();
-        window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: "outline" }));
+        window.dispatchEvent(new CustomEvent("mineru-preview-navigate", { detail: { heading: entry.heading } }));
         target = entry;
         for (let ancestor = entry.heading.parentElement; ancestor; ancestor = ancestor.parentElement) {
             if (ancestor.tagName === "DETAILS") ancestor.open = true;

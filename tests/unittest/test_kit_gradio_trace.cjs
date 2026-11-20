@@ -3,10 +3,15 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
+const motionScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/preview_scroll.js"), "utf8");
+const htmlScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
 const handlers = {};
 const delivered = [];
 // 为两个实际 iframe 接口提供最小可观测替身。
-const frame = (name) => ({ contentWindow: { postMessage: (message, origin) => delivered.push({ name, message, origin }) } });
+const frame = (name) => ({
+    getClientRects: () => [1],
+    contentWindow: { postMessage: (message, origin) => delivered.push({ name, message, origin }) }
+});
 const html = frame("html");
 const pdf = frame("pdf");
 const window = {
@@ -73,6 +78,35 @@ assert.equal(delivered.at(-1).message.type, "bind");
 window.__mineruTrace.reset();
 console.log("Trace identity, handshake and bidirectional routing passed");
 
+// 真实父页面按当前 PDF 能力、开关和可见性转发，来源列表保留全部原始页。
+window.__mineruTrace.activate("one", "source-one");
+emit(html, { type: "ready", entries: [entry], pdfPageSync: true });
+assert.equal(delivered.at(-1).message.pageSync, true);
+emit(html, { type: "html-page", id: entry.id });
+assert.deepEqual(Array.from(delivered.at(-1).message.pages), [2, 5]);
+emit(pdf, { type: "pdf-page", pageIdx: 5 }, location.origin);
+assert.equal(delivered.at(-1).name, "html");
+emit(pdf, { type: "toggle-page-sync", enabled: false }, location.origin);
+const disabledCount = delivered.length;
+emit(html, { type: "html-page", id: entry.id });
+emit(html, { type: "outline", id: entry.id });
+assert.equal(delivered.length, disabledCount);
+emit(html, { type: "select", id: entry.id });
+assert.equal(delivered.at(-1).message.scroll, true);
+window.__mineruTrace.activate("two", "source-one");
+emit(html, { documentId: "two", type: "ready", entries: [entry], pdfPageSync: true });
+assert.equal(delivered.at(-1).message.pageSync, false);
+emit(pdf, { documentId: "two", type: "toggle-page-sync", enabled: true }, location.origin);
+html.getClientRects = () => [];
+emit(pdf, { documentId: "two", type: "pdf-page", pageIdx: 2 }, location.origin);
+assert.equal(delivered.at(-1).message.type, "pdf-page");
+assert.equal(delivered.at(-1).message.scroll, false);
+html.getClientRects = () => [1];
+emit(html, { documentId: "two", type: "outline", id: entry.id });
+assert.equal(delivered.at(-1).message.type, "select");
+emit(html, { documentId: "two", type: "ready", entries: [entry], pdfPageSync: false });
+assert.equal(delivered.at(-1).message.pageSync, null);
+
 // 提供可观测的 CSS 变量写入，验证主题色从真实脚本传到正文及来源控件。
 const makeStyle = () => ({
     // 保存生产代码设置的自有样式属性。
@@ -101,7 +135,7 @@ const checkHtmlNavigation = (
     // 记录实际发送目标，验证 ready 与后续消息使用同一规范化来源。
     const htmlParent = { postMessage: (_message, origin) => targetOrigins.push(origin) };
     const context = {
-        parent: htmlParent, navigator: { language: "en" }, innerHeight: 600, URL,
+        parent: htmlParent, navigator: { language: "en" }, innerHeight: 600, URL, cancelAnimationFrame() {},
         document: {
             querySelectorAll: () => [selected],
             createElement: tag => tag === "nav" ? navigation : { setAttribute() {}, addEventListener() {} },
@@ -112,8 +146,8 @@ const checkHtmlNavigation = (
         // 此用例仅驱动滚动事件，尺寸观察器保留生产注册入口。
         ResizeObserver: class { observe() {} }
     };
-    const source = fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_trace_html.js"), "utf8");
-    vm.runInNewContext(`(${source})(${JSON.stringify({
+    vm.runInNewContext(`${motionScript}
+(${htmlScript})(${JSON.stringify({
         pageLabels: ["Source page", "来源页"], documentId: "one", parentOrigin: configuredOrigin, initialPageIdx: 2,
         layoutRegions: [
             { ...entry.sources[0], child_path: [0], color: [0.2, 0.4, 0.9] },
@@ -158,6 +192,86 @@ checkHtmlNavigation("52px", -100, 52, "https://mineru.test:443", "https://mineru
 checkHtmlNavigation("52px", -100, 52, "HTTP://MINERU.TEST:80", "http://mineru.test");
 checkHtmlNavigation("52px", -100, 52, "https://mineru.test:8443", "https://mineru.test:8443");
 console.log("HTML source-page controls respect the outline toolbar and viewport");
+
+// 正文跟随 PDF 跳到第三页，用户在第二页按下鼠标后不再滚动，也应上报第二页。
+{
+    const htmlEvents = {};
+    const docEvents = {};
+    const frames = new Map();
+    let frameId = 0;
+    const reports = [];
+    const htmlParent = {
+        // 记录父窗口实际会转发的阅读块。
+        postMessage(message) { if (message.type === "html-page") reports.push(message.id); }
+    };
+    const root = {
+        scrollTop: 0, scrollLeft: 0, scrollWidth: 400, clientWidth: 400, scrollHeight: 1800, clientHeight: 600,
+        // 模拟一次动画帧引起的滚动，接管后不会再生成滚动事件。
+        scrollTo({ top }) { this.scrollTop = top; htmlEvents.scroll(); }
+    };
+    const pageTops = [0, 600, 1200];
+    const blocks = pageTops.map((_, page) => ({
+        style: makeStyle(),
+        dataset: {
+            docvortexTraceId: String(page + 1),
+            docvortexSources: JSON.stringify([{ page_idx: page, block_index: 0, child_path: [], bbox: [0, 0, 1, 1] }])
+        },
+        getBoundingClientRect: () => ({ top: pageTops[page] - root.scrollTop, height: 600, width: 400 })
+    }));
+    const context = {
+        parent: htmlParent, URL, CustomEvent, navigator: { language: "en" }, innerHeight: 600,
+        // window 与正文滚动元素读取同一个浏览位置。
+        get scrollY() { return root.scrollTop; },
+        performance: { now: () => 0 },
+        getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+        requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
+        cancelAnimationFrame: id => frames.delete(id),
+        ResizeObserver: class { observe() {} },
+        window: {
+            addEventListener: (name, callback) => { htmlEvents[name] = callback; },
+            dispatchEvent: event => htmlEvents[event.type](event),
+            matchMedia: () => ({ matches: false })
+        },
+        document: {
+            scrollingElement: root, documentElement: root, querySelectorAll: () => blocks,
+            createElement: () => ({ setAttribute() {} }), body: { append() {} },
+            addEventListener: (name, callback) => { docEvents[name] = callback; }
+        }
+    };
+    vm.runInNewContext(`${motionScript}\n(${htmlScript})({ pageLabels: ["Page", "页"], documentId: "one",
+        parentOrigin: "https://mineru.test", pdfPageSync: true });`, context);
+    // 与浏览器一致，帧回调中新排入的任务推迟到下一帧。
+    const tick = time => {
+        for (const [id, callback] of [...frames]) if (frames.delete(id)) callback(time);
+    };
+    // 通过正文 iframe 的真实消息入口切换联动并发起翻页。
+    const sendToHtml = data => htmlEvents.message({ source: htmlParent, origin: location.origin,
+        data: { channel: "mineru-trace", documentId: "one", ...data } });
+    sendToHtml({ type: "page-sync-mode", pageSync: true });
+    sendToHtml({ type: "pdf-page", pageIdx: 2, scroll: true });
+    tick(150);
+    assert.deepEqual(reports, []);
+    htmlEvents.pointerdown({ type: "pointerdown" });
+    const stopped = root.scrollTop;
+    tick(500);
+    assert.equal(root.scrollTop, stopped);
+    assert.deepEqual(reports, ["2"]);
+    // 前页图片在翻页动画中撑高后，按第三页的新位置对齐到工具栏下方。
+    sendToHtml({ type: "pdf-page", pageIdx: 2, scroll: true });
+    tick(100);
+    pageTops[2] += 600;
+    root.scrollHeight += 600;
+    docEvents.load();
+    tick(120);
+    tick(600);
+    assert.equal(root.scrollTop, pageTops[2] - 24);
+    // 用户接管后，即使字体再次改变同一页的位置，也不能把视口拉回锚点。
+    htmlEvents.pointerdown({ type: "pointerdown" });
+    pageTops[2] -= 300;
+    htmlEvents.resize();
+    tick(800);
+    assert.equal(root.scrollTop, 1776);
+}
 
 // 执行 PDF 溯源入口，用放大后的真实边界语义检查横纵两个方向的定位。
 // 只实现浮层使用的 DOM 接口，所有布局输入由测试显式给定。
@@ -214,13 +328,18 @@ class TraceNode {
     getBoundingClientRect() { return this.rect; }
 }
 const pdfHandlers = {};
-const pdfParent = { postMessage() {} };
+const pdfEvents = {};
+const reportedPages = [];
+const pdfParent = {
+    // 仅记录 PDF 侧实际发布的页码，检查用户打断导航时的消息顺序。
+    postMessage(message) { if (message.type === "pdf-page") reportedPages.push(message.pageIdx + 1); }
+};
 const scrolls = [];
 const jumps = [];
-let boxRect = { left: 950, top: 800, width: 100, height: 80 };
-const pdfBox = { traceIds: [entry.id], getBoundingClientRect: () => boxRect };
+let pageRect = { left: 775, top: 720, width: 500, height: 800 };
 const container = {
     scrollTop: 300, scrollLeft: 200, clientWidth: 500, clientHeight: 600,
+    clientLeft: 0, clientTop: 0, scrollWidth: 3000, scrollHeight: 4800,
     getBoundingClientRect: () => ({ left: 100, top: 40 }),
     scrollTo: options => scrolls.push(options), addEventListener() {}
 };
@@ -234,18 +353,20 @@ const pdfContext = {
     },
     requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     ResizeObserver: class { observe() {} },
-    window: { addEventListener: (name, callback) => { pdfHandlers[name] = callback; } },
+    window: { matchMedia: () => ({ matches: true }), addEventListener: (name, callback) => { pdfHandlers[name] = callback; } },
     viewer: {
         pagesCount: 6, currentScale: 1.75,
-        getPageView: () => ({ div: { querySelector: () => ({ children: [pdfBox] }) } }),
+        getPageView: () => ({ pdfPage: {}, div: { getBoundingClientRect: () => pageRect } }),
+        update() {},
         getCachedPageViews: () => [],
         // 记录实际页跳转，验证重复握手不移动用户位置或改变缩放。
         scrollPageIntoView({ pageNumber }) { jumps.push(pageNumber); }
     },
-    eventBus: { on() {}, off() {} }
+    eventBus: { on: (name, callback) => { pdfEvents[name] = callback; }, off() {} }
 };
 const pdfScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/trace.mjs"), "utf8");
-vm.runInNewContext(`${pdfScript.replace("export function", "function")}
+const pdfTrace = vm.runInNewContext(`${motionScript}
+${pdfScript.replace("export function", "function")}
 installTrace({ viewer, eventBus, container, sourceId: "source-one", messages: {} });`, pdfContext);
 // 模拟已验证的父页面消息，复用生产 init/select 的完整分发路径。
 const emitPdf = data => pdfHandlers.message({ source: pdfParent, origin: location.origin, data: {
@@ -258,16 +379,55 @@ emitPdf({ type: "bind" });
 emitPdf({ type: "init", entries: [entry], initialPageIdx: 5 });
 assert.deepEqual(jumps, [3]);
 assert.equal(pdfContext.viewer.currentScale, 1.75);
+// 当前页属于跨页块时不调用 PDF.js 页码 setter，避免同页阅读位置被重置。
+let currentPage = 6;
+const pageWrites = [];
+Object.defineProperty(pdfContext.viewer, "currentPageNumber", {
+    get: () => currentPage,
+    // PDF.js 设置页码会重置滚动位置，不能只校验页号而漏掉块对齐回退。
+    set: value => {
+        currentPage = value;
+        pageWrites.push(value);
+        scrolls.push({ top: 0, left: 0 });
+    }
+});
+emitPdf({ type: "page-sync-mode", pageSync: true });
+emitPdf({ type: "html-page", pages: [2, 5] });
+assert.deepEqual(pageWrites, []);
+emitPdf({ type: "html-page", pages: [2] });
+emitPdf({ type: "html-page", pages: [2] });
+assert.deepEqual(pageWrites, [3]);
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).top, 800);
 assert.equal(scrolls.at(-1).left, 850);
 // 已经横向滚动后再定位左侧及超宽区域，均把区域起始部分带回可见范围。
-boxRect = { left: -50, top: 800, width: 100, height: 80 };
+pageRect = { left: -225, top: 720, width: 500, height: 800 };
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.ok(scrolls.at(-1).left <= 0);
-boxRect = { left: 950, top: 800, width: 700, height: 80 };
+pageRect = { left: 850, top: 720, width: 1000, height: 800 };
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).left, 1034);
+// 多个短页同时可见时 update 会保留原页，显式选中另一页的块仍应保留居中后的坐标。
+pageRect = { left: 100, top: 200, width: 500, height: 100 };
+emitPdf({ type: "select", id: entry.id, pageIdx: 5, scroll: true });
+assert.equal(pdfTrace.pageNumber, 6);
+assert.equal(scrolls.at(-1).top, 175);
+assert.equal(Math.round(scrolls.at(-1).left), 175);
+// 从第六页跳到第一页时，中间页的 pagechanging 被抑制，接管后不会再触发翻页事件。
+const pdfFrames = new Map();
+let pdfFrameId = 0;
+pdfContext.performance = { now: () => 0 };
+pdfContext.window.matchMedia = () => ({ matches: false });
+pdfContext.requestAnimationFrame = fn => { pdfFrames.set(++pdfFrameId, fn); return pdfFrameId; };
+pdfContext.cancelAnimationFrame = id => pdfFrames.delete(id);
+pdfTrace.goToPage(1);
+currentPage = 3;
+pdfEvents.pagechanging();
+assert.deepEqual(reportedPages, [1]);
+pdfHandlers.pointerdown({ type: "pointerdown", target: { closest: () => container } });
+for (const callback of [...pdfFrames.values()]) callback(500);
+assert.deepEqual(reportedPages, [1, 3]);
+assert.equal(pdfTrace.pageNumber, 3);
 // 无版式框仍使用实际解析范围首跳；空页范围和 clear 不触发跳页。
 emitPdf({ type: "bind", documentId: "two" });
 emitPdf({ type: "init", documentId: "two", entries: [], initialPageIdx: 5 });
@@ -324,7 +484,8 @@ const mergeContext = {
     },
     messages: { trace_merged: "合并", trace_merged_description: "由 {count} 个原始内容块合并" }
 };
-vm.runInNewContext(`${pdfScript.replace("export function", "function")}
+vm.runInNewContext(`${motionScript}
+${pdfScript.replace("export function", "function")}
 globalThis.disposeTrace = installTrace({ viewer, eventBus, container, sourceId: "source-one", messages });`, mergeContext);
 // 消息经过生产身份校验，避免测试绕过初始化和选择流程。
 const emitMerge = data => mergeHandlers.message({ source: pdfParent, origin: location.origin, data: {
@@ -420,7 +581,7 @@ mergeContainer.handlers.scroll();
 emitMerge({ type: "clear" });
 assert.equal(animationFrames.size, 0);
 assert.equal(overlay.dataset.traceId, "");
-mergeContext.disposeTrace();
+mergeContext.disposeTrace.dispose();
 assert.equal(overlay.isConnected, false);
 assert.equal(resizeCallback, null);
 assert.deepEqual(Object.keys(mergeEvents), []);

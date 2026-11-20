@@ -96,13 +96,15 @@ class _LiveService:
 
 
 @pytest.fixture(params=["api", "router"])
-def live_service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_LiveService]:
+def live_service(request: pytest.FixtureRequest, tmp_path: Path, direct_worker_concurrency: int) -> Iterator[_LiveService]:
     """启动真实 Uvicorn 服务；Router 的两个 worker 同样使用真实 TCP。"""
     servers: list[_Server] = []
     execution_apps: list[FastAPI] = []
     try:
         if request.param == "api":
-            app = api_server.create_app(upload_dir=str(tmp_path / "api"), tiers=("flash",), api_key="test-key")
+            app = api_server.create_app(
+                upload_dir=str(tmp_path / "api"), tiers=("flash",), api_key="test-key", concurrency=direct_worker_concurrency
+            )
             execution_apps.append(app)
         else:
             for index in range(2):
@@ -1061,5 +1063,88 @@ def test_real_gradio_handler_uses_tasks_and_saves_artifacts(live_service: _LiveS
         if document == "html":
             assert "Same source and output" in restored.markdown()
         assert sum(live_service.counts.values()) == source.stat().st_size
+    finally:
+        demo.close()
+
+
+@pytest.mark.parametrize("direct_worker_concurrency", [2])
+@pytest.mark.parametrize("limit", [None, 1])
+def test_external_webui_uses_server_queue(
+    live_service: _LiveService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limit: int | None
+) -> None:
+    """三份同名文档经真实 HTTP 提交，验证服务端双槽和显式 WebUI 单槽的排队边界。"""
+    from mineru.kit.gradio import V1ArtifactClient, build_gradio_app
+    from mineru.kit.gradio.conversion import ConversionRun
+    from mineru.kit.gradio.status import STATUS_QUEUED_LOCALLY
+    from mineru.parser.base import ParseResult
+
+    client = V1ArtifactClient(api_url=live_service.url, api_key="test-key")
+    demo = build_gradio_app(
+        client, asyncio.run(client.discover()), output_root=tmp_path / "out", enable_example=False, conversion_concurrency=limit
+    )
+    convert = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+    sources = []
+    for index in range(4):
+        path = tmp_path / str(index) / "report.html"
+        path.parent.mkdir()
+        path.write_text(f"<h1>Document Station{index}</h1>")
+        sources.append(path)
+
+    release = threading.Event()
+    two_running = threading.Event()
+    lock = threading.Lock()
+    started = 0
+    original = api_server.parse_async
+
+    async def hold_parse(*args: Any, **kwargs: Any) -> ParseResult:
+        """保持真实解析器的两个执行槽在途，释放后继续生成各自的解析产物。"""
+        nonlocal started
+        with lock:
+            started += 1
+            if started == 2:
+                two_running.set()
+        assert await asyncio.to_thread(release.wait, 20)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(api_server, "parse_async", hold_parse)
+
+    async def scenario() -> None:
+        """按实际上传与 worker 入口计数，显式单槽时用直连请求占用第二个服务端槽。"""
+        local_wait = asyncio.Event()
+        publish = ConversionRun.publish
+
+        def observe(run: ConversionRun, message: Any, **kwargs: Any) -> None:
+            """捕获 WebUI 的本地排队状态，使单槽断言与真实等待同步。"""
+            publish(run, message, **kwargs)
+            if message == STATUS_QUEUED_LOCALLY:
+                local_wait.set()
+
+        monkeypatch.setattr(ConversionRun, "publish", observe)
+        jobs = [asyncio.create_task(convert(str(path), 0, "", False)) for path in sources[:3]]
+        direct = None
+        try:
+            if limit == 1:
+                await asyncio.wait_for(local_wait.wait(), 5)
+                direct = asyncio.create_task(client.parse_file(sources[3], tier="flash", page_range=""))
+            assert await asyncio.to_thread(two_running.wait, 8)
+            expected_uploads = 3 if limit is None else 2
+            for _ in range(200):
+                if len(live_service.counts) >= expected_uploads:
+                    break
+                await asyncio.sleep(0.02)
+            assert len(live_service.counts) == expected_uploads
+            assert started == 2
+        finally:
+            release.set()
+            outputs = await asyncio.gather(*jobs)
+            if direct is not None:
+                assert "Station3" in (await direct).markdown()
+        for index, output in enumerate(outputs):
+            assert "Completed" in output[0]
+            for other in range(4):
+                assert (f"Station{other}" in output[-1]) == (other == index)
+
+    try:
+        asyncio.run(scenario())
     finally:
         demo.close()

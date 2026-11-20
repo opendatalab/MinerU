@@ -51,6 +51,34 @@ def _conversions(app: Any) -> SessionConversions:
     return inspect.getclosurevars(_callback(app, "convert_handler")).nonlocals["conversions"]
 
 
+def test_embedded_conversion_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """直接构建界面时省略参数可读取环境，显式 None 始终交给后端。"""
+    monkeypatch.delenv("MINERU_WEBUI_CONCURRENCY", raising=False)
+    assert SessionConversions().slot is not None
+    monkeypatch.setenv("MINERU_WEBUI_CONCURRENCY", "2")
+    demo = _application(tmp_path, Mock())
+    slot = _conversions(demo).slot
+    assert slot is not None
+
+    async def acquire_both() -> None:
+        """通过实际获取槽位确认环境配置的并发数。"""
+        assert slot is not None
+        async with slot:
+            assert not slot.locked()
+            async with slot:
+                assert slot.locked()
+
+    try:
+        asyncio.run(acquire_both())
+    finally:
+        demo.close()
+    for invalid in ("0", "-1", "1.5", ""):
+        monkeypatch.setenv("MINERU_WEBUI_CONCURRENCY", invalid)
+        with pytest.raises(ValueError, match="MINERU_WEBUI_CONCURRENCY"):
+            SessionConversions()
+        assert SessionConversions(conversion_concurrency=None).slot is None
+
+
 @pytest.mark.parametrize("with_session", [False, True])
 @pytest.mark.parametrize("outcome", ["success", "input_error", "prepare_error", "parse_error", "cancelled"])
 @pytest.mark.parametrize("extension", ["pdf", "png"])

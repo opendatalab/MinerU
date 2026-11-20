@@ -78,7 +78,7 @@ mineru-kit webui \
 | `--max-pages` | 单次 PDF 解析的最多页数，必须为正整数；省略则不限制。不限制非 PDF。 |
 | `--task-timeout` | 托管 worker 的单文件执行期限，单位秒，默认 `3600`，必须为正整数；外部 `--api-url` 模式由远端配置期限。 |
 | `--tier` | 自托管 API Server 的上限：`auto`（默认）、`flash`、`basic`、`standard`、`advanced`；指定 `--api-url` 时忽略。 |
-| `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
+| `--concurrency`、`--api-server-concurrency` | 网页与 Gradio API 共用的转换并发数，必须为正整数。托管 worker 使用相同的值，默认 1。指定 `--api-url` 时默认由服务端排队，显式值只限制这份 WebUI。命令行优先于环境变量 `MINERU_WEBUI_CONCURRENCY`。 |
 | `--api-server-preload-models` | 在自动启动阶段预加载模型。 |
 | `--api-server-disable-image-analysis` | 自动启动 server 时关闭图片分析。 |
 | `--enable-example` | 显示当前工作目录 `examples/` 中的示例文件。 |

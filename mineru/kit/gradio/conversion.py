@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import EllipsisType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from .status import STATUS_COMPLETED, STATUS_PREPARING_REQUEST, ParseStatusUpdate, StatusPanelState
@@ -115,14 +117,33 @@ class ConversionRun:
         return self.task
 
 
-class SessionConversions:
-    """按 Gradio 会话隔离任务，并让所有实际解析共享一个执行槽。"""
+def resolve_webui_concurrency(value: int | None | EllipsisType = ..., *, default: int | None) -> int | None:
+    """省略参数时按环境变量、宿主默认值依次取值；显式 None 关闭 WebUI 本地限流。"""
+    setting = "conversion_concurrency"
+    if value is ...:
+        raw = os.getenv("MINERU_WEBUI_CONCURRENCY")
+        if raw is None:
+            value = default
+        else:
+            setting = "MINERU_WEBUI_CONCURRENCY"
+            try:
+                value = int(raw)
+            except ValueError as exc:
+                raise ValueError("MINERU_WEBUI_CONCURRENCY must be a positive integer") from exc
+    if value is not None and (type(value) is not int or value < 1):
+        raise ValueError(f"{setting} must be a positive integer")
+    return value
 
-    def __init__(self) -> None:
-        """在构建 WebUI 时创建注册表，不在模块导入期间分配运行资源。"""
+
+class SessionConversions:
+    """按 Gradio 会话隔离任务，并为整个应用限制同时转换的数量。"""
+
+    def __init__(self, *, conversion_concurrency: int | None | EllipsisType = ...) -> None:
+        """按宿主配置建立共享执行槽，直接嵌入且未配置时沿用单槽。"""
+        limit = resolve_webui_concurrency(conversion_concurrency, default=1)
         self.runs: dict[str, ConversionRun] = {}
         self.revisions: dict[str, int] = {}
-        self.slot = asyncio.Semaphore(1)
+        self.slot = asyncio.Semaphore(limit) if limit is not None else None
 
     def start(self, session: str, run_id: str, *, revision: int | None = None) -> ConversionRun | None:
         """拒绝晚到的旧提交，替换会话任务时先取消其后台工作。"""
@@ -184,5 +205,6 @@ __all__ = [
     "PreviewPlan",
     "SessionConversions",
     "await_task_completion",
+    "resolve_webui_concurrency",
     "run_sync_output",
 ]

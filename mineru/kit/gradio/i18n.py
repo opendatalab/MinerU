@@ -98,6 +98,7 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "pdf_zoom_out": ("Zoom out", "缩小"),
     "pdf_zoom_in": ("Zoom in", "放大"),
     "trace_regions": ("Layout annotations", "版式标注"),
+    "trace_page_sync": ("Sync pages", "翻页联动"),
     "trace_source": ("Source page", "来源页"),
     "trace_merged": ("Merged", "合并"),
     "trace_merged_description": ("Merged from {count} source blocks", "由 {count} 个原始内容块合并"),

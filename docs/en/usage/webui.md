@@ -8,6 +8,14 @@ mineru-kit webui
 
 Open the address printed in the terminal. By default the WebUI starts a local Router and one parsing worker. To submit files to an existing V1 service, run `mineru-kit webui --api-url http://127.0.0.1:8000`.
 
+The local WebUI and its managed worker each default to one concurrent conversion.
+For example, `mineru-kit webui --concurrency 4` sets both limits to four.
+With `--api-url`, the existing service schedules requests. An explicit limit
+applies only to this WebUI. The Hugging Face demo also delegates GPU scheduling to
+ZeroGPU by default. Set `MINERU_WEBUI_CONCURRENCY` to a positive integer to cap
+the web UI and its Gradio API together. The CLI option takes precedence.
+`--api-server-concurrency` is an alias for `--concurrency`.
+
 ## Upload and select pages {#upload}
 
 1. Choose or drop a file in the upload area, or use **Paste** for a file or image on your clipboard. You can start reading a local PDF as soon as you select it.

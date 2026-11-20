@@ -235,6 +235,7 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: M
             {
                 "documentId": artifacts.root.name,
                 "initialPageIdx": artifacts.initial_page_idx,
+                "pdfPageSync": artifacts.file_suffix in PDF_EXTENSIONS,
                 "parentOrigin": f"{base.scheme}://{base.netloc}",
                 "pageLabels": MESSAGES["trace_source"],
                 "layoutRegions": [asdict(region) for region in collect_layout_regions(middle_json.pages)],
@@ -245,7 +246,9 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: M
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
-    script = (Path(__file__).resolve().parents[2] / "resources" / "gradio_trace_html.js").read_text(encoding="utf-8")
+    resources = Path(__file__).resolve().parents[2] / "resources"
+    motion = (resources / "pdf_preview" / "preview_scroll.js").read_text(encoding="utf-8")
+    script = (resources / "gradio_trace_html.js").read_text(encoding="utf-8")
     styles = """<style>
 [data-docvortex-trace-id], .mineru-trace-pages {
     --trace-strong: color-mix(in srgb, var(--trace-color, #596673) 65%, black); }
@@ -269,7 +272,7 @@ def _add_trace_preview(document: str, artifacts: RunArtifacts, *, middle_json: M
     background: color-mix(in srgb, var(--trace-color) 8%, transparent); }
 </style>"""
     document = document.replace("</head>", styles + "</head>", 1)
-    return document.replace("</body>", f"<script>({script})({config});</script></body>", 1)
+    return document.replace("</body>", f"<script>{motion}\n({script})({config});</script></body>", 1)
 
 
 def _prepare_preview_links(document: str, *, include_outline: bool = False) -> str:

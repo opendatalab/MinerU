@@ -11,10 +11,18 @@ async (page) => {
     check(count > 1, 'need multiple real parsed headings');
     const toggle = frame.locator('.mineru-outline-toggle');
     const pdf = page.frameLocator('iframe.mineru-pdf-frame').locator('input[type=number]').first();
+    const sync = page.frameLocator('iframe.mineru-pdf-frame').locator('#page-sync-toggle:visible');
+    const syncEnabled = await sync.count() && await sync.getAttribute('aria-pressed') === 'true';
+    if (syncEnabled) await sync.click();
     const pdfPage = await pdf.count() ? await pdf.inputValue() : null;
     // 按稳定标签读取实际标题坐标，覆盖中英文及格式化标题。
     const headingTop = (nodes, label) =>
         nodes.find(node => node.dataset.mineruOutlineLabel === label).getBoundingClientRect().top;
+    // 最后一帧滚动后目录会在下一帧更新，分别等待真实落点和活动项。
+    const waitForHeading = label => frame.waitForFunction(label =>
+        document.querySelector('.mineru-outline-link[aria-current]')?.textContent === label &&
+        [...document.querySelectorAll('[data-mineru-outline-label]')].some(n =>
+            n.dataset.mineruOutlineLabel === label && Math.abs(n.getBoundingClientRect().top - 52) < 3), label);
     const results = [];
     for (const width of [360, 600, 1000, 600]) {
         await frameElement.evaluate((node, size) => {
@@ -37,7 +45,7 @@ async (page) => {
         const link = visibleLinks.nth(Math.min(2, await visibleLinks.count() - 1));
         const label = await link.textContent();
         await link.click();
-        await page.waitForTimeout(150);
+        await waitForHeading(label);
         const position = await headings.evaluateAll(headingTop, label);
         check(Math.abs(position - 52) < 3, `heading offset ${position} at ${width}`);
         check(await frame.locator('.mineru-outline-link[aria-current]').textContent() === label, 'active heading mismatch');
@@ -49,7 +57,7 @@ async (page) => {
             spacer.style.height = '143px';
             document.querySelector('article').prepend(spacer);
         });
-        await page.waitForTimeout(150);
+        await waitForHeading(label);
         const shifted = await headings.evaluateAll(headingTop, label);
         check(Math.abs(shifted - 52) < 3, `async layout offset ${shifted}`);
         if (width < 900) {
@@ -64,6 +72,7 @@ async (page) => {
         results.push({ width, count, label, position, shifted });
     }
     if (pdfPage !== null) check(await pdf.inputValue() === pdfPage, 'TOC moved PDF');
+    if (syncEnabled) await sync.click();
     await frame.evaluate(() => {
         dispatchEvent(new WheelEvent('wheel'));
         scrollTo(0, document.documentElement.scrollHeight);

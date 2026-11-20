@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Sequence
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
@@ -84,7 +84,7 @@ class ConversionService:
         tier_choices: Sequence[Tier],
         output_root: Path,
         max_pages: int | None,
-        slot: asyncio.Semaphore,
+        slot: asyncio.Semaphore | None,
         document_io: GradioDocumentIO | None = None,
     ) -> None:
         """显式接收解析能力、产物目录、页数限制和共享执行槽。"""
@@ -190,9 +190,9 @@ class ConversionService:
         prepared: PreparedSource | None = None,
     ) -> ConversionOutput:
         """同步工作退出前始终持有执行槽，输出完成后只缓存素材路径。"""
-        if self.slot.locked():
+        if self.slot is not None and self.slot.locked():
             run.publish(STATUS_QUEUED_LOCALLY)
-        async with self.slot:
+        async with self.slot if self.slot is not None else nullcontext():
             run.publish(STATUS_PREPARING_REQUEST)
             page_text = await run_sync_output(
                 self.document_io.effective_page_range,
