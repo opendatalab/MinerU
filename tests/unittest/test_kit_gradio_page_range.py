@@ -67,6 +67,39 @@ def test_programmatic_max_pages_validation(value: object) -> None:
         ranges.validate_max_pages(value)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize(("env", "args", "expected"), [
+    (None, [], None),
+    ("3", [], 3),
+    ("3", ["--concurrency", "1"], 1),
+    ("invalid", ["--api-server-concurrency", "4"], 4),
+])
+def test_webui_concurrency_from_cli(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, external: bool, env: str | None, args: list[str], expected: int | None
+) -> None:
+    """经过真实 CLI 与启动函数验证两种模式、旧别名和显式值的优先级。"""
+    if env is None:
+        monkeypatch.delenv("MINERU_WEBUI_CONCURRENCY", raising=False)
+    else:
+        monkeypatch.setenv("MINERU_WEBUI_CONCURRENCY", env)
+    router = Mock()
+    cap = V1ServerCapabilities("test", ("flash",), ("default",), ("upload",))
+    client = SimpleNamespace(discover=AsyncMock(), capabilities=cap)
+    build = Mock(return_value=Mock(_mineru_kit_launch_kwargs={}))
+    monkeypatch.setattr(gradio_app, "ManagedLocalRouter", router)
+    monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
+    monkeypatch.setattr(gradio_app, "build_gradio_app", build)
+    url_args = ["--api-url", "http://remote.test"] if external else []
+    result = CliRunner().invoke(app, ["webui", "--output-dir", str(tmp_path), *url_args, *args])
+    assert result.exit_code == 0, result.output
+    limit = expected if external or expected is not None else 1
+    assert build.call_args.kwargs["conversion_concurrency"] == limit
+    if external:
+        router.assert_not_called()
+    else:
+        assert router.call_args.kwargs["concurrency"] == limit
+
+
 def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证外部 API 已有 Flash 时不启动本地服务，并传入页数上限和资源参数。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))

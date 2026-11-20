@@ -2,6 +2,7 @@
 
 from .app import build_gradio_app, launch_gradio
 from .client import GradioArtifactClient, ManagedLocalRouter, V1ArtifactClient, V1ArtifactError, V1ServerCapabilities
+from .conversion import resolve_webui_concurrency
 from .document_io import GradioDocumentIO
 from .sources import PreparedSource
 
@@ -15,4 +16,5 @@ __all__ = [
     "V1ServerCapabilities",
     "build_gradio_app",
     "launch_gradio",
+    "resolve_webui_concurrency",
 ]

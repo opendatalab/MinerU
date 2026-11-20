@@ -8,6 +8,10 @@ mineru-kit webui
 
 在浏览器打开终端打印的地址。本地 WebUI 默认启动一个 Router 和一个解析 worker。已有 V1 服务时，使用 `mineru-kit webui --api-url http://127.0.0.1:8000`，文件会提交到指定服务。
 
+托管启动时，WebUI 和解析 worker 的转换并发默认都是 1。例如 `mineru-kit webui --concurrency 4` 会把两者都设为 4。
+连接已有服务时默认由服务端排队，`--api-url … --concurrency 2` 只限制这份 WebUI。Hugging Face 演示默认交给 ZeroGPU 调度 GPU 请求。
+也可以用正整数环境变量 `MINERU_WEBUI_CONCURRENCY` 设置网页与 Gradio API 共享的转换上限。命令行参数优先，`--api-server-concurrency` 是 `--concurrency` 的别名。
+
 ## 上传和选页 {#upload}
 
 1. 在上传区选择、拖放文件，或使用**粘贴**放入剪贴板里的文件或图片。选择 PDF 后即可浏览原文。

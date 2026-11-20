@@ -477,7 +477,11 @@ ZH_MESSAGES: dict[str, str] = {
     "Managed API server tier ceiling: auto, flash, basic, standard, advanced; ignored with --api-url": (
         "托管 API server 的档位上限：auto、flash、basic、standard、advanced；指定 --api-url 时忽略"
     ),
-    "Managed server job concurrency": "托管服务的任务并发数",
+    "WebUI conversion limit (MINERU_WEBUI_CONCURRENCY). Managed worker shares the limit (default: 1); "
+    "with --api-url the default is no local limit.": (
+        "WebUI 转换并发数（MINERU_WEBUI_CONCURRENCY）。托管 worker 使用相同并发数，默认 1；"
+        "指定 --api-url 时默认不设本地转换上限。"
+    ),
     "Disable managed server image analysis": "禁用托管服务的图像分析",
     "Preload managed server models": "预加载托管服务的模型",
     # ------------------------------------------------------- kit api-server

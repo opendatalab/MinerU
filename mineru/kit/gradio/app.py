@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
+from types import EllipsisType
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -33,7 +34,7 @@ from .client import (
     V1ArtifactClient,
     V1ServerCapabilities,
 )
-from .conversion import ConversionInput, SessionConversions, await_task_completion
+from .conversion import ConversionInput, SessionConversions, await_task_completion, resolve_webui_concurrency
 from .conversion_service import ConversionService, ParseClient
 from .conversion_ui import build_conversion_receipt, conversion_updates, download_updates
 from .document_io import GradioDocumentIO, LocalGradioDocumentIO
@@ -365,9 +366,9 @@ def build_gradio_app(
     max_pages: int | None = None,
     document_io: GradioDocumentIO | None = None,
     runtime_device_loader: Callable[[], Awaitable[Literal["cpu", "gpu"] | None]] | None = None,
-    conversion_concurrency: int = 1,
+    conversion_concurrency: int | None | EllipsisType = ...,
 ) -> Any:
-    """构建 Gradio 界面，宿主可指定网页与公开 API 共用的转换并发数。"""
+    """网页与公开 API 共用转换上限；省略时读取环境配置并默认单槽，显式 None 交由后端调度。"""
     import gradio as gr
 
     viewer_entry = register_pdf_preview_resources()
@@ -1336,7 +1337,7 @@ def launch_gradio(
     enable_example: bool,
     enable_api: bool,
     tier: ServerStartupTier = "auto",
-    api_server_concurrency: int,
+    api_server_concurrency: int | None = None,
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
@@ -1351,11 +1352,16 @@ def launch_gradio(
     output_root.mkdir(parents=True, exist_ok=True)
     managed_server: ManagedLocalRouter | None = None
     resolved_api_url = api_url
+    concurrency = resolve_webui_concurrency(
+        ... if api_server_concurrency is None else api_server_concurrency,
+        default=1 if resolved_api_url is None else None,
+    )
     try:
         if resolved_api_url is None:
+            assert concurrency is not None  # 托管模式始终给本地 worker 提供正整数并发。
             managed_server = ManagedLocalRouter(
                 tier=tier,
-                concurrency=api_server_concurrency,
+                concurrency=concurrency,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key=resolved_api_key,
@@ -1378,6 +1384,7 @@ def launch_gradio(
             enable_api=enable_api,
             max_pages=max_pages,
             runtime_device_loader=routed_client.read_runtime_device,
+            conversion_concurrency=concurrency,
         )
         _launch_gradio_app(
             demo,

@@ -80,8 +80,10 @@ def webui_cmd(
         "--tier",
         help=t("Managed API server tier ceiling: auto, flash, basic, standard, advanced; ignored with --api-url"),
     ),
-    api_server_concurrency: int = typer.Option(
-        1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")
+    api_server_concurrency: int | None = typer.Option(
+        None, "--concurrency", "--api-server-concurrency", min=1,
+        help=t("WebUI conversion limit (MINERU_WEBUI_CONCURRENCY). Managed worker shares the limit (default: 1); "
+               "with --api-url the default is no local limit."),
     ),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
@@ -99,7 +101,6 @@ def webui_cmd(
         _validate_server_port(server_port)
     if max_pages is not None:
         _validate_positive_option(max_pages, name="max_pages")
-    _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(tier)
 
     from ..gradio.app import launch_gradio
