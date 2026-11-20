@@ -316,9 +316,11 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages, 
             requestedPage = null;
             toolbarPage = null;
             // 多个短页完全可见时，PDF.js 可能保留旧页号，显式翻页仍需选中目标页。
-            if (!bbox) {
-                viewer.update();
-                if (viewer.currentPageNumber !== pageIdx + 1) viewer.currentPageNumber = pageIdx + 1;
+            viewer.update();
+            if (viewer.currentPageNumber !== pageIdx + 1) {
+                viewer.currentPageNumber = pageIdx + 1;
+                // 页码 setter 会滚到页首，溯源时在同一帧恢复已经对齐的块坐标。
+                if (bbox) container.scrollTo({ top, left, behavior: "instant" });
             }
             updateControls?.();
         });
@@ -539,17 +541,6 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages, 
         setPageSync(!pageSync);
         send({ type: "toggle-page-sync", enabled: pageSync });
     }, options);
-    // 仅用户在 PDF 阅读区或翻页控件的操作接管联动；缩放、重排和被动定位不会反推正文。
-    const takePageControl = (event) => {
-        if (event.type === "wheel" && (event.ctrlKey || event.metaKey)) return;
-        if (event.target.closest?.("#viewer-container")) {
-            cancelNavigation();
-            pdfDrives = true;
-        }
-    };
-    for (const name of ["wheel", "pointerdown", "touchstart", "keydown", "click", "change"]) {
-        window.addEventListener(name, takePageControl, { ...options, capture: true, passive: true });
-    }
     // 同一帧连续翻页只发布最终工具栏页码；HTML 驱动的 PDF.js 延迟更新也不会回传。
     const pageChanged = () => {
         if (!pageSync || !pdfDrives || pageFrame) return;
@@ -558,6 +549,20 @@ export function installTrace({ viewer, eventBus, container, sourceId, messages, 
             if (pageSync && pdfDrives) send({ type: "pdf-page", pageIdx: viewer.currentPageNumber - 1 });
         });
     };
+    // 仅用户在 PDF 阅读区或翻页控件的操作接管联动；缩放、重排和被动定位不会反推正文。
+    const takePageControl = (event) => {
+        if (event.type === "wheel" && (event.ctrlKey || event.metaKey)) return;
+        if (event.target.closest?.("#viewer-container")) {
+            const interrupted = requestedPage !== null;
+            cancelNavigation();
+            pdfDrives = true;
+            // 动画途中经过的页未上报，停在同一页也要让正文跟到实际位置。
+            if (interrupted) pageChanged();
+        }
+    };
+    for (const name of ["wheel", "pointerdown", "touchstart", "keydown", "click", "change"]) {
+        window.addEventListener(name, takePageControl, { ...options, capture: true, passive: true });
+    }
     // 缩放后 PDF.js 会重新评估可见页，等下一次主动阅读再同步。
     const pauseForScale = () => {
         cancelNavigation();

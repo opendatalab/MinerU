@@ -248,7 +248,12 @@ class TraceNode {
     getBoundingClientRect() { return this.rect; }
 }
 const pdfHandlers = {};
-const pdfParent = { postMessage() {} };
+const pdfEvents = {};
+const reportedPages = [];
+const pdfParent = {
+    // 仅记录 PDF 侧实际发布的页码，检查用户打断导航时的消息顺序。
+    postMessage(message) { if (message.type === "pdf-page") reportedPages.push(message.pageIdx + 1); }
+};
 const scrolls = [];
 const jumps = [];
 let pageRect = { left: 775, top: 720, width: 500, height: 800 };
@@ -277,10 +282,10 @@ const pdfContext = {
         // 记录实际页跳转，验证重复握手不移动用户位置或改变缩放。
         scrollPageIntoView({ pageNumber }) { jumps.push(pageNumber); }
     },
-    eventBus: { on() {}, off() {} }
+    eventBus: { on: (name, callback) => { pdfEvents[name] = callback; }, off() {} }
 };
 const pdfScript = fs.readFileSync(path.join(__dirname, "../../mineru/resources/pdf_preview/trace.mjs"), "utf8");
-vm.runInNewContext(`${motionScript}
+const pdfTrace = vm.runInNewContext(`${motionScript}
 ${pdfScript.replace("export function", "function")}
 installTrace({ viewer, eventBus, container, sourceId: "source-one", messages: {} });`, pdfContext);
 // 模拟已验证的父页面消息，复用生产 init/select 的完整分发路径。
@@ -299,7 +304,12 @@ let currentPage = 6;
 const pageWrites = [];
 Object.defineProperty(pdfContext.viewer, "currentPageNumber", {
     get: () => currentPage,
-    set: value => { currentPage = value; pageWrites.push(value); }
+    // PDF.js 设置页码会重置滚动位置，不能只校验页号而漏掉块对齐回退。
+    set: value => {
+        currentPage = value;
+        pageWrites.push(value);
+        scrolls.push({ top: 0, left: 0 });
+    }
 });
 emitPdf({ type: "page-sync-mode", pageSync: true });
 emitPdf({ type: "html-page", pages: [2, 5] });
@@ -317,6 +327,27 @@ assert.ok(scrolls.at(-1).left <= 0);
 pageRect = { left: 850, top: 720, width: 1000, height: 800 };
 emitPdf({ type: "select", id: entry.id, pageIdx: 2, scroll: true });
 assert.equal(scrolls.at(-1).left, 1034);
+// 多个短页同时可见时 update 会保留原页，显式选中另一页的块仍应保留居中后的坐标。
+pageRect = { left: 100, top: 200, width: 500, height: 100 };
+emitPdf({ type: "select", id: entry.id, pageIdx: 5, scroll: true });
+assert.equal(pdfTrace.pageNumber, 6);
+assert.equal(scrolls.at(-1).top, 175);
+assert.equal(Math.round(scrolls.at(-1).left), 175);
+// 从第六页跳到第一页时，中间页的 pagechanging 被抑制，接管后不会再触发翻页事件。
+const pdfFrames = new Map();
+let pdfFrameId = 0;
+pdfContext.performance = { now: () => 0 };
+pdfContext.window.matchMedia = () => ({ matches: false });
+pdfContext.requestAnimationFrame = fn => { pdfFrames.set(++pdfFrameId, fn); return pdfFrameId; };
+pdfContext.cancelAnimationFrame = id => pdfFrames.delete(id);
+pdfTrace.goToPage(1);
+currentPage = 3;
+pdfEvents.pagechanging();
+assert.deepEqual(reportedPages, [1]);
+pdfHandlers.pointerdown({ type: "pointerdown", target: { closest: () => container } });
+for (const callback of [...pdfFrames.values()]) callback(500);
+assert.deepEqual(reportedPages, [1, 3]);
+assert.equal(pdfTrace.pageNumber, 3);
 // 无版式框仍使用实际解析范围首跳；空页范围和 clear 不触发跳页。
 emitPdf({ type: "bind", documentId: "two" });
 emitPdf({ type: "init", documentId: "two", entries: [], initialPageIdx: 5 });
