@@ -20,6 +20,15 @@ from .constants import (
 )
 from .model_inputs import _bbox_to_pixel_bbox
 
+_GREEK_INDEX = (
+    r"(?:alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|varkappa|lambda|mu|nu|xi|"
+    r"pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)"
+)
+_FORMULA_TOKEN = re.compile(
+    r"(?<!\\)\\verb\*?(?P<delimiter>[^A-Za-z\s])(?:(?!(?P=delimiter))[^\r\n])*(?P=delimiter)"
+    rf"|(?<!\\)_(?P<symbol>\\{_GREEK_INDEX})\s*_\s*(?P<index>\{{\s*[0-9]+\s*\}}|[0-9]+)"
+)
+
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
     """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
@@ -111,7 +120,7 @@ def _natural_language_spans(content: str) -> list[dict[str, Any]]:
         if opening is None:
             continue
         append_text_span(spans, content[cursor : opening[0]])
-        append_equation_span(spans, content[opening[1] : match.start("delimiter")])
+        append_equation_span(spans, _group_nested_subscripts(content[opening[1] : match.start("delimiter")]))
         cursor = match.end()
         opening = None
     append_text_span(spans, content[cursor:])
@@ -132,7 +141,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                         equation_content = equation_content[2:]
                     if equation_content.endswith("\\]"):
                         equation_content = equation_content[:-2]
-                    block["content"] = equation_content.strip()
+                    block["content"] = _group_nested_subscripts(equation_content.strip())
             elif raw_type == _VLM_UNCLASSIFIED_TITLE_TYPE:
                 raise ValueError(f"Unclassified PDF title block: page_idx={page_idx}, block_idx={block_idx}")
             block.pop("angle", None)
@@ -140,6 +149,13 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             block.pop("merge_prev", None)
             content = block.get("content")
             if isinstance(content, list):
+                for span in content:
+                    if (
+                        isinstance(span, dict)
+                        and span.get("type") == "equation_inline"
+                        and isinstance(span.get("content"), str)
+                    ):
+                        span["content"] = _group_nested_subscripts(span["content"])
                 continue
             if not isinstance(content, str):
                 continue
@@ -175,3 +191,15 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             )
     # 统一在回填、Span 构造及宿主元数据清理完成后调用共享实现。
     normalize_pdf_model_text(model_list)
+
+
+def _group_nested_subscripts(latex: str) -> str:
+    def group(match: re.Match[str]) -> str:
+        if match["delimiter"] is not None:
+            return match[0]
+        index = match["index"]
+        if index.isdecimal() and len(index) > 1:
+            index = f"{{{index}}}"
+        return f"_{{{match['symbol']}_{index}}}"
+
+    return _FORMULA_TOKEN.sub(group, latex)
