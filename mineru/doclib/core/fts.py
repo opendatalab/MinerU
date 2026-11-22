@@ -71,21 +71,39 @@ class FTSManager:
             ]
         )
 
-    async def search(self, query: str, limit: int = 200) -> list[FtsContentSearchRow]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 200,
+        *,
+        file_type: str | None = None,
+        tiers: tuple[Tier, ...] | None = None,
+    ) -> list[FtsContentSearchRow]:
+        """按相关性检索正文，在候选上限之前应用文档类型和解析档位。"""
         tokens = _literal_query_tokens(tokenize_for_query(query))
-        if not tokens:
+        if not tokens or tiers == ():
             return []
-        fts_query = " ".join(tokens)
+        filters = [
+            "fts_contents MATCH ?",
+            "sha256 NOT IN (SELECT sha256 FROM fts_rebuild_queue)",
+        ]
+        params: list[str | int] = [" ".join(tokens)]
+        if file_type:
+            filters.append("EXISTS (SELECT 1 FROM docs WHERE docs.sha256 = fts_contents.sha256 AND docs.file_type = ?)")
+            params.append(file_type.lower())
+        if tiers is not None:
+            placeholders = ", ".join("?" for _ in tiers)
+            filters.append(f"tier IN ({placeholders})")
+            params.extend(tiers)
+        where = " AND ".join(filters)
         try:
             return cast(
                 list[FtsContentSearchRow],
                 await self.db.fetchall(
                     "SELECT sha256, title, author, tier, "
                     "snippet(fts_contents, 2, '<mark>', '</mark>', '...', 40) AS snippet, rank "
-                    "FROM fts_contents WHERE fts_contents MATCH ? "
-                    "AND sha256 NOT IN (SELECT sha256 FROM fts_rebuild_queue) "
-                    "ORDER BY rank LIMIT ?",
-                    (fts_query, limit),
+                    f"FROM fts_contents WHERE {where} ORDER BY rank LIMIT ?",
+                    (*params, limit),
                 ),
             )
         except Exception:
