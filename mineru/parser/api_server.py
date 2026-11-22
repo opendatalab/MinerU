@@ -1822,6 +1822,13 @@ def _preload_local_models() -> None:
     manager.get_atom_model(atom_model_name=AtomicModelName.OCR, lang="seal")
 
 
+def _preload_formula_model() -> None:
+    from ..model.runtime.hybrid import HybridLocalModelContextSingleton
+
+    context = HybridLocalModelContextSingleton().get_model()
+    _ = context.mfr_model
+
+
 def _preload_server_models(tier: DeploymentTier, *, vlm_config: VlmConfig | None = None) -> _ModelPreloadResult:
     """使用与实际解析相同的 VLM 客户端，并预加载本地 Hybrid 模型。"""
     if tier == "basic":
@@ -1910,6 +1917,7 @@ def create_app(
     api_key: str | None = None,
     image_analysis: bool = True,
     preload_models: bool = False,
+    preload_formula_model: bool = False,
     vlm_config: VlmConfig | None = None,
     retention_seconds: int | None = None,
     task_timeout_seconds: float = DEFAULT_TASK_TIMEOUT_SECONDS,
@@ -1943,6 +1951,9 @@ def create_app(
         Whether image analysis is enabled for Hybrid backends.
     preload_models:
         Initialize the VLM client and local Hybrid models at startup. Ignored for Flash.
+    preload_formula_model:
+        Include the local formula recognizer in startup preloading. This implies
+        preload_models and increases startup memory use. Ignored for Flash.
     vlm_config:
         Complete VLM connection configuration override; defaults to global model.vlm settings.
     task_timeout_seconds:
@@ -1967,6 +1978,7 @@ def create_app(
 
     _tiers = _tiers_for_server_tiers(server_tiers)
     _model_registered_at = int(time.time())
+    preload_models = preload_models or preload_formula_model
     _preload_tier = model_tier if preload_models else None
 
     @asynccontextmanager
@@ -2015,6 +2027,8 @@ def create_app(
                         _preload_tier,
                         vlm_config=vlm_config,
                     )
+                    if preload_formula_model:
+                        await run_sync(_preload_formula_model)
                 except Exception as exc:
                     error_code, error_msg = _classify_model_preload_error(exc)
                     if error_code == "engine_dead":
@@ -2276,6 +2290,11 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     is_flag=True,
     help="Initialize VLM client and local Hybrid models at startup. Ignored for Flash.",
 )
+@click.option(
+    "--preload-formula-model",
+    is_flag=True,
+    help="Preload the local formula recognizer as well (implies --preload-models; increases startup memory).",
+)
 @click.option("--vlm-server-url", default=None, type=str, help="Remote VLM URL; empty value selects local VLM.")
 @click.option("--vlm-api-key", default=None, type=str, help="Bearer key for the remote VLM server.")
 @click.option("--vlm-model", default=None, type=str, help="Remote VLM model name; empty value enables discovery.")
@@ -2302,6 +2321,7 @@ def main(
     allow_http_source: bool,
     disable_image_analysis: bool,
     preload_models: bool,
+    preload_formula_model: bool,
     api_key: str | None,
     vlm_server_url: str | None,
     vlm_api_key: str | None,
@@ -2358,6 +2378,7 @@ def main(
             api_key=api_key,
             image_analysis=not disable_image_analysis,
             preload_models=preload_models,
+            preload_formula_model=preload_formula_model,
             vlm_config=vlm_settings,
             retention_seconds=retention_seconds,
             task_timeout_seconds=task_timeout,

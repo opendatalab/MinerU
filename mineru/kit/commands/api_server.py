@@ -33,6 +33,11 @@ def api_server_cmd(
     preload_models: bool = typer.Option(
         False, "--preload-models", help=t("Initialize VLM client and local Hybrid models at startup")
     ),
+    preload_formula_model: bool = typer.Option(
+        False,
+        "--preload-formula-model",
+        help=t("Preload the local formula recognizer as well (implies --preload-models; increases startup memory)"),
+    ),
     api_key: str | None = typer.Option(None, "--api-key", help=t("Optional fixed API key")),
     vlm_server_url: str | None = typer.Option(
         None, "--vlm-server-url", help=t("Remote VLM URL; empty value selects local VLM")
@@ -88,6 +93,7 @@ def api_server_cmd(
                 *(["--upload-dir", upload_dir] if upload_dir else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),
                 *(["--preload-models"] if preload_models else []),
+                *(["--preload-formula-model"] if preload_formula_model else []),
                 *(["--api-key", api_key] if api_key else []),
             ],
             prog_name="mineru-kit api-server",
