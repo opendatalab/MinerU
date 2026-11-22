@@ -14,9 +14,7 @@ def api_server_cmd(
     host: str = typer.Option("127.0.0.1", "--host", help=t("Server host")),
     port: int = typer.Option(8000, "--port", help=t("Server port")),
     upload_dir: str = typer.Option("", "--upload-dir", help=t("Upload directory")),
-    tier: str = typer.Option(
-        "auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")
-    ),
+    tier: str = typer.Option("auto", "--tier", help=t("PDF/image tier ceiling: flash, basic, standard, advanced; or auto")),
     retention_seconds: int | None = typer.Option(
         None,
         "--retention-seconds",
@@ -30,6 +28,11 @@ def api_server_cmd(
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
     preload_models: bool = typer.Option(
         False, "--preload-models", help=t("Initialize VLM client and local Hybrid models at startup")
+    ),
+    preload_formula_model: bool = typer.Option(
+        False,
+        "--preload-formula-model",
+        help=t("Preload the local formula recognizer as well (implies --preload-models; increases startup memory)"),
     ),
     api_key: str | None = typer.Option(None, "--api-key", help=t("Optional fixed API key")),
     vlm_server_url: str | None = typer.Option(
@@ -84,6 +87,7 @@ def api_server_cmd(
                 *(["--upload-dir", upload_dir] if upload_dir else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),
                 *(["--preload-models"] if preload_models else []),
+                *(["--preload-formula-model"] if preload_formula_model else []),
                 *(["--api-key", api_key] if api_key else []),
             ],
             prog_name="mineru-kit api-server",
