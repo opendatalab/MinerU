@@ -36,11 +36,12 @@ class SearchService:
         offset: int = 0,
     ) -> tuple[list[ContentSearchResultRow], int]:
         """Full-text search. Returns (results, total_count)."""
-        rows = await self.fts.search(query, limit=200)
-        if not rows:
-            return [], 0
-
-        rows = [row for row in rows if _matches_tier(row.get("tier"), tier=tier, min_tier=min_tier)]
+        tiers = None
+        if tier is not None or min_tier is not None:
+            tiers = tuple(candidate for candidate in TIER_ORDER if _matches_tier(candidate, tier=tier, min_tier=min_tier))
+        rows = await self.fts.search(query, limit=200, file_type=file_type, tiers=tiers)
+        if tiers is None:
+            rows = [row for row in rows if _matches_tier(row.get("tier"), tier=None, min_tier=None)]
         if not rows:
             return [], 0
 
