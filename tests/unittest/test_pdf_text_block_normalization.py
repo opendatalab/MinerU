@@ -14,6 +14,31 @@ from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC, BlockType
 
 
 @pytest.mark.parametrize(
+    ("formula", "expected"),
+    [
+        (r"a \triangleright_\rho_2 b", r"a \triangleright_{\rho_2} b"),
+        (r"a \supseteq_\rho_{12} b", r"a \supseteq_{\rho_{12}} b"),
+        (r"\verb|_\rho_2| + x_\alpha_12", r"\verb|_\rho_2| + x_{\alpha_{12}}"),
+        (r"a \underline{\geq}_{\rho_1} b", r"a \underline{\geq}_{\rho_1} b"),
+        (r"\texttt{a\_\rho\_2} + x_i^2", r"\texttt{a\_\rho\_2} + x_i^2"),
+    ],
+)
+def test_normalization_groups_ocr_nested_subscripts(formula: str, expected: str) -> None:
+    bbox = [0.1, 0.2, 0.8, 0.4]
+    spans = [{"type": "equation_inline", "content": formula}]
+    page = [
+        {"type": BlockType.TEXT, "bbox": bbox, "content": rf"\({formula}\)"},
+        {"type": BlockType.TEXT, "bbox": bbox, "content": spans},
+        {"type": BlockType.EQUATION, "bbox": bbox, "content": rf"\[{formula}\]"},
+    ]
+
+    normalization._normalize_pdf_model_list([page])
+
+    expected_spans = [{"type": "equation_inline", "content": expected}]
+    assert [block["content"] for block in page] == [expected_spans, expected_spans, expected]
+
+
+@pytest.mark.parametrize(
     "block_type",
     [BlockType.TEXT, BlockType.REF_TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, RAW_CAPTION, RAW_FOOTNOTE],
 )
