@@ -165,6 +165,45 @@ def test_pipeline_replaces_residual_pua_after_ocr(monkeypatch: pytest.MonkeyPatc
     assert context.ocr_model.ocr.call_count == (0 if mode in {"no_ocr", "low_contrast"} else 1)
 
 
+def _faint_screenshot_text_crop() -> np.ndarray:
+    """白底上的稀疏深色竖笔画，模拟内嵌截图中的文字行。
+
+    墨量约 4%，calculate_contrast 约 0.16，正好落在 #5800 报告的丢弃区间
+    （FHWA 讲稿第 26 页截图列表行的紧裁对比度为 0.13~0.16，旧 0.17 阈值下被静默丢弃）。
+    """
+    crop = np.full((40, 400, 3), 255, dtype=np.uint8)
+    for x in range(10, 400, 24):
+        crop[10:30, x : x + 2, :] = 60
+    return crop
+
+
+@pytest.mark.parametrize(
+    ("crop", "kept"),
+    [
+        (_faint_screenshot_text_crop(), True),
+        (np.full((40, 400, 3), 255, dtype=np.uint8), False),
+    ],
+    ids=["faint_screenshot_text", "blank"],
+)
+def test_post_ocr_contrast_gate_keeps_faint_screenshot_text(
+    monkeypatch: pytest.MonkeyPatch, crop: np.ndarray, kept: bool
+) -> None:
+    """#5800：对比度 0.13~0.16 的截图文字行必须送入后置 OCR，空白裁图仍被过滤。"""
+    from docvortex.assets import calculate_contrast
+
+    if kept:
+        assert 0.10 <= calculate_contrast(crop, img_mode="rgb") < 0.17
+    span = _AnalyzeSpan(ContentType.TEXT, (0.0, 0.0, 400.0, 40.0), content="x")
+    spans = [span]
+    monkeypatch.setattr(native, "get_crop_img", lambda *_args: crop)
+    native._prepare_post_ocr_spans([span], spans, object(), 1.0)
+    assert (span in spans) is kept
+    if kept:
+        assert span.content == ""
+        assert span.score == 1.0
+        assert span.image is not None
+
+
 def test_replacement_preserves_non_pua_and_existing_whitespace() -> None:
     """逐码点替换不折叠原空白，不影响非 BMP 汉字、表情或非字符码点。"""
     text = "  A\t中\U00020000😀\ue000\U000f0000\U001001b0\U0010fffeB\n "

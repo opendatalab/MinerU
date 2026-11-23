@@ -32,6 +32,10 @@ POST_OCR_FALLBACK_CONTENT_KEY = "_post_ocr_fallback_content"
 POST_OCR_FALLBACK_SCORE_KEY = "_post_ocr_fallback_score"
 POST_OCR_REASON_KEY = "_post_ocr_reason"
 POST_OCR_REASON_PRIVATE_USE_TEXT = "private_use_text"
+# 后置 OCR 对比度下限：calculate_contrast 是裁图灰度标准差/均值，内嵌截图中的稀疏
+# 文字只占裁图少量像素，对比度只有 0.13~0.16；纯空白裁图接近 0。0.17 会静默丢弃
+# 可识别的截图文字（#5800），0.10 仍能过滤空白区域。
+POST_OCR_MIN_CONTRAST = 0.10
 SPACING_DIACRITIC_MIN_OVERLAP_RATIO = 0.5
 _SPAN_FILL_BASELINE_TOLERANCE_DEGREES = 0.1
 _SPAN_FILL_BASELINE_MIN_ADVANCE = 0.001
@@ -369,10 +373,12 @@ def _prepare_post_ocr_spans(
         # 对span的bbox截图再ocr
         span_pil_img = get_crop_img(span.bbox, pil_img, scale)
         span_img = rgb_to_bgr(np.array(span_pil_img))
-        # 计算span的对比度，低于0.17的span不进行ocr，等于0.17的临界框保留给后置OCR。
-        if calculate_contrast(span_img, img_mode="bgr") < 0.17:
+        # 计算span的对比度，低于下限的span不进行ocr，等于下限的临界框保留给后置OCR。
+        contrast = calculate_contrast(span_img, img_mode="bgr")
+        if contrast < POST_OCR_MIN_CONTRAST:
             if _restore_post_ocr_fallback(span):
                 continue
+            logger.debug(f"Dropping span from post-OCR due to low contrast: contrast={contrast}, bbox={span.bbox}")
             if span in spans:
                 spans.remove(span)
             continue
