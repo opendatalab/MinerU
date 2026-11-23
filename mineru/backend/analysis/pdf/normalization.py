@@ -20,6 +20,37 @@ from .constants import (
 )
 from .model_inputs import _bbox_to_pixel_bbox
 
+_LATEX_TOKEN = re.compile(
+    r"\\verb\*?(?P<delimiter>[^A-Za-z\s])(?:(?!(?P=delimiter))[^\r\n])*(?P=delimiter)"
+    r"|%[^\r\n]*|\\(?:[A-Za-z]+|[^\r\n])|[{}$&_^]|[^\W\d_]+"
+)
+_LATEX_GROUP_START = re.compile(r"\s*\{")
+_PROSE_ARTICLE = re.compile(r"\s*a\s+(?=\\math(?:scr|cal|bb|frak|bf|rm|it)\b)")
+_MATH_ONLY_COMMANDS = {
+    r"\mathscr",
+    r"\mathcal",
+    r"\mathbb",
+    r"\mathfrak",
+    r"\mathbf",
+    r"\mathrm",
+    r"\mathit",
+    r"\vec",
+    r"\hat",
+    r"\bar",
+    r"\frac",
+    r"\sqrt",
+    r"\in",
+    r"\notin",
+    r"\setminus",
+    r"\circ",
+    r"\oplus",
+    r"\otimes",
+    r"\leq",
+    r"\geq",
+    r"\neq",
+    r"\to",
+}
+
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
     """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
@@ -132,7 +163,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                         equation_content = equation_content[2:]
                     if equation_content.endswith("\\]"):
                         equation_content = equation_content[:-2]
-                    block["content"] = equation_content.strip()
+                    block["content"] = _repair_display_math(equation_content.strip())
             elif raw_type == _VLM_UNCLASSIFIED_TITLE_TYPE:
                 raise ValueError(f"Unclassified PDF title block: page_idx={page_idx}, block_idx={block_idx}")
             block.pop("angle", None)
@@ -175,3 +206,81 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             )
     # 统一在回填、Span 构造及宿主元数据清理完成后调用共享实现。
     normalize_pdf_model_text(model_list)
+
+
+def _repair_display_math(latex: str) -> str:
+    if r"\text" not in latex:
+        return latex
+
+    tokens = iter(_LATEX_TOKEN.finditer(latex))
+    parts: list[str] = []
+    cursor = 0
+    for token in tokens:
+        if token[0] != r"\text":
+            continue
+        opening = _LATEX_GROUP_START.match(latex, token.end())
+        if opening is None:
+            continue
+        next(tokens)
+        depth = 1
+        for closing in tokens:
+            if closing[0] == "{":
+                depth += 1
+            elif closing[0] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+        else:
+            break
+        body = latex[opening.end() : closing.start()]
+        if (repaired := _split_math_from_text(body)) is not None:
+            parts.extend((latex[cursor : token.start()], repaired))
+            cursor = closing.end()
+    return "".join([*parts, latex[cursor:]])
+
+
+def _split_math_from_text(body: str) -> str | None:
+    # Words inside brace groups can be macro arguments or scripts
+    depth = 0
+    start = 0
+    has_math = False
+    math_ranges: list[tuple[int, int]] = []
+    for token in _LATEX_TOKEN.finditer(body):
+        value = token[0]
+        if (
+            value in {"$", "&", r"\(", r"\)", r"\[", r"\]", r"\\", r"\mbox", r"\hbox"}
+            or value.startswith(("%", r"\text"))
+            or token["delimiter"]
+        ):
+            return None
+        if value == "{":
+            depth += 1
+        elif value == "}":
+            depth -= 1
+        elif depth == 0:
+            if value in _MATH_ONLY_COMMANDS or value in {"_", "^"}:
+                has_math = True
+            elif value.isalpha() and len(value) > 1:
+                if has_math:
+                    math_ranges.append((start, token.start()))
+                start = token.end()
+                has_math = False
+    if has_math:
+        math_ranges.append((start, len(body)))
+    if not math_ranges:
+        return None
+
+    parts: list[str] = []
+    cursor = 0
+    for start, end in math_ranges:
+        segment = body[start:end]
+        article = _PROSE_ARTICLE.match(segment)
+        start += article.end() if article else len(segment) - len(segment.lstrip())
+        end -= len(segment) - len(segment.rstrip())
+        if start > cursor:
+            parts.append(r"\text{" + body[cursor:start] + "}")
+        parts.append(body[start:end])
+        cursor = end
+    if cursor < len(body):
+        parts.append(r"\text{" + body[cursor:] + "}")
+    return "".join(parts)

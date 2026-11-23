@@ -14,6 +14,32 @@ from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC, BlockType
 
 
 @pytest.mark.parametrize(
+    ("formula", "expected"),
+    [
+        (
+            r"\begin{array}{ll} x & \text {by the definition of \mathscr {C}(\alpha)_{E} and considering e\in O_{1}} \\ "
+            r"y & \text{by Notation 2} \end{array}",
+            r"\begin{array}{ll} x & \text{by the definition of }\mathscr {C}(\alpha)_{E}\text{ and considering }e\in O_{1} \\ "
+            r"y & \text{by Notation 2} \end{array}",
+        ),
+        (r"\text{using x_{12} and \frac{a}{b} here}", r"\text{using }x_{12}\text{ and }\frac{a}{b}\text{ here}"),
+        (r"\text{given \mathcal{C}_{\{A\}}}", r"\text{given }\mathcal{C}_{\{A\}}"),
+        (r"\text{for a \mathcal{C}_{1} and a\in X}", r"\text{for a }\mathcal{C}_{1}\text{ and }a\in X"),
+        (r"\text{use $\mathcal{A}_{1}$ here}", r"\text{use $\mathcal{A}_{1}$ here}"),
+        (r"\text{use \textbf{case} $x_1$}", r"\text{use \textbf{case} $x_1$}"),
+        (r"\verb|\text{given x_1}| + \text{for 10\% more}", r"\verb|\text{given x_1}| + \text{for 10\% more}"),
+        (r"\text{unclosed x_{1}", r"\text{unclosed x_{1}"),
+    ],
+)
+def test_normalization_repairs_math_inside_display_text(formula: str, expected: str) -> None:
+    block = {"type": BlockType.EQUATION, "bbox": [0.1, 0.2, 0.8, 0.4], "content": rf"\[{formula}\]"}
+
+    normalization._normalize_pdf_model_list([[block]])
+
+    assert block["content"] == expected
+
+
+@pytest.mark.parametrize(
     "block_type",
     [BlockType.TEXT, BlockType.REF_TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, RAW_CAPTION, RAW_FOOTNOTE],
 )
