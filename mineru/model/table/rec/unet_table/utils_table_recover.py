@@ -691,8 +691,8 @@ def _build_table_grid(logic_points: np.ndarray):
 
 
 def _cell_text(cell_text_map: Dict[int, List[str]], cell_idx: int) -> str:
-    """获取 cell 文本；没有 OCR 命中的结构 cell 返回空字符串。"""
-    return "".join(cell_text_map.get(cell_idx, []))
+    """用空格分隔同一单元格内已分组的 OCR 行。"""
+    return " ".join(cell_text_map.get(cell_idx, []))
 
 
 def _cell_has_visible_text(cell_text_map: Dict[int, List[str]], cell_idx: int) -> bool:
