@@ -10,7 +10,79 @@ from unittest.mock import MagicMock
 import pytest
 
 from mineru.backend.analysis.pdf import normalization
-from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC, BlockType
+from mineru.backend.postprocess.document import build_middle_json
+from mineru.render import render_markdown
+from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC, BlockType, ModelJson
+
+
+def test_normalization_renders_numbered_heading_depth_across_pages() -> None:
+    bbox = [0.1, 0.2, 0.8, 0.4]
+    styled_heading = [{"type": "text", "content": "2.1.1.", "styles": ["bold"]}, {"type": "text", "content": " Details"}]
+    pages = [
+        [
+            {"type": BlockType.DOC_TITLE, "bbox": bbox, "content": "Paper"},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "2. Methods", "level": 2},
+        ],
+        [
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "2.1 Overview"},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": styled_heading, "level": 2},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "3.1.1.1.1.1. Partial section"},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "9.5 mm test setup"},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "2.2. Existing hierarchy", "level": 4},
+            {"type": BlockType.TEXT, "bbox": bbox, "content": "2.2.1. Numbered body text"},
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": bbox, "content": "References"},
+        ],
+    ]
+
+    normalization._normalize_pdf_model_list(pages)
+    model = ModelJson(
+        pages=pages, page_index_map=[], metadata={"file_suffix": "pdf", "producer": {"name": "mineru", "version": "test"}}
+    )
+
+    assert render_markdown(build_middle_json(model)) == (
+        "# Paper\n\n## 2. Methods\n\n### 2.1 Overview\n\n#### **2.1.1.** Details"
+        "\n\n###### 3.1.1.1.1.1. Partial section\n\n## 9.5 mm test setup\n\n#### 2.2. Existing hierarchy"
+        "\n\n2.2.1. Numbered body text\n\n## References"
+    )
+
+
+def test_normalization_recovers_standalone_sections_and_demotes_inline_statements() -> None:
+    heading_bbox = [0.12, 0.1, 0.75, 0.116]
+    paragraph_bbox = [0.12, 0.2, 0.87, 0.233]
+    pages = [
+        [
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": heading_bbox, "content": "2.1.1. Recognized section"},
+            {
+                "type": BlockType.PARAGRAPH_TITLE,
+                "bbox": paragraph_bbox,
+                "content": "Remark 1. The following case applies:",
+                "level": 2,
+            },
+            {"type": BlockType.PARAGRAPH_TITLE, "bbox": heading_bbox, "content": "Remark 2. Boundary cases"},
+        ],
+        [
+            {"type": BlockType.TEXT, "bbox": heading_bbox, "content": "2.1.2. Missed section"},
+            {"type": BlockType.TEXT, "bbox": [0.17, 0.1, 0.75, 0.116], "content": "2.1.2. Indented item"},
+            {"type": BlockType.TEXT, "bbox": paragraph_bbox, "content": "2.1.2. Multiline paragraph"},
+            {"type": BlockType.TEXT, "bbox": heading_bbox, "content": "2.1.2. A complete sentence."},
+            {"type": BlockType.TEXT, "bbox": heading_bbox, "content": "2.3.2. Unrelated number"},
+        ],
+    ]
+    texts = [block["content"] for page in pages for block in page]
+
+    normalization._normalize_pdf_model_list(pages)
+
+    assert [(block["type"], block.get("level")) for page in pages for block in page] == [
+        (BlockType.PARAGRAPH_TITLE, 4),
+        (BlockType.TEXT, None),
+        (BlockType.PARAGRAPH_TITLE, None),
+        (BlockType.PARAGRAPH_TITLE, 4),
+        (BlockType.TEXT, None),
+        (BlockType.TEXT, None),
+        (BlockType.TEXT, None),
+        (BlockType.TEXT, None),
+    ]
+    assert [block["content"] for page in pages for block in page] == [[{"type": "text", "content": text}] for text in texts]
 
 
 @pytest.mark.parametrize(
