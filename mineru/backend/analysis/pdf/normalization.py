@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
+from statistics import median
 from typing import Any
 
 from docvortex.content import normalize_pdf_model_text
@@ -19,6 +21,10 @@ from .constants import (
     NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES,
 )
 from .model_inputs import _bbox_to_pixel_bbox
+
+
+_NUMBERED_HEADING = re.compile(r"^\s*(?P<number>[1-9][0-9]*(?:\s*\.\s*[1-9][0-9]*)*)(?P<period>\.)?\s+\S")
+_NUMBERED_STATEMENT = re.compile(r"^\s*(?:Remark|Definition|Lemma|Proposition|Theorem|Corollary)\s+[0-9]+\.\s+\S")
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
@@ -175,3 +181,79 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             )
     # 统一在回填、Span 构造及宿主元数据清理完成后调用共享实现。
     normalize_pdf_model_text(model_list)
+    _classify_numbered_headings(model_list)
+    _level_numbered_headings(model_list)
+
+
+def _classify_numbered_headings(model_list: list[list[dict[str, Any]]]) -> None:
+    headings: dict[tuple[str, ...], list[tuple[int, BBox]]] = defaultdict(list)
+    candidates: list[tuple[dict[str, Any], tuple[str, ...], int, BBox]] = []
+    statements: list[tuple[dict[str, Any], float]] = []
+    heading_heights = []
+    for page in model_list:
+        for block in page:
+            kind = block.get("type")
+            if kind not in {BlockType.TEXT, BlockType.PARAGRAPH_TITLE} or not _is_valid_pdf_text_bbox(block.get("bbox")):
+                continue
+            bbox = block["bbox"]
+            text = _block_plain_text(block).rstrip()
+            height = bbox[3] - bbox[1]
+            if kind == BlockType.PARAGRAPH_TITLE and _NUMBERED_STATEMENT.match(text) and text.endswith((".", ":")):
+                statements.append((block, height))
+                continue
+            match = _NUMBERED_HEADING.match(text)
+            if match is None:
+                continue
+            number = tuple(part.strip() for part in match["number"].split("."))
+            if len(number[-1]) > 4:
+                continue
+            sibling_number = int(number[-1])
+            if kind == BlockType.PARAGRAPH_TITLE:
+                headings[number[:-1]].append((sibling_number, bbox))
+                heading_heights.append(height)
+            elif len(number) > 1 and match["period"] and not text.endswith((".", "!", "?", ":")):
+                candidates.append((block, number[:-1], sibling_number, bbox))
+
+    if statements and heading_heights:
+        typical_heading_height = median(heading_heights)
+        for block, height in statements:
+            if height > 1.5 * typical_heading_height and block.get("level") in (None, 2):
+                block["type"] = BlockType.TEXT
+                block.pop("level", None)
+
+    for block, parent, sibling_number, bbox in candidates:
+        height = bbox[3] - bbox[1]
+        if any(
+            abs(sibling_number - number) == 1
+            and abs(bbox[0] - sibling[0]) <= 0.02
+            and 0.7 * (sibling[3] - sibling[1]) <= height <= 1.3 * (sibling[3] - sibling[1])
+            for number, sibling in headings[parent]
+        ):
+            block["type"] = BlockType.PARAGRAPH_TITLE
+
+
+def _level_numbered_headings(model_list: list[list[dict[str, Any]]]) -> None:
+    numbered_headings = []
+    parents = set()
+    for page in model_list:
+        for block in page:
+            if block.get("type") != BlockType.PARAGRAPH_TITLE:
+                continue
+            if match := _NUMBERED_HEADING.match(_block_plain_text(block)):
+                number = tuple(part.strip() for part in match["number"].split("."))
+                parents.add(number)
+                numbered_headings.append((block, number, bool(match["period"])))
+
+    for block, number, ends_in_period in numbered_headings:
+        if len(number) < 2 or block.get("level") not in (None, 2):
+            continue
+        # A dotted number without a closing period can also be a decimal
+        if ends_in_period or number[:-1] in parents:
+            block["level"] = min(len(number) + 1, 6)
+
+
+def _block_plain_text(block: dict[str, Any]) -> str:
+    content = block.get("content")
+    if not isinstance(content, list):
+        return content if isinstance(content, str) else ""
+    return inline_span_plain_text(span for span in content if isinstance(span, dict))
