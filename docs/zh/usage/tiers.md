@@ -34,14 +34,14 @@ API 启动 `--tier` 表示开放上限，包含自身和较低档位；`--tier s
 | --- | --- | --- |
 | Apple Silicon / MPS | Torch / MPS | llama.cpp / Metal |
 | Windows x64，基础包 | ONNX / DirectML 或 CPU（没有可用 Torch 加速环境时） | llama.cpp |
-| Linux x86_64，基础包 | ONNX / WebGPU 或 CPU（没有可用 Torch 加速环境时） | llama.cpp |
+| Linux x86_64 或 aarch64，基础包 | ONNX / WebGPU 或 CPU（没有可用 Torch 加速环境时） | llama.cpp |
 | Linux，有加速器并安装 `full` | Torch | vLLM；否则尝试已安装的 LMDeploy |
 | Windows，有加速器并安装 `full` | Torch | LMDeploy |
 | CPU 环境 | ONNX / CPU | llama.cpp |
 
 自动选择依据已安装依赖和可用设备；显式指定的后端缺依赖时会报错，不会静默改用另一种。ONNX 设备由 `model.onnx_device=auto|cpu|gpu` 控制，VLM 设备独立选择。环境变量 `MINERU_MODEL_ONNX_DEVICE` 高于文件配置，且不会将覆盖值写回文件。
 
-4.1 基础包在 Windows x64 安装 DirectML 运行时，在 Linux x86_64 安装 WebGPU 插件（经 Vulkan 执行）。兼容且确认的独显优先；auto 下的集显或类型未知设备按需校准，收益不足或运行不可靠时使用 CPU。Linux 的旧 Intel/Xe-LP 及未识别架构使用 CPU；显式 gpu 也遵守兼容性限制。其他系统、GPU 不可用或初始化失败时记录 CPU 回退原因。
+基础包在 Windows x64 安装 DirectML 运行时，在 Linux x86_64 和 aarch64 安装 WebGPU 插件（经 Vulkan 执行）。兼容且确认的独显优先；auto 下的集显或类型未知设备按需校准，收益不足或运行不可靠时使用 CPU。Linux 的旧 Intel/Xe-LP 及未识别架构使用 CPU；显式 gpu 也遵守兼容性限制。其他系统、GPU 不可用或初始化失败时记录 CPU 回退原因。
 
 有效自动选择可保存到配置；重新测速需将 `model.onnx_device` 改回 auto 并重启。设备变化后旧校准证据不再视为当前性能证据，显式或已保存的 cpu 不会因为后来接入独显而自动改写。首次校准可能下载识别模型；`hardware info` 不触发此过程。
 

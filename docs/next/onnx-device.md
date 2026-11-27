@@ -290,8 +290,8 @@ WebGPU 阈值为 `None` 时，需要校准的 auto 路径保留 `auto` 并临时
 Windows x64 的直接依赖为 `onnxruntime-directml>=1.23,<2`，其他平台使用 `onnxruntime>=1.24.4,<2`，
 不按 Python 版本拆分条件。DirectML 包本身包含 CPU provider。
 
-项目要求 Python >=3.11。Linux x86_64 同时安装 `onnxruntime-ep-webgpu>=0.4.0,<1`；
-这是与 ORT 并存的插件，不替换 `onnxruntime`。Linux ARM64、macOS 和 Windows 不安装此插件。
+项目要求 Python >=3.11。Linux x86_64 和 aarch64 同时安装 `onnxruntime-ep-webgpu>=0.4.0,<1`；
+这是与 ORT 并存的插件，不替换 `onnxruntime`。macOS 和 Windows 不安装此插件。
 Linux 还需系统提供 `libvulkan.so.1` 和可用的 GPU Vulkan 驱动。使用 uv 管理环境：
 
 ```bash

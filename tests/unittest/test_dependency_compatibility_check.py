@@ -1,10 +1,33 @@
 """验证解析成功不能绕过发布包的 Python 和二进制支持声明。"""
+
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
 
 from scripts.check_transformers5_dependencies import check_backend_dependencies, verify_wheels
+
+
+@pytest.mark.parametrize(
+    ("sys_platform", "machine", "expected"),
+    [
+        ("linux", "x86_64", True),
+        ("linux", "aarch64", True),
+        ("linux", "ppc64le", False),
+        ("darwin", "arm64", False),
+        ("win32", "AMD64", False),
+        ("win32", "ARM64", False),
+    ],
+)
+def test_webgpu_dependency_matches_linux_wheel_platforms(sys_platform: str, machine: str, expected: bool) -> None:
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    dependencies = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["dependencies"]
+    requirements = map(Requirement, dependencies)
+    webgpu = next(requirement for requirement in requirements if requirement.name == "onnxruntime-ep-webgpu")
+    assert webgpu.marker is not None
+    assert webgpu.marker.evaluate({"sys_platform": sys_platform, "platform_machine": machine}) is expected
 
 
 @pytest.mark.parametrize("platform", ["windows", "linux", "macos-intel"])
