@@ -34,14 +34,14 @@ The API startup `--tier` is a ceiling including itself and lower tiers; `--tier 
 | --- | --- | --- |
 | Apple Silicon / MPS | Torch / MPS | llama.cpp / Metal |
 | Windows x64, base package | ONNX / DirectML or CPU when no Torch accelerator runtime is available | llama.cpp |
-| Linux x86_64, base package | ONNX / WebGPU or CPU when no Torch accelerator runtime is available | llama.cpp |
+| Linux x86_64 or aarch64, base package | ONNX / WebGPU or CPU when no Torch accelerator runtime is available | llama.cpp |
 | Linux, accelerator and `full` | Torch | vLLM, otherwise installed LMDeploy |
 | Windows, accelerator and `full` | Torch | LMDeploy |
 | CPU environment | ONNX / CPU | llama.cpp |
 
 Automatic selection uses installed dependencies and available devices. An explicit choice with missing dependencies fails instead of silently selecting another backend. `model.onnx_device=auto|cpu|gpu` controls ONNX devices independently of the VLM. `MINERU_MODEL_ONNX_DEVICE` overrides file configuration without persisting the override.
 
-The 4.1 base package installs DirectML on Windows x64 and the Vulkan-backed WebGPU plugin on Linux x86_64. Compatible, confirmed discrete GPUs have priority. In auto mode, integrated or unclassified GPUs undergo applicable calibration; insufficient gains or unreliable execution select CPU. Linux uses CPU for older Intel/Xe-LP and unidentified Intel architectures, even with explicit gpu selection. Other systems, unavailable GPUs, or initialization failures log CPU fallback reasons.
+The base package installs DirectML on Windows x64 and the Vulkan-backed WebGPU plugin on Linux x86_64 and aarch64. Compatible, confirmed discrete GPUs have priority. In auto mode, integrated or unclassified GPUs undergo applicable calibration; insufficient gains or unreliable execution select CPU. Linux uses CPU for older Intel/Xe-LP and unidentified Intel architectures, even with explicit gpu selection. Other systems, unavailable GPUs, or initialization failures log CPU fallback reasons.
 
 Valid automatic choices can be saved to configuration. Set `model.onnx_device` back to auto and restart to recalibrate. Hardware changes invalidate old performance evidence; explicit or saved cpu choices are not overwritten when a discrete GPU is later connected. First calibration may download the recognition model; `hardware info` does not trigger it.
 

@@ -74,7 +74,7 @@ dependencies = [
     "onnx>=1.19,<2",
     "onnxruntime-directml>=1.23,<2 ; sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'amd64' or platform_machine == 'x86_64')",
     "onnxruntime>=1.24.4,<2 ; sys_platform != 'win32' or (platform_machine != 'AMD64' and platform_machine != 'amd64' and platform_machine != 'x86_64')",
-    "onnxruntime-ep-webgpu>=0.4.0,<1 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "onnxruntime-ep-webgpu>=0.4.0,<1 ; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
