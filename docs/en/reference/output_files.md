@@ -78,6 +78,19 @@ html = render(result.middle_json, RenderFormat.HTML)
 Path("report.html").write_text(html, encoding="utf-8")
 ```
 
+### Include page headers and footers in Markdown
+
+The default Markdown renderer omits page headers and footers. If the parser
+detected them, `result.structured_content()` retains them as `header` and
+`footer` blocks. To include those blocks in Markdown, render the same result
+with `RenderMode.FULL`.
+
+```python
+from mineru.render import RenderMode, render_markdown
+
+full_markdown = render_markdown(result.middle_json, mode=RenderMode.FULL)
+```
+
 ## Intermediate JSON
 
 `ModelJson` holds analysis `pages` and `page_index_map`; `MiddleJson` holds ordered postprocessed pages and semantic blocks. JSON consumers identify the payload through the serialized `schema` and `schema_version` keys (`docvortex.model` or `docvortex.middle`, protocol `2.0`). The schema identity is named `schema_id` as a Python attribute, but it serializes as `schema`; when reading or writing JSON, always use the serialized keys. Do not identify a document type from its version number alone.

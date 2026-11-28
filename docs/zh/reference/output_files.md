@@ -74,6 +74,18 @@ html = render(result.middle_json, RenderFormat.HTML)
 Path("report.html").write_text(html, encoding="utf-8")
 ```
 
+### 在 Markdown 中保留页眉和页脚
+
+默认的 Markdown 渲染会省略页眉和页脚。如果解析阶段识别到了这些内容，
+`result.structured_content()` 仍会保留对应的 `header` 和 `footer` 块。
+使用 `RenderMode.FULL` 渲染同一结果，即可将这些块写入 Markdown。
+
+```python
+from mineru.render import RenderMode, render_markdown
+
+full_markdown = render_markdown(result.middle_json, mode=RenderMode.FULL)
+```
+
 ## 中间 JSON
 
 `ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。JSON 消费端通过序列化后的 `schema` 与 `schema_version` 两个键识别数据（`docvortex.model` 或 `docvortex.middle`，协议版本 `2.0`）。协议身份在 Python 类型中的属性名为 `schema_id`，但序列化键名是 `schema`；读写 JSON 时一律使用序列化键。不要只根据版本数字判断文档种类。
